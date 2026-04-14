@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>KEYSTONE OPS - Agent Monitoring</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;700;800;900&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"primary-fixed": "#dde1ff", "surface-container-low": "#f6f3f2", "secondary-fixed-dim": "#c5d6f0", outline: "#7b7b7b", "primary-fixed-dim": "#cbd2ff", "on-primary": "#f9f6ff", "on-tertiary-fixed": "#344255", "on-surface": "#323233", "tertiary-container": "#d8e6ff", "surface-tint": "#1849ef", "error-dim": "#4f0116", "tertiary-fixed-dim": "#cad8f0", "surface-variant": "#e3e2e2", "on-primary-container": "#003cdb", "secondary-fixed": "#d3e4fe", "surface-bright": "#fcf9f8", "on-secondary-fixed": "#314055", background: "#fcf9f8", "inverse-primary": "#6e88ff", "inverse-on-surface": "#9e9c9c", "surface-container-high": "#e9e8e7", "error-container": "#ff8b9a", "secondary-container": "#d3e4fe", primary: "#1849ef", "tertiary-fixed": "#d8e6ff", "primary-container": "#dde1ff", "on-error": "#fff7f7", "on-tertiary-fixed-variant": "#505e73", "tertiary-dim": "#465468", "primary-dim": "#003cdd", "inverse-surface": "#0e0e0e", "surface-container-highest": "#e3e2e2", "on-tertiary": "#f8f8ff", "secondary-dim": "#44546a", tertiary: "#526074", "on-secondary-container": "#435368", "surface-dim": "#dbdada", surface: "#fcf9f8", "outline-variant": "#b2b2b1", "on-primary-fixed": "#002eae", "surface-container-lowest": "#ffffff", "on-background": "#323233", "on-surface-variant": "#5f5f5f", "on-secondary": "#f7f9ff", "surface-container": "#f0eded", "on-secondary-fixed-variant": "#4d5d73", secondary: "#506076", "on-error-container": "#782232", "on-tertiary-container": "#465468", error: "#9e3f4e", "on-primary-fixed-variant": "#1146ec"}, borderRadius: {DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem"}, fontFamily: {headline: ["Public Sans"], body: ["Inter"], label: ["Inter"], display: "Public Sans"}}}};</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body {
+            background-color: #fbf9f4;
+            color: #31332c;
+            font-family: 'Inter', sans-serif;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #b1b3a9;
+        }
+    </style>
+</head>
+<body class="overflow-hidden">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 bg-[#fbf9f4]/80 backdrop-blur-xl border-b border-stone-200 flex justify-between items-center px-6 h-16 w-full">
+<div class="flex items-center gap-8">
+<span class="text-lg font-black tracking-tighter text-stone-900">KEYSTONE OPS</span>
+<nav class="flex gap-6 h-full items-center">
+<a class="font-['Public_Sans'] uppercase tracking-wider font-bold text-sm text-stone-500 hover:text-stone-700 transition-colors duration-150" href="#">Workflow</a>
+<a class="font-['Public_Sans'] uppercase tracking-wider font-bold text-sm text-stone-900 border-b-2 border-stone-900 pb-1" href="#">Agent</a>
+</nav>
+</div>
+<div class="flex gap-4 items-center">
+<button class="p-2 hover:bg-stone-100 transition-colors duration-150">
+<span class="material-symbols-outlined text-stone-700">settings</span>
+</button>
+<button class="p-2 hover:bg-stone-100 transition-colors duration-150">
+<span class="material-symbols-outlined text-stone-700">account_circle</span>
+</button>
+</div>
+</header>
+<!-- SideNavBar (Left) -->
+<aside class="fixed left-0 top-16 bottom-0 flex flex-col pt-4 w-64 bg-[#f5f4ed] border-r border-stone-200">
+<div class="px-6 py-4 mb-4">
+<h2 class="font-['Public_Sans'] font-bold text-stone-900 text-xs uppercase tracking-[0.2em]">Workflow Sessions</h2>
+<p class="text-[10px] text-stone-500 font-semibold mt-1">Operational Queue</p>
+</div>
+<nav class="flex flex-col">
+<a class="flex items-center gap-3 px-6 py-3 transition-colors duration-150 text-stone-600 opacity-80 hover:bg-[#efeee6] font-['Inter'] text-xs font-semibold" href="#">
+<span class="material-symbols-outlined">dashboard</span> Overview
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 transition-colors duration-150 bg-[#efeee6] text-stone-900 font-bold border-l-4 border-[#036a6c] font-['Inter'] text-xs font-semibold" href="#">
+<span class="material-symbols-outlined">play_arrow</span> Active
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 transition-colors duration-150 text-stone-600 opacity-80 hover:bg-[#efeee6] font-['Inter'] text-xs font-semibold" href="#">
+<span class="material-symbols-outlined">pause</span> Paused
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 transition-colors duration-150 text-stone-600 opacity-80 hover:bg-[#efeee6] font-['Inter'] text-xs font-semibold" href="#">
+<span class="material-symbols-outlined">inventory_2</span> Archive
+            </a>
+</nav>
+</aside>
+<!-- Main Content Canvas -->
+<main class="fixed left-64 right-80 top-16 bottom-0 bg-surface overflow-hidden flex flex-col">
+<!-- Header Section -->
+<div class="h-20 border-b border-outline-variant/20 px-8 flex items-center justify-between bg-surface-container-lowest">
+<div>
+<div class="flex items-center gap-3">
+<span class="text-[10px] font-bold bg-secondary/10 text-secondary px-2 py-0.5 uppercase tracking-widest">In Progress</span>
+<h1 class="font-headline font-bold text-lg tracking-tight text-on-surface">TASK-032: Implementation Worker</h1>
+</div>
+<p class="text-[11px] font-medium text-on-surface-variant font-body">Worker Instance ID: <span class="font-mono">ops-4492-node-b</span> • Started 14m ago</p>
+</div>
+<div class="flex gap-2">
+<button class="bg-primary text-on-primary px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-primary-dim transition-colors">Pause Instance</button>
+<button class="bg-surface-container-high text-on-surface px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-surface-container-highest transition-colors">Manual Override</button>
+</div>
+</div>
+<!-- Timeline / Chat Area -->
+<div class="flex-1 overflow-y-auto custom-scrollbar p-8">
+<div class="max-w-4xl mx-auto space-y-4">
+<!-- Timeline Event: System -->
+<div class="flex gap-6 group">
+<div class="w-16 pt-1 text-right">
+<span class="text-[10px] font-mono text-outline uppercase">14:02:01</span>
+</div>
+<div class="flex-1 pb-4">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-[10px] font-black uppercase text-on-surface-variant">System</span>
+</div>
+<div class="bg-surface-container-low p-4 text-xs font-body leading-relaxed text-on-surface">
+                            Task session initialized. Context windows loaded for <span class="font-mono bg-surface-container p-0.5">/src/core/auth</span>. 
+                            Active instructions: Implement JWT rotation logic.
+                        </div>
+</div>
+</div>
+<!-- Timeline Event: Worker Action -->
+<div class="flex gap-6 group">
+<div class="w-16 pt-1 text-right">
+<span class="text-[10px] font-mono text-outline uppercase">14:02:15</span>
+</div>
+<div class="flex-1 pb-4">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-[10px] font-black uppercase text-secondary">Implementation Worker</span>
+<span class="material-symbols-outlined text-[14px] text-secondary">check_circle</span>
+</div>
+<div class="bg-surface-container p-4 text-xs font-body leading-relaxed text-on-surface border-l-2 border-secondary">
+                            Analyzed existing <span class="font-mono">token_manager.ts</span>. Identified deficiency in refresh token persistence layer. 
+                            Initiating code draft for <span class="font-mono">AuthService.rotate()</span>.
+                        </div>
+</div>
+</div>
+<!-- Timeline Event: Artifact Generation -->
+<div class="flex gap-6 group">
+<div class="w-16 pt-1 text-right">
+<span class="text-[10px] font-mono text-outline uppercase">14:08:44</span>
+</div>
+<div class="flex-1 pb-4">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-[10px] font-black uppercase text-on-surface-variant">Worker Artifact</span>
+</div>
+<div class="bg-surface-container-highest p-4 flex items-center justify-between">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-outline">description</span>
+<div>
+<p class="text-[11px] font-bold text-on-surface uppercase tracking-tight">Code Diff Produced</p>
+<p class="text-[10px] text-on-surface-variant">2 files modified • 48 lines added</p>
+</div>
+</div>
+<button class="text-[10px] font-black uppercase border border-outline/30 px-3 py-1 hover:bg-surface-container-lowest transition-colors">Inspect diff</button>
+</div>
+</div>
+</div>
+<!-- Timeline Event: Warning/Finding -->
+<div class="flex gap-6 group">
+<div class="w-16 pt-1 text-right">
+<span class="text-[10px] font-mono text-outline uppercase">14:12:10</span>
+</div>
+<div class="flex-1 pb-4">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-[10px] font-black uppercase text-tertiary">Review Finding</span>
+<span class="material-symbols-outlined text-[14px] text-tertiary">warning</span>
+</div>
+<div class="bg-surface-container-low p-4 text-xs font-body leading-relaxed text-on-surface border-l-2 border-tertiary">
+                            Potential race condition detected in <span class="font-mono">token_manager.ts:142</span>. 
+                            Concurrency lock suggested for distributed environment. 
+                            <span class="block mt-2 font-bold text-tertiary uppercase text-[10px]">Worker Status: Retrying logic adjustment</span>
+</div>
+</div>
+</div>
+<!-- Timeline Event: Active Streaming -->
+<div class="flex gap-6 group">
+<div class="w-16 pt-1 text-right">
+<span class="text-[10px] font-mono text-outline uppercase">14:14:02</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-[10px] font-black uppercase text-secondary">Implementation Worker</span>
+<span class="inline-block w-1 h-3 bg-secondary animate-pulse"></span>
+</div>
+<div class="p-4 bg-surface-container-lowest text-[11px] font-mono leading-relaxed text-on-surface-variant italic">
+                            Updating logic to include Redis-backed distributed locking mechanism...
+                        </div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- SideNavBar (Right) - ARTIFACT INSPECTOR -->
+<aside class="fixed right-0 top-16 bottom-0 flex flex-col pt-4 w-80 bg-[#f5f4ed] border-l border-stone-200">
+<div class="px-6 py-4 mb-2">
+<h2 class="font-['Public_Sans'] font-bold text-stone-900 text-xs uppercase tracking-[0.2em]">Artifact Inspector</h2>
+<p class="text-[10px] text-stone-500 font-semibold mt-1">Document Viewer</p>
+</div>
+<nav class="flex px-4 gap-2 mb-4">
+<button class="flex-1 py-2 text-[10px] font-black uppercase tracking-widest bg-white text-stone-900">Diff</button>
+<button class="flex-1 py-2 text-[10px] font-black uppercase tracking-widest text-stone-500 hover:bg-stone-200 transition-colors">Logs</button>
+<button class="flex-1 py-2 text-[10px] font-black uppercase tracking-widest text-stone-500 hover:bg-stone-200 transition-colors">Meta</button>
+</nav>
+<div class="flex-1 overflow-hidden flex flex-col">
+<!-- Code Diff Visualizer -->
+<div class="mx-4 bg-surface-container-lowest flex-1 overflow-y-auto custom-scrollbar border border-outline-variant/10">
+<div class="p-3 bg-surface-container-high border-b border-outline-variant/10 flex justify-between items-center">
+<span class="text-[9px] font-mono font-bold text-on-surface-variant uppercase">src/core/auth/token_manager.ts</span>
+<span class="text-[9px] font-mono font-bold text-secondary uppercase">MODIFIED</span>
+</div>
+<div class="p-4 font-mono text-[10px] leading-relaxed whitespace-pre overflow-x-auto">
+<span class="text-outline">140</span>   async rotate(uid: string) {
+<span class="text-outline">141</span> <span class="bg-error/10 text-error-dim">-    const token = await this.db.find(uid);</span>
+<span class="text-outline">142</span> <span class="bg-secondary/10 text-on-secondary-container">+    const lock = await this.redis.lock(uid);</span>
+<span class="text-outline">143</span> <span class="bg-secondary/10 text-on-secondary-container">+    const token = await this.db.find(uid);</span>
+<span class="text-outline">144</span>      if (!token) throw new Error();
+<span class="text-outline">145</span> <span class="bg-secondary/10 text-on-secondary-container">+    // Rotation logic</span>
+<span class="text-outline">146</span> <span class="bg-secondary/10 text-on-secondary-container">+    const newToken = this.generate();</span>
+<span class="text-outline">147</span> <span class="bg-secondary/10 text-on-secondary-container">+    await this.db.save(newToken);</span>
+<span class="text-outline">148</span> <span class="bg-secondary/10 text-on-secondary-container">+    await lock.release();</span>
+<span class="text-outline">149</span>   }</div>
+</div>
+<!-- Evidence Metadata -->
+<div class="p-4 bg-surface-container m-4 space-y-4">
+<div>
+<p class="text-[9px] font-black uppercase text-outline mb-2">Confidence Score</p>
+<div class="h-1 bg-outline-variant/20 w-full overflow-hidden">
+<div class="h-full bg-secondary w-[92%]"></div>
+</div>
+<div class="flex justify-between mt-1">
+<span class="text-[10px] font-bold text-secondary">92% Optimal</span>
+<span class="text-[10px] font-mono text-outline">v1.4.2</span>
+</div>
+</div>
+<div>
+<p class="text-[9px] font-black uppercase text-outline mb-2">Evidence Tags</p>
+<div class="flex flex-wrap gap-1">
+<span class="text-[8px] font-bold bg-surface-container-highest px-2 py-1 text-on-surface-variant uppercase tracking-tighter">Distributed Locking</span>
+<span class="text-[8px] font-bold bg-surface-container-highest px-2 py-1 text-on-surface-variant uppercase tracking-tighter">JWT Compliance</span>
+<span class="text-[8px] font-bold bg-surface-container-highest px-2 py-1 text-on-surface-variant uppercase tracking-tighter">Thread Safe</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+</body></html>
