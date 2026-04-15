@@ -2,6 +2,7 @@ import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
 
 import type { AppEnv } from "../../env";
+import { jsonErrorResponse } from "../../lib/http/errors";
 import { parseDevAuth } from "../contracts/dev-auth";
 
 export const requireDevAuth = createMiddleware<AppEnv>(async (context, next) => {
@@ -12,7 +13,7 @@ export const requireDevAuth = createMiddleware<AppEnv>(async (context, next) => 
 
   if (!result.ok) {
     throw new HTTPException(401, {
-      message: result.message
+      res: jsonErrorResponse("unauthorized", result.message, 401)
     });
   }
 

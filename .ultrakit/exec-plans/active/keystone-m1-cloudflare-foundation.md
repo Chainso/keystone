@@ -206,6 +206,16 @@ Compatibility is still required at the contract level:
   **Decision:** Make DB repository integration tests opt-in via `KEYSTONE_RUN_DB_TESTS=1`, while still supporting a full live Postgres proof path in validation.  
   **Rationale:** The repository should keep a fast default `npm test` path, but the phase still needs end-to-end DB proof. Opt-in live DB tests satisfy both needs and avoid coupling every local unit test run to Docker availability.
 
+- **Date:** 2026-04-14  
+  **Phase:** Phase 3  
+  **Decision:** Use one `RunCoordinatorDO` per `{tenantId, runId}` pair, addressed by a deterministic DO name and exposing both RPC methods (`initialize`, `publish`, `getSnapshot`) and a `fetch()` websocket upgrade surface.  
+  **Rationale:** Phase 3 needs a realtime hub and summary projection source before workflows exist. A deterministic tenant+run DO gives the HTTP layer a single place to publish and read live state without introducing broader coordination machinery yet.
+
+- **Date:** 2026-04-14  
+  **Phase:** Phase 3  
+  **Decision:** Persist the accepted run input (`repo`, `decisionPackage`, `authMode`) in the root run session metadata for now instead of creating extra workflow or artifact rows before execution begins.  
+  **Rationale:** The API contract must already accept real repo and decision-package input, but workflow fanout and artifact materialization are explicitly out of scope for this phase. Session metadata is the narrowest durable place to hold the accepted request shape until later phases compile and artifactize it.
+
 ## Progress
 
 - [x] 2026-04-13 Discovery completed from `product-specs/keystone-m1.md`, `product-specs/keystone-on-cloudflare.md`, `product-specs/keystone-relaxed-design.md`, and `product-specs/platform-vs-vertical.md`.
@@ -220,10 +230,12 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-14 Phase 1 execution started: manual Worker scaffold, local tooling, dev auth contract, and deterministic fixture assets in progress.
 - [x] 2026-04-14 Phase 1 completed: root Worker scaffold, generated bindings, Docker Postgres path, placeholder routes, tests, and deterministic fixtures are in place and validated in commit `220cdb3`.
 - [x] 2026-04-14 Phase 2 execution started: operational schema, migration runner, Drizzle schema, event repository, and artifact key helpers in progress.
-- [x] 2026-04-14 Phase 2 completed: SQL schema, migrator, Drizzle repositories, Maestro kernel contracts, and artifact/event helpers validated against Docker Postgres.
+- [x] 2026-04-14 Phase 2 completed: SQL schema, migrator, Drizzle repositories, Maestro kernel contracts, and artifact/event helpers validated against Docker Postgres in commit `bf9c158`.
+- [x] 2026-04-14 Phase 3 execution started: tenant-aware run API, approval route shape, realtime coordinator DO, and WebSocket surface in progress.
+- [x] 2026-04-14 Phase 3 completed: tenant-aware run create/read APIs, approval resolution shape, coordinator DO, and websocket route validated locally.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
 - [x] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
-- [ ] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
+- [x] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
 - [ ] Phase 4: Build `TaskSessionDO`, sandbox lifecycle management, and workspace/worktree handling.
 - [ ] Phase 5: Build `RunWorkflow` and `TaskWorkflow` with durable long-running execution and artifact persistence.
 - [ ] Phase 6: Add security gating, approval plumbing, and custom chat-completions compile behavior.
@@ -242,10 +254,11 @@ Compatibility is still required at the contract level:
 - **2026-04-14:** Cloudflare's bootstrap tools are useful references but are not a good canonical starting point for this repo because they optimize for generic Worker or full-stack templates rather than the backend-only Keystone architecture.
 - **2026-04-14:** The smallest safe local auth model is "real tenant extraction with a dev credential path," not "skip auth entirely." That preserves the multi-tenant control-plane contract without forcing production auth infrastructure into Phase 1.
 - **2026-04-14:** The Phase 1 file list originally referenced `.docker-compose.yml`, but the validation command uses `docker compose up -d postgres` without `-f`. The implementation uses the standard `docker-compose.yml` filename so the documented command works as written.
-- **2026-04-14:** `wrangler types` generates binding types from `wrangler.jsonc` but does not include local secrets from `.dev.vars`. The scaffold therefore extends generated bindings with `KEYSTONE_DEV_TOKEN` in `src/env.d.ts` rather than editing generated output.
+- **2026-04-14:** During Phase 1, `wrangler types` did not include the local dev secret because `.dev.vars` was not present yet. After Phase 3 regenerated bindings with `.dev.vars` in place, the generated `Env` also included `KEYSTONE_DEV_TOKEN` and the local Hyperdrive connection string. The manual `WorkerBindings` extension is now just a compatibility shim rather than the primary source of that binding type.
 - **2026-04-14:** Wrangler local commands that generate types or bind a port require execution outside the sandbox in this environment because Wrangler writes under `~/.config/.wrangler` and needs direct localhost access. This affected `npm run cf-typegen`, `npm run dev`, and the local `curl` smoke checks.
 - **2026-04-14:** The source DDL examples use `tenant_id uuid`, but the accepted M1 local auth path and fixture examples already use non-UUID tenant identifiers. Phase 2 stores `tenant_id` as `text` to keep the persisted contract aligned with the current operator-facing input shape.
 - **2026-04-14:** `tsx` uses a local IPC socket and the sandbox cannot connect to the Docker Postgres port, so `npm run db:migrate` and the live DB repository tests must run outside the sandbox in this environment even though the code itself is valid.
+- **2026-04-14:** The websocket upgrade proof path is easiest to verify from Wrangler’s local request log. A plain `curl` websocket handshake against the live route times out without showing the DO’s initial message frame, but Wrangler logs the request as `101 Switching Protocols`, which is sufficient validation for this phase.
 
 ## Outcomes & Retrospective
 
@@ -267,6 +280,13 @@ Phase 2 outcome on 2026-04-14:
 - The repository now has a checked-in operational core: `migrations/0001_m1_operational_core.sql`, a reusable migration runner, typed Drizzle table definitions, repository modules for sessions/events/artifacts, deterministic artifact key helpers, and stable Maestro session/kernel contracts.
 - Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run db:migrate`, and opt-in live DB repository tests against Docker Postgres with `KEYSTONE_RUN_DB_TESTS=1`.
 - Phase 3 can now implement tenant-aware HTTP routes and realtime Durable Object projections against real persistence modules rather than placeholders.
+
+Phase 3 outcome on 2026-04-14:
+
+- The repository now exposes a real tenant-scoped control plane: `POST /v1/runs`, `GET /v1/runs/:runId`, `POST /v1/runs/:runId/approvals/:approvalId/resolve`, `GET /v1/runs/:runId/ws`, and `GET /v1/health`.
+- `RunCoordinatorDO` is now configured in Wrangler, exported from the Worker entrypoint, and used as the live summary and websocket coordination layer for run state.
+- Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and live local smoke checks showing `/v1/health -> 200`, `POST /v1/runs -> 202`, `GET /v1/runs/:runId -> 200`, and `/v1/runs/:runId/ws -> 101 Switching Protocols`.
+- Phase 4 can now focus on task-session coordination and sandbox/workspace orchestration without reopening the HTTP or realtime route contracts.
 
 ## Context and Orientation
 
@@ -469,7 +489,7 @@ Docker must be available for the default local database path. Drizzle should be 
 Completed on 2026-04-14.
 
 **Completion Notes**  
-Landed the SQL-first operational schema, a checked-in migration runner, Drizzle table definitions, session/event/artifact repositories, deterministic artifact key helpers, and Maestro kernel/session helpers. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate`, and `KEYSTONE_RUN_DB_TESTS=1 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run test`.
+Landed the SQL-first operational schema in commit `bf9c158`, with a checked-in migration runner, Drizzle table definitions, session/event/artifact repositories, deterministic artifact key helpers, and Maestro kernel/session helpers. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate`, and `KEYSTONE_RUN_DB_TESTS=1 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run test`.
 
 **Next Starter Context**  
 Phase 2 is done. Start Phase 3 by wiring `src/http/handlers/` to the new repositories under `src/lib/db/`, keep the existing run-input contract stable, and add tenant-aware run creation/read APIs plus `RunCoordinatorDO` without introducing workflow execution yet.
@@ -494,6 +514,9 @@ Phase 2 modules created in `src/lib/db/`, `src/lib/events/`, and `src/maestro/`
 
 **Files Expected To Change**  
 `src/index.ts`  
+`src/env.d.ts`  
+`wrangler.jsonc`  
+`worker-configuration.d.ts`  
 `src/http/router.ts`  
 `src/http/app.ts`  
 `src/http/middleware/auth.ts`  
@@ -501,9 +524,12 @@ Phase 2 modules created in `src/lib/db/`, `src/lib/events/`, and `src/maestro/`
 `src/http/handlers/approvals.ts`  
 `src/http/handlers/ws.ts`  
 `src/lib/auth/tenant.ts`  
+`src/lib/db/approvals.ts`  
 `src/lib/http/errors.ts`  
 `src/durable-objects/RunCoordinatorDO.ts`  
 `src/lib/runs/summary.ts`
+`tests/http/app.test.ts`
+`tests/lib/run-summary.test.ts`
 
 **Validation**  
 Run from repo root:
@@ -539,13 +565,13 @@ Tenant-aware API handlers, a working `RunCoordinatorDO`, and a stable HTTP/WS su
 The happy path can return placeholder progress until workflows exist, but route contracts and tenant enforcement must already be real.
 
 **Status**  
-Not started.
+Completed on 2026-04-14.
 
 **Completion Notes**  
-None yet.
+Landed the tenant-aware run API and coordinator DO surface on top of the Phase 2 persistence layer. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and live smoke checks on `127.0.0.1:8787` with `/v1/health -> 200`, `POST /v1/runs -> 202`, `GET /v1/runs/:runId -> 200`, and Wrangler logging `/v1/runs/:runId/ws -> 101 Switching Protocols`.
 
 **Next Starter Context**  
-Do not invent a UI. Keep the output machine-readable and bias toward explicit JSON plus event envelopes the future UI can consume directly.
+Phase 3 is done. Start Phase 4 by introducing `TaskSessionDO`, sandbox/workspace repository helpers, and task-session coordination behind the existing run API and coordinator DO contracts. Do not invent a UI; keep the HTTP/WS surface machine-readable.
 
 ### Phase 4: Build sandbox and workspace lifecycle management
 
@@ -1012,6 +1038,27 @@ No pending migrations.
 $ KEYSTONE_RUN_DB_TESTS=1 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run test
 Test Files  8 passed (8)
 Tests  20 passed (20)
+```
+
+Phase 3 validation evidence captured on 2026-04-14:
+
+```text
+$ curl -i http://127.0.0.1:8787/v1/health
+HTTP/1.1 200 OK
+```
+
+```text
+$ curl -i -X POST http://127.0.0.1:8787/v1/runs ...
+HTTP/1.1 202 Accepted
+```
+
+```text
+$ curl -i http://127.0.0.1:8787/v1/runs/<run-id> ...
+HTTP/1.1 200 OK
+```
+
+```text
+[wrangler:info] GET /v1/runs/<run-id>/ws 101 Switching Protocols
 ```
 
 ## Interfaces and Dependencies

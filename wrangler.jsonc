@@ -4,6 +4,20 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-04-14",
   "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RUN_COORDINATOR",
+        "class_name": "RunCoordinatorDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RunCoordinatorDO"]
+    }
+  ],
   "vars": {
     "KEYSTONE_DEV_TENANT_ID": "tenant-dev-local",
     "KEYSTONE_CHAT_COMPLETIONS_BASE_URL": "https://localhost:4001",

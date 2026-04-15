@@ -1,19 +1,136 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { app } from "../../src/http/app";
+const mocked = vi.hoisted(() => {
+  const close = vi.fn(async () => undefined);
+
+  return {
+    createSessionRecord: vi.fn(async () => ({
+      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+      status: "configured"
+    })),
+    listRunSessions: vi.fn(async () => [
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: "run-123",
+        sessionType: "run",
+        status: "configured",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z"),
+        metadata: {
+          repo: {
+            source: "localPath"
+          }
+        }
+      }
+    ]),
+    appendSessionEvent: vi.fn(async () => ({
+      seq: 1,
+      eventType: "session.started",
+      ts: new Date("2026-04-14T00:00:01.000Z"),
+      actor: "keystone",
+      severity: "info",
+      artifactRefId: null
+    })),
+    listRunEvents: vi.fn(async () => [
+      {
+        eventId: crypto.randomUUID(),
+        tenantId: "tenant-fixture",
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: "run-123",
+        taskId: null,
+        seq: 1,
+        eventType: "session.started",
+        actor: "keystone",
+        severity: "info",
+        ts: new Date("2026-04-14T00:00:01.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {}
+      }
+    ]),
+    listRunArtifacts: vi.fn(async () => []),
+    getApprovalRecord: vi.fn(async () => undefined),
+    resolveApprovalRecord: vi.fn(async () => ({
+      status: "approved",
+      resolvedAt: new Date("2026-04-14T00:00:02.000Z")
+    })),
+    getRunCoordinatorStub: vi.fn(() => ({
+      initialize: vi.fn(async () => undefined),
+      publish: vi.fn(async () => undefined),
+      getSnapshot: vi.fn(async () => ({
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        status: "configured",
+        updatedAt: "2026-04-14T00:00:01.000Z",
+        websocketCount: 0,
+        latestEvent: null,
+        eventCount: 1
+      })),
+      fetch: vi.fn(async () => new Response("ws-ok", { status: 200 }))
+    })),
+    createWorkerDatabaseClient: vi.fn(() => ({
+      close,
+      db: {},
+      sql: {}
+    }))
+  };
+});
+
+vi.mock("../../src/lib/db/client", () => ({
+  createWorkerDatabaseClient: mocked.createWorkerDatabaseClient
+}));
+
+vi.mock("../../src/lib/db/runs", () => ({
+  createSessionRecord: mocked.createSessionRecord,
+  listRunSessions: mocked.listRunSessions
+}));
+
+vi.mock("../../src/lib/db/events", () => ({
+  appendSessionEvent: mocked.appendSessionEvent,
+  listRunEvents: mocked.listRunEvents
+}));
+
+vi.mock("../../src/lib/db/artifacts", () => ({
+  listRunArtifacts: mocked.listRunArtifacts
+}));
+
+vi.mock("../../src/lib/db/approvals", () => ({
+  getApprovalRecord: mocked.getApprovalRecord,
+  resolveApprovalRecord: mocked.resolveApprovalRecord
+}));
+
+vi.mock("../../src/lib/auth/tenant", () => ({
+  getRunCoordinatorStub: mocked.getRunCoordinatorStub
+}));
+
+const { app } = await import("../../src/http/app");
 
 const env = {
   ARTIFACTS_BUCKET: {} as R2Bucket,
-  HYPERDRIVE: {} as Hyperdrive,
+  HYPERDRIVE: {
+    connectionString: "postgres://test"
+  } as Hyperdrive,
   KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "https://localhost:4001",
   KEYSTONE_CHAT_COMPLETIONS_MODEL: "gemini-3-flash-preview",
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
-  KEYSTONE_DEV_TOKEN: "secret-dev-token"
+  KEYSTONE_DEV_TOKEN: "secret-dev-token",
+  RUN_COORDINATOR: {} as DurableObjectNamespace
 } as const;
 
 describe("app", () => {
-  it("serves the health route without auth", async () => {
-    const response = await app.request("http://example.com/healthz", {}, env);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocked.createWorkerDatabaseClient.mockReturnValue({
+      close: vi.fn(async () => undefined),
+      db: {},
+      sql: {}
+    });
+  });
+
+  it("serves the health routes without auth", async () => {
+    const response = await app.request("http://example.com/v1/health", {}, env);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
@@ -45,7 +162,7 @@ describe("app", () => {
     expect(response.status).toBe(401);
   });
 
-  it("accepts a scaffold run request with dev auth", async () => {
+  it("accepts a tenant-scoped run request with dev auth", async () => {
     const response = await app.request(
       "http://example.com/v1/runs",
       {
@@ -76,5 +193,63 @@ describe("app", () => {
         decisionPackage: "localPath"
       }
     });
+  });
+
+  it("returns a run summary for an existing run", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      runId: "run-123",
+      tenantId: "tenant-fixture",
+      status: "configured"
+    });
+  });
+
+  it("returns a not-found response for unknown approvals", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/approvals/approval-1/resolve",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          resolution: "approved"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("proxies the websocket route to the coordinator stub", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/ws",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("ws-ok");
   });
 });
