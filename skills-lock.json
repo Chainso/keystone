@@ -31,6 +31,11 @@
       "sourceType": "github",
       "computedHash": "e44cceebe7e47d815034027c303315139d35c1d92a3ee287dc6d3e9a02f0667b"
     },
+    "vercel-composition-patterns": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "575757e3e25761c8c562d6e395d29f0b76c98b1273c0bd72d88e6ab1bc9c7d42"
+    },
     "web-perf": {
       "source": "cloudflare/skills",
       "sourceType": "github",
