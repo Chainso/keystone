@@ -191,6 +191,21 @@ Compatibility is still required at the contract level:
   **Decision:** Extend the generated Worker bindings locally with `KEYSTONE_DEV_TOKEN` in `src/env.d.ts` instead of hand-editing generated Wrangler types.  
   **Rationale:** `wrangler types` does not infer local dev secrets from `.dev.vars`, but the middleware still needs a typed local auth secret. A narrow extension keeps generated bindings authoritative while making the dev auth path compile cleanly.
 
+- **Date:** 2026-04-14  
+  **Phase:** Phase 2  
+  **Decision:** Keep the operational schema SQL-first in `migrations/0001_m1_operational_core.sql`, use Drizzle only as the typed repository boundary, and run migrations through a small checked-in TypeScript migrator instead of generating the first migration from ORM metadata.  
+  **Rationale:** The plan already fixes the first migration as a hand-authored SQL artifact. A tiny checked-in migrator keeps the schema legible, preserves the file-first stance, and still lets later phases use Drizzle repositories against a stable table model.
+
+- **Date:** 2026-04-14  
+  **Phase:** Phase 2  
+  **Decision:** Store `tenant_id` as `text` across the Phase 2 operational tables instead of `uuid`.  
+  **Rationale:** The committed Phase 1 dev auth contract and examples already use freeform tenant identifiers such as `tenant-dev-local` and `tenant-smoke`. Using `text` keeps the database aligned with the accepted local control-plane contract without forcing a second tenant identifier translation layer into M1.
+
+- **Date:** 2026-04-14  
+  **Phase:** Phase 2  
+  **Decision:** Make DB repository integration tests opt-in via `KEYSTONE_RUN_DB_TESTS=1`, while still supporting a full live Postgres proof path in validation.  
+  **Rationale:** The repository should keep a fast default `npm test` path, but the phase still needs end-to-end DB proof. Opt-in live DB tests satisfy both needs and avoid coupling every local unit test run to Docker availability.
+
 ## Progress
 
 - [x] 2026-04-13 Discovery completed from `product-specs/keystone-m1.md`, `product-specs/keystone-on-cloudflare.md`, `product-specs/keystone-relaxed-design.md`, and `product-specs/platform-vs-vertical.md`.
@@ -204,8 +219,10 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-14 Plan approved for execution and moved from `Awaiting Approval` to `In Progress`.
 - [x] 2026-04-14 Phase 1 execution started: manual Worker scaffold, local tooling, dev auth contract, and deterministic fixture assets in progress.
 - [x] 2026-04-14 Phase 1 completed: root Worker scaffold, generated bindings, Docker Postgres path, placeholder routes, tests, and deterministic fixtures are in place and validated in commit `220cdb3`.
+- [x] 2026-04-14 Phase 2 execution started: operational schema, migration runner, Drizzle schema, event repository, and artifact key helpers in progress.
+- [x] 2026-04-14 Phase 2 completed: SQL schema, migrator, Drizzle repositories, Maestro kernel contracts, and artifact/event helpers validated against Docker Postgres.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
-- [ ] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
+- [x] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
 - [ ] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
 - [ ] Phase 4: Build `TaskSessionDO`, sandbox lifecycle management, and workspace/worktree handling.
 - [ ] Phase 5: Build `RunWorkflow` and `TaskWorkflow` with durable long-running execution and artifact persistence.
@@ -227,6 +244,8 @@ Compatibility is still required at the contract level:
 - **2026-04-14:** The Phase 1 file list originally referenced `.docker-compose.yml`, but the validation command uses `docker compose up -d postgres` without `-f`. The implementation uses the standard `docker-compose.yml` filename so the documented command works as written.
 - **2026-04-14:** `wrangler types` generates binding types from `wrangler.jsonc` but does not include local secrets from `.dev.vars`. The scaffold therefore extends generated bindings with `KEYSTONE_DEV_TOKEN` in `src/env.d.ts` rather than editing generated output.
 - **2026-04-14:** Wrangler local commands that generate types or bind a port require execution outside the sandbox in this environment because Wrangler writes under `~/.config/.wrangler` and needs direct localhost access. This affected `npm run cf-typegen`, `npm run dev`, and the local `curl` smoke checks.
+- **2026-04-14:** The source DDL examples use `tenant_id uuid`, but the accepted M1 local auth path and fixture examples already use non-UUID tenant identifiers. Phase 2 stores `tenant_id` as `text` to keep the persisted contract aligned with the current operator-facing input shape.
+- **2026-04-14:** `tsx` uses a local IPC socket and the sandbox cannot connect to the Docker Postgres port, so `npm run db:migrate` and the live DB repository tests must run outside the sandbox in this environment even though the code itself is valid.
 
 ## Outcomes & Retrospective
 
@@ -242,6 +261,12 @@ Phase 1 outcome on 2026-04-14:
 - Deterministic fixture assets now exist under `fixtures/demo-target/` and `fixtures/demo-decision-package/`, giving later workflow phases a committed proof target.
 - Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `docker compose up -d postgres`, and `npm run dev` with successful `GET /healthz` and authenticated `POST /v1/runs` smoke responses on `127.0.0.1:8787`.
 - Phase 2 can now build on real repository structure and contracts instead of inventing them during database and kernel work.
+
+Phase 2 outcome on 2026-04-14:
+
+- The repository now has a checked-in operational core: `migrations/0001_m1_operational_core.sql`, a reusable migration runner, typed Drizzle table definitions, repository modules for sessions/events/artifacts, deterministic artifact key helpers, and stable Maestro session/kernel contracts.
+- Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run db:migrate`, and opt-in live DB repository tests against Docker Postgres with `KEYSTONE_RUN_DB_TESTS=1`.
+- Phase 3 can now implement tenant-aware HTTP routes and realtime Durable Object projections against real persistence modules rather than placeholders.
 
 ## Context and Orientation
 
@@ -394,8 +419,11 @@ Out of scope: HTTP handlers, Durable Object route handling, sandbox APIs, workfl
 This plan's "Design Decisions" and "Context and Orientation"
 
 **Files Expected To Change**  
+`package.json`  
+`package-lock.json`  
+`tsconfig.json`  
 `migrations/0001_m1_operational_core.sql`  
-`.docker-compose.yml`  
+`docker-compose.yml`  
 `src/maestro/contracts.ts`  
 `src/maestro/session.ts`  
 `src/lib/db/client.ts`  
@@ -408,6 +436,7 @@ This plan's "Design Decisions" and "Context and Orientation"
 `src/lib/events/store.ts`  
 `src/lib/artifacts/r2.ts`  
 `src/lib/artifacts/keys.ts`
+`tests/lib/**`
 
 **Validation**  
 Run from repo root:
@@ -437,13 +466,13 @@ A checked-in schema, migration command, typed event/artifact helpers, and stable
 Docker must be available for the default local database path. Drizzle should be used as the ORM boundary, but the operational schema must remain legible SQL rather than becoming framework-driven magic. Do not hardwire the app to Neon-specific assumptions while M1 is using Hyperdrive local mode against Docker Postgres.
 
 **Status**  
-Not started.
+Completed on 2026-04-14.
 
 **Completion Notes**  
-None yet.
+Landed the SQL-first operational schema, a checked-in migration runner, Drizzle table definitions, session/event/artifact repositories, deterministic artifact key helpers, and Maestro kernel/session helpers. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate`, and `KEYSTONE_RUN_DB_TESTS=1 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run test`.
 
 **Next Starter Context**  
-Keep the SQL schema minimal. Do not let workflow semantics leak into SQL tables beyond operational indexes and durable references.
+Phase 2 is done. Start Phase 3 by wiring `src/http/handlers/` to the new repositories under `src/lib/db/`, keep the existing run-input contract stable, and add tenant-aware run creation/read APIs plus `RunCoordinatorDO` without introducing workflow execution yet.
 
 ### Phase 3: Build the API surface and realtime run coordination
 
@@ -972,6 +1001,19 @@ Important source documents:
 - `product-specs/keystone-relaxed-design.md`
 - `product-specs/platform-vs-vertical.md`
 
+Phase 2 validation evidence captured on 2026-04-14:
+
+```text
+$ CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate
+No pending migrations.
+```
+
+```text
+$ KEYSTONE_RUN_DB_TESTS=1 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run test
+Test Files  8 passed (8)
+Tests  20 passed (20)
+```
+
 ## Interfaces and Dependencies
 
 External platform dependencies for M1:
@@ -1010,5 +1052,6 @@ Developer dependencies expected during execution:
 - `drizzle-orm`
 - `drizzle-kit`
 - `postgres`
+- `tsx`
 
 The architectural choice is fixed: Drizzle on top of `postgres.js`, with `drizzle-kit` as the companion schema and migration tool.
