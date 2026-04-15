@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "keystone-cloudflare",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "KEYSTONE_DEV_TENANT_ID": "tenant-dev-local",
+    "KEYSTONE_CHAT_COMPLETIONS_BASE_URL": "https://localhost:4001",
+    "KEYSTONE_CHAT_COMPLETIONS_MODEL": "gemini-3-flash-preview"
+  },
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS_BUCKET",
+      "bucket_name": "keystone-artifacts-dev"
+    }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://postgres:postgres@127.0.0.1:5432/keystone"
+    }
+  ]
+}
