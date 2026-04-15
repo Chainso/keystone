@@ -203,7 +203,7 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-14 Implementation defaults locked: env var names, Hono module layout, `drizzle-kit`, and dev auth header conventions.
 - [x] 2026-04-14 Plan approved for execution and moved from `Awaiting Approval` to `In Progress`.
 - [x] 2026-04-14 Phase 1 execution started: manual Worker scaffold, local tooling, dev auth contract, and deterministic fixture assets in progress.
-- [x] 2026-04-14 Phase 1 completed: root Worker scaffold, generated bindings, Docker Postgres path, placeholder routes, tests, and deterministic fixtures are in place and validated.
+- [x] 2026-04-14 Phase 1 completed: root Worker scaffold, generated bindings, Docker Postgres path, placeholder routes, tests, and deterministic fixtures are in place and validated in commit `220cdb3`.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
 - [ ] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
 - [ ] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
@@ -238,7 +238,7 @@ Planning outcome on 2026-04-13:
 
 Phase 1 outcome on 2026-04-14:
 
-- The repository now has a hand-authored Cloudflare Worker scaffold with stable `npm` scripts, Hono routing, strict Zod-backed run-input validation, local dev auth middleware, and generated Worker binding types.
+- The repository now has a hand-authored Cloudflare Worker scaffold with stable `npm` scripts, Hono routing, strict Zod-backed run-input validation, local dev auth middleware, and generated Worker binding types in commit `220cdb3` (`Bootstrap Keystone Cloudflare worker scaffold`).
 - Deterministic fixture assets now exist under `fixtures/demo-target/` and `fixtures/demo-decision-package/`, giving later workflow phases a committed proof target.
 - Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `docker compose up -d postgres`, and `npm run dev` with successful `GET /healthz` and authenticated `POST /v1/runs` smoke responses on `127.0.0.1:8787`.
 - Phase 2 can now build on real repository structure and contracts instead of inventing them during database and kernel work.
@@ -370,7 +370,7 @@ Before Phase 1 there is no `package.json`, no build pipeline, and no runtime cod
 Completed on 2026-04-14.
 
 **Completion Notes**  
-Landed the manual Worker scaffold with `package.json`, TypeScript/Vitest/ESLint config, `wrangler.jsonc`, generated `worker-configuration.d.ts`, Hono app/router/auth contracts, fixture assets, and a root runbook `README.md`. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `docker compose up -d postgres`, and live Wrangler dev smoke checks on `127.0.0.1:8787` returning `GET /healthz -> 200` and `POST /v1/runs -> 202` with the documented dev auth headers.
+Landed the manual Worker scaffold in commit `220cdb3` with `package.json`, TypeScript/Vitest/ESLint config, `wrangler.jsonc`, generated `worker-configuration.d.ts`, Hono app/router/auth contracts, fixture assets, and a root runbook `README.md`. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `docker compose up -d postgres`, and live Wrangler dev smoke checks on `127.0.0.1:8787` returning `GET /healthz -> 200` and `POST /v1/runs -> 202` with the documented dev auth headers.
 
 **Next Starter Context**  
 Phase 1 is done. Start Phase 2 from the new scaffold by reading `src/http/contracts/`, `src/http/middleware/auth.ts`, `worker-configuration.d.ts`, `wrangler.jsonc`, and the fixture assets for context, then add the operational core under `migrations/`, `src/lib/`, and `src/maestro/` without changing the Phase 1 HTTP contract shape.
