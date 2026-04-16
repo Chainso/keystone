@@ -4,7 +4,7 @@
     "agents-sdk": {
       "source": "cloudflare/skills",
       "sourceType": "github",
-      "computedHash": "921f2a43c0f58851a8bf9faaeb3641fa3108f3a94e787ca8e948626342988658"
+      "computedHash": "cb669fba9289d500872584ea0daab1c5114f1c8f12a991f90871431d3fadbf3c"
     },
     "building-ai-agent-on-cloudflare": {
       "source": "cloudflare/skills",
@@ -21,6 +21,16 @@
       "sourceType": "github",
       "computedHash": "9f7a0866bc627b095f738558b594ac4246bda6ff895f1feb78037f8bd98a01d9"
     },
+    "cloudflare-email-service": {
+      "source": "cloudflare/skills",
+      "sourceType": "github",
+      "computedHash": "6274be056fe5211aa220833c97ff6a7d96a1cdfd8854a53ca839ca758d35f356"
+    },
+    "deploy-to-vercel": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "03e0eaaa9bf13ba1e7ffa387f5893de6f324c0868c627001f179395a8feaa7c9"
+    },
     "durable-objects": {
       "source": "cloudflare/skills",
       "sourceType": "github",
@@ -31,10 +41,35 @@
       "sourceType": "github",
       "computedHash": "e44cceebe7e47d815034027c303315139d35c1d92a3ee287dc6d3e9a02f0667b"
     },
+    "vercel-cli-with-tokens": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "1e1664e75dcab248050faac99db1aaef1456b7945266215ccbab68ddf85b2b79"
+    },
     "vercel-composition-patterns": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",
       "computedHash": "575757e3e25761c8c562d6e395d29f0b76c98b1273c0bd72d88e6ab1bc9c7d42"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "ca7b0c0c6e5f2750043f7f0cd72d16ac4e2abc48f9b5500d047a4b77a2506212"
+    },
+    "vercel-react-native-skills": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "41d24eafa7c3d82e270439808f7cfbc4d51aeb2d14f2809a2267c16275784d06"
+    },
+    "vercel-react-view-transitions": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "c8952fc9127fa0564d0cb71dccb4215a5608ac933b5831104f09173a97a46f85"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
     },
     "web-perf": {
       "source": "cloudflare/skills",
