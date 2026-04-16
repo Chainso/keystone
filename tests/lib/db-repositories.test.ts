@@ -13,6 +13,10 @@ import {
   getSessionRecord,
   updateSessionStatus
 } from "../../src/lib/db/runs";
+import {
+  createWorkspaceBinding,
+  listRunWorkspaceBindings
+} from "../../src/lib/db/workspaces";
 
 const connectionString =
   process.env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE ??
@@ -49,6 +53,7 @@ describeIfDatabase("database repositories", () => {
 
     await client.sql`DELETE FROM session_events WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM artifact_refs WHERE tenant_id = ${tenantId}`;
+    await client.sql`DELETE FROM workspace_bindings WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM sessions WHERE tenant_id = ${tenantId}`;
     await client.close();
   });
@@ -130,5 +135,32 @@ describeIfDatabase("database repositories", () => {
     expect(runEvents).toHaveLength(1);
     expect(runArtifacts).toHaveLength(1);
     expect(runArtifacts[0]?.storageUri).toContain("plan.json");
+  });
+
+  it("stores task workspace bindings for later cleanup", async () => {
+    const binding = await createWorkspaceBinding(client, {
+      tenantId,
+      workspaceId: `workspace-${crypto.randomUUID()}`,
+      runId,
+      sessionId,
+      taskId: "task-smoke",
+      strategy: "worktree",
+      sandboxId: "sandbox-smoke",
+      repoUrl: "fixture://demo-target",
+      repoRef: "main",
+      baseRef: "main",
+      worktreePath: "/workspace/runs/demo/tasks/task-smoke",
+      branchName: "keystone/task-smoke"
+    });
+
+    expect(binding?.repoUrl).toBe("fixture://demo-target");
+
+    const bindings = await listRunWorkspaceBindings(client, {
+      tenantId,
+      runId
+    });
+
+    expect(bindings).toHaveLength(1);
+    expect(bindings[0]?.worktreePath).toContain("task-smoke");
   });
 });

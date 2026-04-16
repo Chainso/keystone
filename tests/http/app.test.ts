@@ -70,6 +70,23 @@ const mocked = vi.hoisted(() => {
       })),
       fetch: vi.fn(async () => new Response("ws-ok", { status: 200 }))
     })),
+    getTaskSessionStub: vi.fn(() => ({
+      initialize: vi.fn(async () => undefined),
+      ensureWorkspace: vi.fn(async () => ({
+        workspace: {
+          workspaceId: "workspace-smoke",
+          worktreePath: "/workspace/tasks/sandbox-smoke"
+        }
+      })),
+      startProcess: vi.fn(async () => undefined),
+      pollProcess: vi.fn(async () => ({
+        activeProcess: {
+          status: "completed",
+          exitCode: 0
+        }
+      })),
+      teardown: vi.fn(async () => undefined)
+    })),
     createWorkerDatabaseClient: vi.fn(() => ({
       close,
       db: {},
@@ -102,7 +119,8 @@ vi.mock("../../src/lib/db/approvals", () => ({
 }));
 
 vi.mock("../../src/lib/auth/tenant", () => ({
-  getRunCoordinatorStub: mocked.getRunCoordinatorStub
+  getRunCoordinatorStub: mocked.getRunCoordinatorStub,
+  getTaskSessionStub: mocked.getTaskSessionStub
 }));
 
 const { app } = await import("../../src/http/app");
@@ -116,7 +134,9 @@ const env = {
   KEYSTONE_CHAT_COMPLETIONS_MODEL: "gemini-3-flash-preview",
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
   KEYSTONE_DEV_TOKEN: "secret-dev-token",
-  RUN_COORDINATOR: {} as DurableObjectNamespace
+  RUN_COORDINATOR: {} as DurableObjectNamespace,
+  SANDBOX: {} as DurableObjectNamespace,
+  TASK_SESSION: {} as DurableObjectNamespace
 } as const;
 
 describe("app", () => {

@@ -216,6 +216,31 @@ Compatibility is still required at the contract level:
   **Decision:** Persist the accepted run input (`repo`, `decisionPackage`, `authMode`) in the root run session metadata for now instead of creating extra workflow or artifact rows before execution begins.  
   **Rationale:** The API contract must already accept real repo and decision-package input, but workflow fanout and artifact materialization are explicitly out of scope for this phase. Session metadata is the narrowest durable place to hold the accepted request shape until later phases compile and artifactize it.
 
+- **Date:** 2026-04-14  
+  **Phase:** Phase 4  
+  **Decision:** Model sandbox hydration through a narrow `TaskSessionDO` plus helper modules, with fixture seeding implemented as inline repo files and git worktrees created inside the sandbox.  
+  **Rationale:** This keeps the sandbox boundary explicit for later workflow phases and gives M1 a deterministic local proof path without entangling host filesystem access into the Worker runtime.
+
+- **Date:** 2026-04-14  
+  **Phase:** Phase 4  
+  **Decision:** Add a dev-only smoke route that drives `TaskSessionDO` end to end, instead of expanding the public run API before workflows exist.  
+  **Rationale:** The phase needs a repeatable proof path for sandbox + workspace + background process behavior, but public control-plane contracts should remain stable until Phase 5 workflows own execution startup.
+
+- **Date:** 2026-04-15  
+  **Phase:** Phase 4  
+  **Decision:** Keep sandbox build-context and ID/session constraints explicit in local helpers instead of relying on trial-and-error during live Sandbox SDK runs.  
+  **Rationale:** Wrangler resolves `image: "./sandbox/Dockerfile"` with the `sandbox/` directory as Docker build context, Sandbox IDs must remain DNS-safe after truncation, and probing execution-session existence by calling `createSession()` first produces noisy avoidable errors in the live smoke path.
+
+- **Date:** 2026-04-15  
+  **Phase:** Planning / Re-sequencing  
+  **Decision:** Treat the custom chat-completions integration as a required gate for Phase 7 end-to-end proof, but not as a prerequisite for Phase 5 workflow seam development.  
+  **Rationale:** `RunWorkflow` and `TaskWorkflow` should be able to land and validate durable orchestration, task fanout, polling, and artifact persistence using a deterministic compile placeholder. The real provider integration must exist before milestone acceptance, but it should not block workflow implementation sequencing unnecessarily.
+
+- **Date:** 2026-04-15  
+  **Phase:** Planning / Re-sequencing  
+  **Decision:** Pull the live custom chat-completions client and compile-path integration ahead of workflow implementation, while leaving security gating and approval plumbing after workflows.  
+  **Rationale:** The user wants the system to use the real provider-backed compile path as early as possible. That is a reasonable dependency to front-load because it sharpens the real compile contract without requiring the whole security-and-approvals phase to move with it.
+
 ## Progress
 
 - [x] 2026-04-13 Discovery completed from `product-specs/keystone-m1.md`, `product-specs/keystone-on-cloudflare.md`, `product-specs/keystone-relaxed-design.md`, and `product-specs/platform-vs-vertical.md`.
@@ -233,10 +258,13 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-14 Phase 2 completed: SQL schema, migrator, Drizzle repositories, Maestro kernel contracts, and artifact/event helpers validated against Docker Postgres in commit `bf9c158`.
 - [x] 2026-04-14 Phase 3 execution started: tenant-aware run API, approval route shape, realtime coordinator DO, and WebSocket surface in progress.
 - [x] 2026-04-14 Phase 3 completed: tenant-aware run create/read APIs, approval resolution shape, coordinator DO, and websocket route validated locally.
+- [x] 2026-04-14 Phase 4 execution started: sandbox bindings, task-session DO, workspace repositories, process polling helpers, and a deterministic smoke route landed in the working tree.
+- [x] 2026-04-15 Phase 4 completed: sandbox image builds, Wrangler local dev starts with container bindings outside the Codex sandbox boundary, and `POST /internal/dev/sandbox-smoke` completes successfully with a sandboxed `npm test` run.
+- [x] 2026-04-15 Phase dependency clarified: live custom chat-completions integration should land before workflow implementation; security gating and approvals can remain after workflows.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
 - [x] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
 - [x] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
-- [ ] Phase 4: Build `TaskSessionDO`, sandbox lifecycle management, and workspace/worktree handling.
+- [x] Phase 4: Build `TaskSessionDO`, sandbox lifecycle management, and workspace/worktree handling.
 - [ ] Phase 5: Build `RunWorkflow` and `TaskWorkflow` with durable long-running execution and artifact persistence.
 - [ ] Phase 6: Add security gating, approval plumbing, and custom chat-completions compile behavior.
 - [ ] Phase 7: Prove the end-to-end run, observability flow, and local runbook.
@@ -259,6 +287,11 @@ Compatibility is still required at the contract level:
 - **2026-04-14:** The source DDL examples use `tenant_id uuid`, but the accepted M1 local auth path and fixture examples already use non-UUID tenant identifiers. Phase 2 stores `tenant_id` as `text` to keep the persisted contract aligned with the current operator-facing input shape.
 - **2026-04-14:** `tsx` uses a local IPC socket and the sandbox cannot connect to the Docker Postgres port, so `npm run db:migrate` and the live DB repository tests must run outside the sandbox in this environment even though the code itself is valid.
 - **2026-04-14:** The websocket upgrade proof path is easiest to verify from Wrangler’s local request log. A plain `curl` websocket handshake against the live route times out without showing the DO’s initial message frame, but Wrangler logs the request as `101 Switching Protocols`, which is sufficient validation for this phase.
+- **2026-04-14:** After Sandbox SDK was added in Phase 4, `wrangler deploy --dry-run` began requiring a Docker CLI that supports the `buildx`/`--load` path used for local container builds. On this host, `docker buildx` is unavailable and `docker build --load` exits with code `125`.
+- **2026-04-14:** Local `wrangler dev` with container bindings fails on this host before serving requests with `uv_interface_addresses returned Unknown system error 1`, even when bindings and `.dev.vars` load correctly. That prevents live sandbox smoke validation in the current environment despite green typecheck/lint/test results.
+- **2026-04-15:** Wrangler resolves `image: "./sandbox/Dockerfile"` with the Docker build context rooted at `sandbox/`, so Dockerfile `COPY` paths must be relative to that directory rather than the repository root.
+- **2026-04-15:** Sandbox IDs must stay DNS-safe after final truncation. A helper that slugifies components and then blindly slices the assembled ID can still produce a trailing `-`, which the Sandbox SDK rejects at runtime.
+- **2026-04-15:** In this environment, `wrangler dev` with container bindings succeeds when run outside the Codex sandbox boundary even though the same command fails inside it with `uv_interface_addresses returned Unknown system error 1`. The remaining Phase 4 issues were code-level, not platform-level.
 
 ## Outcomes & Retrospective
 
@@ -287,6 +320,12 @@ Phase 3 outcome on 2026-04-14:
 - `RunCoordinatorDO` is now configured in Wrangler, exported from the Worker entrypoint, and used as the live summary and websocket coordination layer for run state.
 - Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and live local smoke checks showing `/v1/health -> 200`, `POST /v1/runs -> 202`, `GET /v1/runs/:runId -> 200`, and `/v1/runs/:runId/ws -> 101 Switching Protocols`.
 - Phase 4 can now focus on task-session coordination and sandbox/workspace orchestration without reopening the HTTP or realtime route contracts.
+
+Phase 4 outcome on 2026-04-15:
+
+- The repository now has a real task execution plane: `TaskSessionDO`, sandbox session helpers, workspace/worktree materialization, sandbox image assets, workspace binding persistence, and a dev-only smoke route that exercises the full path end to end.
+- Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `docker compose up -d postgres`, `npm run dev`, `GET /v1/health -> 200`, and authenticated `POST /internal/dev/sandbox-smoke -> 200` with a completed sandboxed `npm test` process.
+- The next active slice is the provider-backed compile integration pulled forward from Phase 6. Workflows should consume that real compile path rather than a placeholder seam.
 
 ## Context and Orientation
 
@@ -568,7 +607,7 @@ The happy path can return placeholder progress until workflows exist, but route 
 Completed on 2026-04-14.
 
 **Completion Notes**  
-Landed the tenant-aware run API and coordinator DO surface on top of the Phase 2 persistence layer. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and live smoke checks on `127.0.0.1:8787` with `/v1/health -> 200`, `POST /v1/runs -> 202`, `GET /v1/runs/:runId -> 200`, and Wrangler logging `/v1/runs/:runId/ws -> 101 Switching Protocols`.
+Landed the tenant-aware run API and coordinator DO surface in commit `731b0b3` on top of the Phase 2 persistence layer. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and live smoke checks on `127.0.0.1:8787` with `/v1/health -> 200`, `POST /v1/runs -> 202`, `GET /v1/runs/:runId -> 200`, and Wrangler logging `/v1/runs/:runId/ws -> 101 Switching Protocols`.
 
 **Next Starter Context**  
 Phase 3 is done. Start Phase 4 by introducing `TaskSessionDO`, sandbox/workspace repository helpers, and task-session coordination behind the existing run API and coordinator DO contracts. Do not invent a UI; keep the HTTP/WS surface machine-readable.
@@ -628,13 +667,16 @@ Working sandbox and workspace lifecycle modules plus a deterministic local smoke
 The local sandbox path depends on Docker availability. If Docker is absent, record that explicitly and validate module-level behavior separately.
 
 **Status**  
-Not started.
+Completed on 2026-04-15.
 
 **Completion Notes**  
-None yet.
+Implemented `TaskSessionDO`, sandbox/workspace/process helper modules, sandbox image assets, a workspace-binding repository, fixture seeding helpers, and a dev-only `/internal/dev/sandbox-smoke` route. Phase 4 is now live-validated: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `docker compose up -d postgres` all passed; `wrangler dev` started successfully when run outside the Codex sandbox boundary; `GET /v1/health` returned `200`; and authenticated `POST /internal/dev/sandbox-smoke` returned `200` with a completed sandboxed `npm test` process, 8 observed events, and 1 workspace binding. Follow-up fixes made during validation: the sandbox Dockerfile now copies `bootstrap.sh` relative to the `sandbox/` build context, sandbox IDs are trimmed safely after length limiting, and sandbox session reuse now checks for an existing execution session before creating a new one.
 
 **Next Starter Context**  
-Keep the sandbox boundary explicit. Future milestones may replace the backend or change isolation granularity, so do not smear sandbox calls across unrelated modules.
+Phase 4 is done. The next step is the provider-backed compile slice pulled forward from Phase 6: add `src/lib/llm/chat-completions.ts`, integrate it into the compile path, and validate it against `https://localhost:4001` before starting the durable workflow phase.
+
+Dependency note:
+Before starting workflow implementation, take the provider-backed compile slice from Phase 6 first. The next step after Phase 4 validation should be: land `src/lib/llm/chat-completions.ts` plus live compile integration, then return to Phase 5 workflows.
 
 ### Phase 5: Build durable run and task workflows
 
@@ -702,6 +744,9 @@ None yet.
 **Next Starter Context**  
 Keep step names deterministic and side effects inside step bodies or clearly idempotent helpers. This is the phase where replay mistakes become expensive.
 
+Sequencing note:
+Phase 5 should now consume the real compile path, not a placeholder. If the provider-backed compile integration is not ready yet, finish that slice first before treating Phase 5 as started.
+
 ### Phase 6: Add security gating, approval plumbing, and custom chat-completions behavior
 
 Once durable execution works, harden the edges that the product spec calls out explicitly: default-deny network posture, approval-aware pathways, and live custom chat-completions-backed compilation or planning. This phase should keep the happy path simple while proving the control-plane seams needed for later milestones.
@@ -765,6 +810,9 @@ None yet.
 **Next Starter Context**  
 Do not let security behavior hide inside sandbox wrappers. Keep policy evaluation explicit and observable in events so operators can tell why something was blocked.
 
+Execution order note:
+Only the provider-backed compile slice of this phase should come before workflows. The remaining security gating and approval plumbing can stay after Phase 5 once workflows are consuming the live compile contract.
+
 ### Phase 7: Prove the end-to-end run and observability path
 
 Run the real fixture-backed M1 scenario and make the proof easy to inspect. This phase wires together the demo scripts, observability helpers, event taxonomy, artifact inspection flow, and final happy-path acceptance.
@@ -818,6 +866,9 @@ A repeatable end-to-end milestone demo plus operator-facing observability proof 
 
 **Known Constraints / Baseline Failures**  
 If the custom chat-completions service is unavailable, the end-to-end M1 proof is blocked until it is restored. This is an accepted M1 dependency based on the user's explicit preference to avoid fallback behavior.
+
+Provider sequencing note:
+Do not attempt final Phase 7 proof until the provider-backed compile slice and the remaining Phase 6 security work have both landed. The workflow phase should already be consuming the real compile path by this point.
 
 **Status**  
 Not started.
@@ -1059,6 +1110,86 @@ HTTP/1.1 200 OK
 
 ```text
 [wrangler:info] GET /v1/runs/<run-id>/ws 101 Switching Protocols
+```
+
+Phase 4 implementation evidence captured on 2026-04-14:
+
+```text
+$ npm run lint
+# exit 0
+```
+
+```text
+$ npm run typecheck
+# exit 0
+```
+
+```text
+$ npm run test
+Test Files  10 passed | 1 skipped (11)
+Tests  26 passed | 3 skipped (29)
+```
+
+```text
+$ npm run build
+Building image keystone-cloudflare-sandbox:worker
+unknown flag: --load
+Docker build exited with code: 125
+```
+
+```text
+$ npm run dev
+The following containers are available:
+- keystone-cloudflare-sandbox (sandbox/Dockerfile)
+A system error occurred: uv_interface_addresses returned Unknown system error 1
+```
+
+```text
+$ docker buildx version
+docker: unknown command: docker buildx
+```
+
+```text
+$ npm run sandbox:smoke
+The following containers are available:
+- keystone-cloudflare-sandbox (sandbox/Dockerfile)
+A system error occurred: uv_interface_addresses returned Unknown system error 1
+Error: wrangler dev exited before the smoke check completed (code=1, signal=null).
+```
+
+Phase 4 completion evidence captured on 2026-04-15:
+
+```text
+$ docker buildx version
+github.com/docker/buildx 0.33.0
+```
+
+```text
+$ npm run test
+Test Files  11 passed | 1 skipped (12)
+Tests  29 passed | 3 skipped (32)
+```
+
+```text
+$ npm run build
+Building image keystone-cloudflare-sandbox:worker
+--dry-run: exiting now.
+```
+
+```text
+$ npm run dev
+[wrangler:info] Ready on http://127.0.0.1:8787
+```
+
+```text
+$ curl -i http://127.0.0.1:8787/v1/health
+HTTP/1.1 200 OK
+```
+
+```text
+$ POST /internal/dev/sandbox-smoke
+HTTP/1.1 200 OK
+{"ok":true,"process":{"status":"completed","exitCode":0},"eventsObserved":8,"workspaceBindingsObserved":1}
 ```
 
 ## Interfaces and Dependencies

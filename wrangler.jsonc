@@ -4,11 +4,27 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-04-14",
   "compatibility_flags": ["nodejs_compat"],
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./sandbox/Dockerfile",
+      "instance_type": "lite",
+      "max_instances": 4
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
         "name": "RUN_COORDINATOR",
         "class_name": "RunCoordinatorDO"
+      },
+      {
+        "name": "TASK_SESSION",
+        "class_name": "TaskSessionDO"
+      },
+      {
+        "name": "SANDBOX",
+        "class_name": "Sandbox"
       }
     ]
   },
@@ -16,6 +32,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["RunCoordinatorDO"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["TaskSessionDO", "Sandbox"]
     }
   ],
   "vars": {

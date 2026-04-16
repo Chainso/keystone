@@ -11,9 +11,11 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types",
-    "db:migrate": "tsx src/lib/db/migrations.ts"
+    "db:migrate": "tsx src/lib/db/migrations.ts",
+    "sandbox:smoke": "node --import tsx scripts/sandbox-smoke.ts"
   },
   "dependencies": {
+    "@cloudflare/sandbox": "^0.8.10",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.12",
     "postgres": "^3.4.9",

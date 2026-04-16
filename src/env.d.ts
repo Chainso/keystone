@@ -8,6 +8,8 @@ export interface AuthContext {
 
 export interface WorkerBindings extends Env {
   KEYSTONE_DEV_TOKEN?: string;
+  SANDBOX: DurableObjectNamespace<import("@cloudflare/sandbox").Sandbox>;
+  TASK_SESSION: DurableObjectNamespace<import("./durable-objects/TaskSessionDO").TaskSessionDO>;
 }
 
 export type AppEnv = {

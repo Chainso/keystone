@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 import type { AppEnv } from "../env";
 import { resolveApprovalHandler } from "./handlers/approvals";
+import { runSandboxSmokeHandler } from "./handlers/dev-smoke";
 import { createRunHandler, getRunHandler } from "./handlers/runs";
 import { runWebSocketHandler } from "./handlers/ws";
 import { requireDevAuth } from "./middleware/auth";
@@ -41,3 +42,4 @@ router.post(
   resolveApprovalHandler
 );
 router.get("/v1/runs/:runId/ws", requireDevAuth, runWebSocketHandler);
+router.post("/internal/dev/sandbox-smoke", requireDevAuth, runSandboxSmokeHandler);
