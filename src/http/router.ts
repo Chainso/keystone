@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 import type { AppEnv } from "../env";
 import { resolveApprovalHandler } from "./handlers/approvals";
+import { runCompileSmokeHandler } from "./handlers/dev-compile";
 import { runSandboxSmokeHandler } from "./handlers/dev-smoke";
 import { createRunHandler, getRunHandler } from "./handlers/runs";
 import { runWebSocketHandler } from "./handlers/ws";
@@ -29,7 +30,7 @@ router.get("/v1/health", (context) => {
   return context.json({
     ok: true,
     worker: "keystone-cloudflare",
-    phase: "m1-phase-3",
+    phase: "m1-phase-6-compile",
     llmBaseUrl: context.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL
   });
 });
@@ -42,4 +43,5 @@ router.post(
   resolveApprovalHandler
 );
 router.get("/v1/runs/:runId/ws", requireDevAuth, runWebSocketHandler);
+router.post("/internal/dev/compile-smoke", requireDevAuth, runCompileSmokeHandler);
 router.post("/internal/dev/sandbox-smoke", requireDevAuth, runSandboxSmokeHandler);

@@ -60,8 +60,8 @@ Compatibility is still required at the contract level:
    **Alternatives considered:** Running the first Keystone job against this infrastructure repo itself; requiring a user-supplied external repository before M1 is valid.
 
 8. **Date:** 2026-04-14  
-   **Decision:** Use a custom OpenAI-compatible chat-completions backend for M1 at `https://localhost:4001`, with model name `gemini-3-flash-preview`, instead of AI Gateway. Do not implement an offline LLM fallback path in M1.  
-   **Rationale:** The user already operates a custom routing backend and wants live provider behavior to be the only supported compile path in M1. This keeps the LLM integration surface simple and aligned with the real deployment shape they intend to use now, while freeing Wrangler to use its default local port.  
+   **Decision:** Use a custom OpenAI-compatible chat-completions backend for M1 at `http://localhost:4001`, with model name `gemini-3-flash-preview`, instead of AI Gateway. Do not implement an offline LLM fallback path in M1.  
+   **Rationale:** The user already operates a custom routing backend and wants live provider behavior to be the only supported compile path in M1. The actual local endpoint is plain HTTP, not TLS, which keeps the LLM integration surface aligned with the working local deployment shape while freeing Wrangler to use its default local port.  
    **Alternatives considered:** AI Gateway; deterministic fixture-only compilation fallback when credentials or provider routing are unavailable.
 
 9. **Date:** 2026-04-13  
@@ -241,6 +241,11 @@ Compatibility is still required at the contract level:
   **Decision:** Pull the live custom chat-completions client and compile-path integration ahead of workflow implementation, while leaving security gating and approval plumbing after workflows.  
   **Rationale:** The user wants the system to use the real provider-backed compile path as early as possible. That is a reasonable dependency to front-load because it sharpens the real compile contract without requiring the whole security-and-approvals phase to move with it.
 
+- **Date:** 2026-04-15  
+  **Phase:** Phase 6 (provider slice)  
+  **Decision:** Treat the local chat-completions backend as plain HTTP and consume its streamed SSE chunk format directly, rather than assuming a TLS or non-streaming OpenAI response shape.  
+  **Rationale:** The real endpoint that passed validation is `http://localhost:4001/v1/chat/completions`, and it emits `data:` chat-completion chunks ending with `[DONE]`. Building the compile client against the actual local wire format is required to make the pre-workflow compile seam real.
+
 ## Progress
 
 - [x] 2026-04-13 Discovery completed from `product-specs/keystone-m1.md`, `product-specs/keystone-on-cloudflare.md`, `product-specs/keystone-relaxed-design.md`, and `product-specs/platform-vs-vertical.md`.
@@ -261,6 +266,7 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-14 Phase 4 execution started: sandbox bindings, task-session DO, workspace repositories, process polling helpers, and a deterministic smoke route landed in the working tree.
 - [x] 2026-04-15 Phase 4 completed: sandbox image builds, Wrangler local dev starts with container bindings outside the Codex sandbox boundary, and `POST /internal/dev/sandbox-smoke` completes successfully with a sandboxed `npm test` run.
 - [x] 2026-04-15 Phase dependency clarified: live custom chat-completions integration should land before workflow implementation; security gating and approvals can remain after workflows.
+- [x] 2026-04-15 Provider-backed compile slice completed ahead of workflows: the local HTTP chat-completions client, compile artifact persistence, and authenticated `POST /internal/dev/compile-smoke` validation against `http://localhost:4001` are in place.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
 - [x] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
 - [x] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
@@ -276,7 +282,7 @@ Compatibility is still required at the contract level:
 - **2026-04-13:** `product-specs/keystone-m1.md` and `product-specs/keystone-on-cloudflare.md` overlap heavily, but `keystone-m1.md` includes the clearest milestone checklist and acceptance language. The plan uses that document as the milestone authority to avoid duplicate or conflicting acceptance tracking.
 - **2026-04-13:** The design documents define the operator journey and stable product vocabulary, but they do not require a polished UI in M1. The correct M1 cut is backend/API/WS/artifact visibility first.
 - **2026-04-13:** `git status --short` shows an untracked `.codex` path in the worktree. It is unrelated to M1 and should not be reverted or folded into runtime code changes unless it becomes directly relevant.
-- **2026-04-14:** The custom chat-completions service will run at `https://localhost:4001`, which frees the local Keystone Worker to keep Wrangler's default `127.0.0.1:8787` port.
+- **2026-04-14:** The custom chat-completions service will run at `http://localhost:4001`, which frees the local Keystone Worker to keep Wrangler's default `127.0.0.1:8787` port.
 - **2026-04-14:** Fixtures are still needed even though M1 will accept real repo input. They are the controlled baseline that tells contributors whether the system is broken versus whether a user-supplied repo/package combination is unusual or invalid.
 - **2026-04-14:** The original specs assume Neon/Hyperdrive, but M1 can keep the Hyperdrive-shaped app boundary without provisioning Neon by pointing Hyperdrive `localConnectionString` at Docker Postgres.
 - **2026-04-14:** Cloudflare's bootstrap tools are useful references but are not a good canonical starting point for this repo because they optimize for generic Worker or full-stack templates rather than the backend-only Keystone architecture.
@@ -292,6 +298,7 @@ Compatibility is still required at the contract level:
 - **2026-04-15:** Wrangler resolves `image: "./sandbox/Dockerfile"` with the Docker build context rooted at `sandbox/`, so Dockerfile `COPY` paths must be relative to that directory rather than the repository root.
 - **2026-04-15:** Sandbox IDs must stay DNS-safe after final truncation. A helper that slugifies components and then blindly slices the assembled ID can still produce a trailing `-`, which the Sandbox SDK rejects at runtime.
 - **2026-04-15:** In this environment, `wrangler dev` with container bindings succeeds when run outside the Codex sandbox boundary even though the same command fails inside it with `uv_interface_addresses returned Unknown system error 1`. The remaining Phase 4 issues were code-level, not platform-level.
+- **2026-04-15:** The local chat-completions backend is plain HTTP rather than HTTPS, and it streams SSE `data:` chat-completion chunks by default. A `stream: false` probe did not return a usable JSON payload within the same timeout window, so the M1 client should consume the streamed chunk format directly.
 
 ## Outcomes & Retrospective
 
@@ -327,6 +334,12 @@ Phase 4 outcome on 2026-04-15:
 - Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `docker compose up -d postgres`, `npm run dev`, `GET /v1/health -> 200`, and authenticated `POST /internal/dev/sandbox-smoke -> 200` with a completed sandboxed `npm test` process.
 - The next active slice is the provider-backed compile integration pulled forward from Phase 6. Workflows should consume that real compile path rather than a placeholder seam.
 
+Provider-backed compile slice outcome on 2026-04-15:
+
+- The repository now has a real local chat-completions client boundary in `src/lib/llm/chat-completions.ts`, a reusable compile service in `src/keystone/compile/plan-run.ts`, inline deterministic decision-package fixture data, and a dev-only `POST /internal/dev/compile-smoke` route for pre-workflow provider validation.
+- Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run dev`, `GET /v1/health -> 200`, and authenticated `POST /internal/dev/compile-smoke -> 200` against `http://localhost:4001/v1/chat/completions`, yielding a persisted run plan, one task handoff artifact, and compile usage metadata from the live provider.
+- Phase 5 can now start against the real compile contract instead of a placeholder seam. The remaining Phase 6 work is the security gating and approval plumbing after workflows land.
+
 ## Context and Orientation
 
 Current repository state:
@@ -359,7 +372,7 @@ Target runtime shape for M1:
 - One Worker project hosting HTTP routes, Durable Objects, and Workflows bindings.
 - Hyperdrive binding retained as the Worker-facing database interface in M1.
 - Local Docker Postgres used behind Hyperdrive `localConnectionString` for default M1 development and validation.
-- LLM calls sent to the user's custom OpenAI-compatible backend at `https://localhost:4001` using model `gemini-3-flash-preview`.
+- LLM calls sent to the user's custom OpenAI-compatible backend at `http://localhost:4001` using model `gemini-3-flash-preview`.
 - R2 bucket used for large artifacts and evidence, with DB rows storing references only.
 - A real run path that accepts operator-supplied repo and decision-package input.
 - A fixture-based end-to-end run that remains the deterministic compile -> execute 1-2 tasks -> integrate -> verify -> finalize baseline.
@@ -436,7 +449,7 @@ npm run test
 npm run build
 ```
 
-Success means all commands complete, local Postgres can be started through Docker, Hyperdrive local configuration is present, generated Worker binding types are available, and `npm run dev` starts a local Worker with placeholder route responses on Wrangler's default local port without conflicting with the custom LLM server on `https://localhost:4001`.
+Success means all commands complete, local Postgres can be started through Docker, Hyperdrive local configuration is present, generated Worker binding types are available, and `npm run dev` starts a local Worker with placeholder route responses on Wrangler's default local port without conflicting with the custom LLM server on `http://localhost:4001`.
 
 **Plan / Docs To Update**  
 Update `Progress`, `Execution Log`, `Surprises & Discoveries`, and the Phase 1 handoff status fields.
@@ -673,10 +686,10 @@ Completed on 2026-04-15.
 Implemented `TaskSessionDO`, sandbox/workspace/process helper modules, sandbox image assets, a workspace-binding repository, fixture seeding helpers, and a dev-only `/internal/dev/sandbox-smoke` route. Phase 4 is now live-validated: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `docker compose up -d postgres` all passed; `wrangler dev` started successfully when run outside the Codex sandbox boundary; `GET /v1/health` returned `200`; and authenticated `POST /internal/dev/sandbox-smoke` returned `200` with a completed sandboxed `npm test` process, 8 observed events, and 1 workspace binding. Follow-up fixes made during validation: the sandbox Dockerfile now copies `bootstrap.sh` relative to the `sandbox/` build context, sandbox IDs are trimmed safely after length limiting, and sandbox session reuse now checks for an existing execution session before creating a new one.
 
 **Next Starter Context**  
-Phase 4 is done. The next step is the provider-backed compile slice pulled forward from Phase 6: add `src/lib/llm/chat-completions.ts`, integrate it into the compile path, and validate it against `https://localhost:4001` before starting the durable workflow phase.
+Phase 4 is done. The provider-backed compile slice pulled forward from Phase 6 is also now complete. The next step is Phase 5 durable workflow work, consuming the live compile path validated against `http://localhost:4001`.
 
 Dependency note:
-Before starting workflow implementation, take the provider-backed compile slice from Phase 6 first. The next step after Phase 4 validation should be: land `src/lib/llm/chat-completions.ts` plus live compile integration, then return to Phase 5 workflows.
+Before starting workflow implementation, take the provider-backed compile slice from Phase 6 first. That prerequisite is now satisfied, so Phase 5 should consume the live compile service and artifacts rather than a placeholder seam.
 
 ### Phase 5: Build durable run and task workflows
 
@@ -733,7 +746,7 @@ Working `RunWorkflow` and `TaskWorkflow` entrypoints with durable long-command o
 `Implement durable M1 run and task workflows`
 
 **Known Constraints / Baseline Failures**  
-The compile step may still use deterministic placeholder output in this phase if the custom chat-completions integration is not implemented yet. That is acceptable as long as the workflow seam is real and recorded in the plan.
+The live compile integration is now available and should be consumed by Phase 5. Do not reintroduce a placeholder compile path unless the provider becomes unavailable and the blocker is explicitly recorded in this plan.
 
 **Status**  
 Not started.
@@ -787,7 +800,7 @@ npm run test:security
 npm run test:workflows
 ```
 
-Success means outbound network is denied by default, approval-required paths generate durable approval records, and compile behavior succeeds against the configured custom chat-completions server at `https://localhost:4001`.
+Success means outbound network is denied by default, approval-required paths generate durable approval records, and compile behavior succeeds against the configured custom chat-completions server at `http://localhost:4001`.
 
 **Plan / Docs To Update**  
 Update `Progress`, `Execution Log`, `Surprises & Discoveries`, and record any credential-dependent validation caveats in `Validation and Acceptance`.
@@ -799,16 +812,16 @@ Security policy enforcement, approval plumbing, and custom chat-completions inte
 `Add security gating and AI compile integration`
 
 **Known Constraints / Baseline Failures**  
-Live provider validation depends on the custom chat-completions service being reachable at `https://localhost:4001` and its local TLS configuration being acceptable to the runtime. There is intentionally no offline fallback path in M1.
+Live provider validation depends on the custom chat-completions service being reachable at `http://localhost:4001`. The backend currently streams SSE chat-completion chunks, which the M1 client now consumes directly. There is intentionally no offline fallback path in M1.
 
 **Status**  
-Not started.
+In progress on 2026-04-15; the provider-backed compile slice is complete, while the remaining security gating and approval plumbing work is still pending.
 
 **Completion Notes**  
-None yet.
+Landed the plain-HTTP chat-completions client in `src/lib/llm/chat-completions.ts`, the reusable compile service in `src/keystone/compile/plan-run.ts`, inline deterministic decision-package fixture data, and the authenticated `/internal/dev/compile-smoke` route. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and live local smoke checks showing `/v1/health -> 200` and `/internal/dev/compile-smoke -> 200` against `http://localhost:4001/v1/chat/completions`, with one compiled task handoff artifact and provider token usage recorded. Security policy and approval-plumbing work remain for the rest of Phase 6.
 
 **Next Starter Context**  
-Do not let security behavior hide inside sandbox wrappers. Keep policy evaluation explicit and observable in events so operators can tell why something was blocked.
+Phase 5 can start now and should consume the real compile service and artifact outputs from this slice. After workflows land, return here for explicit outbound-policy enforcement and approval-trigger plumbing. Do not let security behavior hide inside sandbox wrappers; keep policy evaluation explicit and observable in events so operators can tell why something was blocked.
 
 Execution order note:
 Only the provider-backed compile slice of this phase should come before workflows. The remaining security gating and approval plumbing can stay after Phase 5 once workflows are consuming the live compile contract.
@@ -1024,7 +1037,7 @@ Milestone 1 is accepted only when all of the following are true:
 11. Tenant scoping is enforced on API writes and reads, including the documented dev auth path.
 12. Outbound network is denied by default and approval-aware or allow-listed paths are observable.
 13. The local runbook and architecture docs explain the commands that actually passed.
-14. The compile path uses the configured custom chat-completions service at `https://localhost:4001` with model `gemini-3-flash-preview`.
+14. The compile path uses the configured custom chat-completions service at `http://localhost:4001` with model `gemini-3-flash-preview`.
 15. The checked-in Worker scaffold is hand-authored and repository-shaped, rather than a generic Cloudflare starter copied in wholesale.
 16. M1 remains API-and-script driven; there is no separate first-class operator CLI required for acceptance.
 
@@ -1192,6 +1205,32 @@ HTTP/1.1 200 OK
 {"ok":true,"process":{"status":"completed","exitCode":0},"eventsObserved":8,"workspaceBindingsObserved":1}
 ```
 
+Provider-backed compile slice evidence captured on 2026-04-15:
+
+```text
+$ curl -X POST http://localhost:4001/v1/chat/completions ...
+data: {"model":"gemini-3-flash-preview","choices":[{"delta":{"content":"ok"}}]}
+data: [DONE]
+```
+
+```text
+$ npm run test
+Test Files  12 passed | 1 skipped (13)
+Tests  33 passed | 3 skipped (36)
+```
+
+```text
+$ npm run build
+env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL ("http://localhost:4001")
+--dry-run: exiting now.
+```
+
+```text
+$ POST /internal/dev/compile-smoke
+HTTP/1.1 200 OK
+{"ok":true,"taskCount":1,"model":"gemini-3-flash-preview","taskHandoffArtifactCount":1,"artifactsObserved":3}
+```
+
 ## Interfaces and Dependencies
 
 External platform dependencies for M1:
@@ -1204,7 +1243,7 @@ External platform dependencies for M1:
 - Docker Postgres as the local operational backing store behind Hyperdrive `localConnectionString`
 - Neon/Postgres retained as a later hosted compatibility target
 - Cloudflare Sandboxes for isolated repo execution
-- A user-operated OpenAI-compatible chat-completions service at `https://localhost:4001`
+- A user-operated OpenAI-compatible chat-completions service at `http://localhost:4001`
 
 Core module boundaries to keep stable:
 

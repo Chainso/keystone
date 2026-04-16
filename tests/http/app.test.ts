@@ -87,6 +87,38 @@ const mocked = vi.hoisted(() => {
       })),
       teardown: vi.fn(async () => undefined)
     })),
+    compileRunPlan: vi.fn(async () => ({
+      plan: {
+        decisionPackageId: "demo-greeting-update",
+        summary: "Compile smoke produced a single implementation task.",
+        tasks: [
+          {
+            taskId: "task-greeting-tone",
+            title: "Adjust the greeting implementation",
+            summary: "Change the greeting in a reviewable way.",
+            instructions: ["Edit the greeting implementation.", "Run the fixture tests."],
+            acceptanceCriteria: ["Fixture tests stay green."],
+            dependsOn: []
+          }
+        ]
+      },
+      completion: {
+        id: "chatcmpl-demo",
+        model: "gemini-3-flash-preview",
+        finishReason: "stop",
+        usage: {
+          totalTokens: 42
+        }
+      },
+      planArtifactRef: {
+        artifactRefId: crypto.randomUUID()
+      },
+      taskHandoffArtifactRefs: [
+        {
+          artifactRefId: crypto.randomUUID()
+        }
+      ]
+    })),
     createWorkerDatabaseClient: vi.fn(() => ({
       close,
       db: {},
@@ -123,6 +155,10 @@ vi.mock("../../src/lib/auth/tenant", () => ({
   getTaskSessionStub: mocked.getTaskSessionStub
 }));
 
+vi.mock("../../src/keystone/compile/plan-run", () => ({
+  compileRunPlan: mocked.compileRunPlan
+}));
+
 const { app } = await import("../../src/http/app");
 
 const env = {
@@ -130,7 +166,7 @@ const env = {
   HYPERDRIVE: {
     connectionString: "postgres://test"
   } as Hyperdrive,
-  KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "https://localhost:4001",
+  KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:4001",
   KEYSTONE_CHAT_COMPLETIONS_MODEL: "gemini-3-flash-preview",
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
   KEYSTONE_DEV_TOKEN: "secret-dev-token",
@@ -155,7 +191,7 @@ describe("app", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
-      llmBaseUrl: "https://localhost:4001"
+      llmBaseUrl: "http://localhost:4001"
     });
   });
 
@@ -271,5 +307,26 @@ describe("app", () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("ws-ok");
+  });
+
+  it("executes the compile smoke route with dev auth", async () => {
+    const response = await app.request(
+      "http://example.com/internal/dev/compile-smoke",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      taskCount: 1,
+      model: "gemini-3-flash-preview"
+    });
   });
 });

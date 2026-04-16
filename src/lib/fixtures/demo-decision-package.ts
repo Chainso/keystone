@@ -1,0 +1,24 @@
+import { decisionPackageSchema } from "../../keystone/compile/contracts";
+
+export const demoDecisionPackageFixture = decisionPackageSchema.parse({
+  decisionPackageId: "demo-greeting-update",
+  summary: "Update the deterministic demo target with a small greeting-focused change.",
+  repo: {
+    localPath: "./fixtures/demo-target"
+  },
+  objectives: [
+    "Change the greeting implementation in a reviewable way.",
+    "Keep the fixture test suite passing.",
+    "Produce evidence files suitable for artifact upload in later phases."
+  ],
+  tasks: [
+    {
+      taskId: "task-greeting-tone",
+      title: "Adjust the greeting implementation",
+      acceptanceCriteria: [
+        "The greeting source file changes in a small deterministic way.",
+        "Fixture tests remain green."
+      ]
+    }
+  ]
+});
