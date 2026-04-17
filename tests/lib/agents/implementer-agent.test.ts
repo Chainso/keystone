@@ -10,10 +10,13 @@ import { generateText } from "ai";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSynthesizedRunNote,
   buildImplementerSystemPrompt,
   collectStagedArtifacts,
   createImplementerTools,
-  createMockImplementerModel
+  createMockImplementerModel,
+  ensureStagedRunNoteArtifact,
+  resolveImplementerTurnSummary
 } from "../../../src/keystone/agents/implementer/ImplementerAgent";
 import { createAgentTurnContext } from "../../../src/maestro/agent-runtime";
 
@@ -316,5 +319,31 @@ describe("implementer agent helpers", () => {
 
     expect(result.steps).toHaveLength(1);
     expect(session.files.get("/artifacts/out/summary.md")?.content).toBe("# done\n");
+  });
+
+  it("synthesizes a run_note when the turn staged no markdown artifact", async () => {
+    const session = new FakeExecutionSession();
+    const bridge = createBridge();
+    const stagedArtifacts = await ensureStagedRunNoteArtifact(
+      session as unknown as ExecutionSession,
+      bridge,
+      resolveImplementerTurnSummary("Completed the live task.")
+    );
+
+    expect(session.files.get("/artifacts/out/keystone-think-run-note.md")?.content).toBe(
+      buildSynthesizedRunNote("Completed the live task.")
+    );
+    expect(stagedArtifacts).toEqual([
+      expect.objectContaining({
+        path: "/artifacts/out/keystone-think-run-note.md",
+        kind: "run_note"
+      })
+    ]);
+  });
+
+  it("falls back to the default summary when assistant text is empty", () => {
+    expect(resolveImplementerTurnSummary("   ")).toBe(
+      "Implementer turn completed without assistant text."
+    );
   });
 });

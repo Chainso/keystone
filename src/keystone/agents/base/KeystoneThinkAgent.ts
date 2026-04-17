@@ -21,11 +21,12 @@ import { buildChatCompletionsApiBaseUrl } from "../../../lib/llm/chat-completion
 import { assertOutboundUrlAllowed } from "../../../lib/security/outbound";
 import {
   buildImplementerSystemPrompt,
-  collectStagedArtifacts,
+  ensureStagedRunNoteArtifact,
   createImplementerTools,
   createMockImplementerModel,
   extractAssistantText,
   parseImplementerTurnMetadata,
+  resolveImplementerTurnSummary,
   type ImplementerToolEvent,
   type ImplementerTurnMetadata
 } from "../implementer/ImplementerAgent";
@@ -229,7 +230,12 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
         );
       }
 
-      const stagedArtifacts = await collectStagedArtifacts(session, metadata.agentBridge);
+      const summary = resolveImplementerTurnSummary(this.activeTurn.lastAssistantText);
+      const stagedArtifacts = await ensureStagedRunNoteArtifact(
+        session,
+        metadata.agentBridge,
+        summary
+      );
 
       for (const artifact of stagedArtifacts) {
         await this.recordTurnEvent("artifact.staged", {
@@ -239,9 +245,6 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
           metadata: artifact.metadata ?? {}
         });
       }
-
-      const summary =
-        this.activeTurn.lastAssistantText ?? "Implementer turn completed without assistant text.";
 
       await this.recordTurnEvent("agent.turn.completed", {
         role: this.role,

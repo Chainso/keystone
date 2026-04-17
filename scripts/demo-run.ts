@@ -1,3 +1,5 @@
+import { writeDemoState } from "./demo-state";
+
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -89,7 +91,7 @@ export function describeDemoContract(runtime: string, thinkMode: string): DemoCo
       proofScope: "Fixture-scoped live compile plus compiled Think task execution",
       modelExecution: "Live local chat-completions backend",
       workflowStatus:
-        "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+        "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
     };
   }
 
@@ -337,6 +339,13 @@ export async function main() {
     const status = String(summary.status ?? "unknown");
 
     if (isRunComplete(summary)) {
+      await writeDemoState({
+        baseUrl,
+        runId,
+        runtime,
+        thinkMode,
+        savedAt: new Date().toISOString()
+      });
       console.log(
         JSON.stringify(
           {

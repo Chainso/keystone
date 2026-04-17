@@ -1,3 +1,5 @@
+import { readDemoState, type PersistedDemoState } from "./demo-state";
+
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,8 +40,13 @@ function getArg(name: string) {
   return argument ? argument.slice(prefix.length) : undefined;
 }
 
-export function resolveBaseUrl() {
-  return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
+export function resolveBaseUrl(persistedState?: PersistedDemoState) {
+  return (
+    getArg("base-url") ??
+    process.env.KEYSTONE_BASE_URL ??
+    persistedState?.baseUrl ??
+    "http://127.0.0.1:8787"
+  );
 }
 
 export function resolveRuntime() {
@@ -57,7 +64,7 @@ export function describeDemoContract(runtime: string, thinkMode: string): DemoCo
       proofScope: "Fixture-scoped live compile plus compiled Think task execution",
       modelExecution: "Live local chat-completions backend",
       workflowStatus:
-        "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+        "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
     };
   }
 
@@ -107,13 +114,14 @@ export function resolveValidatedRunContract(
 }
 
 export async function main() {
-  const runId = getArg("run-id") ?? process.env.KEYSTONE_RUN_ID;
-  const baseUrl = resolveBaseUrl();
+  const persistedState = await readDemoState();
+  const runId = getArg("run-id") ?? process.env.KEYSTONE_RUN_ID ?? persistedState?.runId;
+  const baseUrl = resolveBaseUrl(persistedState);
   const requestedRuntime = resolveRuntime();
   const requestedThinkMode = resolveThinkMode();
 
   if (!runId) {
-    throw new Error("Provide --run-id=<id> or set KEYSTONE_RUN_ID.");
+    throw new Error("Provide --run-id=<id>, set KEYSTONE_RUN_ID, or run demo:run first.");
   }
 
   const response = await fetch(

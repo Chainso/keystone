@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
 import { once } from "node:events";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,9 +21,12 @@ import {
 
 const execFileAsync = promisify(execFile);
 const demoEnvKeys = [
+  "KEYSTONE_BASE_URL",
   "KEYSTONE_AGENT_RUNTIME",
+  "KEYSTONE_DEMO_STATE_PATH",
   "KEYSTONE_THINK_DEMO_MODE",
   "KEYSTONE_PRESERVE_SANDBOX",
+  "KEYSTONE_RUN_ID",
   "KEYSTONE_STREAM_EVENTS"
 ] as const;
 const originalArgv = [...process.argv];
@@ -410,7 +416,7 @@ describe("demo scripts", () => {
           proofScope: "Fixture-scoped live compile plus compiled Think task execution",
           modelExecution: "Live local chat-completions backend",
           workflowStatus:
-            "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+            "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
         }
       });
 
@@ -436,6 +442,118 @@ describe("demo scripts", () => {
       expect(server.requests[0]?.headers["x-keystone-agent-runtime"]).toBe("think");
     } finally {
       await server.close();
+    }
+  }, 15_000);
+
+  it("lets demo:validate reuse the persisted live demo state from demo:run", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "keystone-demo-state-"));
+    const statePath = join(tempDir, "demo-last-run.json");
+    const server = await startStubServer((request) => {
+      if (request.method === "POST" && request.path === "/v1/runs") {
+        return {
+          body: {
+            runId: "run-live-state",
+            runtime: "think",
+            options: {
+              thinkMode: "live",
+              preserveSandbox: true
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-live-state/events") {
+        return {
+          body: {
+            events: []
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-live-state") {
+        return {
+          body: {
+            status: "archived",
+            inputs: {
+              runtime: "think",
+              options: {
+                thinkMode: "live"
+              }
+            },
+            sessions: {
+              total: 3
+            },
+            artifacts: {
+              total: 5,
+              byKind: {
+                run_summary: 1,
+                run_note: 1
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await runDemoScript(
+        "demo:run",
+        [`--base-url=${server.baseUrl}`],
+        {
+          KEYSTONE_AGENT_RUNTIME: "think",
+          KEYSTONE_THINK_DEMO_MODE: "live",
+          KEYSTONE_PRESERVE_SANDBOX: "1",
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        }
+      );
+
+      const savedState = JSON.parse(await readFile(statePath, "utf8")) as Record<string, unknown>;
+
+      expect(savedState).toMatchObject({
+        baseUrl: server.baseUrl,
+        runId: "run-live-state",
+        runtime: "think",
+        thinkMode: "live"
+      });
+
+      const { stdout } = await runDemoScript(
+        "demo:validate",
+        [],
+        {
+          KEYSTONE_AGENT_RUNTIME: "think",
+          KEYSTONE_THINK_DEMO_MODE: "live",
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        }
+      );
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        ok: true,
+        baseUrl: server.baseUrl,
+        runId: "run-live-state",
+        runtime: "think",
+        thinkMode: "live",
+        demoContract: {
+          contractId: "think-live-compile-demo",
+          workflowStatus:
+            "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+        }
+      });
+
+      expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+        "POST /v1/runs",
+        "GET /v1/runs/run-live-state/events",
+        "GET /v1/runs/run-live-state",
+        "GET /v1/runs/run-live-state"
+      ]);
+    } finally {
+      await server.close();
+      await rm(tempDir, {
+        force: true,
+        recursive: true
+      });
     }
   }, 15_000);
 
@@ -557,7 +675,7 @@ describe("demo scripts", () => {
         demoContract: {
           contractId: "think-live-compile-demo",
           workflowStatus:
-            "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+            "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
         }
       });
 
@@ -594,7 +712,7 @@ describe("demo scripts", () => {
     });
   });
 
-  it("treats an explicit live Think request as the Phase 2 live-compile demo contract", () => {
+  it("treats an explicit live Think request as the current live-compile demo contract", () => {
     process.argv = ["node", "scripts/demo-run.ts", "--runtime=think", "--think-mode=live"];
     clearDemoEnv();
 
@@ -620,7 +738,7 @@ describe("demo scripts", () => {
         proofScope: "Fixture-scoped live compile plus compiled Think task execution",
         modelExecution: "Live local chat-completions backend",
         workflowStatus:
-          "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+          "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
       }
     });
   });
@@ -645,7 +763,7 @@ describe("demo scripts", () => {
       demoContract: {
         contractId: "think-live-compile-demo",
         workflowStatus:
-          "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+          "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
       }
     });
   });

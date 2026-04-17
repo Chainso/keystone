@@ -122,6 +122,9 @@ const textUsage = {
   }
 };
 
+const defaultImplementerTurnSummary = "Implementer turn completed without assistant text.";
+const synthesizedRunNoteFileName = "keystone-think-run-note.md";
+
 function emitToolCallChunks(
   controller: ReadableStreamDefaultController<unknown>,
   calls: ImplementerMockToolCall[]
@@ -185,6 +188,25 @@ function inferArtifactKind(filePath: string) {
   }
 
   return "staged_output";
+}
+
+export function resolveImplementerTurnSummary(summary: string | undefined) {
+  const normalizedSummary = summary?.trim();
+
+  return normalizedSummary && normalizedSummary.length > 0
+    ? normalizedSummary
+    : defaultImplementerTurnSummary;
+}
+
+export function buildSynthesizedRunNote(summary: string) {
+  return [
+    "# Keystone Think Run Note",
+    "",
+    "This note was synthesized because the completed Think turn did not stage a markdown handoff under `/artifacts/out`.",
+    "",
+    summary,
+    ""
+  ].join("\n");
 }
 
 export function parseImplementerTurnMetadata(context: AgentTurnContext): ImplementerTurnMetadata {
@@ -577,4 +599,27 @@ export async function collectStagedArtifacts(
       sizeBytes: file.size
     }
   }));
+}
+
+export async function ensureStagedRunNoteArtifact(
+  session: ExecutionSession,
+  bridge: SandboxAgentBridge,
+  summary: string
+): Promise<AgentRuntimeArtifact[]> {
+  const stagedArtifacts = await collectStagedArtifacts(session, bridge);
+
+  if (stagedArtifacts.some((artifact) => artifact.kind === "run_note")) {
+    return stagedArtifacts;
+  }
+
+  await writeSandboxAgentFile(
+    {
+      session,
+      bridge
+    },
+    path.join(bridge.layout.artifactsOutRoot, synthesizedRunNoteFileName),
+    buildSynthesizedRunNote(summary)
+  );
+
+  return collectStagedArtifacts(session, bridge);
 }

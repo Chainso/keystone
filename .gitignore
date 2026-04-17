@@ -4,6 +4,7 @@ dist/
 coverage/
 .dev.vars
 .codex/
+.keystone/
 *.tsbuildinfo
 
 # Localflare and nested Wrangler generated files
