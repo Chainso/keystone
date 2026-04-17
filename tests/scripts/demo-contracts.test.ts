@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -557,6 +557,88 @@ describe("demo scripts", () => {
     }
   }, 15_000);
 
+  it("does not replace the last successful demo state when a later run fails", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "keystone-demo-state-failed-"));
+    const statePath = join(tempDir, "demo-last-run.json");
+    const previousState = {
+      baseUrl: "http://127.0.0.1:12345",
+      runId: "run-previous-success",
+      runtime: "think",
+      thinkMode: "live",
+      savedAt: "2026-04-17T00:00:00.000Z"
+    };
+    const server = await startStubServer((request) => {
+      if (request.method === "POST" && request.path === "/v1/runs") {
+        return {
+          body: {
+            runId: "run-failed",
+            runtime: "think",
+            options: {
+              thinkMode: "live",
+              preserveSandbox: true
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-failed/events") {
+        return {
+          body: {
+            events: []
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-failed") {
+        return {
+          body: {
+            status: "failed",
+            artifacts: {
+              total: 0,
+              byKind: {}
+            },
+            sessions: {
+              total: 1
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(statePath, `${JSON.stringify(previousState, null, 2)}\n`, "utf8");
+
+      const { stdout } = await runDemoScript(
+        "demo:run",
+        [`--base-url=${server.baseUrl}`],
+        {
+          KEYSTONE_AGENT_RUNTIME: "think",
+          KEYSTONE_THINK_DEMO_MODE: "live",
+          KEYSTONE_PRESERVE_SANDBOX: "1",
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        }
+      );
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        runId: "run-failed",
+        status: "failed"
+      });
+
+      const savedState = JSON.parse(await readFile(statePath, "utf8")) as Record<string, unknown>;
+
+      expect(savedState).toEqual(previousState);
+    } finally {
+      await server.close();
+      await rm(tempDir, {
+        force: true,
+        recursive: true
+      });
+    }
+  }, 15_000);
+
   it("executes the demo:validate entrypoint for deterministic Think mock requests", async () => {
     const server = await startStubServer((request) => {
       if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock") {
@@ -618,6 +700,68 @@ describe("demo scripts", () => {
       });
     } finally {
       await server.close();
+    }
+  }, 15_000);
+
+  it("lets explicit validate inputs bypass a malformed persisted state file", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "keystone-demo-state-explicit-"));
+    const statePath = join(tempDir, "demo-last-run.json");
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-explicit") {
+        return {
+          body: {
+            status: "archived",
+            inputs: {
+              runtime: "think",
+              options: {
+                thinkMode: "live"
+              }
+            },
+            sessions: {
+              total: 3
+            },
+            artifacts: {
+              total: 5,
+              byKind: {
+                run_summary: 1,
+                run_note: 1
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(statePath, "{not-valid-json", "utf8");
+
+      const { stdout } = await runDemoScript(
+        "demo:validate",
+        [
+          `--base-url=${server.baseUrl}`,
+          "--run-id=run-explicit"
+        ],
+        {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        }
+      );
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        ok: true,
+        baseUrl: server.baseUrl,
+        runId: "run-explicit",
+        runtime: "think",
+        thinkMode: "live"
+      });
+    } finally {
+      await server.close();
+      await rm(tempDir, {
+        force: true,
+        recursive: true
+      });
     }
   }, 15_000);
 

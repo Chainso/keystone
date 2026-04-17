@@ -339,13 +339,15 @@ export async function main() {
     const status = String(summary.status ?? "unknown");
 
     if (isRunComplete(summary)) {
-      await writeDemoState({
-        baseUrl,
-        runId,
-        runtime,
-        thinkMode,
-        savedAt: new Date().toISOString()
-      });
+      if (status === "archived") {
+        await writeDemoState({
+          baseUrl,
+          runId,
+          runtime,
+          thinkMode,
+          savedAt: new Date().toISOString()
+        });
+      }
       console.log(
         JSON.stringify(
           {

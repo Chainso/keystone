@@ -40,6 +40,14 @@ function getArg(name: string) {
   return argument ? argument.slice(prefix.length) : undefined;
 }
 
+function resolveExplicitRunId() {
+  return getArg("run-id") ?? process.env.KEYSTONE_RUN_ID;
+}
+
+function resolveExplicitBaseUrl() {
+  return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL;
+}
+
 export function resolveBaseUrl(persistedState?: PersistedDemoState) {
   return (
     getArg("base-url") ??
@@ -114,9 +122,16 @@ export function resolveValidatedRunContract(
 }
 
 export async function main() {
-  const persistedState = await readDemoState();
-  const runId = getArg("run-id") ?? process.env.KEYSTONE_RUN_ID ?? persistedState?.runId;
-  const baseUrl = resolveBaseUrl(persistedState);
+  const explicitRunId = resolveExplicitRunId();
+  const explicitBaseUrl = resolveExplicitBaseUrl();
+  const persistedState =
+    explicitRunId !== undefined
+      ? undefined
+      : await readDemoState();
+  const runId = explicitRunId ?? persistedState?.runId;
+  const baseUrl =
+    explicitBaseUrl ??
+    (explicitRunId === undefined ? resolveBaseUrl(persistedState) : "http://127.0.0.1:8787");
   const requestedRuntime = resolveRuntime();
   const requestedThinkMode = resolveThinkMode();
 

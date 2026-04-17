@@ -123,6 +123,11 @@ Backward compatibility with arbitrary local repository ingestion is not required
   **Decision:** Persist the last successful demo run id for the exact `demo:run` -> `demo:validate` pair, and synthesize a markdown Think handoff note when a completed live turn stages no `run_note` artifact.  
   **Rationale:** The exact operator-facing validation pair must work without extra shell glue, and the live Think happy path cannot be considered reliable if a completed archived run can still omit the promoted `run_note` contract.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 4 Fix Pass  
+  **Decision:** Tighten the persisted demo-state shortcut so only archived runs update it, make explicit validation inputs bypass the state file entirely, and add a direct `KeystoneThinkAgent.executeTurn` boundary test for the empty-text synthesized-note path.  
+  **Rationale:** The first Phase 4 implementation fixed the broad live-pair gap, but review correctly flagged that failed/cancelled runs could still overwrite the shortcut state, explicit `--run-id` / `KEYSTONE_RUN_ID` still depended on eagerly parsing the state file, and the synthesized-note behavior was only covered indirectly.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery decisions resolved in conversation: no new `Thread`/`Lease` primitives, no HITL on the happy path, and keep the first proof fixture-scoped.
@@ -138,6 +143,7 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - [x] 2026-04-17 Phase 2 third fix pass: preserve archived runtime/options metadata, fail closed on ambiguous live compile output, and deepen compile failure plus live CLI request coverage.
 - [x] 2026-04-17 Phase 3: Generalize the Think task path from the fixture greeting gate to compiled task handoffs on the happy path.
 - [x] 2026-04-17 Phase 4: Stabilize the exact live `demo:run` -> `demo:validate` pair against a real local Worker.
+- [x] 2026-04-17 Phase 4 fix pass: tighten persisted demo-state precedence and add direct Think-turn fallback-note coverage.
 - [ ] Phase 5: Update durable docs, record any explicit debt, and archive the plan.
 
 ## Surprises & Discoveries
@@ -168,6 +174,7 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - **2026-04-17:** The exact operator-facing pair needed one more script seam fix even after the Worker came up: `demo:validate` now reuses the last successful `demo:run` state from `.keystone/demo-last-run.json`, so the documented live pair no longer depends on an extra exported `KEYSTONE_RUN_ID`.
 - **2026-04-17:** The live Think model can complete with empty assistant text, and it does not always reliably stage a markdown handoff on its own. Normalizing empty summaries and synthesizing a fallback markdown note under `/artifacts/out` is the narrowest safe reliability fix because it preserves the existing promotion path and keeps the `run_note` contract explicit.
 - **2026-04-17:** After the revised Phase 4 pass, `npm run typecheck`, `npm run test`, and `npm run think:smoke` pass, with `npm run test` reporting `26 passed | 1 skipped` test files and `91 passed | 3 skipped` tests. The exact host-local `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` and `demo:validate` pair also passes against the real local Worker on `http://127.0.0.1:8787`, with the validated run archiving `decision_package`, `run_plan`, `task_handoff`, `run_note`, and `run_summary`.
+- **2026-04-17:** The Phase 4 fix pass tightened the shortcut semantics successfully: `demo:run` now leaves `.keystone/demo-last-run.json` untouched on failed runs, explicit `demo:validate --run-id=...` no longer depends on parsing the state file, and repo validation now reports `27 passed | 1 skipped` test files with `94 passed | 3 skipped` tests.
 
 ## Outcomes & Retrospective
 
@@ -176,7 +183,7 @@ This section will be completed as phases land. The target retrospective for the 
 - Phase 1 restored a trustworthy lint baseline, made the demo/docs explicit that the current live Think path is still fixture-backed in this phase, and added direct automated coverage for the operator-facing scripted, deterministic Think mock, and live Think CLI contracts.
 - Phase 2 removed the hidden `think/live` fixture-compile bypass, added compile-mode metadata that distinguishes live versus fixture compile artifacts/events, preserved archived run-session metadata so real run summaries still expose `runtime` / `options`, tightened the temporary live-compile guard so Phase 2 now fails closed unless the live output keeps approved task ids plus translatable dependencies, aligned the operator-facing live demo contract with the real compile proof, and proved a host-local live run archived with model-generated `run_plan` and `task_handoff` artifacts.
 - Phase 3 removed the hardcoded `task-greeting-tone` Think gate, replaced the temporary Phase 2 canonicalization seam with an explicit fixture-scoped compiled-plan validator, updated the Think prompt/system guidance to point at projected `decision_package` / `run_plan` / `task_handoff` inputs, and proved that live compiled handoffs now execute through the Think implementer path and promote `run_note` artifacts while deterministic `think/mock` remains intact.
-- Phase 4 made the exact documented live `demo:run` -> `demo:validate` pair reliable against a real local Worker by persisting the last demo run id for the validation step, normalizing empty Think-turn summaries, and synthesizing a markdown fallback note when a completed live turn stages no `run_note` artifact.
+- Phase 4 made the exact documented live `demo:run` -> `demo:validate` pair reliable against a real local Worker by persisting only the last successful archived run for the validation shortcut, ensuring explicit validation inputs bypass the state file, normalizing empty Think-turn summaries, and synthesizing a markdown fallback note when a completed live turn stages no `run_note` artifact.
 - Phase 5 will update the durable docs and archive the plan only after the exact live validation pair passes.
 - the live Think demo proves the workflow from run input to archived run summary,
 - the mock Think demo remains available for deterministic validation,
@@ -192,7 +199,7 @@ Current relevant runtime behavior:
 - `src/keystone/compile/plan-run.ts` writes explicit `compileMode` metadata for both the real compile path (`live`) and the deterministic fixture compile path (`fixture`), and the live path now persists model-authored task ids/titles as long as the compiled plan still matches the fixture decision package and keeps `dependsOn` empty.
 - `src/workflows/TaskWorkflow.ts` now accepts fixture-scoped compiled Think handoffs that match the approved decision package and have no dependencies, instead of special-casing `taskId === "task-greeting-tone"`.
 - `src/keystone/agents/base/KeystoneThinkAgent.ts` and `src/keystone/agents/implementer/ImplementerAgent.ts` now support a real live-model Think turn, the deterministic mock path, and a fallback synthesized markdown note when a completed live turn stages no `run_note` artifact.
-- `scripts/demo-run.ts` and `scripts/demo-validate.ts` are the operator-facing local demo proof commands. They now persist the last successful run id under `.keystone/demo-last-run.json`, so the exact documented live pair can be rerun without a separate `KEYSTONE_RUN_ID` export.
+- `scripts/demo-run.ts` and `scripts/demo-validate.ts` are the operator-facing local demo proof commands. They now persist only the last successful archived run under `.keystone/demo-last-run.json`, and explicit `--run-id` / `KEYSTONE_RUN_ID` validation inputs bypass that state file entirely.
 - `.ultrakit/developer-docs/think-runtime-architecture.md` and `.ultrakit/developer-docs/think-runtime-runbook.md` still lag the implementation after Phase 3 and should be updated in Phase 5 after the exact live validation pair passes: `scripted` remains default, but the Think path now executes fixture-scoped compiled handoffs instead of the old greeting-task special case.
 
 Relevant files to keep in view:
@@ -489,6 +496,7 @@ This plan in its latest state
 `src/keystone/agents/base/KeystoneThinkAgent.ts`  
 `src/keystone/agents/implementer/ImplementerAgent.ts`  
 `tests/lib/agents/implementer-agent.test.ts`  
+`tests/lib/agents/keystone-think-agent.test.ts`  
 `tests/scripts/demo-contracts.test.ts`  
 This plan file
 
@@ -526,10 +534,12 @@ The host-local `wrangler dev` constraint still applies. No additional Phase 4 bl
 Completed 2026-04-17.
 
 **Completion Notes**  
-- `scripts/demo-run.ts`, `scripts/demo-validate.ts`, `scripts/demo-state.ts`, and `tests/scripts/demo-contracts.test.ts` now make the exact documented live pair self-contained: `demo:run` persists the last successful run id and base URL under `.keystone/demo-last-run.json`, and `demo:validate` reuses that state when no explicit `--run-id` or `KEYSTONE_RUN_ID` is supplied.
+- `scripts/demo-run.ts`, `scripts/demo-validate.ts`, `scripts/demo-state.ts`, and `tests/scripts/demo-contracts.test.ts` now make the exact documented live pair self-contained and review-safe: `demo:run` persists only the last successful archived run id/base URL under `.keystone/demo-last-run.json`, failed/cancelled runs do not overwrite that state, and `demo:validate` reuses the shortcut only when no explicit `--run-id` or `KEYSTONE_RUN_ID` is supplied.
 - `src/keystone/agents/implementer/ImplementerAgent.ts`, `src/keystone/agents/base/KeystoneThinkAgent.ts`, and `tests/lib/agents/implementer-agent.test.ts` now normalize empty assistant summaries and synthesize a markdown fallback note under `/artifacts/out` when a completed live Think turn stages no `run_note`, which preserves the existing artifact-promotion path instead of inventing a second promotion mechanism.
 - Validation passed with `npm run typecheck`, `npm run test`, and `npm run think:smoke`, with `npm run test` reporting `26 passed | 1 skipped` test files and `91 passed | 3 skipped` tests.
 - Host validation passed on the real local Worker at `http://127.0.0.1:8787`: `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` archived run `bba28327-3dd9-4bcf-b551-4d9b02f64833`, and the exact follow-on `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate` succeeded against that persisted run with `decision_package`, `run_plan`, `task_handoff`, `run_note`, and `run_summary` present.
+- The Phase 4 fix pass added direct Think-turn boundary coverage in `tests/lib/agents/keystone-think-agent.test.ts`, proving that a live `KeystoneThinkAgent.executeTurn(...)` with empty assistant text and no staged files still returns a synthesized markdown `run_note` and the normalized fallback summary.
+- Fix-pass validation passed with `npm run typecheck` and `npm run test`, with `npm run test` reporting `27 passed | 1 skipped` test files and `94 passed | 3 skipped` tests. The exact host-local pair was also reconfirmed on the real local Worker at `http://127.0.0.1:8787`: `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` archived run `679029a5-d572-4339-a7b1-345b7d919f69`, and the exact follow-on `demo:validate` succeeded against that persisted run with one each of `decision_package`, `run_plan`, `task_handoff`, `run_note`, and `run_summary`.
 
 **Next Starter Context**  
 Phase 5 should leave the now-working exact live validation pair untouched, update the README and Think runtime docs to match the validated `scripted`-default / `think-live` fixture-scoped contract, record any still-intentional single-task guardrails as durable debt only if they remain explicitly deferred, and then archive the plan.
