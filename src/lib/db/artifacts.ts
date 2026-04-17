@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 
 import type { ArtifactStorageBackend } from "../../maestro/contracts";
 import type { DatabaseClient } from "./client";
@@ -63,6 +63,31 @@ export async function listRunArtifacts(
 ) {
   return client.db.query.artifactRefs.findMany({
     where: and(eq(artifactRefs.tenantId, tenantId), eq(artifactRefs.runId, runId)),
+    orderBy: [asc(artifactRefs.createdAt)]
+  });
+}
+
+export async function listArtifactsForSandboxProjection(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    runId: string;
+    excludeSessionId?: string | undefined;
+  }
+) {
+  const baseWhere = and(
+    eq(artifactRefs.tenantId, input.tenantId),
+    eq(artifactRefs.runId, input.runId)
+  );
+  const where = input.excludeSessionId
+    ? and(
+        baseWhere,
+        or(isNull(artifactRefs.sessionId), ne(artifactRefs.sessionId, input.excludeSessionId))
+      )
+    : baseWhere;
+
+  return client.db.query.artifactRefs.findMany({
+    where,
     orderBy: [asc(artifactRefs.createdAt)]
   });
 }

@@ -2,6 +2,11 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { WorkerBindings } from "../env";
 import type { SessionStatus } from "../maestro/contracts";
+import {
+  getArtifactBytes,
+  isTextArtifactContentType
+} from "../lib/artifacts/r2";
+import { listArtifactsForSandboxProjection } from "../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../lib/db/client";
 import { createWorkspaceBinding, getWorkspaceBindingForSession } from "../lib/db/workspaces";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
@@ -16,11 +21,13 @@ import { createSessionRecord, getSessionRecord, updateSessionStatus } from "../l
 import { buildSandboxId } from "../lib/workspace/worktree";
 import {
   ensureWorkspaceMaterialized,
+  materializeSandboxAgentBridge,
   type MaterializedWorkspace,
+  type ProjectedArtifactInput,
   type WorkspaceSource
 } from "../lib/workspace/init";
 
-type TaskSessionState = {
+export type TaskSessionState = {
   tenantId: string;
   runId: string;
   sessionId: string;
@@ -32,7 +39,7 @@ type TaskSessionState = {
   lastPolledAt?: string | undefined;
 };
 
-type InitializeTaskSessionInput = {
+export type InitializeTaskSessionInput = {
   tenantId: string;
   runId: string;
   sessionId: string;
@@ -41,11 +48,11 @@ type InitializeTaskSessionInput = {
   sandboxId?: string | undefined;
 };
 
-type EnsureWorkspaceInput = {
+export type EnsureWorkspaceInput = {
   source: WorkspaceSource;
 };
 
-type StartProcessInput = {
+export type StartProcessInput = {
   command: string;
   cwd?: string | undefined;
   env?: Record<string, string | undefined> | undefined;
@@ -53,6 +60,95 @@ type StartProcessInput = {
 };
 
 const STATE_STORAGE_KEY = "task-session-state";
+
+function arrayBufferToBase64(value: ArrayBuffer) {
+  let binary = "";
+  const bytes = new Uint8Array(value);
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary);
+}
+
+function deriveProjectedArtifactFileName(
+  artifact: {
+    contentType: string;
+    metadata: Record<string, unknown>;
+    storageUri: string;
+  }
+) {
+  const metadataFileName = artifact.metadata.fileName;
+
+  if (typeof metadataFileName === "string" && metadataFileName.trim().length > 0) {
+    return metadataFileName;
+  }
+
+  const metadataKey = artifact.metadata.key;
+
+  if (typeof metadataKey === "string" && metadataKey.trim().length > 0) {
+    return metadataKey.split("/").at(-1) ?? metadataKey;
+  }
+
+  const storageName = artifact.storageUri.split("/").at(-1);
+
+  if (storageName) {
+    return storageName;
+  }
+
+  if (artifact.contentType.includes("json")) {
+    return "artifact.json";
+  }
+
+  if (artifact.contentType.startsWith("text/")) {
+    return "artifact.txt";
+  }
+
+  return "artifact.bin";
+}
+
+async function loadProjectedArtifacts(
+  env: Pick<WorkerBindings, "ARTIFACTS_BUCKET">,
+  artifacts: Awaited<ReturnType<typeof listArtifactsForSandboxProjection>>
+): Promise<ProjectedArtifactInput[]> {
+  const projectedArtifacts: ProjectedArtifactInput[] = [];
+
+  for (const artifact of artifacts) {
+    if (artifact.storageBackend !== "r2") {
+      continue;
+    }
+
+    const storedArtifact = await getArtifactBytes(env.ARTIFACTS_BUCKET, artifact.storageUri);
+
+    if (!storedArtifact) {
+      continue;
+    }
+
+    const contentType = storedArtifact.contentType ?? artifact.contentType;
+    const isTextArtifact = isTextArtifactContentType(contentType);
+
+    projectedArtifacts.push({
+      artifactRefId: artifact.artifactRefId,
+      kind: artifact.kind,
+      contentType,
+      storageUri: artifact.storageUri,
+      body: isTextArtifact
+        ? new TextDecoder().decode(storedArtifact.body)
+        : arrayBufferToBase64(storedArtifact.body),
+      encoding: isTextArtifact ? "utf-8" : "base64",
+      fileName: deriveProjectedArtifactFileName({
+        contentType,
+        metadata: artifact.metadata ?? {},
+        storageUri: artifact.storageUri
+      }),
+      sizeBytes: artifact.sizeBytes,
+      metadata: artifact.metadata ?? {}
+    });
+  }
+
+  return projectedArtifacts;
+}
 
 export class TaskSessionDO extends DurableObject<WorkerBindings> {
   private stateSnapshot: TaskSessionState | null = null;
@@ -65,7 +161,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     });
   }
 
-  async initialize(input: InitializeTaskSessionInput) {
+  async initialize(input: InitializeTaskSessionInput): Promise<TaskSessionState> {
     if (!this.stateSnapshot) {
       this.stateSnapshot = {
         tenantId: input.tenantId,
@@ -82,7 +178,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     return this.requireState();
   }
 
-  async ensureWorkspace(input: EnsureWorkspaceInput) {
+  async ensureWorkspace(input: EnsureWorkspaceInput): Promise<TaskSessionState> {
     const snapshot = this.requireState();
     const client = createWorkerDatabaseClient(this.env);
 
@@ -134,12 +230,31 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         sandboxId: snapshot.sandboxId,
         sessionId: snapshot.sessionId
       });
-      const workspace = await ensureWorkspaceMaterialized(sandboxSession, {
+      let workspace = await ensureWorkspaceMaterialized(sandboxSession, {
         runId: snapshot.runId,
         sessionId: snapshot.sessionId,
         taskId: snapshot.taskId,
         source: input.source
       });
+      const artifactsForProjection = await listArtifactsForSandboxProjection(client, {
+        tenantId: snapshot.tenantId,
+        runId: snapshot.runId,
+        excludeSessionId: snapshot.sessionId
+      });
+      const projectedArtifacts = await loadProjectedArtifacts(this.env, artifactsForProjection);
+      const agentBridge = await materializeSandboxAgentBridge(sandboxSession, {
+        workspace,
+        tenantId: snapshot.tenantId,
+        runId: snapshot.runId,
+        sessionId: snapshot.sessionId,
+        taskId: snapshot.taskId,
+        sandboxId: snapshot.sandboxId,
+        artifacts: projectedArtifacts
+      });
+      workspace = {
+        ...workspace,
+        agentBridge
+      };
 
       const binding = await getWorkspaceBindingForSession(client, {
         tenantId: snapshot.tenantId,
@@ -163,7 +278,9 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
           metadata: {
             workspaceRoot: workspace.workspaceRoot,
             repositoryPath: workspace.repositoryPath,
-            headSha: workspace.headSha
+            headSha: workspace.headSha,
+            agentFilesystem: workspace.agentBridge.layout,
+            agentTargets: workspace.agentBridge.targets
           }
         });
       }
@@ -208,7 +325,9 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
           workspaceId: workspace.workspaceId,
           repositoryPath: workspace.repositoryPath,
           repoUrl: workspace.repoUrl,
-          repoRef: workspace.repoRef
+          repoRef: workspace.repoRef,
+          filesystemRoots: workspace.agentBridge.layout,
+          projectedArtifactCount: workspace.agentBridge.projectedArtifacts.length
         },
         status: durableSessionStatus
       });
@@ -221,7 +340,8 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         payload: {
           worktreePath: workspace.worktreePath,
           branchName: workspace.branchName,
-          baseRef: workspace.baseRef
+          baseRef: workspace.baseRef,
+          workspaceTargetPath: workspace.agentBridge.targets.workspaceRoot
         },
         status: durableSessionStatus
       });
@@ -238,7 +358,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     }
   }
 
-  async startProcess(input: StartProcessInput) {
+  async startProcess(input: StartProcessInput): Promise<ProcessSnapshot> {
     const snapshot = this.requireState();
 
     if (!snapshot.workspace) {
@@ -312,7 +432,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     }
   }
 
-  async pollProcess() {
+  async pollProcess(): Promise<TaskSessionState> {
     const snapshot = this.requireState();
 
     if (!snapshot.activeProcess) {
@@ -406,7 +526,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     }
   }
 
-  async teardown() {
+  async teardown(): Promise<TaskSessionState> {
     const snapshot = this.requireState();
     const sandbox = getSandboxClient(this.env, snapshot.sandboxId);
     const client = createWorkerDatabaseClient(this.env);
@@ -463,7 +583,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     }
   }
 
-  async getSnapshot() {
+  async getSnapshot(): Promise<TaskSessionState | null> {
     return this.stateSnapshot;
   }
 

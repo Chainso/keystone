@@ -6,8 +6,31 @@ export interface R2ArtifactPutResult {
   sizeBytes: number;
 }
 
+export interface R2ArtifactGetResult {
+  storageBackend: "r2";
+  storageUri: string;
+  key: string;
+  etag: string | null;
+  sizeBytes: number;
+  body: ArrayBuffer;
+  contentType: string | null;
+}
+
 export function toR2Uri(bucketName: string, key: string) {
   return `r2://${bucketName}/${key}`;
+}
+
+export function parseR2Uri(storageUri: string) {
+  const match = /^r2:\/\/([^/]+)\/(.+)$/.exec(storageUri);
+
+  if (!match || !match[1] || !match[2]) {
+    throw new Error(`Unsupported R2 artifact URI: ${storageUri}`);
+  }
+
+  return {
+    bucketName: match[1],
+    key: match[2]
+  };
 }
 
 export async function putArtifactBytes(
@@ -53,4 +76,41 @@ export async function getArtifactText(bucket: R2Bucket, key: string) {
   }
 
   return object.text();
+}
+
+export async function getArtifactBytes(
+  bucket: R2Bucket,
+  storageUri: string
+): Promise<R2ArtifactGetResult | null> {
+  const parsed = parseR2Uri(storageUri);
+  const object = await bucket.get(parsed.key);
+
+  if (!object) {
+    return null;
+  }
+
+  return {
+    storageBackend: "r2",
+    storageUri,
+    key: parsed.key,
+    etag: object.httpEtag ?? null,
+    sizeBytes: object.size,
+    body: await object.arrayBuffer(),
+    contentType: object.httpMetadata?.contentType ?? null
+  };
+}
+
+export function isTextArtifactContentType(contentType: string | null | undefined) {
+  if (!contentType) {
+    return false;
+  }
+
+  return (
+    contentType.startsWith("text/") ||
+    contentType.includes("json") ||
+    contentType.includes("javascript") ||
+    contentType.includes("xml") ||
+    contentType.includes("yaml") ||
+    contentType.includes("markdown")
+  );
 }

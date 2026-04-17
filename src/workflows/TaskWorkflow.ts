@@ -3,6 +3,7 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloud
 import { NonRetryableError } from "cloudflare:workflows";
 
 import type { WorkerBindings } from "../env";
+import type { TaskSessionState } from "../durable-objects/TaskSessionDO";
 import { putArtifactBytes } from "../lib/artifacts/r2";
 import { createArtifactRef } from "../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../lib/db/client";
@@ -161,7 +162,7 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
           event.payload.taskId
         );
 
-        const processState = await taskSession.pollProcess();
+        const processState = (await taskSession.pollProcess()) as TaskSessionState;
 
         return toWorkflowProcessSnapshot(processState.activeProcess);
       });

@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 
 import type { AppEnv } from "../../env";
+import type { TaskSessionState } from "../../durable-objects/TaskSessionDO";
 import type { SessionStatus } from "../../maestro/contracts";
 import { getRunCoordinatorStub, getTaskSessionStub } from "../../lib/auth/tenant";
 import { createWorkerDatabaseClient } from "../../lib/db/client";
@@ -77,7 +78,7 @@ export async function runSandboxSmokeHandler(context: Context<AppEnv>) {
       taskId,
       parentSessionId: runSessionId
     });
-    const workspaceState = await taskSession.ensureWorkspace({
+    const workspaceState = (await taskSession.ensureWorkspace({
       source: {
         type: "inline",
         repoUrl: "fixture://demo-target",
@@ -85,7 +86,7 @@ export async function runSandboxSmokeHandler(context: Context<AppEnv>) {
         baseRef: "main",
         files: demoTargetFixtureFiles
       }
-    });
+    })) as TaskSessionState;
     await taskSession.startProcess({
       command: "npm test"
     });
@@ -94,7 +95,7 @@ export async function runSandboxSmokeHandler(context: Context<AppEnv>) {
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
-      latestState = await taskSession.pollProcess();
+      latestState = (await taskSession.pollProcess()) as TaskSessionState;
 
       if (
         latestState.activeProcess &&

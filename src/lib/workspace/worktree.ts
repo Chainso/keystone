@@ -1,7 +1,7 @@
 const MAX_SEGMENT_LENGTH = 48;
 const MAX_SANDBOX_ID_LENGTH = 63;
 
-function slugifySegment(value: string) {
+export function slugifySegment(value: string) {
   const slug = value
     .trim()
     .toLowerCase()

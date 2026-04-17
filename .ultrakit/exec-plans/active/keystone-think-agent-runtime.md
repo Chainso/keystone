@@ -82,12 +82,22 @@ Backward compatibility with an external shipped product is not required because 
   **Decision:** Define the kernel-facing harness boundary in `src/maestro/agent-runtime.ts` with standardized filesystem roots and turn/result contracts, and narrow `RuntimeProfile.runtime` to `scripted | think`.  
   **Rationale:** Later phases need a stable harness-agnostic contract for runtime selection, filesystem projection, and artifact/event mapping before real agent turns are wired in.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 2  
+  **Decision:** Keep the real git worktree at `/workspace/runs/...` and layer an agent-facing bridge over it rather than relocating the existing worktree layout.  
+  **Rationale:** The current task/session path and workspace binding model already depend on deterministic internal worktree paths. A bridge preserves that behavior while still giving Think-backed tools a stable `/workspace`, `/artifacts/in`, `/artifacts/out`, and `/keystone` contract.
+
+- **Date:** 2026-04-17  
+  **Phase:** Phase 2  
+  **Decision:** Project prior run artifacts into `/artifacts/in`, stage outputs only under `/artifacts/out`, and materialize bridge metadata as JSON control files under `/keystone`.  
+  **Rationale:** This matches the relaxed design spec, keeps R2 and `artifact_refs` canonical, and gives later Think roles concrete control files and projected inputs without silently promoting staged outputs.
+
 ## Progress
 
 - [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remained active.
 - [x] 2026-04-17 `keystone-m1-cloudflare-foundation` archived; Think plan is now unblocked and eligible to start.
 - [x] 2026-04-16 Phase 1 completed: Think dependencies, bindings, generated types, runtime contract scaffolding, and a base `KeystoneThinkAgent` landed cleanly.
-- [ ] Phase 2: Project artifacts into the sandbox and expose the filesystem/bash bridge.
+- [x] 2026-04-17 Phase 2 completed: `TaskSessionDO` now projects prior run artifacts into `/artifacts/in`, stages writable outputs under `/artifacts/out`, materializes `/keystone/*.json` control files, and exposes reusable filesystem/bash bridge helpers plus smoke coverage.
 - [ ] Phase 3: Build the Think-backed `ImplementerAgent` and event/artifact mapping.
 - [ ] Phase 4: Integrate the Think runtime into `TaskWorkflow` behind a runtime selector and prove one fixture-backed task.
 - [ ] Phase 5: Update developer docs, runbooks, and archive the plan when acceptance is met.
@@ -99,6 +109,9 @@ Backward compatibility with an external shipped product is not required because 
 - **2026-04-16:** Local Worker development on this host must still run outside the Codex sandbox boundary. Any live Think/Agents SDK validation that depends on `wrangler dev` inherits that same host constraint from M1.
 - **2026-04-16:** Think currently requires both the Worker `experimental` compatibility flag and an `AI` binding in `wrangler.jsonc` even when the first scaffolded agent is not yet handling live traffic.
 - **2026-04-16:** `wrangler types` and `wrangler deploy --dry-run` both attempt writes under `~/.config/.wrangler`, and the dry-run container build also touches Docker state under `~/.docker`, so build validation must run outside the Codex sandbox boundary.
+- **2026-04-17:** The cleanest way to honor the `/workspace` contract without disturbing M1’s deterministic worktree layout is to treat `/workspace` as a virtual root in the bridge and resolve it onto the real task worktree path under `/workspace/runs/...`.
+- **2026-04-17:** Durable Object stub inference for `TaskSessionDO` still collapsed to `never` in some callers until the DO methods had explicit public RPC return types, so the Phase 2 validation needed those signatures tightened.
+- **2026-04-17:** A meaningful Phase 2 smoke path does not need live `wrangler dev`; an in-process contract smoke over the bridge helpers is enough to prove projection, staged outputs, and command path rewriting while avoiding host-only local Worker constraints.
 
 ## Outcomes & Retrospective
 
@@ -286,6 +299,14 @@ Project-specific constraints from `.ultrakit/notes.md`:
 - The local chat-completions backend is plain HTTP at `http://localhost:4001`.
 - The fixture happy path depends on `npm test` succeeding inside the sandboxed task worktree.
 
+Phase 2 implementation notes:
+
+- `TaskSessionDO.ensureWorkspace()` now loads prior run artifacts from `artifact_refs`, fetches R2-backed bodies, and projects them into `/artifacts/in` while excluding the current session to avoid making staged outputs implicitly canonical.
+- The bridge contract lives in `MaterializedWorkspace.agentBridge`: virtual roots match `src/maestro/agent-runtime.ts`, while `/workspace` resolves to the real task worktree path and the other roots stay literal.
+- `/keystone/session.json`, `/keystone/filesystem.json`, and `/keystone/artifacts.json` are now the durable control-file contract for later Think roles.
+- `src/keystone/agents/tools/filesystem.ts` and `src/keystone/agents/tools/bash.ts` provide the reusable bridge helpers for later Think-backed tools.
+- `scripts/sandbox-smoke.ts` now validates the bridge contract directly instead of depending on a live local Worker.
+
 ## Interfaces and Dependencies
 
 Expected external dependencies to add or evaluate in this plan:
@@ -456,13 +477,17 @@ Standardized sandbox directory layout and reusable bridge helpers for filesystem
 Artifact projection must not silently make staged outputs canonical. Promotion to R2 remains explicit and belongs to later phases or explicit promotion helpers.
 
 **Status**  
-Ready to start after Phase 1.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Not started.
+- Added an agent bridge descriptor to `MaterializedWorkspace` so later phases can resolve the shared filesystem contract without re-declaring roots.
+- `TaskSessionDO` now projects prior run artifacts from R2 into `/artifacts/in`, writes `/keystone` control files, and records bridge metadata in the workspace binding payload.
+- Added reusable filesystem and bash bridge helpers that resolve virtual agent paths onto the real sandbox targets and enforce read-only vs writable roots at the helper layer.
+- Added bridge-focused coverage in `tests/lib/sandbox-agent-bridge.test.ts` and replaced the old live-worker smoke with an in-process bridge smoke in `scripts/sandbox-smoke.ts`.
+- Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `npm run sandbox:smoke`.
 
 **Next Starter Context**  
-Use the stable filesystem constants from `src/maestro/agent-runtime.ts` instead of re-declaring path strings inside the sandbox layer. Keep the bridge generic enough for multiple future roles, but do not expand into review/tester roles yet.
+Phase 3 should consume `MaterializedWorkspace.agentBridge` and the new filesystem/bash helpers instead of reaching straight into raw sandbox paths. Keep staged output promotion explicit: `/artifacts/out` remains a writable staging area until Phase 4 or a dedicated promotion helper turns those files into canonical R2 artifacts.
 
 ### Phase 3: Build the Think-backed ImplementerAgent and event/artifact mapping
 
@@ -522,7 +547,7 @@ A working Think-backed implementer role plus a smoke path and event/artifact map
 Do not introduce sub-agent RPC or custom artifact-only tools in this phase. The point is to prove the filesystem-first harness path.
 
 **Status**  
-Queued until Phase 2 completes.
+Ready to start.
 
 **Completion Notes**  
 Not started.
