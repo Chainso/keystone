@@ -5,6 +5,12 @@ import { resolveApprovalHandler } from "./handlers/approvals";
 import { runCompileSmokeHandler } from "./handlers/dev-compile";
 import { runSandboxSmokeHandler } from "./handlers/dev-smoke";
 import { runThinkSmokeHandler } from "./handlers/dev-think";
+import {
+  createProjectHandler,
+  getProjectHandler,
+  listProjectsHandler,
+  updateProjectHandler
+} from "./handlers/projects";
 import { createRunHandler, getRunEventsHandler, getRunHandler } from "./handlers/runs";
 import { runWebSocketHandler } from "./handlers/ws";
 import { requireDevAuth } from "./middleware/auth";
@@ -36,6 +42,10 @@ router.get("/v1/health", (context) => {
   });
 });
 
+router.get("/v1/projects", requireDevAuth, listProjectsHandler);
+router.post("/v1/projects", requireDevAuth, createProjectHandler);
+router.get("/v1/projects/:projectId", requireDevAuth, getProjectHandler);
+router.put("/v1/projects/:projectId", requireDevAuth, updateProjectHandler);
 router.post("/v1/runs", requireDevAuth, createRunHandler);
 router.get("/v1/runs/:runId", requireDevAuth, getRunHandler);
 router.get("/v1/runs/:runId/events", requireDevAuth, getRunEventsHandler);

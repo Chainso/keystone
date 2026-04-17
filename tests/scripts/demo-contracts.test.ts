@@ -14,6 +14,11 @@ import {
   resolveThinkMode as resolveDemoRunThinkMode
 } from "../../scripts/demo-run";
 import {
+  resolveBaseUrl as resolveEnsureDemoProjectBaseUrl,
+  resolveDemoTenantId,
+  resolveFixtureProjectConfig as resolveEnsureProjectFixtureConfig
+} from "../../scripts/ensure-demo-project";
+import {
   resolveRuntime as resolveDemoValidateRuntime,
   resolveThinkMode as resolveDemoValidateThinkMode,
   resolveValidatedRunContract
@@ -23,6 +28,7 @@ const execFileAsync = promisify(execFile);
 const demoEnvKeys = [
   "KEYSTONE_BASE_URL",
   "KEYSTONE_AGENT_RUNTIME",
+  "KEYSTONE_DEMO_TENANT_ID",
   "KEYSTONE_DEMO_STATE_PATH",
   "KEYSTONE_THINK_DEMO_MODE",
   "KEYSTONE_PRESERVE_SANDBOX",
@@ -113,7 +119,7 @@ async function startStubServer(
 }
 
 async function runDemoScript(
-  scriptName: "demo:run" | "demo:validate",
+  scriptName: "demo:ensure-project" | "demo:run" | "demo:validate",
   args: string[],
   envOverrides: Record<string, string | undefined> = {}
 ) {
@@ -160,6 +166,134 @@ afterEach(() => {
 });
 
 describe("demo scripts", () => {
+  it("executes the demo:ensure-project entrypoint and creates the fixture project when missing", async () => {
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/projects") {
+        return {
+          body: {
+            tenantId: "tenant-dev-local",
+            total: 0,
+            projects: []
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/projects") {
+        return {
+          status: 201,
+          body: {
+            project: {
+              projectId: "project-created",
+              projectKey: "fixture-demo-project"
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      const { stdout } = await runDemoScript("demo:ensure-project", [
+        `--base-url=${server.baseUrl}`
+      ]);
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        action: "created",
+        baseUrl: server.baseUrl,
+        tenantId: "tenant-dev-local",
+        project: {
+          projectId: "project-created",
+          projectKey: "fixture-demo-project"
+        }
+      });
+
+      expect(server.requests).toHaveLength(2);
+      expect(server.requests[0]).toMatchObject({
+        method: "GET",
+        path: "/v1/projects"
+      });
+      expect(server.requests[1]).toMatchObject({
+        method: "POST",
+        path: "/v1/projects",
+        body: {
+          projectKey: "fixture-demo-project",
+          displayName: "Fixture Demo Project",
+          components: [
+            {
+              componentKey: "demo-target",
+              config: {
+                localPath: "./fixtures/demo-target",
+                defaultRef: "main"
+              }
+            }
+          ]
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  }, 15_000);
+
+  it("executes the demo:ensure-project entrypoint and updates the fixture project when it already exists", async () => {
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/projects") {
+        return {
+          body: {
+            tenantId: "tenant-dev-local",
+            total: 1,
+            projects: [
+              {
+                projectId: "project-existing",
+                projectKey: "fixture-demo-project"
+              }
+            ]
+          }
+        };
+      }
+
+      if (request.method === "PUT" && request.path === "/v1/projects/project-existing") {
+        return {
+          body: {
+            project: {
+              projectId: "project-existing",
+              projectKey: "fixture-demo-project",
+              displayName: "Fixture Demo Project"
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      const { stdout } = await runDemoScript("demo:ensure-project", [
+        `--base-url=${server.baseUrl}`
+      ]);
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        action: "updated",
+        baseUrl: server.baseUrl,
+        tenantId: "tenant-dev-local",
+        project: {
+          projectId: "project-existing",
+          projectKey: "fixture-demo-project"
+        }
+      });
+
+      expect(server.requests).toHaveLength(2);
+      expect(server.requests[1]).toMatchObject({
+        method: "PUT",
+        path: "/v1/projects/project-existing"
+      });
+    } finally {
+      await server.close();
+    }
+  }, 15_000);
+
   it("executes the demo:run entrypoint with the default scripted contract", async () => {
     const server = await startStubServer((request) => {
       if (request.method === "POST" && request.path === "/v1/runs") {
@@ -853,6 +987,26 @@ describe("demo scripts", () => {
         contractId: "scripted-fixture-demo",
         workflowStatus: "Default non-Think demo path."
       }
+    });
+  });
+
+  it("resolves the deterministic fixture-project bootstrap defaults", () => {
+    clearDemoEnv();
+
+    expect(resolveEnsureDemoProjectBaseUrl()).toBe("http://127.0.0.1:8787");
+    expect(resolveDemoTenantId()).toBe("tenant-dev-local");
+    expect(resolveEnsureProjectFixtureConfig()).toMatchObject({
+      projectKey: "fixture-demo-project",
+      displayName: "Fixture Demo Project",
+      components: [
+        {
+          componentKey: "demo-target",
+          config: {
+            localPath: "./fixtures/demo-target",
+            defaultRef: "main"
+          }
+        }
+      ]
     });
   });
 

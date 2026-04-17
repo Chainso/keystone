@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { HTTPResponseError } from "hono/types";
+import { ZodError } from "zod";
 
 import type { AppEnv } from "../env";
 import { jsonErrorResponse } from "../lib/http/errors";
@@ -20,6 +21,16 @@ app.notFound(() => {
 app.onError((error: Error | HTTPResponseError) => {
   if ("getResponse" in error) {
     return error.getResponse();
+  }
+
+  if (error instanceof ZodError) {
+    return jsonErrorResponse("invalid_request", "Request validation failed.", 400, {
+      issues: error.issues.map((issue) => ({
+        path: issue.path,
+        message: issue.message,
+        code: issue.code
+      }))
+    });
   }
 
   console.error("Unhandled application error", error);

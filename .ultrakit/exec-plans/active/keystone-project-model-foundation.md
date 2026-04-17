@@ -122,6 +122,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Keep `project_component_rule_overrides` normalized on `component_id` only and align the Drizzle schema/repository loading logic to that table shape instead of adding a redundant `project_id` column after the fact.  
   **Rationale:** The Phase 1 migration already established a valid 1:1 override-to-component model. Fixing the repository/runtime mismatch in code preserves the cleaner schema, avoids duplicate foreign-key state, and restores fresh-migration correctness.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 2  
+  **Decision:** Expose project CRUD through tenant-scoped `/v1/projects` routes, use the existing project repository graph as the API source of truth, and add a deterministic `demo:ensure-project` helper that converges on the fixture project by key without changing `/v1/runs` yet.  
+  **Rationale:** Later phases need a real HTTP-backed project object before run creation switches to `projectId`, and the fixture bootstrap path should be safely rerunnable per tenant while preserving the current repo-backed run flow until workspace and workflow seams are ready.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -130,7 +135,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 User approved execution; active index now marks this plan `In Progress`, and execution-stage phase handoffs are populated.
 - [x] 2026-04-17 Phase 1 completed: added append-only project-domain migrations, Drizzle schema, typed project contracts, repository helpers, and repository-level tests for project/config graph persistence.
 - [x] 2026-04-17 Phase 1 fix pass completed: repository override loading now matches the normalized migration shape, and project repository tests are isolated and cover tenant scoping plus duplicate-key rejection.
-- [ ] Phase 2: add project CRUD plus reusable integration/rule/env configuration APIs and fixture-project bootstrap support.
+- [x] 2026-04-17 Phase 2 completed: added tenant-scoped project CRUD routes, typed project API contracts with request validation, and a deterministic fixture-project bootstrap helper plus route/script coverage.
 - [ ] Phase 3: generalize workspace materialization from single-repo to multi-component project workspaces.
 - [ ] Phase 4: require `projectId` on runs and wire project-backed workspace execution through workflows, task sessions, and demo scripts.
 - [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
@@ -146,6 +151,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - Broad baseline validation is currently clean, which means the plan can use repo-wide `lint`, `typecheck`, `test`, and `build` as trustworthy gates instead of targeted-only validation.
 - `wrangler deploy --dry-run --outdir .wrangler/deploy` still needs to run outside the Codex sandbox boundary on this host because Wrangler logging and Docker buildx both write under non-writable home-directory paths during the build.
 - `project_component_rule_overrides` does not need its own `project_id` column because the owning project is derivable from `project_components`; the Phase 1 repository mismatch came from the runtime layer, not from the migration design.
+- Route-level tests that import `src/http/app.ts` need to stub unrelated run/dev handler modules when they only care about project routes; otherwise the full router import can walk into Cloudflare-only workflow entrypoints during Node test execution.
 
 ## Outcomes & Retrospective
 
@@ -163,6 +169,13 @@ Phase 1 outcome on 2026-04-17:
 - Typed backend contracts now define the generic project/component/config surface for later HTTP and workflow phases, while constraining `v1` execution to `git_repository` components only.
 - Broad validation remains green after the new schema/repository layer landed.
 - The targeted fix pass resolved the override-table rollout blocker by matching the repository layer to the shipped migration shape and expanded repository tests to cover tenant isolation, duplicate project-key rejection, and isolated update setup.
+
+Phase 2 outcome on 2026-04-17:
+
+- Keystone now exposes tenant-scoped `create`, `list`, `get`, and `update` project endpoints at `/v1/projects`, backed directly by the Phase 1 project repository graph.
+- Project API requests now return structured validation errors as HTTP 400 responses instead of generic 500s when Zod parsing fails.
+- The repo now includes `scripts/ensure-demo-project.ts` plus `npm run demo:ensure-project`, which safely creates or updates one deterministic `fixture-demo-project` per tenant without changing the still-repo-backed `/v1/runs` path.
+- Broad validation passed again for `lint`, `typecheck`, `test`, and `build` after the HTTP/project bootstrap layer landed; the build still requires running outside the Codex sandbox on this host for Wrangler/Docker filesystem access.
 
 ## Context and Orientation
 
@@ -364,6 +377,30 @@ The plan also depends on the existing Keystone architectural rules already recor
 
 - `scripts/demo-run.ts` still posts the fixture repo path directly to `/v1/runs`.
 
+Phase 2 validation captured on 2026-04-17:
+
+```text
+$ npm run lint
+> eslint .
+```
+
+```text
+$ npm run typecheck
+> tsc --noEmit
+```
+
+```text
+$ npm run test
+Test Files  28 passed | 2 skipped (30)
+Tests  105 passed | 8 skipped (113)
+```
+
+```text
+$ npm run build
+> wrangler deploy --dry-run --outdir .wrangler/deploy
+--dry-run: exiting now.
+```
+
 Likely new files/modules by the end of execution:
 
 - `migrations/0002_project_model.sql`
@@ -530,13 +567,13 @@ Project CRUD endpoints, typed project API contracts, and deterministic fixture-p
 No delete/archive behavior in `v1`. Keep projects stable setup objects. Non-code components remain configuration-only and should not gain execution semantics here.
 
 **Status**  
-Not started.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Pending.
+Added `src/http/contracts/project-input.ts` and `src/http/handlers/projects.ts` to expose tenant-scoped project CRUD with typed request/response handling, wired the routes into `src/http/router.ts`, and updated `src/http/app.ts` so Zod request failures return `400 invalid_request` payloads. Added `scripts/ensure-demo-project.ts` plus the `demo:ensure-project` package script to create-or-update one deterministic `fixture-demo-project` per tenant by calling the new HTTP API, and covered the new behavior with `tests/http/projects.test.ts` and expanded `tests/scripts/demo-contracts.test.ts`. Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` (build run outside the Codex sandbox because Wrangler/Docker need writable home-directory state on this host).
 
 **Next Starter Context**  
-After this phase, the backend should be able to create and inspect projects, but `/v1/runs` can still be repo-backed until the workspace and workflow seams are ready.
+Phase 3 can now assume projects are manageable through `/v1/projects` and that `fixture-demo-project` bootstrap is deterministic, but `/v1/runs` is still repo-backed and must stay that way until the workspace substrate is generalized. The next pass should focus on `src/lib/db/workspaces.ts`, `src/lib/workspace/init.ts`, `src/lib/workspace/worktree.ts`, and related task-session/workspace tests to introduce `/workspace/code/<component-key>` materialization without yet requiring `projectId` on runs.
 
 ### Phase 3: Generalize workspace materialization to multi-component project workspaces
 
