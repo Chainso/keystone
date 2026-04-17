@@ -127,6 +127,11 @@ Backward compatibility with an external shipped product is not required because 
   **Decision:** Update the durable docs now, but keep the plan active until the exact Think demo rerun can be repeated on a host session with a valid `CLOUDFLARE_API_TOKEN`.  
   **Rationale:** The Phase 5 archive gate requires rerunning `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` exactly as documented. On this machine, local Wrangler startup fails before the Worker is ready if the host token is missing or invalid.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 5 Fix Pass  
+  **Decision:** Correct the Phase 5 docs so the exact gate command remains `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`, and label the `--run-id` form as a manual convenience path only.  
+  **Rationale:** The review finding was accurate: the docs had drifted from the plan gate and were describing a different invocation as exact validation.
+
 ## Progress
 
 - [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remained active.
