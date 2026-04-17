@@ -129,7 +129,7 @@ Backward compatibility with an external shipped product is not required because 
 
 - **Date:** 2026-04-17  
   **Phase:** Phase 5 Fix Pass  
-  **Decision:** Correct the Phase 5 docs so the exact gate command remains `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`, and label the `--run-id` form as a manual convenience path only.  
+  **Decision:** Correct the Phase 5 docs so the exact gate sequence remains `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`, and label the `--run-id` form as a manual convenience path only.  
   **Rationale:** The review finding was accurate: the docs had drifted from the plan gate and were describing a different invocation as exact validation.
 
 ## Progress
