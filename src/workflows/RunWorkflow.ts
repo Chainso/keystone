@@ -14,6 +14,8 @@ import type { AgentRuntimeKind } from "../maestro/contracts";
 import { getSessionRecord, updateSessionStatus } from "../lib/db/runs";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
+import type { RunExecutionOptions } from "../lib/runs/options";
+import { resolveRunExecutionOptions } from "../lib/runs/options";
 import { evaluateRepoSourcePolicy } from "../lib/security/policy";
 import {
   buildRunWorkflowInstanceId,
@@ -25,7 +27,11 @@ import {
   loadExistingRunPlan,
   resolveRunAgentRuntime
 } from "../lib/workflows/idempotency";
-import { compileRunPlan, type CompileRepoSource } from "../keystone/compile/plan-run";
+import {
+  compileDemoFixtureRunPlan,
+  compileRunPlan,
+  type CompileRepoSource
+} from "../keystone/compile/plan-run";
 import { decisionPackageSchema, type DecisionPackage } from "../keystone/compile/contracts";
 import { finalizeRun } from "../keystone/integration/finalize-run";
 import { loadCompiledRunPlanArtifact } from "../keystone/tasks/load-task-contracts";
@@ -48,9 +54,11 @@ export interface RunWorkflowParams {
   repo?: CompileRepoSource | undefined;
   decisionPackage?: RunWorkflowDecisionPackageInput | undefined;
   runtime?: AgentRuntimeKind | undefined;
+  options?: RunExecutionOptions | undefined;
 }
 
-const MAX_TASK_POLL_ATTEMPTS = 20;
+const DEFAULT_MAX_TASK_POLL_ATTEMPTS = 20;
+const LIVE_THINK_MAX_TASK_POLL_ATTEMPTS = 120;
 
 interface TaskWorkflowOutput {
   taskId: string;
@@ -110,6 +118,21 @@ function resolveDecisionPackage(
   );
 }
 
+function shouldUseDeterministicFixtureCompile(
+  repo: CompileRepoSource,
+  decisionPackage: DecisionPackage,
+  runtime: AgentRuntimeKind,
+  options: RunExecutionOptions
+) {
+  return (
+    runtime === "think" &&
+    options.thinkMode === "live" &&
+    repo.source === "localPath" &&
+    repo.localPath.endsWith("fixtures/demo-target") &&
+    decisionPackage.decisionPackageId === "demo-greeting-update"
+  );
+}
+
 export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowParams> {
   async run(event: Readonly<WorkflowEvent<RunWorkflowParams>>, step: WorkflowStep) {
     const repo = resolveRunRepo(event.payload.repo);
@@ -149,7 +172,8 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           repo,
           decisionPackageId: decisionPackage.decisionPackageId,
           workflowInstanceId,
-          runtime: resolveRunAgentRuntime(event.payload.runtime, currentSession.metadata)
+          runtime: resolveRunAgentRuntime(event.payload.runtime, currentSession.metadata),
+          options: resolveRunExecutionOptions(event.payload.options, currentSession.metadata)
         };
 
         if (currentSession.status === "configured") {
@@ -209,7 +233,8 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         return {
           runSessionId,
           workflowInstanceId,
-          runtime: statusMetadata.runtime
+          runtime: statusMetadata.runtime,
+          options: statusMetadata.options
         };
       } finally {
         await client.close();
@@ -344,7 +369,15 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           compileSessionId
         );
 
-        const result = await compileRunPlan({
+        const compile = shouldUseDeterministicFixtureCompile(
+          repo,
+          decisionPackage,
+          runContext.runtime,
+          runContext.options
+        )
+          ? compileDemoFixtureRunPlan
+          : compileRunPlan;
+        const result = await compile({
           env: this.env,
           client,
           tenantId: event.payload.tenantId,
@@ -374,7 +407,8 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           runSessionId,
           taskId: task.taskId,
           repo,
-          runtime: runContext.runtime
+          runtime: runContext.runtime,
+          options: runContext.options
         }
       }));
 
@@ -384,8 +418,12 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
     });
 
     let taskResults: TaskWorkflowOutput[] = [];
+    const maxTaskPollAttempts =
+      runContext.runtime === "think" && runContext.options.thinkMode === "live"
+        ? LIVE_THINK_MAX_TASK_POLL_ATTEMPTS
+        : DEFAULT_MAX_TASK_POLL_ATTEMPTS;
 
-    for (let attempt = 0; attempt < MAX_TASK_POLL_ATTEMPTS; attempt += 1) {
+    for (let attempt = 0; attempt < maxTaskPollAttempts; attempt += 1) {
       const pollSnapshot: TaskWorkflowStatusSnapshot[] = await step.do(
         `poll task workflows ${attempt}`,
         async () => {
@@ -425,7 +463,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
     }
 
     if (taskResults.length === 0) {
-      throw new NonRetryableError("Task workflows did not reach a terminal state within the Phase 5 polling window.");
+      throw new NonRetryableError("Task workflows did not reach a terminal state within the polling window.");
     }
 
     const finalizedRun: FinalizeRunSnapshot = await step.do("finalize run", async () => {

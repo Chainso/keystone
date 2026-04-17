@@ -8,6 +8,7 @@ import { listRunArtifacts } from "../../lib/db/artifacts";
 import { createSessionRecord, listRunSessions } from "../../lib/db/runs";
 import { jsonErrorResponse } from "../../lib/http/errors";
 import { buildRunSummary } from "../../lib/runs/summary";
+import { resolveRunExecutionOptions } from "../../lib/runs/options";
 import { buildRunWorkflowInstanceId } from "../../lib/workflows/ids";
 import { resolveRunAgentRuntime } from "../../lib/workflows/idempotency";
 import { decisionPackageSchema } from "../../keystone/compile/contracts";
@@ -18,6 +19,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
   const auth = context.get("auth");
   const input = parseRunInput(body);
   const runtime = resolveRunAgentRuntime(context.req.header("X-Keystone-Agent-Runtime"));
+  const options = resolveRunExecutionOptions(input.options);
   const runId = crypto.randomUUID();
   const workflowInstanceId = buildRunWorkflowInstanceId(auth.tenantId, runId);
   const workflowDecisionPackage =
@@ -38,7 +40,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
         authMode: auth.authMode,
         repo: input.repo,
         decisionPackage: input.decisionPackage,
-        runtime
+        runtime,
+        options
       }
     });
 
@@ -79,7 +82,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
         runSessionId: session.sessionId,
         repo: input.repo,
         decisionPackage: workflowDecisionPackage,
-        runtime
+        runtime,
+        options
       }
     });
 
@@ -94,6 +98,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
           decisionPackage: input.decisionPackage.source
         },
         runtime,
+        options,
         workflowInstanceId,
         summaryUrl: `/v1/runs/${runId}`,
         websocketUrl: `/v1/runs/${runId}/ws`,
@@ -142,6 +147,50 @@ export async function getRunHandler(context: Context<AppEnv>) {
     });
 
     return context.json(summary);
+  } finally {
+    await client.close();
+  }
+}
+
+export async function getRunEventsHandler(context: Context<AppEnv>) {
+  const auth = context.get("auth");
+  const runId = context.req.param("runId");
+
+  if (!runId) {
+    return jsonErrorResponse("invalid_path", "Run ID is required.", 400);
+  }
+
+  const client = createWorkerDatabaseClient(context.env);
+
+  try {
+    const sessions = await listRunSessions(client, auth.tenantId, runId);
+
+    if (sessions.length === 0) {
+      return jsonErrorResponse("run_not_found", `Run ${runId} was not found.`, 404);
+    }
+
+    const events = await listRunEvents(client, {
+      tenantId: auth.tenantId,
+      runId
+    });
+
+    return context.json({
+      tenantId: auth.tenantId,
+      runId,
+      total: events.length,
+      events: events.map((event) => ({
+        eventId: event.eventId,
+        sessionId: event.sessionId,
+        taskId: event.taskId,
+        seq: event.seq,
+        eventType: event.eventType,
+        actor: event.actor,
+        severity: event.severity,
+        timestamp: event.ts.toISOString(),
+        artifactRefId: event.artifactRefId,
+        payload: event.payload
+      }))
+    });
   } finally {
     await client.close();
   }

@@ -2,6 +2,33 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
+  const getThinkAgentStub = vi.fn(() => ({
+    runImplementerTurn: vi.fn(async () => ({
+      outcome: "completed",
+      stagedArtifacts: [
+        {
+          path: "/artifacts/out/implementer-summary.md",
+          kind: "run_note",
+          contentType: "text/markdown; charset=utf-8",
+          metadata: {
+            fileName: "implementer-summary.md"
+          }
+        }
+      ],
+      events: [
+        {
+          eventType: "agent.turn.completed",
+          payload: {
+            stagedArtifactCount: 1
+          }
+        }
+      ],
+      summary: "Updated the greeting implementation.",
+      metadata: {
+        modelId: "mock-implementer"
+      }
+    }))
+  }));
 
   return {
     createSessionRecord: vi.fn(async () => ({
@@ -108,35 +135,11 @@ const mocked = vi.hoisted(() => {
           exitCode: 0
         }
       })),
+      preserveForInspection: vi.fn(async () => undefined),
       teardown: vi.fn(async () => undefined)
     })),
-    getThinkAgentStub: vi.fn(() => ({
-      runImplementerTurn: vi.fn(async () => ({
-        outcome: "completed",
-        stagedArtifacts: [
-          {
-            path: "/artifacts/out/implementer-summary.md",
-            kind: "run_note",
-            contentType: "text/markdown; charset=utf-8",
-            metadata: {
-              fileName: "implementer-summary.md"
-            }
-          }
-        ],
-        events: [
-          {
-            eventType: "agent.turn.completed",
-            payload: {
-              stagedArtifactCount: 1
-            }
-          }
-        ],
-        summary: "Updated the greeting implementation.",
-        metadata: {
-          modelId: "mock-implementer"
-        }
-      }))
-    })),
+    getThinkAgentStub,
+    getAgentByName: vi.fn(async () => getThinkAgentStub()),
     compileRunPlan: vi.fn(async () => ({
       plan: {
         decisionPackageId: "demo-greeting-update",
@@ -154,7 +157,7 @@ const mocked = vi.hoisted(() => {
       },
       completion: {
         id: "chatcmpl-demo",
-        model: "gpt-5.4-mini",
+        model: "gpt-5.4",
         finishReason: "stop",
         usage: {
           totalTokens: 42
@@ -215,6 +218,10 @@ vi.mock("../../src/keystone/compile/plan-run", () => ({
   compileRunPlan: mocked.compileRunPlan
 }));
 
+vi.mock("agents", () => ({
+  getAgentByName: mocked.getAgentByName
+}));
+
 const { app } = await import("../../src/http/app");
 
 const env = {
@@ -223,7 +230,7 @@ const env = {
     connectionString: "postgres://test"
   } as Hyperdrive,
   KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4-mini",
+  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4",
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
   KEYSTONE_DEV_TOKEN: "secret-dev-token",
   RUN_WORKFLOW: {
@@ -233,9 +240,7 @@ const env = {
   RUN_COORDINATOR: {} as DurableObjectNamespace,
   SANDBOX: {} as DurableObjectNamespace,
   TASK_SESSION: {} as DurableObjectNamespace,
-  KEYSTONE_THINK_AGENT: {
-    getByName: mocked.getThinkAgentStub
-  } as unknown as DurableObjectNamespace
+  KEYSTONE_THINK_AGENT: {} as DurableObjectNamespace
 } as const;
 
 describe("app", () => {
@@ -346,6 +351,10 @@ describe("app", () => {
           },
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
+          },
+          options: {
+            thinkMode: "live",
+            preserveSandbox: true
           }
         })
       },
@@ -355,12 +364,20 @@ describe("app", () => {
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({
       status: "accepted",
-      runtime: "think"
+      runtime: "think",
+      options: {
+        thinkMode: "live",
+        preserveSandbox: true
+      }
     });
     expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         params: expect.objectContaining({
-          runtime: "think"
+          runtime: "think",
+          options: {
+            thinkMode: "live",
+            preserveSandbox: true
+          }
         })
       })
     );
@@ -384,6 +401,83 @@ describe("app", () => {
       runId: "run-123",
       tenantId: "tenant-fixture",
       status: "configured"
+    });
+  });
+
+  it("returns the persisted event log for an existing run", async () => {
+    mocked.listRunEvents.mockResolvedValueOnce([
+      {
+        eventId: "event-1",
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        taskId: "task-greeting-tone",
+        seq: 1,
+        eventType: "workspace.task_view_created",
+        actor: "keystone",
+        severity: "info",
+        ts: new Date("2026-04-14T00:00:03.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {
+          worktreePath: "/workspace/runs/run-123/tasks/task-greeting-tone",
+          workspaceTargetPath: "/workspace/runs/run-123/tasks/task-greeting-tone"
+        }
+      },
+      {
+        eventId: "event-2",
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        taskId: "task-greeting-tone",
+        seq: 2,
+        eventType: "agent.tool_call",
+        actor: "keystone-think-implementer",
+        severity: "info",
+        ts: new Date("2026-04-14T00:00:04.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {
+          toolName: "write_file",
+          path: "/workspace/src/greeting.js"
+        }
+      }
+    ] as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/events",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      runId: "run-123",
+      tenantId: "tenant-fixture",
+      total: 2,
+      events: [
+        {
+          eventType: "workspace.task_view_created",
+          taskId: "task-greeting-tone",
+          payload: {
+            worktreePath: "/workspace/runs/run-123/tasks/task-greeting-tone"
+          }
+        },
+        {
+          eventType: "agent.tool_call",
+          actor: "keystone-think-implementer",
+          payload: {
+            toolName: "write_file",
+            path: "/workspace/src/greeting.js"
+          }
+        }
+      ]
     });
   });
 
@@ -475,7 +569,7 @@ describe("app", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       taskCount: 1,
-      model: "gpt-5.4-mini"
+      model: "gpt-5.4"
     });
   });
 

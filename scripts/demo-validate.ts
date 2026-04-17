@@ -13,10 +13,15 @@ function resolveRuntime() {
   return getArg("runtime") ?? process.env.KEYSTONE_AGENT_RUNTIME ?? "scripted";
 }
 
+function resolveThinkMode() {
+  return getArg("think-mode") ?? process.env.KEYSTONE_THINK_DEMO_MODE ?? "mock";
+}
+
 async function main() {
   const runId = getArg("run-id") ?? process.env.KEYSTONE_RUN_ID;
   const baseUrl = resolveBaseUrl();
   const runtime = resolveRuntime();
+  const thinkMode = resolveThinkMode();
 
   if (!runId) {
     throw new Error("Provide --run-id=<id> or set KEYSTONE_RUN_ID.");
@@ -81,6 +86,7 @@ async function main() {
         baseUrl,
         runId,
         runtime,
+        thinkMode,
         status: summary.status,
         sessions: summary.sessions?.total ?? 0,
         artifacts: summary.artifacts ?? {}

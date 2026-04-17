@@ -52,6 +52,20 @@ KEYSTONE_AGENT_RUNTIME=think npm run demo:run
 KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
 ```
 
+For a live-model inspection-oriented Think demo, use the dedicated convenience path:
+
+```bash
+npm run demo:run:think-live
+KEYSTONE_AGENT_RUNTIME=think npm run sandbox:shell
+```
+
+What changes in that path:
+
+- `demo:run:think-live` sends runtime `think` with `thinkMode=live`
+- the Think turn uses the configured local OpenAI-compatible chat-completions backend instead of `mockModelPlan`
+- sandbox preservation is enabled for that run, so `TaskWorkflow` archives the task session for inspection instead of destroying the sandbox container
+- `sandbox:shell` lets you inspect the preserved container while local Wrangler is still running
+
 If you are performing an ad hoc manual rerun and need to provide the run id explicitly, use this convenience form instead:
 
 ```bash

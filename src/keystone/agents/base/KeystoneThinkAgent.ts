@@ -4,6 +4,7 @@ import { generateText } from "ai";
 
 import type { WorkerBindings } from "../../../env";
 import type { EventSeverity } from "../../../lib/events/types";
+import { ensureThinkRpcInitialization } from "./think-rpc";
 import {
   type AgentFilesystemLayout,
   createAgentTurnContext,
@@ -129,6 +130,8 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
     modelId?: string | undefined;
     mockModelPlan?: ImplementerTurnMetadata["mockModelPlan"];
   }) {
+    await ensureThinkRpcInitialization(this);
+
     const context = this.createTurnContext({
       tenantId: input.tenantId,
       runId: input.runId,

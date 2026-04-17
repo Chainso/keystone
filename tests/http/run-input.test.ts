@@ -12,11 +12,19 @@ describe("runInputSchema", () => {
         payload: {
           summary: "Validate inline package support"
         }
+      },
+      options: {
+        thinkMode: "live",
+        preserveSandbox: true
       }
     });
 
     expect(parsed.repo.source).toBe("localPath");
     expect(parsed.decisionPackage.source).toBe("payload");
+    expect(parsed.options).toEqual({
+      thinkMode: "live",
+      preserveSandbox: true
+    });
   });
 
   it("accepts a git repository with a decision-package file path", () => {
@@ -32,6 +40,10 @@ describe("runInputSchema", () => {
 
     expect(parsed.repo.source).toBe("gitUrl");
     expect(parsed.decisionPackage.source).toBe("localPath");
+    expect(parsed.options).toEqual({
+      thinkMode: "mock",
+      preserveSandbox: false
+    });
   });
 
   it("rejects ambiguous repo inputs", () => {
@@ -48,5 +60,23 @@ describe("runInputSchema", () => {
         }
       })
     ).toThrow(/Provide exactly one of repo.localPath or repo.gitUrl/);
+  });
+
+  it("rejects invalid run options", () => {
+    expect(() =>
+      parseRunInput({
+        repo: {
+          localPath: "./fixtures/demo-target"
+        },
+        decisionPackage: {
+          payload: {
+            summary: "bad options"
+          }
+        },
+        options: {
+          thinkMode: "unknown"
+        }
+      })
+    ).toThrow(/Invalid option: expected one of "mock"|"live"/);
   });
 });

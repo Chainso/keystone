@@ -61,7 +61,7 @@
   "vars": {
     "KEYSTONE_DEV_TENANT_ID": "tenant-dev-local",
     "KEYSTONE_CHAT_COMPLETIONS_BASE_URL": "http://localhost:10531",
-    "KEYSTONE_CHAT_COMPLETIONS_MODEL": "gpt-5.4-mini"
+    "KEYSTONE_CHAT_COMPLETIONS_MODEL": "gpt-5.4"
   },
   "r2_buckets": [
     {

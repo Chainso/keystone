@@ -583,6 +583,50 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     }
   }
 
+  async preserveForInspection(): Promise<TaskSessionState> {
+    const snapshot = this.requireState();
+    const client = createWorkerDatabaseClient(this.env);
+
+    try {
+      const existingSession = await getSessionRecord(client, snapshot.tenantId, snapshot.sessionId);
+
+      if (existingSession && existingSession.status !== "archived") {
+        await updateSessionStatus(client, {
+          tenantId: snapshot.tenantId,
+          sessionId: snapshot.sessionId,
+          status: "archived",
+          metadata: {
+            ...(existingSession.metadata ?? {}),
+            preservedSandbox: true,
+            preservedAt: new Date().toISOString()
+          }
+        });
+      }
+
+      await appendAndPublishRunEvent(client, this.env, {
+        tenantId: snapshot.tenantId,
+        runId: snapshot.runId,
+        sessionId: snapshot.sessionId,
+        taskId: snapshot.taskId,
+        eventType: "sandbox.preserved",
+        payload: {
+          sandboxId: snapshot.sandboxId
+        },
+        status: "archived"
+      });
+
+      this.stateSnapshot = {
+        ...snapshot,
+        lastPolledAt: new Date().toISOString()
+      };
+      await this.persistState();
+
+      return this.requireState();
+    } finally {
+      await client.close();
+    }
+  }
+
   async getSnapshot(): Promise<TaskSessionState | null> {
     return this.stateSnapshot;
   }

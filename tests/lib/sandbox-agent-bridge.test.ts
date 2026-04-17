@@ -273,13 +273,25 @@ describe("sandbox agent bridge", () => {
     const { session, bridge } = await createMaterializedBridge();
 
     const sessionJson = await session.readFile(bridge.controlFiles.session);
+    const filesystemJson = await session.readFile(bridge.controlFiles.filesystem);
     const artifactManifest = await session.readFile(bridge.controlFiles.artifacts);
 
     expect(JSON.parse(sessionJson.content)).toMatchObject({
       tenantId: "tenant-a",
       runId: "run-123",
-      taskId: "task-1"
+      taskId: "task-1",
+      workspace: {
+        workspaceRoot: "/workspace"
+      }
     });
+    expect(sessionJson.content).not.toContain("/workspace/runs/run-123");
+    expect(JSON.parse(filesystemJson.content)).toMatchObject({
+      layout: bridge.layout,
+      readOnlyRoots: bridge.readOnlyRoots,
+      writableRoots: bridge.writableRoots
+    });
+    expect(filesystemJson.content).not.toContain("\"targets\"");
+    expect(filesystemJson.content).not.toContain("/workspace/runs/run-123");
     expect(JSON.parse(artifactManifest.content)).toMatchObject({
       count: 1
     });

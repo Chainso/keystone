@@ -256,16 +256,13 @@ export async function materializeSandboxAgentBridge(
       repoUrl: input.workspace.repoUrl,
       repoRef: input.workspace.repoRef,
       baseRef: input.workspace.baseRef,
-      workspaceRoot: input.workspace.workspaceRoot,
-      repositoryPath: input.workspace.repositoryPath,
-      worktreePath: input.workspace.worktreePath,
+      workspaceRoot: nextBridge.layout.workspaceRoot,
       branchName: input.workspace.branchName,
       headSha: input.workspace.headSha
     }
   });
   await writeJsonFile(session, nextBridge.controlFiles.filesystem, {
     layout: nextBridge.layout,
-    targets: nextBridge.targets,
     readOnlyRoots: nextBridge.readOnlyRoots,
     writableRoots: nextBridge.writableRoots
   });

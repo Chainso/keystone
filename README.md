@@ -58,6 +58,15 @@ KEYSTONE_AGENT_RUNTIME=think npm run demo:run
 KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
 ```
 
+For a live-model Think demo that keeps the sandbox available for inspection after the run finishes, use:
+
+```bash
+npm run demo:run:think-live
+KEYSTONE_AGENT_RUNTIME=think npm run sandbox:shell
+```
+
+`demo:run:think-live` routes the Think turn through the real local chat-completions backend instead of the deterministic mock model path and sets sandbox preservation on the run so the container is not destroyed at the end of the task workflow.
+
 For ad hoc manual Think validation when you need to supply the run id explicitly, use:
 
 ```bash

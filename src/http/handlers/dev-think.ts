@@ -1,3 +1,4 @@
+import { getAgentByName } from "agents";
 import type { Context } from "hono";
 
 import type { AppEnv } from "../../env";
@@ -92,7 +93,8 @@ export async function runThinkSmokeHandler(context: Context<AppEnv>) {
         throw new Error("Think smoke workspace did not materialize an agent bridge.");
       }
 
-      const agent = context.env.KEYSTONE_THINK_AGENT.getByName(
+      const agent = await getAgentByName(
+        context.env.KEYSTONE_THINK_AGENT,
         `tenant:${auth.tenantId}:run:${runId}:task:${taskSessionId}`
       ) as Pick<KeystoneThinkAgent, "runImplementerTurn">;
       const result = await agent.runImplementerTurn({

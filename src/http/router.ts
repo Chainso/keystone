@@ -5,7 +5,7 @@ import { resolveApprovalHandler } from "./handlers/approvals";
 import { runCompileSmokeHandler } from "./handlers/dev-compile";
 import { runSandboxSmokeHandler } from "./handlers/dev-smoke";
 import { runThinkSmokeHandler } from "./handlers/dev-think";
-import { createRunHandler, getRunHandler } from "./handlers/runs";
+import { createRunHandler, getRunEventsHandler, getRunHandler } from "./handlers/runs";
 import { runWebSocketHandler } from "./handlers/ws";
 import { requireDevAuth } from "./middleware/auth";
 
@@ -38,6 +38,7 @@ router.get("/v1/health", (context) => {
 
 router.post("/v1/runs", requireDevAuth, createRunHandler);
 router.get("/v1/runs/:runId", requireDevAuth, getRunHandler);
+router.get("/v1/runs/:runId/events", requireDevAuth, getRunEventsHandler);
 router.post(
   "/v1/runs/:runId/approvals/:approvalId/resolve",
   requireDevAuth,

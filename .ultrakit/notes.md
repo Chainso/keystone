@@ -19,3 +19,4 @@ These notes help future agents work effectively without rediscovering project-sp
 - The fixture happy path depends on `npm test` inside the sandboxed task worktree; task workflows assume the target repo can run that command.
 - Direct `wrangler workflows trigger run-workflow --local` must keep `RunCoordinatorDO` initialization inside the workflow path itself because the HTTP create-run path is not present there to seed the coordinator first.
 - If port `8787` is already occupied, `wrangler dev` may bind another local port. Use Wrangler's `Ready on ...` URL via `KEYSTONE_BASE_URL` or the scripts' `--base-url=` flag instead of assuming `127.0.0.1:8787`.
+- Current planning preference: do not introduce first-class `Thread` or `Lease` primitives unless a concrete Keystone gap appears that Think or the Cloudflare runtime cannot already cover.

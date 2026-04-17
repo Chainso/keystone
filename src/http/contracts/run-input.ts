@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { runExecutionOptionsSchema } from "../../lib/runs/options";
+
 const repoSourceSchema = z
   .object({
     localPath: z.string().trim().min(1).optional(),
@@ -68,7 +70,11 @@ const decisionPackageSchema = z
 
 export const runInputSchema = z.object({
   repo: repoSourceSchema,
-  decisionPackage: decisionPackageSchema
+  decisionPackage: decisionPackageSchema,
+  options: runExecutionOptionsSchema.default({
+    thinkMode: "mock",
+    preserveSandbox: false
+  })
 });
 
 export type RunInput = z.infer<typeof runInputSchema>;

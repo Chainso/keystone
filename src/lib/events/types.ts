@@ -17,6 +17,7 @@ export const knownSessionEventTypes = [
   "sandbox.process.stdout",
   "sandbox.process.stderr",
   "sandbox.process.completed",
+  "sandbox.preserved",
   "sandbox.teardown",
   "lease.acquired",
   "lease.renewed",

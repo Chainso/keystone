@@ -1,6 +1,7 @@
 import { posix as path } from "node:path";
 
 import type { ProcessStatus } from "@cloudflare/sandbox";
+import { getAgentByName } from "agents";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { NonRetryableError } from "cloudflare:workflows";
 
@@ -17,6 +18,8 @@ import { createWorkerDatabaseClient } from "../lib/db/client";
 import { listSessionEvents } from "../lib/db/events";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { getTaskSessionStub } from "../lib/auth/tenant";
+import type { RunExecutionOptions } from "../lib/runs/options";
+import { resolveRunExecutionOptions } from "../lib/runs/options";
 import { demoTargetFixtureFiles } from "../lib/workspace/fixtures";
 import { buildStableSessionId } from "../lib/workflows/ids";
 import { taskLogArtifactKey, tenantRunPrefix } from "../lib/artifacts/keys";
@@ -31,6 +34,7 @@ export interface TaskWorkflowParams {
   runSessionId: string;
   taskId: string;
   runtime?: AgentRuntimeKind | undefined;
+  options?: RunExecutionOptions | undefined;
   repo: {
     source: "localPath" | "gitUrl";
     localPath?: string | undefined;
@@ -141,6 +145,7 @@ interface TaskWorkspaceSnapshot {
 export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflowParams> {
   async run(event: Readonly<WorkflowEvent<TaskWorkflowParams>>, step: WorkflowStep) {
     const runtime = resolveRunAgentRuntime(event.payload.runtime);
+    const options = resolveRunExecutionOptions(event.payload.options);
     const handoff = await step.do("load task handoff", async () =>
       loadTaskHandoffArtifact(this.env, event.payload.tenantId, event.payload.runId, event.payload.taskId)
     );
@@ -212,10 +217,11 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
     const execution = runtime === "think"
       ? await step.do("run think implementer", async () => {
           const agentBridge = JSON.parse(taskSessionState.agentBridgeJson) as SerializableAgentBridge;
-          const agent = this.env.KEYSTONE_THINK_AGENT.getByName(
+          const agent = await getAgentByName(
+            this.env.KEYSTONE_THINK_AGENT,
             getThinkAgentName(event.payload.tenantId, event.payload.runId, taskSessionState.taskSessionId)
           ) as Pick<KeystoneThinkAgent, "runImplementerTurn">;
-          const turnInput = resolveThinkTurnInput(event.payload, handoff);
+          const turnInput = resolveThinkTurnInput(event.payload, handoff, options);
           const result = await agent.runImplementerTurn({
             tenantId: event.payload.tenantId,
             runId: event.payload.runId,
@@ -284,7 +290,7 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
       return taskStatus;
     });
 
-    await step.do("teardown task session", async () => {
+    await step.do(options.preserveSandbox ? "preserve task session" : "teardown task session", async () => {
       const taskSession = getTaskSessionStub(
         this.env,
         event.payload.tenantId,
@@ -293,7 +299,11 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
         event.payload.taskId
       );
 
-      await taskSession.teardown();
+      if (options.preserveSandbox) {
+        await taskSession.preserveForInspection();
+      } else {
+        await taskSession.teardown();
+      }
 
       return true;
     });
@@ -501,20 +511,25 @@ function buildThinkImplementerPrompt(handoff: Awaited<ReturnType<typeof loadTask
 
 function resolveThinkTurnInput(
   payload: TaskWorkflowParams,
-  handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>
+  handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>,
+  options: RunExecutionOptions
 ) {
   if (
     payload.repo.source === "localPath" &&
     payload.repo.localPath?.endsWith("fixtures/demo-target") &&
     handoff.task.taskId === "task-greeting-tone"
   ) {
+    if (options.thinkMode === "live") {
+      return {};
+    }
+
     return {
       mockModelPlan: createThinkSmokePlan()
     };
   }
 
   throw new NonRetryableError(
-    "The Think runtime is only wired for the fixture-backed Phase 4 task path."
+    "The Think runtime is only wired for the fixture-backed demo task path."
   );
 }
 

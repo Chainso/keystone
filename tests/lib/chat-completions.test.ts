@@ -24,7 +24,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -41,7 +41,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -58,7 +58,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -75,7 +75,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -92,7 +92,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -109,7 +109,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -126,7 +126,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -143,7 +143,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [
               {
                 index: 0,
@@ -160,7 +160,7 @@ describe("chat completions client", () => {
             id: "chatcmpl-1",
             object: "chat.completion.chunk",
             created: 1,
-            model: "gpt-5.4-mini",
+            model: "gpt-5.4",
             choices: [],
             usage: {
               prompt_tokens: 0,
@@ -185,7 +185,7 @@ describe("chat completions client", () => {
     const result = await createChatCompletion({
       env: {
         KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4-mini"
+        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4"
       },
       messages: [
         {
@@ -234,7 +234,7 @@ describe("chat completions client", () => {
     const result = parseChatCompletionResponse(
       JSON.stringify({
         id: "chatcmpl-json",
-        model: "gpt-5.4-mini",
+        model: "gpt-5.4",
         choices: [
           {
             message: {
