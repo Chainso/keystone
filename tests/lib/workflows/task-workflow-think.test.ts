@@ -116,6 +116,45 @@ const mocked = vi.hoisted(() => {
       db: {},
       sql: {}
     })),
+    getProject: vi.fn(async () => ({
+      tenantId: "tenant-fixture",
+      projectId: "project-fixture",
+      projectKey: "fixture-demo-project",
+      displayName: "Fixture Demo Project",
+      description: "Fixture project",
+      ruleSet: {
+        reviewInstructions: ["Summarize the implementation result before handoff."],
+        testInstructions: ["Run the fixture demo tests before completing the task."]
+      },
+      components: [
+        {
+          componentKey: "demo-target",
+          displayName: "Demo Target",
+          kind: "git_repository",
+          config: {
+            localPath: "./fixtures/demo-target",
+            defaultRef: "main"
+          },
+          ruleOverride: {
+            reviewInstructions: ["Focus on app code paths."],
+            testInstructions: ["Run demo-target tests first."],
+            metadata: {}
+          },
+          metadata: {}
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_FIXTURE_PROJECT",
+          value: "1",
+          metadata: {}
+        }
+      ],
+      integrationBindings: [],
+      metadata: {},
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    })),
     appendAndPublishRunEvent: vi.fn(async () => ({
       eventId: crypto.randomUUID(),
       ts: new Date("2026-04-17T00:00:00.000Z")
@@ -189,6 +228,10 @@ vi.mock("../../../src/lib/auth/tenant", () => ({
 
 vi.mock("../../../src/lib/db/client", () => ({
   createWorkerDatabaseClient: mocked.createWorkerDatabaseClient
+}));
+
+vi.mock("../../../src/lib/db/projects", () => ({
+  getProject: mocked.getProject
 }));
 
 vi.mock("../../../src/lib/events/publish", () => ({
@@ -284,10 +327,10 @@ function createWorkflowEvent(thinkMode: "live" | "mock") {
         thinkMode,
         preserveSandbox: false
       },
-      repo: {
-        source: "localPath" as const,
-        localPath: "./fixtures/demo-target",
-        ref: "main"
+      project: {
+        projectId: "project-fixture",
+        projectKey: "fixture-demo-project",
+        displayName: "Fixture Demo Project"
       }
     }
   };
@@ -341,6 +384,9 @@ describe("TaskWorkflow Think runtime", () => {
     expect(call?.prompt).toContain("Decision package: demo-greeting-update");
     expect(call?.prompt).toContain("Task ID: task-live-implementation");
     expect(call?.prompt).toContain("Depends on: none");
+    expect(call?.prompt).toContain("Project: Fixture Demo Project (fixture-demo-project)");
+    expect(call?.prompt).toContain("Project review instructions:");
+    expect(call?.prompt).toContain("Component-specific rule overrides:");
     expect(call?.prompt).toContain("Projected decision_package, run_plan, and task_handoff artifacts");
     expect(mocked.createArtifactRef).toHaveBeenCalledWith(
       expect.any(Object),
@@ -373,12 +419,18 @@ describe("TaskWorkflow Think runtime", () => {
     const taskSession = await mocked.getTaskSessionStub.mock.results[0]?.value;
 
     expect(taskSession?.ensureWorkspace).toHaveBeenCalledWith({
-      source: {
-        type: "inline",
-        repoUrl: "fixture://demo-target",
-        repoRef: "main",
-        baseRef: "main",
-        files: expect.any(Array)
+      components: [
+        {
+          type: "inline",
+          componentKey: "demo-target",
+          repoUrl: "fixture://demo-target",
+          repoRef: "main",
+          baseRef: "main",
+          files: expect.any(Array)
+        }
+      ],
+      env: {
+        KEYSTONE_FIXTURE_PROJECT: "1"
       }
     });
   });

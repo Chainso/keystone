@@ -65,6 +65,40 @@ const mocked = vi.hoisted(() => {
       db: {},
       sql: {}
     })),
+    getProject: vi.fn(async () => ({
+      tenantId: "tenant-fixture",
+      projectId: "project-fixture",
+      projectKey: "fixture-demo-project",
+      displayName: "Fixture Demo Project",
+      description: "Fixture project",
+      ruleSet: {
+        reviewInstructions: ["Review the result."],
+        testInstructions: ["Run fixture tests."]
+      },
+      components: [
+        {
+          componentKey: "demo-target",
+          displayName: "Demo Target",
+          kind: "git_repository",
+          config: {
+            localPath: "./fixtures/demo-target",
+            defaultRef: "main"
+          },
+          metadata: {}
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_FIXTURE_PROJECT",
+          value: "1",
+          metadata: {}
+        }
+      ],
+      integrationBindings: [],
+      metadata: {},
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    })),
     getSessionRecord: vi.fn(async () => undefined),
     updateSessionStatus: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
@@ -190,6 +224,10 @@ vi.mock("../../../src/lib/db/client", () => ({
   createWorkerDatabaseClient: mocked.createWorkerDatabaseClient
 }));
 
+vi.mock("../../../src/lib/db/projects", () => ({
+  getProject: mocked.getProject
+}));
+
 vi.mock("../../../src/lib/db/runs", () => ({
   getSessionRecord: mocked.getSessionRecord,
   updateSessionStatus: mocked.updateSessionStatus
@@ -303,11 +341,7 @@ function createWorkflowEvent(thinkMode: "live" | "mock") {
       tenantId: "tenant-fixture",
       runId: "run-123",
       runSessionId: "run-session-123",
-      repo: {
-        source: "localPath" as const,
-        localPath: "./fixtures/demo-target",
-        ref: "main"
-      },
+      projectId: "project-fixture",
       decisionPackage: {
         source: "payload" as const,
         payload: JSON.parse(JSON.stringify(demoDecisionPackageFixture))
@@ -378,6 +412,10 @@ describe("RunWorkflow compile routing", () => {
     expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
     expect(fanoutBatch[0].params).toMatchObject({
       taskId: persistedTask.taskId,
+      project: {
+        projectId: "project-fixture",
+        projectKey: "fixture-demo-project"
+      },
       runtime: "think",
       options: {
         thinkMode: "live",
@@ -525,18 +563,24 @@ describe("RunWorkflow compile routing", () => {
 
     expect(mocked.compileDemoFixtureRunPlan).toHaveBeenCalledTimes(1);
     expect(mocked.compileRunPlan).not.toHaveBeenCalled();
-    expect(env.TASK_WORKFLOW.createBatch).toHaveBeenCalledWith([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          taskId: fixtureTask.taskId,
-          runtime: "think",
-          options: {
-            thinkMode: "mock",
-            preserveSandbox: false
-          }
+    expect(env.TASK_WORKFLOW.createBatch).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            taskId: fixtureTask.taskId,
+            project: expect.objectContaining({
+              projectId: "project-fixture",
+              projectKey: "fixture-demo-project"
+            }),
+            runtime: "think",
+            options: {
+              thinkMode: "mock",
+              preserveSandbox: false
+            }
+          })
         })
-      })
-    ]);
+      ])
+    );
     expect(result).toMatchObject({
       runId: "run-123",
       taskCount: mocked.fixturePlan.tasks.length,

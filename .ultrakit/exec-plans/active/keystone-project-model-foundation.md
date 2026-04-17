@@ -142,6 +142,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Make component workspace paths collision-safe by percent-encoding full component keys, require explicit valid default-component selection when persisting workspace bindings, and treat pre-existing task worktrees as reusable only after validating the expected repository/branch shape.  
   **Rationale:** The review pass found that slug-and-truncate path derivation could collapse distinct component keys, workspace binding persistence could silently point at the wrong default component, and `.git` presence alone was too weak to trust an existing worktree.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 4  
+  **Decision:** Make `/v1/runs` project-only and have both run and task workflows resolve project execution state from the durable project model, with task workflows reloading the project by `projectId` instead of carrying seeded component files through workflow params.  
+  **Rationale:** Phase 4 needs the repo-backed run contract removed cleanly while keeping the execution path compatible with the current fixture/runtime proof. Resolving the project inside workflows keeps the HTTP surface thin, snapshots the run metadata around durable project state, and avoids brittle local-workflow fanout params.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -154,7 +159,8 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Phase 2 fix pass completed: project-only validation errors are now scoped to `/v1/projects`, duplicate nested keys are rejected at the contract layer, and the route/script tests assert the richer project config surface.
 - [x] 2026-04-17 Phase 3 completed: workspace persistence now records per-component materializations, the sandbox workspace root exposes `/workspace/code/<component-key>`, and task sessions derive a stable default cwd from the materialized component set.
 - [x] 2026-04-17 Phase 3 fix pass completed: component workspace paths now preserve key uniqueness, workspace bindings reject invalid default-component selection, stale task worktrees are recreated instead of silently reused, and targeted Phase 3 tests cover persistence shape, filesystem side effects, and task-workflow integration more deeply.
-- [ ] Phase 4: require `projectId` on runs and wire project-backed workspace execution through workflows, task sessions, and demo scripts.
+- [x] 2026-04-17 Phase 4 implementation landed: `/v1/runs` now requires `projectId`, run/task workflows resolve project-backed components, env vars, and rule context, and the demo scripts bootstrap and target the fixture project instead of a raw repo payload.
+- [ ] Phase 4 live-demo validation follow-up: repo validations are green, but the local Worker currently archives project-backed runs immediately after compile without task fanout/finalization, so `demo:run` and `demo:validate` are still blocked on host-local workflow behavior.
 - [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
 
 ## Surprises & Discoveries
@@ -173,6 +179,8 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - The agent-visible workspace root can move to the shared run workspace in Phase 3 without breaking the current single-component task flows as long as task sessions persist a derived `defaultCwd` that still points at the one materialized component worktree.
 - Phase 3 path derivation should preserve the full `componentKey` identity instead of slugging/truncating it: percent-encoded path segments keep `/workspace/code/<component-key>` stable for safe keys while avoiding collisions from spaces, slashes, or long names.
 - Reusing an on-disk task worktree safely needs more than `worktree/.git` existence; validating the common git dir, checked-out branch, and base-ref reachability is enough to distinguish a real reusable worktree from stale leftovers in the sandbox filesystem.
+- The local demo Worker on this host needed the project migrations applied explicitly via `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate` before `/v1/projects` stopped returning `500`.
+- After the Phase 4 contract migration, the local scripted fixture demo still reaches `compile.completed` and writes `decision_package`, `run_plan`, and `task_handoff`, but the run then archives with only 3 artifacts and no task or finalize events. `demo:run` therefore times out after 60s and `demo:validate` fails its minimum-artifact assertion against that run.
 
 ## Outcomes & Retrospective
 
@@ -214,6 +222,14 @@ Phase 3 fix-pass outcome on 2026-04-17:
 - Task worktree reuse now validates the existing checkout before reusing it and recreates stale worktrees safely when the repository/branch shape no longer matches.
 - The Phase 3 tests now cover multi-row workspace component persistence, shared-root filesystem materialization effects, and the Think task workflow’s task-session workspace integration in addition to new worktree reuse validation.
 - Broad validation passed for `npm run lint`, `npm run typecheck`, and `npm run test`; no additional `npm run build` pass was needed because this fix stayed within workspace helpers and tests.
+
+Phase 4 implementation outcome on 2026-04-17:
+
+- `/v1/runs` now accepts `projectId` instead of a direct repo payload, validates the project exists up front, persists project identity into run metadata, and returns project-aware acceptance responses and summaries.
+- `RunWorkflow` now reloads the durable project, freezes project execution metadata into the run session, resolves the compile repo from the project model, and fans tasks out with a project pointer instead of the legacy repo contract.
+- `TaskWorkflow`, `TaskSessionDO`, the sandbox agent bridge, and the Think/bash runtime now propagate project env vars and project rule context into sandbox execution, while project-backed task sessions materialize workspace components from the durable project model.
+- `demo:run` now bootstraps the fixture project automatically and creates project-backed runs; the route/workflow/demo tests were updated accordingly and broad repo validation passed for `lint`, `typecheck`, `test`, and `build`.
+- Local live demo validation is still blocked on this host: after applying migrations, `demo:run` against `http://127.0.0.1:8787` creates and compiles a project-backed run but never emits task/finalize events, so it times out after 60s, and `demo:validate` against run `306d9180-33a3-4db9-8ecb-9ce7ea5f9acc` fails with `Expected at least 5 artifacts, received 3.`
 
 ## Context and Orientation
 
@@ -461,6 +477,45 @@ Tests  111 passed | 8 skipped (119)
 $ npm run build
 > wrangler deploy --dry-run --outdir .wrangler/deploy
 --dry-run: exiting now.
+```
+
+Phase 4 validation captured on 2026-04-17:
+
+```text
+$ npm run lint
+> eslint .
+```
+
+```text
+$ npm run typecheck
+> tsc --noEmit
+```
+
+```text
+$ npm run test
+Test Files  30 passed | 2 skipped (32)
+Tests  114 passed | 8 skipped (122)
+```
+
+```text
+$ npm run build
+> wrangler deploy --dry-run --outdir .wrangler/deploy
+--dry-run: exiting now.
+```
+
+```text
+$ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate
+Applied migrations: 0002_project_model.sql, 0003_project_workspace_components.sql
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8787 npm run demo:run
+Error: Demo run 306d9180-33a3-4db9-8ecb-9ce7ea5f9acc did not finish within 60000ms.
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8787 KEYSTONE_RUN_ID=306d9180-33a3-4db9-8ecb-9ce7ea5f9acc npm run demo:validate
+Error: Expected at least 5 artifacts, received 3.
 ```
 
 Likely new files/modules by the end of execution:
@@ -769,13 +824,13 @@ Project-required run creation, project-backed workflow execution, env-var propag
 Project env vars are non-secret only in `v1`. Keep the current scripted default runtime and Think runtime intact while migrating to project-backed execution.
 
 **Status**  
-Not started.
+Implemented on 2026-04-17, but still blocked on local live demo validation.
 
 **Completion Notes**  
-Pending.
+`/v1/runs` now requires `projectId`, the run/task workflow contracts are project-backed, task execution receives project env vars and rule context, and the fixture demo scripts target the durable fixture project instead of a raw repo payload. Route, workflow, run-input, and demo-contract coverage were updated, and `lint`, `typecheck`, `test`, and `build` all passed. The remaining blocker is host-local live validation: after local migrations, project-backed runs on `http://127.0.0.1:8787` compile successfully but never emit task/finalize events, so `demo:run` times out and `demo:validate` fails on the archived compile-only run.
 
 **Next Starter Context**  
-After this phase, ad hoc repo-backed runs should be gone and the operator-facing proof path should already be project-backed.
+Investigate why the local Worker archives Phase 4 project-backed runs immediately after `compile.completed` without any `TASK_WORKFLOW` fanout or finalization events. Start from run `306d9180-33a3-4db9-8ecb-9ce7ea5f9acc`, compare the local workflow-engine behavior to the green Node workflow tests, and do not start Phase 5 docs/closeout work until `demo:run` and `demo:validate` both pass against the live Worker.
 
 ### Phase 5: Document the project-backed backend model and close out the plan
 

@@ -3,11 +3,9 @@ import { describe, expect, it } from "vitest";
 import { parseRunInput } from "../../src/http/contracts/run-input";
 
 describe("runInputSchema", () => {
-  it("accepts a local repository with inline decision-package payload", () => {
+  it("accepts a project-backed run with inline decision-package payload", () => {
     const parsed = parseRunInput({
-      repo: {
-        localPath: "./fixtures/demo-target"
-      },
+      projectId: "project-fixture",
       decisionPackage: {
         payload: {
           summary: "Validate inline package support"
@@ -19,7 +17,7 @@ describe("runInputSchema", () => {
       }
     });
 
-    expect(parsed.repo.source).toBe("localPath");
+    expect(parsed.projectId).toBe("project-fixture");
     expect(parsed.decisionPackage.source).toBe("payload");
     expect(parsed.options).toEqual({
       thinkMode: "live",
@@ -27,18 +25,15 @@ describe("runInputSchema", () => {
     });
   });
 
-  it("accepts a git repository with a decision-package file path", () => {
+  it("accepts a project-backed run with a decision-package file path", () => {
     const parsed = parseRunInput({
-      repo: {
-        gitUrl: "https://github.com/example/repo.git",
-        ref: "main"
-      },
+      projectId: "project-fixture",
       decisionPackage: {
         localPath: "./fixtures/demo-decision-package/decision-package.json"
       }
     });
 
-    expect(parsed.repo.source).toBe("gitUrl");
+    expect(parsed.projectId).toBe("project-fixture");
     expect(parsed.decisionPackage.source).toBe("localPath");
     expect(parsed.options).toEqual({
       thinkMode: "mock",
@@ -46,28 +41,23 @@ describe("runInputSchema", () => {
     });
   });
 
-  it("rejects ambiguous repo inputs", () => {
+  it("rejects missing project ids", () => {
     expect(() =>
       parseRunInput({
-        repo: {
-          localPath: "./fixtures/demo-target",
-          gitUrl: "https://github.com/example/repo.git"
-        },
+        projectId: "",
         decisionPackage: {
           payload: {
             summary: "bad input"
           }
         }
       })
-    ).toThrow(/Provide exactly one of repo.localPath or repo.gitUrl/);
+    ).toThrow(/Too small: expected string to have >=1 characters/);
   });
 
   it("rejects invalid run options", () => {
     expect(() =>
       parseRunInput({
-        repo: {
-          localPath: "./fixtures/demo-target"
-        },
+        projectId: "project-fixture",
         decisionPackage: {
           payload: {
             summary: "bad options"

@@ -82,6 +82,7 @@ const baseBridgeSchema = z.object({
   }),
   readOnlyRoots: z.array(z.string()),
   writableRoots: z.array(z.string()),
+  environment: z.record(z.string(), z.string()).optional(),
   controlFiles: z.object({
     session: z.string().trim().min(1),
     filesystem: z.string().trim().min(1),

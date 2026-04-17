@@ -66,6 +66,7 @@ export interface SandboxAgentBridge {
   targets: AgentFilesystemLayout;
   readOnlyRoots: string[];
   writableRoots: string[];
+  environment?: Record<string, string> | undefined;
   controlFiles: {
     session: string;
     filesystem: string;
@@ -123,11 +124,13 @@ export interface MaterializeSandboxAgentBridgeInput {
   sessionId: string;
   taskId: string;
   sandboxId: string;
+  environment?: Record<string, string> | undefined;
   artifacts?: ProjectedArtifactInput[] | undefined;
 }
 
 function createSandboxAgentBridge(
   workspaceTargetPath: string,
+  environment?: Record<string, string>,
   projectedArtifacts: ProjectedArtifactManifestEntry[] = []
 ): SandboxAgentBridge {
   const layout = createAgentFilesystemLayout();
@@ -140,6 +143,7 @@ function createSandboxAgentBridge(
     },
     readOnlyRoots: [layout.artifactsInRoot, layout.keystoneRoot],
     writableRoots: [layout.workspaceRoot, layout.artifactsOutRoot],
+    environment,
     controlFiles: {
       session: `${layout.keystoneRoot}/session.json`,
       filesystem: `${layout.keystoneRoot}/filesystem.json`,
@@ -267,7 +271,7 @@ export async function materializeSandboxAgentBridge(
   input: MaterializeSandboxAgentBridgeInput
 ): Promise<SandboxAgentBridge> {
   const projectedArtifactsInput = input.artifacts ?? [];
-  const bridge = createSandboxAgentBridge(input.workspace.workspaceTargetPath);
+  const bridge = createSandboxAgentBridge(input.workspace.workspaceTargetPath, input.environment);
 
   await prepareProjectionRoots(session, bridge);
 
@@ -278,6 +282,7 @@ export async function materializeSandboxAgentBridge(
   );
   const nextBridge = createSandboxAgentBridge(
     input.workspace.workspaceTargetPath,
+    input.environment,
     projectedArtifacts
   );
 
@@ -287,6 +292,7 @@ export async function materializeSandboxAgentBridge(
     sessionId: input.sessionId,
     taskId: input.taskId,
     sandboxId: input.sandboxId,
+    environment: nextBridge.environment ?? {},
     workspace: {
       workspaceId: input.workspace.workspaceId,
       strategy: input.workspace.strategy,

@@ -10,10 +10,15 @@ import type { WorkerBindings } from "../env";
 import { getRunCoordinatorStub } from "../lib/auth/tenant";
 import { ensureApprovalRequest } from "../lib/approvals/service";
 import { createWorkerDatabaseClient } from "../lib/db/client";
+import { getProject } from "../lib/db/projects";
 import type { AgentRuntimeKind } from "../maestro/contracts";
 import { getSessionRecord, updateSessionStatus } from "../lib/db/runs";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
+import {
+  buildProjectExecutionSnapshot,
+  type ProjectExecutionSnapshot
+} from "../lib/projects/runtime";
 import type { RunExecutionOptions } from "../lib/runs/options";
 import {
   isLiveThinkExecution,
@@ -58,7 +63,7 @@ export interface RunWorkflowParams {
   tenantId: string;
   runId: string;
   runSessionId?: string | undefined;
-  repo?: CompileRepoSource | undefined;
+  projectId: string;
   decisionPackage?: RunWorkflowDecisionPackageInput | undefined;
   runtime?: AgentRuntimeKind | undefined;
   options?: RunExecutionOptions | undefined;
@@ -95,14 +100,12 @@ interface ApprovalResolutionPayload {
   resolution: "approved" | "rejected" | "cancelled";
 }
 
-function resolveRunRepo(repo: CompileRepoSource | undefined): CompileRepoSource {
-  return (
-    repo ?? {
-      source: "localPath",
-      localPath: "./fixtures/demo-target",
-      ref: "main"
-    }
-  );
+interface RunContextSnapshot {
+  runSessionId: string;
+  workflowInstanceId: string;
+  projectExecution: ProjectExecutionSnapshot;
+  runtime: AgentRuntimeKind;
+  options: RunExecutionOptions;
 }
 
 function resolveDecisionPackage(
@@ -141,17 +144,28 @@ export function shouldUseFixtureCompileForRun(
 
 export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowParams> {
   async run(event: Readonly<WorkflowEvent<RunWorkflowParams>>, step: WorkflowStep) {
-    const repo = resolveRunRepo(event.payload.repo);
     const decisionPackage = resolveDecisionPackage(event.payload.decisionPackage);
     const runSessionId =
       event.payload.runSessionId ??
       (await buildStableSessionId("run-session", event.payload.tenantId, event.payload.runId));
     const workflowInstanceId = buildRunWorkflowInstanceId(event.payload.tenantId, event.payload.runId);
 
-    const runContext = await step.do("load run context", async () => {
+    const runContext = (await step.do("load run context", async () => {
       const client = createWorkerDatabaseClient(this.env);
 
       try {
+        const project = await getProject(client, {
+          tenantId: event.payload.tenantId,
+          projectId: event.payload.projectId
+        });
+
+        if (!project) {
+          throw new NonRetryableError(
+            `Project ${event.payload.projectId} was not found for tenant ${event.payload.tenantId}.`
+          );
+        }
+
+        const projectExecution = buildProjectExecutionSnapshot(project);
         const session = await ensureSessionRecord(
           client,
           {
@@ -159,7 +173,11 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
             runId: event.payload.runId,
             sessionType: "run",
             metadata: {
-              repo,
+              project: {
+                projectId: project.projectId,
+                projectKey: project.projectKey,
+                displayName: project.displayName
+              },
               decisionPackageId: decisionPackage.decisionPackageId,
               workflowInstanceId
             }
@@ -175,7 +193,15 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         }
 
         const statusMetadata = {
-          repo,
+          project: {
+            projectId: project.projectId,
+            projectKey: project.projectKey,
+            displayName: project.displayName,
+            componentKeys: projectExecution.components.map((component) => component.componentKey),
+            envVarNames: Object.keys(projectExecution.environment),
+            ruleSet: projectExecution.ruleSet,
+            componentRuleOverrides: projectExecution.componentRuleOverrides
+          },
           decisionPackageId: decisionPackage.decisionPackageId,
           workflowInstanceId,
           runtime: resolveRunAgentRuntime(event.payload.runtime, currentSession.metadata),
@@ -239,15 +265,16 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         return {
           runSessionId,
           workflowInstanceId,
+          projectExecution,
           runtime: statusMetadata.runtime,
           options: statusMetadata.options
         };
       } finally {
         await client.close();
       }
-    });
+    })) as RunContextSnapshot;
 
-    const repoPolicyDecision = evaluateRepoSourcePolicy(repo);
+    const repoPolicyDecision = evaluateRepoSourcePolicy(runContext.projectExecution.compileRepo);
 
     if (repoPolicyDecision.result === "deny") {
       throw new NonRetryableError(repoPolicyDecision.reason);
@@ -262,11 +289,12 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
             tenantId: event.payload.tenantId,
             runId: event.payload.runId,
             sessionId: runSessionId,
-            approvalType: repoPolicyDecision.approvalType ?? "outbound_network",
-            reason: repoPolicyDecision.reason,
-            metadata: {
-              repo
-            }
+              approvalType: repoPolicyDecision.approvalType ?? "outbound_network",
+              reason: repoPolicyDecision.reason,
+              metadata: {
+                projectId: event.payload.projectId,
+                repo: runContext.projectExecution.compileRepo
+              }
           });
         } finally {
           await client.close();
@@ -376,7 +404,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         );
 
         const compile = shouldUseFixtureCompileForRun(
-          repo,
+          runContext.projectExecution.compileRepo,
           decisionPackage,
           runContext.runtime,
           runContext.options
@@ -390,7 +418,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           runId: event.payload.runId,
           runSessionId,
           compileSessionId,
-          repo,
+          repo: runContext.projectExecution.compileRepo,
           decisionPackage
         });
 
@@ -427,7 +455,11 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           runId: event.payload.runId,
           runSessionId,
           taskId: task.taskId,
-          repo,
+          project: {
+            projectId: runContext.projectExecution.projectId,
+            projectKey: runContext.projectExecution.projectKey,
+            displayName: runContext.projectExecution.displayName
+          },
           runtime: runContext.runtime,
           options: runContext.options
         }

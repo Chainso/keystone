@@ -1,4 +1,5 @@
 import { writeDemoState } from "./demo-state";
+import { ensureFixtureProject } from "./ensure-demo-project";
 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -162,6 +163,14 @@ async function createFixtureRun() {
   const runtime = resolveRuntime();
   const thinkMode = resolveThinkMode();
   const preserveSandbox = resolvePreserveSandbox(runtime, thinkMode);
+  const ensuredProject = await ensureFixtureProject();
+  const project = asObject(ensuredProject.project);
+  const projectId = typeof project?.projectId === "string" ? project.projectId : null;
+
+  if (!projectId) {
+    throw new Error("Fixture project bootstrap did not return a projectId.");
+  }
+
   const response = await fetch(`${baseUrl}/v1/runs`, {
     method: "POST",
     headers: {
@@ -171,9 +180,7 @@ async function createFixtureRun() {
       "X-Keystone-Tenant-Id": process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local"
     },
     body: JSON.stringify({
-      repo: {
-        localPath: "./fixtures/demo-target"
-      },
+      projectId,
       decisionPackage: {
         localPath: "./fixtures/demo-decision-package/decision-package.json"
       },

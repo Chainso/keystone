@@ -5,6 +5,7 @@ import { getRunCoordinatorStub } from "../../lib/auth/tenant";
 import { createWorkerDatabaseClient } from "../../lib/db/client";
 import { appendSessionEvent, listRunEvents } from "../../lib/db/events";
 import { listRunArtifacts } from "../../lib/db/artifacts";
+import { getProject } from "../../lib/db/projects";
 import { createSessionRecord, listRunSessions } from "../../lib/db/runs";
 import { jsonErrorResponse } from "../../lib/http/errors";
 import { buildRunSummary } from "../../lib/runs/summary";
@@ -32,13 +33,30 @@ export async function createRunHandler(context: Context<AppEnv>) {
   const client = createWorkerDatabaseClient(context.env);
 
   try {
+    const project = await getProject(client, {
+      tenantId: auth.tenantId,
+      projectId: input.projectId
+    });
+
+    if (!project) {
+      return jsonErrorResponse(
+        "project_not_found",
+        `Project ${input.projectId} was not found.`,
+        404
+      );
+    }
+
     const session = await createSessionRecord(client, {
       tenantId: auth.tenantId,
       runId,
       sessionType: "run",
       metadata: {
         authMode: auth.authMode,
-        repo: input.repo,
+        project: {
+          projectId: project.projectId,
+          projectKey: project.projectKey,
+          displayName: project.displayName
+        },
         decisionPackage: input.decisionPackage,
         runtime,
         options
@@ -57,7 +75,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
       actor: "keystone",
       payload: {
         inputMode: {
-          repo: input.repo.source,
+          project: "stored",
           decisionPackage: input.decisionPackage.source
         }
       }
@@ -80,7 +98,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
         tenantId: auth.tenantId,
         runId,
         runSessionId: session.sessionId,
-        repo: input.repo,
+        projectId: project.projectId,
         decisionPackage: workflowDecisionPackage,
         runtime,
         options
@@ -93,8 +111,13 @@ export async function createRunHandler(context: Context<AppEnv>) {
         status: "accepted",
         tenantId: auth.tenantId,
         authMode: auth.authMode,
+        project: {
+          projectId: project.projectId,
+          projectKey: project.projectKey,
+          displayName: project.displayName
+        },
         inputMode: {
-          repo: input.repo.source,
+          project: "stored",
           decisionPackage: input.decisionPackage.source
         },
         runtime,

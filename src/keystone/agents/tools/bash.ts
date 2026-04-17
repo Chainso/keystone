@@ -56,8 +56,16 @@ export async function execSandboxAgentBash(
     cwd: resolvedCwd
   };
 
-  if (input.env) {
-    execOptions.env = input.env;
+  const mergedEnv =
+    bridge.bridge.environment || input.env
+      ? {
+          ...(bridge.bridge.environment ?? {}),
+          ...(input.env ?? {})
+        }
+      : undefined;
+
+  if (mergedEnv) {
+    execOptions.env = mergedEnv;
   }
 
   if (input.timeout !== undefined) {

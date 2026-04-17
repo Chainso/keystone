@@ -146,6 +146,32 @@ function parseCommandJson(stdout: string) {
   return JSON.parse(trimmedOutput.slice(jsonStart)) as Record<string, unknown>;
 }
 
+function handleDemoProjectBootstrap(request: StubRequest): StubResponse | null {
+  if (request.method === "GET" && request.path === "/v1/projects") {
+    return {
+      body: {
+        tenantId: "tenant-dev-local",
+        total: 0,
+        projects: []
+      }
+    };
+  }
+
+  if (request.method === "POST" && request.path === "/v1/projects") {
+    return {
+      status: 201,
+      body: {
+        project: {
+          projectId: "project-created",
+          projectKey: "fixture-demo-project"
+        }
+      }
+    };
+  }
+
+  return null;
+}
+
 function clearDemoEnv() {
   for (const key of demoEnvKeys) {
     delete process.env[key];
@@ -311,6 +337,11 @@ describe("demo scripts", () => {
 
   it("executes the demo:run entrypoint with the default scripted contract", async () => {
     const server = await startStubServer((request) => {
+      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
+      if (fixtureProjectResponse) {
+        return fixtureProjectResponse;
+      }
+
       if (request.method === "POST" && request.path === "/v1/runs") {
         return {
           body: {
@@ -365,14 +396,20 @@ describe("demo scripts", () => {
         }
       });
 
-      expect(server.requests).toHaveLength(2);
+      expect(server.requests).toHaveLength(4);
       expect(server.requests[0]).toMatchObject({
+        method: "GET",
+        path: "/v1/projects"
+      });
+      expect(server.requests[1]).toMatchObject({
+        method: "POST",
+        path: "/v1/projects"
+      });
+      expect(server.requests[2]).toMatchObject({
         method: "POST",
         path: "/v1/runs",
         body: {
-          repo: {
-            localPath: "./fixtures/demo-target"
-          },
+          projectId: "project-created",
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
           },
@@ -382,8 +419,8 @@ describe("demo scripts", () => {
           }
         }
       });
-      expect(server.requests[0]?.headers["x-keystone-agent-runtime"]).toBe("scripted");
-      expect(server.requests[1]).toMatchObject({
+      expect(server.requests[2]?.headers["x-keystone-agent-runtime"]).toBe("scripted");
+      expect(server.requests[3]).toMatchObject({
         method: "GET",
         path: "/v1/runs/run-scripted"
       });
@@ -394,6 +431,11 @@ describe("demo scripts", () => {
 
   it("executes the demo:run entrypoint for deterministic Think mock requests", async () => {
     const server = await startStubServer((request) => {
+      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
+      if (fixtureProjectResponse) {
+        return fixtureProjectResponse;
+      }
+
       if (request.method === "POST" && request.path === "/v1/runs") {
         return {
           body: {
@@ -462,18 +504,21 @@ describe("demo scripts", () => {
       });
 
       expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+        "GET /v1/projects",
+        "POST /v1/projects",
         "POST /v1/runs",
         "GET /v1/runs/run-think-mock"
       ]);
-      expect(server.requests[0]).toMatchObject({
+      expect(server.requests[2]).toMatchObject({
         body: {
+          projectId: "project-created",
           options: {
             thinkMode: "mock",
             preserveSandbox: false
           }
         }
       });
-      expect(server.requests[0]?.headers["x-keystone-agent-runtime"]).toBe("think");
+      expect(server.requests[2]?.headers["x-keystone-agent-runtime"]).toBe("think");
     } finally {
       await server.close();
     }
@@ -481,6 +526,11 @@ describe("demo scripts", () => {
 
   it("executes the demo:run entrypoint for live Think requests, including event polling", async () => {
     const server = await startStubServer((request) => {
+      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
+      if (fixtureProjectResponse) {
+        return fixtureProjectResponse;
+      }
+
       if (request.method === "POST" && request.path === "/v1/runs") {
         return {
           body: {
@@ -570,15 +620,15 @@ describe("demo scripts", () => {
       });
 
       expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+        "GET /v1/projects",
+        "POST /v1/projects",
         "POST /v1/runs",
         "GET /v1/runs/run-live/events",
         "GET /v1/runs/run-live"
       ]);
-      expect(server.requests[0]).toMatchObject({
+      expect(server.requests[2]).toMatchObject({
         body: {
-          repo: {
-            localPath: "./fixtures/demo-target"
-          },
+          projectId: "project-created",
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
           },
@@ -588,7 +638,7 @@ describe("demo scripts", () => {
           }
         }
       });
-      expect(server.requests[0]?.headers["x-keystone-agent-runtime"]).toBe("think");
+      expect(server.requests[2]?.headers["x-keystone-agent-runtime"]).toBe("think");
     } finally {
       await server.close();
     }
@@ -598,6 +648,11 @@ describe("demo scripts", () => {
     const tempDir = await mkdtemp(join(tmpdir(), "keystone-demo-state-"));
     const statePath = join(tempDir, "demo-last-run.json");
     const server = await startStubServer((request) => {
+      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
+      if (fixtureProjectResponse) {
+        return fixtureProjectResponse;
+      }
+
       if (request.method === "POST" && request.path === "/v1/runs") {
         return {
           body: {
@@ -692,6 +747,8 @@ describe("demo scripts", () => {
       });
 
       expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+        "GET /v1/projects",
+        "POST /v1/projects",
         "POST /v1/runs",
         "GET /v1/runs/run-live-state/events",
         "GET /v1/runs/run-live-state",
@@ -717,6 +774,11 @@ describe("demo scripts", () => {
       savedAt: "2026-04-17T00:00:00.000Z"
     };
     const server = await startStubServer((request) => {
+      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
+      if (fixtureProjectResponse) {
+        return fixtureProjectResponse;
+      }
+
       if (request.method === "POST" && request.path === "/v1/runs") {
         return {
           body: {

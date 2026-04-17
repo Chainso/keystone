@@ -59,7 +59,7 @@ export function resolveFixtureProjectConfig() {
   };
 }
 
-async function ensureFixtureProject() {
+export async function ensureFixtureProject() {
   const baseUrl = resolveBaseUrl();
   const tenantId = resolveDemoTenantId();
   const fixtureConfig = resolveFixtureProjectConfig();

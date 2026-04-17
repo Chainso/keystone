@@ -46,8 +46,10 @@ const mocked = vi.hoisted(() => {
         createdAt: new Date("2026-04-14T00:00:00.000Z"),
         updatedAt: new Date("2026-04-14T00:00:00.000Z"),
         metadata: {
-          repo: {
-            source: "localPath"
+          project: {
+            projectId: "project-fixture",
+            projectKey: "fixture-demo-project",
+            displayName: "Fixture Demo Project"
           }
         }
       }
@@ -201,6 +203,40 @@ const mocked = vi.hoisted(() => {
       db: {},
       sql: {}
     })),
+    getProject: vi.fn(async () => ({
+      tenantId: "tenant-fixture",
+      projectId: "project-fixture",
+      projectKey: "fixture-demo-project",
+      displayName: "Fixture Demo Project",
+      description: "Fixture project",
+      ruleSet: {
+        reviewInstructions: ["Review the result."],
+        testInstructions: ["Run fixture tests."]
+      },
+      components: [
+        {
+          componentKey: "demo-target",
+          displayName: "Demo Target",
+          kind: "git_repository",
+          config: {
+            localPath: "./fixtures/demo-target",
+            defaultRef: "main"
+          },
+          metadata: {}
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_FIXTURE_PROJECT",
+          value: "1",
+          metadata: {}
+        }
+      ],
+      integrationBindings: [],
+      metadata: {},
+      createdAt: new Date("2026-04-14T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-14T00:00:00.000Z")
+    })),
     runWorkflowCreate: vi.fn(async () => ({
       id: "run-workflow-instance"
     })),
@@ -217,6 +253,10 @@ vi.mock("../../src/lib/db/client", () => ({
 vi.mock("../../src/lib/db/runs", () => ({
   createSessionRecord: mocked.createSessionRecord,
   listRunSessions: mocked.listRunSessions
+}));
+
+vi.mock("../../src/lib/db/projects", () => ({
+  getProject: mocked.getProject
 }));
 
 vi.mock("../../src/lib/db/events", () => ({
@@ -302,9 +342,7 @@ describe("app", () => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          repo: {
-            localPath: "./fixtures/demo-target"
-          },
+          projectId: "project-fixture",
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
           }
@@ -327,9 +365,7 @@ describe("app", () => {
           "X-Keystone-Tenant-Id": "tenant-fixture"
         },
         body: JSON.stringify({
-          repo: {
-            localPath: "./fixtures/demo-target"
-          },
+          projectId: "project-fixture",
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
           }
@@ -343,8 +379,12 @@ describe("app", () => {
       status: "accepted",
       tenantId: "tenant-fixture",
       runtime: "scripted",
+      project: {
+        projectId: "project-fixture",
+        projectKey: "fixture-demo-project"
+      },
       inputMode: {
-        repo: "localPath",
+        project: "stored",
         decisionPackage: "localPath"
       },
       workflowInstanceId: expect.any(String)
@@ -352,6 +392,7 @@ describe("app", () => {
     expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         params: expect.objectContaining({
+          projectId: "project-fixture",
           runtime: "scripted"
         })
       })
@@ -369,7 +410,7 @@ describe("app", () => {
           "X-Keystone-Tenant-Id": "tenant-fixture"
         },
         body: JSON.stringify({
-          repo: {},
+          projectId: "",
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
           }
@@ -399,9 +440,7 @@ describe("app", () => {
           "X-Keystone-Tenant-Id": "tenant-fixture"
         },
         body: JSON.stringify({
-          repo: {
-            localPath: "./fixtures/demo-target"
-          },
+          projectId: "project-fixture",
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
           }
@@ -422,6 +461,7 @@ describe("app", () => {
     expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         params: expect.objectContaining({
+          projectId: "project-fixture",
           runtime: "think",
           options: {
             thinkMode: "mock",
@@ -444,9 +484,7 @@ describe("app", () => {
           "X-Keystone-Tenant-Id": "tenant-fixture"
         },
         body: JSON.stringify({
-          repo: {
-            localPath: "./fixtures/demo-target"
-          },
+          projectId: "project-fixture",
           decisionPackage: {
             localPath: "./fixtures/demo-decision-package/decision-package.json"
           },
@@ -471,6 +509,7 @@ describe("app", () => {
     expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         params: expect.objectContaining({
+          projectId: "project-fixture",
           runtime: "think",
           options: {
             thinkMode: "live",

@@ -19,15 +19,21 @@ import { listSessionEvents } from "../lib/db/events";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { getTaskSessionStub } from "../lib/auth/tenant";
 import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
+import { getProject } from "../lib/db/projects";
+import {
+  buildProjectExecutionSnapshot,
+  type ProjectExecutionRuleOverride,
+  type ProjectExecutionSnapshot
+} from "../lib/projects/runtime";
 import type { RunExecutionOptions } from "../lib/runs/options";
 import { resolveRunExecutionOptions } from "../lib/runs/options";
-import { demoTargetFixtureFiles } from "../lib/workspace/fixtures";
 import { buildStableSessionId } from "../lib/workflows/ids";
 import { taskLogArtifactKey, tenantRunPrefix } from "../lib/artifacts/keys";
 import { resolveRunAgentRuntime } from "../lib/workflows/idempotency";
 import { loadTaskHandoffArtifact } from "../keystone/tasks/load-task-contracts";
 import { ensureSandboxSession } from "../lib/sandbox/client";
 import { isTerminalProcessStatus } from "../lib/sandbox/processes";
+import type { ProjectRuleSet } from "../keystone/projects/contracts";
 
 export interface TaskWorkflowParams {
   tenantId: string;
@@ -36,41 +42,11 @@ export interface TaskWorkflowParams {
   taskId: string;
   runtime?: AgentRuntimeKind | undefined;
   options?: RunExecutionOptions | undefined;
-  repo: {
-    source: "localPath" | "gitUrl";
-    localPath?: string | undefined;
-    gitUrl?: string | undefined;
-    ref?: string | undefined;
+  project: {
+    projectId: string;
+    projectKey: string;
+    displayName: string;
   };
-}
-
-function resolveWorkspaceSource(repo: TaskWorkflowParams["repo"]) {
-  if (repo.source === "gitUrl" && repo.gitUrl) {
-    return {
-      type: "git" as const,
-      repoUrl: repo.gitUrl,
-      repoRef: repo.ref,
-      baseRef: repo.ref
-    };
-  }
-
-  if (
-    repo.source === "localPath" &&
-    repo.localPath &&
-    repo.localPath.endsWith("fixtures/demo-target")
-  ) {
-    return {
-      type: "inline" as const,
-      repoUrl: "fixture://demo-target",
-      repoRef: "main",
-      baseRef: "main",
-      files: demoTargetFixtureFiles
-    };
-  }
-
-  throw new NonRetryableError(
-    "Task workflows currently support the committed demo fixture or gitUrl inputs."
-  );
 }
 
 const MAX_PROCESS_POLL_ATTEMPTS = 20;
@@ -121,6 +97,7 @@ interface SerializableAgentBridge {
   };
   readOnlyRoots: string[];
   writableRoots: string[];
+  environment?: Record<string, string> | undefined;
   controlFiles: {
     session: string;
     filesystem: string;
@@ -143,6 +120,10 @@ interface TaskWorkspaceSnapshot {
   agentBridgeJson: string;
 }
 
+interface TaskProjectContext {
+  projectExecution: ProjectExecutionSnapshot;
+}
+
 export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflowParams> {
   async run(event: Readonly<WorkflowEvent<TaskWorkflowParams>>, step: WorkflowStep) {
     const runtime = resolveRunAgentRuntime(event.payload.runtime);
@@ -150,6 +131,28 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
     const handoff = await step.do("load task handoff", async () =>
       loadTaskHandoffArtifact(this.env, event.payload.tenantId, event.payload.runId, event.payload.taskId)
     );
+    const projectContext = (await step.do("load project execution", async () => {
+      const client = createWorkerDatabaseClient(this.env);
+
+      try {
+        const project = await getProject(client, {
+          tenantId: event.payload.tenantId,
+          projectId: event.payload.project.projectId
+        });
+
+        if (!project) {
+          throw new NonRetryableError(
+            `Project ${event.payload.project.projectId} was not found for task ${event.payload.taskId}.`
+          );
+        }
+
+        return {
+          projectExecution: buildProjectExecutionSnapshot(project)
+        };
+      } finally {
+        await client.close();
+      }
+    })) as TaskProjectContext;
 
     const taskSessionState = (await step.do("ensure workspace", async () => {
       const taskSessionId = await buildStableSessionId(
@@ -175,7 +178,8 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
       });
 
       const workspaceState = (await taskSession.ensureWorkspace({
-        source: resolveWorkspaceSource(event.payload.repo)
+        components: projectContext.projectExecution.components,
+        env: projectContext.projectExecution.environment
       })) as TaskSessionState;
       const bridge = workspaceState.workspace?.agentBridge;
 
@@ -204,7 +208,9 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
             taskId: event.payload.taskId,
             status: "active",
             summary: handoff.task.summary,
-            runtime
+            runtime,
+            projectId: event.payload.project.projectId,
+            projectKey: event.payload.project.projectKey
           },
           status: "active"
         });
@@ -222,13 +228,19 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
             this.env.KEYSTONE_THINK_AGENT,
             getThinkAgentName(event.payload.tenantId, event.payload.runId, taskSessionState.taskSessionId)
           ) as Pick<KeystoneThinkAgent, "runImplementerTurn">;
-          const turnInput = resolveThinkTurnInput(event.payload, handoff, options);
+          const turnInput = resolveThinkTurnInput(projectContext.projectExecution, handoff, options);
           const result = await agent.runImplementerTurn({
             tenantId: event.payload.tenantId,
             runId: event.payload.runId,
             sessionId: taskSessionState.taskSessionId,
             taskId: event.payload.taskId,
-            prompt: buildThinkImplementerPrompt(handoff),
+            prompt: buildThinkImplementerPrompt(handoff, {
+              projectId: event.payload.project.projectId,
+              projectKey: event.payload.project.projectKey,
+              displayName: event.payload.project.displayName,
+              ruleSet: projectContext.projectExecution.ruleSet,
+              componentRuleOverrides: projectContext.projectExecution.componentRuleOverrides
+            }),
             sandboxId: taskSessionState.sandboxId,
             agentBridge,
             ...turnInput
@@ -261,7 +273,13 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
             await client.close();
           }
         })
-      : await runScriptedTask(this.env, step, event.payload, taskSessionState.taskSessionId);
+      : await runScriptedTask(
+          this.env,
+          step,
+          event.payload,
+          taskSessionState.taskSessionId,
+          projectContext.projectExecution.environment
+        );
 
     await step.do("mark task complete", async () => {
       const client = createWorkerDatabaseClient(this.env);
@@ -350,7 +368,8 @@ async function runScriptedTask(
   env: WorkerBindings,
   step: WorkflowStep,
   payload: TaskWorkflowParams,
-  taskSessionId: string
+  taskSessionId: string,
+  projectEnv: Record<string, string>
 ): Promise<TaskExecutionSnapshot> {
   await step.do("start task process", async () => {
     const taskSession = getTaskSessionStub(
@@ -362,7 +381,8 @@ async function runScriptedTask(
     );
 
     const process = await taskSession.startProcess({
-      command: "npm test"
+      command: "npm test",
+      env: projectEnv
     });
 
     return {
@@ -489,19 +509,68 @@ function getThinkAgentName(tenantId: string, runId: string, taskSessionId: strin
   return `tenant:${tenantId}:run:${runId}:task:${taskSessionId}`;
 }
 
-function buildThinkImplementerPrompt(handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>) {
+function buildRuleSection(label: string, instructions: string[]) {
+  if (instructions.length === 0) {
+    return null;
+  }
+
+  return [label, ...instructions.map((instruction) => `- ${instruction}`)].join("\n");
+}
+
+function buildThinkImplementerPrompt(
+  handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>,
+  project?: {
+    projectId: string;
+    projectKey: string;
+    displayName: string;
+    ruleSet: ProjectRuleSet;
+    componentRuleOverrides: ProjectExecutionRuleOverride[];
+  }
+) {
   const instructions = handoff.task.instructions.map((instruction) => `- ${instruction}`).join("\n");
   const acceptanceCriteria = handoff.task.acceptanceCriteria
     .map((criterion) => `- ${criterion}`)
     .join("\n");
   const dependencySummary =
     handoff.task.dependsOn.length === 0 ? "none" : handoff.task.dependsOn.join(", ");
+  const projectContext = project
+    ? [
+        `Project: ${project.displayName} (${project.projectKey})`,
+        `Project ID: ${project.projectId}`
+      ]
+    : [];
+  const reviewRules = project
+    ? buildRuleSection("Project review instructions:", project.ruleSet.reviewInstructions)
+    : null;
+  const testRules = project
+    ? buildRuleSection("Project test instructions:", project.ruleSet.testInstructions)
+    : null;
+  const componentRules =
+    project && project.componentRuleOverrides.length > 0
+      ? [
+          "Component-specific rule overrides:",
+          ...project.componentRuleOverrides.flatMap((override) => {
+            const lines = [`- ${override.componentKey}`];
+
+            if (override.reviewInstructions.length > 0) {
+              lines.push(`  review: ${override.reviewInstructions.join("; ")}`);
+            }
+
+            if (override.testInstructions.length > 0) {
+              lines.push(`  test: ${override.testInstructions.join("; ")}`);
+            }
+
+            return lines;
+          })
+        ].join("\n")
+      : null;
 
   return [
     `Decision package: ${handoff.decisionPackageId}`,
     `Task ID: ${handoff.task.taskId}`,
     `Task: ${handoff.task.title}`,
     `Depends on: ${dependencySummary}`,
+    ...projectContext,
     "",
     handoff.task.summary,
     "",
@@ -510,6 +579,9 @@ function buildThinkImplementerPrompt(handoff: Awaited<ReturnType<typeof loadTask
     "",
     "Acceptance criteria:",
     acceptanceCriteria,
+    ...(reviewRules ? ["", reviewRules] : []),
+    ...(testRules ? ["", testRules] : []),
+    ...(componentRules ? ["", componentRules] : []),
     "",
     "Projected decision_package, run_plan, and task_handoff artifacts are available under /artifacts/in if you need broader context before editing.",
     "",
@@ -518,13 +590,14 @@ function buildThinkImplementerPrompt(handoff: Awaited<ReturnType<typeof loadTask
 }
 
 function resolveThinkTurnInput(
-  payload: TaskWorkflowParams,
+  projectExecution: ProjectExecutionSnapshot,
   handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>,
   options: RunExecutionOptions
 ) {
   if (
-    payload.repo.source === "localPath" &&
-    payload.repo.localPath?.endsWith("fixtures/demo-target") &&
+    projectExecution.components.length === 1 &&
+    projectExecution.components[0]?.type === "inline" &&
+    projectExecution.components[0].repoUrl === "fixture://demo-target" &&
     handoff.decisionPackageId === demoDecisionPackageFixture.decisionPackageId &&
     handoff.task.dependsOn.length === 0
   ) {

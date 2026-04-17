@@ -52,6 +52,7 @@ export type InitializeTaskSessionInput = {
 export type EnsureWorkspaceInput = {
   source?: WorkspaceSource | undefined;
   components?: WorkspaceMaterializationSource[] | undefined;
+  env?: Record<string, string> | undefined;
 };
 
 export type StartProcessInput = {
@@ -274,6 +275,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         sessionId: snapshot.sessionId,
         taskId: snapshot.taskId,
         sandboxId: snapshot.sandboxId,
+        environment: input.env,
         artifacts: projectedArtifacts
       });
       workspace = {
@@ -311,6 +313,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
           metadata: {
             codeRoot: workspace.codeRoot,
             defaultCwd: workspace.defaultCwd,
+            environment: workspace.agentBridge.environment,
             agentFilesystem: workspace.agentBridge.layout,
             agentTargets: workspace.agentBridge.targets,
             components: workspace.components.map((component) => ({
@@ -375,12 +378,13 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         sessionId: snapshot.sessionId,
         taskId: snapshot.taskId,
         eventType: "workspace.task_view_created",
-        payload: {
-          workspaceTargetPath: workspace.agentBridge.targets.workspaceRoot,
-          defaultCwd: workspace.defaultCwd,
-          components: workspace.components.map((component) => ({
-            componentKey: component.componentKey,
-            worktreePath: component.worktreePath,
+          payload: {
+            workspaceTargetPath: workspace.agentBridge.targets.workspaceRoot,
+            defaultCwd: workspace.defaultCwd,
+            environment: workspace.agentBridge.environment,
+            components: workspace.components.map((component) => ({
+              componentKey: component.componentKey,
+              worktreePath: component.worktreePath,
             branchName: component.branchName,
             baseRef: component.baseRef
           }))
@@ -437,8 +441,16 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         cwd: input.cwd ?? snapshot.workspace.defaultCwd
       };
 
-      if (input.env) {
-        processOptions.env = input.env;
+      const mergedEnv =
+        snapshot.workspace.agentBridge.environment || input.env
+          ? {
+              ...(snapshot.workspace.agentBridge.environment ?? {}),
+              ...(input.env ?? {})
+            }
+          : undefined;
+
+      if (mergedEnv) {
+        processOptions.env = mergedEnv;
       }
 
       if (input.processId) {
