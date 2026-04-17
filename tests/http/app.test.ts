@@ -334,7 +334,52 @@ describe("app", () => {
     );
   });
 
-  it("passes an explicit Think runtime selection into the workflow", async () => {
+  it("defaults Think runtime requests to mock validation mode", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Agent-Runtime": "think",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          repo: {
+            localPath: "./fixtures/demo-target"
+          },
+          decisionPackage: {
+            localPath: "./fixtures/demo-decision-package/decision-package.json"
+          }
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "accepted",
+      runtime: "think",
+      options: {
+        thinkMode: "mock",
+        preserveSandbox: false
+      }
+    });
+    expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          runtime: "think",
+          options: {
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        })
+      })
+    );
+  });
+
+  it("passes an explicit live Think request into the workflow", async () => {
     const response = await app.request(
       "http://example.com/v1/runs",
       {

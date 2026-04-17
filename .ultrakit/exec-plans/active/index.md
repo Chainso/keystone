@@ -6,10 +6,9 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 ## Active Plans
 
-_No active plans._
-
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
+| [keystone-think-live-full-workflow](./keystone-think-live-full-workflow.md) | In Progress | - | 2026-04-17 |
 
 Add active plans in priority order using this format:
 

@@ -6,6 +6,7 @@ export default tseslint.config(
   {
     ignores: [
       "fixtures/**",
+      ".localflare/**",
       ".wrangler/**",
       "dist/**",
       "worker-configuration.d.ts"

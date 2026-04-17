@@ -6,5 +6,5 @@ coverage/
 .codex/
 *.tsbuildinfo
 
-# Localflare generated files
+# Localflare and nested Wrangler generated files
 .localflare/

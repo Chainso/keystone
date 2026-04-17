@@ -2,6 +2,13 @@ const POLL_INTERVAL_MS = 2_000;
 const DEFAULT_MAX_POLL_ATTEMPTS = 30;
 const LIVE_THINK_MAX_POLL_ATTEMPTS = 90;
 
+type DemoContract = {
+  contractId: string;
+  proofScope: string;
+  modelExecution: string;
+  workflowStatus: string;
+};
+
 function getArg(name: string) {
   const prefix = `--${name}=`;
   const argument = process.argv.slice(2).find((value) => value.startsWith(prefix));
@@ -15,6 +22,10 @@ function sleep(ms: number) {
 
 function readJsonResponse(response: Response) {
   return response.json() as Promise<Record<string, unknown>>;
+}
+
+function asObject(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
 }
 
 function resolveBaseUrl() {
@@ -57,6 +68,35 @@ function resolveMaxPollAttempts(runtime: string, thinkMode: string) {
   }
 
   return DEFAULT_MAX_POLL_ATTEMPTS;
+}
+
+function describeDemoContract(runtime: string, thinkMode: string): DemoContract {
+  if (runtime === "think" && thinkMode === "live") {
+    return {
+      contractId: "think-live-fixture-demo",
+      proofScope: "Fixture-backed Think task path",
+      modelExecution: "Live local chat-completions backend",
+      workflowStatus:
+        "Phase 1 contract only swaps in the live Think turn. It does not yet prove live compile or compiled task handoffs."
+    };
+  }
+
+  if (runtime === "think") {
+    return {
+      contractId: "think-mock-validation",
+      proofScope: "Fixture-backed Think task path",
+      modelExecution: "Deterministic mock Think model",
+      workflowStatus:
+        "Stable validation path for the current fixture-backed compile and task handoff behavior."
+    };
+  }
+
+  return {
+    contractId: "scripted-fixture-demo",
+    proofScope: "Fixture-backed scripted path",
+    modelExecution: "Scripted task runner",
+    workflowStatus: "Default non-Think demo path."
+  };
 }
 
 function isRunComplete(summary: Record<string, unknown>) {
@@ -226,11 +266,24 @@ async function main() {
   const createdRun = await createFixtureRun();
   const runId = String(createdRun.runId ?? "");
   const baseUrl = resolveBaseUrl();
-  const runtime = resolveRuntime();
-  const thinkMode = resolveThinkMode();
-  const preserveSandbox = resolvePreserveSandbox(runtime, thinkMode);
+  const requestedRuntime = resolveRuntime();
+  const requestedThinkMode = resolveThinkMode();
+  const runtime =
+    createdRun.runtime === "think" || createdRun.runtime === "scripted"
+      ? createdRun.runtime
+      : requestedRuntime;
+  const createdOptions = asObject(createdRun.options);
+  const thinkMode =
+    createdOptions?.thinkMode === "live" || createdOptions?.thinkMode === "mock"
+      ? createdOptions.thinkMode
+      : requestedThinkMode;
+  const preserveSandbox =
+    typeof createdOptions?.preserveSandbox === "boolean"
+      ? createdOptions.preserveSandbox
+      : resolvePreserveSandbox(runtime, thinkMode);
   const streamEvents = resolveStreamEvents(runtime, thinkMode);
   const maxPollAttempts = resolveMaxPollAttempts(runtime, thinkMode);
+  const demoContract = describeDemoContract(runtime, thinkMode);
   const seenEventIds = new Set<string>();
 
   if (!runId) {
@@ -258,6 +311,7 @@ async function main() {
             runId,
             runtime,
             thinkMode,
+            demoContract,
             preserveSandbox,
             status,
             summary,

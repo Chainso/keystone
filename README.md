@@ -45,6 +45,12 @@ npm run demo:run
 npm run demo:validate
 ```
 
+These commands cover three distinct contracts today:
+
+- `npm run demo:run` plus `npm run demo:validate`: the default scripted fixture path.
+- `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`: the deterministic mock-backed Think validation path on the current fixture-backed workflow contract.
+- `npm run demo:run:think-live`: the live-model Think turn on that same fixture-backed workflow contract. In Phase 1 it does not yet prove live compile or compiled task handoffs.
+
 For ad hoc manual validation when you need to supply the run id yourself, the convenience form is:
 
 ```bash
@@ -58,14 +64,16 @@ KEYSTONE_AGENT_RUNTIME=think npm run demo:run
 KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
 ```
 
-For a live-model Think demo that keeps the sandbox available for inspection after the run finishes, use:
+That Think pair is still the stable deterministic validation path because `thinkMode` defaults to `mock`.
+
+For a live-model Think turn that keeps the sandbox available for inspection after the run finishes, use:
 
 ```bash
 npm run demo:run:think-live
 KEYSTONE_AGENT_RUNTIME=think npm run sandbox:shell
 ```
 
-`demo:run:think-live` routes the Think turn through the real local chat-completions backend instead of the deterministic mock model path and sets sandbox preservation on the run so the container is not destroyed at the end of the task workflow.
+`demo:run:think-live` routes the Think turn through the real local chat-completions backend instead of the deterministic mock model path and sets sandbox preservation on the run so the container is not destroyed at the end of the task workflow. It is an inspection-oriented live Think turn on the shipped fixture path, not yet the final full-workflow proof.
 
 For ad hoc manual Think validation when you need to supply the run id explicitly, use:
 
@@ -76,6 +84,8 @@ KEYSTONE_AGENT_RUNTIME=think npm run demo:validate -- --run-id=<run-id-from-demo
 The current Think path is intentionally narrow:
 
 - runtime selection is accepted through `X-Keystone-Agent-Runtime` and defaults to `scripted`
+- `thinkMode=mock` is the deterministic validation default for Think requests
+- `thinkMode=live` currently changes the Think model turn only; it does not yet imply live compile plus compiled task handoffs
 - only the fixture-backed `task-greeting-tone` task is wired for `think`
 - the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
 - final run success is still anchored on a `run_summary` artifact and an archived run session
