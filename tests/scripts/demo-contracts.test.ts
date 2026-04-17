@@ -407,10 +407,10 @@ describe("demo scripts", () => {
           "Sandbox preserved for inspection. Run `npm run sandbox:shell` while the local Worker is still running.",
         demoContract: {
           contractId: "think-live-compile-demo",
-          proofScope: "Live compile plus fixture-gated Think task path",
+          proofScope: "Fixture-scoped live compile plus compiled Think task execution",
           modelExecution: "Live local chat-completions backend",
           workflowStatus:
-            "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
+            "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
         }
       });
 
@@ -557,7 +557,7 @@ describe("demo scripts", () => {
         demoContract: {
           contractId: "think-live-compile-demo",
           workflowStatus:
-            "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
+            "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
         }
       });
 
@@ -617,10 +617,10 @@ describe("demo scripts", () => {
       maxPollAttempts: 90,
       demoContract: {
         contractId: "think-live-compile-demo",
-        proofScope: "Live compile plus fixture-gated Think task path",
+        proofScope: "Fixture-scoped live compile plus compiled Think task execution",
         modelExecution: "Live local chat-completions backend",
         workflowStatus:
-          "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
+          "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
       }
     });
   });
@@ -645,7 +645,7 @@ describe("demo scripts", () => {
       demoContract: {
         contractId: "think-live-compile-demo",
         workflowStatus:
-          "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
+          "Phase 3 proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
       }
     });
   });

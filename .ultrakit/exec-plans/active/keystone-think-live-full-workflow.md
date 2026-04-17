@@ -108,6 +108,11 @@ Backward compatibility with arbitrary local repository ingestion is not required
   **Decision:** Preserve existing run-session metadata during finalization, require live compile output to keep the approved task ids and translatable dependencies before any artifact write, and extend tests around compile failure semantics plus the live CLI request body.  
   **Rationale:** Archived run summaries must retain `runtime` / `options` so `demo:validate` can recover the actual Think contract, and the temporary Phase 2 compatibility shim needed to fail closed instead of accepting title-only matches or silently dropping bad `dependsOn` edges.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 3  
+  **Decision:** Replace the temporary approved-task-id canonicalization seam with an explicit fixture-scoped compiled-plan validator, and let `TaskWorkflow` execute any independent compiled handoff that still matches the approved decision package by task id or title.  
+  **Rationale:** Phase 3 needed to remove the hidden `task-greeting-tone` dependency without widening scope into multi-task orchestration or arbitrary repo ingestion, so the narrowest safe cut is a visible fixture-scoped happy-path validator plus direct Think execution of the persisted compiled handoff.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery decisions resolved in conversation: no new `Thread`/`Lease` primitives, no HITL on the happy path, and keep the first proof fixture-scoped.
@@ -121,7 +126,7 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - [x] 2026-04-17 Phase 2 fix pass: canonicalize live compile task shape onto the approved decision-package contract and deepen persisted compile-artifact coverage.
 - [x] 2026-04-17 Phase 2 second fix pass: require a meaningful live-compile shape match before canonicalization, cover persisted-plan guard branches more directly, and update the live demo contract wording to the Phase 2 compile proof.
 - [x] 2026-04-17 Phase 2 third fix pass: preserve archived runtime/options metadata, fail closed on ambiguous live compile output, and deepen compile failure plus live CLI request coverage.
-- [ ] Phase 3: Generalize the Think task path from the fixture greeting gate to compiled task handoffs on the happy path.
+- [x] 2026-04-17 Phase 3: Generalize the Think task path from the fixture greeting gate to compiled task handoffs on the happy path.
 - [ ] Phase 4: Revalidate the live full-workflow demo, update docs, and archive the plan.
 
 ## Surprises & Discoveries
@@ -145,6 +150,8 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - **2026-04-17:** Archived run summaries were losing `runtime` and `options` because `finalizeRun` replaced the run-session metadata on archive instead of merging it; preserving the existing metadata is enough for `demo:validate` to recover the actual Think contract from a real archived run.
 - **2026-04-17:** The temporary Phase 2 compatibility shim still was not fail-closed after the second fix pass: title-only task matching and dropped `dependsOn` entries could still reshape incompatible live compile output instead of rejecting it before `run_plan` / `task_handoff` writes.
 - **2026-04-17:** After the Phase 2 third fix pass, repo-wide validation remains clean: `npm run typecheck` and `npm run test` pass, with `npm run test` now reporting `25 passed | 1 skipped` test files and `84 passed | 3 skipped` tests. The host-local `demo:run` command in this session still fails immediately with `connect ECONNREFUSED 127.0.0.1:8787` because no local Worker is listening.
+- **2026-04-17:** The narrowest safe Phase 3 generalization is to validate the persisted live plan against the fixture decision package by matching task id or title and requiring `dependsOn` to stay empty, which removes the hidden greeting-task seam without reintroducing Phase 2's canonicalization shim.
+- **2026-04-17:** After the Phase 3 implementation pass, repo-wide validation remains clean: `npm run typecheck`, `npm run test`, and `npm run think:smoke` pass, with `npm run test` now reporting `26 passed | 1 skipped` test files and `88 passed | 3 skipped` tests. The exact host-local `demo:run` command still fails immediately with `connect ECONNREFUSED 127.0.0.1:8787`, and the exact `demo:validate` command then fails with `Provide --run-id=<id> or set KEYSTONE_RUN_ID.` because no live run was created in this session.
 
 ## Outcomes & Retrospective
 
@@ -152,6 +159,7 @@ This section will be completed as phases land. The target retrospective for the 
 
 - Phase 1 restored a trustworthy lint baseline, made the demo/docs explicit that the current live Think path is still fixture-backed in this phase, and added direct automated coverage for the operator-facing scripted, deterministic Think mock, and live Think CLI contracts.
 - Phase 2 removed the hidden `think/live` fixture-compile bypass, added compile-mode metadata that distinguishes live versus fixture compile artifacts/events, preserved archived run-session metadata so real run summaries still expose `runtime` / `options`, tightened the temporary live-compile guard so Phase 2 now fails closed unless the live output keeps approved task ids plus translatable dependencies, aligned the operator-facing live demo contract with the real compile proof, and proved a host-local live run archived with model-generated `run_plan` and `task_handoff` artifacts.
+- Phase 3 removed the hardcoded `task-greeting-tone` Think gate, replaced the temporary Phase 2 canonicalization seam with an explicit fixture-scoped compiled-plan validator, updated the Think prompt/system guidance to point at projected `decision_package` / `run_plan` / `task_handoff` inputs, and proved that live compiled handoffs now execute through the Think implementer path and promote `run_note` artifacts while deterministic `think/mock` remains intact.
 - the live Think demo proves the workflow from run input to archived run summary,
 - the mock Think demo remains available for deterministic validation,
 - the repo-wide validation baseline is cleaner and easier to trust, and
@@ -163,11 +171,11 @@ Current relevant runtime behavior:
 
 - `src/http/handlers/runs.ts` accepts `/v1/runs`, persists runtime/options, and starts `RunWorkflow`.
 - `src/workflows/RunWorkflow.ts` now routes `runtime=think` plus `thinkMode=live` through `compileRunPlan`, while keeping `compileDemoFixtureRunPlan` only for the preserved deterministic `runtime=think` plus `thinkMode=mock` fixture path.
-- `src/keystone/compile/plan-run.ts` writes explicit `compileMode` metadata for both the real compile path (`live`) and the deterministic fixture compile path (`fixture`) so artifacts and compile events show which path actually ran.
-- `src/workflows/TaskWorkflow.ts` still restricts the Think path to the fixture greeting task by throwing `The Think runtime is only wired for the fixture-backed demo task path.` for anything outside that narrow shape.
+- `src/keystone/compile/plan-run.ts` writes explicit `compileMode` metadata for both the real compile path (`live`) and the deterministic fixture compile path (`fixture`), and the live path now persists model-authored task ids/titles as long as the compiled plan still matches the fixture decision package and keeps `dependsOn` empty.
+- `src/workflows/TaskWorkflow.ts` now accepts fixture-scoped compiled Think handoffs that match the approved decision package and have no dependencies, instead of special-casing `taskId === "task-greeting-tone"`.
 - `src/keystone/agents/base/KeystoneThinkAgent.ts` and `src/keystone/agents/implementer/ImplementerAgent.ts` already support a real live-model Think turn plus the deterministic mock path.
-- `scripts/demo-run.ts` and `scripts/demo-validate.ts` are the operator-facing local demo proof commands.
-- `.ultrakit/developer-docs/think-runtime-architecture.md` and `.ultrakit/developer-docs/think-runtime-runbook.md` accurately describe the current limitations: `scripted` remains default, the Think path is only wired for the fixture-backed demo task, and the current proof is narrow.
+- `scripts/demo-run.ts` and `scripts/demo-validate.ts` are the operator-facing local demo proof commands, and their live Think wording now describes the Phase 3 compiled-handoff proof instead of the old Phase 2 seam.
+- `.ultrakit/developer-docs/think-runtime-architecture.md` and `.ultrakit/developer-docs/think-runtime-runbook.md` still lag the implementation after Phase 3 and should be updated in Phase 4: `scripted` remains default, but the Think path now executes fixture-scoped compiled handoffs instead of the old greeting-task special case.
 
 Relevant files to keep in view:
 
@@ -380,12 +388,16 @@ Out of scope: reviewer/tester roles, multi-agent orchestration, arbitrary repo s
 
 **Files Expected To Change**  
 `src/workflows/TaskWorkflow.ts`  
-`src/keystone/agents/base/KeystoneThinkAgent.ts`  
 `src/keystone/agents/implementer/ImplementerAgent.ts`  
+`src/workflows/RunWorkflow.ts`  
+`src/keystone/compile/plan-run.ts`  
 `src/keystone/tasks/load-task-contracts.ts`  
+`scripts/demo-run.ts`  
 `scripts/demo-validate.ts`  
 `tests/lib/agents/**`  
-`tests/http/app.test.ts`
+`tests/lib/compile-plan-run.test.ts`  
+`tests/lib/workflows/**`  
+`tests/scripts/demo-contracts.test.ts`
 
 **Validation**  
 Run from repo root:
@@ -418,7 +430,17 @@ Think task execution driven by compiled happy-path handoffs instead of the hardc
 Keep the mock Think path intact and deterministic. If the live path still needs fixture-specific guardrails, record them explicitly rather than hiding them behind the old greeting-task special case.
 
 **Status**  
-Not started.
+Completed 2026-04-17.
+
+**Completion Notes**  
+- `src/keystone/tasks/load-task-contracts.ts` now exports a shared fixture-scoped compiled-plan validator, and `src/keystone/compile/plan-run.ts` plus `src/workflows/RunWorkflow.ts` both use it so the live compile path persists model-authored handoffs without the old approved-task-id canonicalization seam while still failing closed on decision-package, task-shape, or `dependsOn` mismatches.
+- `src/workflows/TaskWorkflow.ts` no longer special-cases `taskId === "task-greeting-tone"` for Think. It now accepts any independent compiled handoff for the approved fixture decision package, adds decision-package/task/dependency context to the live implementer prompt, and preserves deterministic `think/mock` by injecting `createThinkSmokePlan()` only for the mock path.
+- `src/keystone/agents/implementer/ImplementerAgent.ts`, `scripts/demo-run.ts`, and `scripts/demo-validate.ts` now point the agent and the operator-facing contract at the Phase 3 proof: projected compile artifacts are available under `/artifacts/in`, live Think means compiled handoff execution, and the archived run is still expected to promote a `run_note`.
+- `tests/lib/workflows/task-workflow-think.test.ts` now proves live compiled handoffs execute through the Think implementer path and promote a `run_note`, while updated compile/workflow/script tests prove the new fixture-scoped validator, the preserved deterministic mock branch, and the revised live demo wording.
+- Validation passed with `npm run typecheck`, `npm run test`, and `npm run think:smoke`. The exact host-local `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` command still fails immediately with `connect ECONNREFUSED 127.0.0.1:8787` because no local Worker is listening, and the exact `demo:validate` command then fails with `Provide --run-id=<id> or set KEYSTONE_RUN_ID.` because no live run was created in this session.
+
+**Next Starter Context**  
+Phase 4 should keep the remaining fixture-scoped guardrails explicit, rerun `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` plus `demo:validate` against a live local Worker, and update the README/runbook/architecture docs to describe the new compiled-handoff proof together with the still-intentional single-task / no-`dependsOn` limitation.
 
 ### Phase 4: Revalidate the live full-workflow demo and update durable docs
 
@@ -635,6 +657,37 @@ Tests  84 passed | 3 skipped (87)
 $ KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run -- --stream-events=false
 TypeError: fetch failed
 [cause]: Error: connect ECONNREFUSED 127.0.0.1:8787
+```
+
+Phase 3 completion captured on 2026-04-17:
+
+```text
+$ npm run typecheck
+> tsc --noEmit
+```
+
+```text
+$ npm run test
+Test Files  26 passed | 1 skipped (27)
+Tests  88 passed | 3 skipped (91)
+```
+
+```text
+$ npm run think:smoke
+ok=true
+stagedArtifacts[0].kind=run_note
+bashCommand=node --test
+```
+
+```text
+$ KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run
+TypeError: fetch failed
+[cause]: Error: connect ECONNREFUSED 127.0.0.1:8787
+```
+
+```text
+$ KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate
+Error: Provide --run-id=<id> or set KEYSTONE_RUN_ID.
 ```
 
 Key current source limitations to remove:

@@ -9,25 +9,25 @@ const mocked = vi.hoisted(() => {
     tasks: [
       {
         taskId: "task-live-implementation",
-        title: "Implement the approved live task",
+        title: "Adjust the greeting implementation",
         summary: "Use the live compiler output as the task source.",
         instructions: ["Implement the approved change.", "Run the relevant checks."],
         acceptanceCriteria: ["Relevant checks pass."],
-        dependsOn: []
+        dependsOn: [] as string[]
       }
     ]
   };
   const persistedLivePlan = {
     decisionPackageId: "demo-greeting-update",
-    summary: "Persisted live compile output was canonicalized for the Phase 2 task gate.",
+    summary: "Persisted live compile output was reloaded for the fixture-scoped happy path.",
     tasks: [
       {
-        taskId: "task-greeting-tone",
+        taskId: "task-persisted-live-implementation",
         title: "Adjust the greeting implementation",
         summary: "Use the persisted compile artifact as the task source.",
         instructions: ["Implement the approved change.", "Run the relevant checks."],
         acceptanceCriteria: ["Relevant checks pass."],
-        dependsOn: []
+        dependsOn: [] as string[]
       }
     ]
   };
@@ -41,7 +41,7 @@ const mocked = vi.hoisted(() => {
         summary: "Change the greeting in a reviewable way.",
         instructions: ["Edit the greeting implementation.", "Run the fixture tests."],
         acceptanceCriteria: ["Fixture tests stay green."],
-        dependsOn: []
+        dependsOn: [] as string[]
       }
     ]
   };
@@ -221,9 +221,17 @@ vi.mock("../../../src/keystone/compile/plan-run", () => ({
   compileDemoFixtureRunPlan: mocked.compileDemoFixtureRunPlan
 }));
 
-vi.mock("../../../src/keystone/tasks/load-task-contracts", () => ({
-  loadCompiledRunPlanArtifact: mocked.loadCompiledRunPlanArtifact
-}));
+vi.mock("../../../src/keystone/tasks/load-task-contracts", async () => {
+  const actual =
+    await vi.importActual<typeof import("../../../src/keystone/tasks/load-task-contracts")>(
+      "../../../src/keystone/tasks/load-task-contracts"
+    );
+
+  return {
+    ...actual,
+    loadCompiledRunPlanArtifact: mocked.loadCompiledRunPlanArtifact
+  };
+});
 
 vi.mock("../../../src/keystone/integration/finalize-run", () => ({
   finalizeRun: mocked.finalizeRun
@@ -391,24 +399,37 @@ describe("RunWorkflow compile routing", () => {
     });
   });
 
-  it("rejects persisted live compile plans when the task id still falls outside the Phase 2 gate", async () => {
+  it("rejects persisted live compile plans when the task no longer matches the approved fixture task shape", async () => {
     const env = createWorkflowEnv();
     const step = createStep();
     const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const liveTask = mocked.livePlan.tasks[0];
+
+    if (!liveTask) {
+      throw new Error("Expected the live compile fixture to include a task.");
+    }
 
     mocked.compileRunPlan.mockImplementationOnce(async () => {
-      mocked.state.compiledPlan = mocked.livePlan;
+      mocked.state.compiledPlan = {
+        ...mocked.livePlan,
+        tasks: [
+          {
+            ...liveTask,
+            title: "Unexpected task title"
+          }
+        ]
+      };
 
       return createLiveCompileResult();
     });
 
     await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
-      /unsupported task handoff task-live-implementation/
+      /could not reconcile task task-live-implementation \(Unexpected task title\) with the approved fixture decision package/
     );
     expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
   });
 
-  it("rejects persisted live compile plans when the task count still falls outside the Phase 2 gate", async () => {
+  it("rejects persisted live compile plans when the task count falls outside the fixture-scoped happy path", async () => {
     const env = createWorkflowEnv();
     const step = createStep();
     const workflow = new RunWorkflow({} as ExecutionContext, env as never);
@@ -440,7 +461,7 @@ describe("RunWorkflow compile routing", () => {
     expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
   });
 
-  it("rejects persisted live compile plans when the decision package id still falls outside the Phase 2 gate", async () => {
+  it("rejects persisted live compile plans when the decision package id falls outside the fixture-scoped happy path", async () => {
     const env = createWorkflowEnv();
     const step = createStep();
     const workflow = new RunWorkflow({} as ExecutionContext, env as never);
@@ -456,6 +477,36 @@ describe("RunWorkflow compile routing", () => {
 
     await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
       /produced decision package unexpected-decision-package, expected demo-greeting-update/
+    );
+    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects persisted live compile plans when dependsOn exceeds the fixture-scoped happy path", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const persistedTask = mocked.persistedLivePlan.tasks[0];
+
+    if (!persistedTask) {
+      throw new Error("Expected the persisted live compile fixture to include a task.");
+    }
+
+    mocked.compileRunPlan.mockImplementationOnce(async () => {
+      mocked.state.compiledPlan = {
+        ...mocked.persistedLivePlan,
+        tasks: [
+          {
+            ...persistedTask,
+            dependsOn: ["task-prep"]
+          }
+        ]
+      };
+
+      return createLiveCompileResult();
+    });
+
+    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
+      /returned unsupported dependsOn entries for task task-persisted-live-implementation/
     );
     expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
   });

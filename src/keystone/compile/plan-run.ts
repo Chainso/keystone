@@ -17,6 +17,7 @@ import {
   type CompiledTaskPlan,
   type DecisionPackage
 } from "./contracts";
+import { assertFixtureScopedCompiledPlan } from "../tasks/load-task-contracts";
 
 export type CompileRepoSource =
   | {
@@ -159,117 +160,6 @@ export function buildDemoFixtureCompiledPlan(decisionPackage: DecisionPackage): 
   });
 }
 
-function resolveDecisionTaskMatch(
-  compiledTask: CompiledTaskPlan,
-  decisionTasks: DecisionPackage["tasks"],
-  usedDecisionTaskIds: Set<string>
-) {
-  const exactIdMatch = decisionTasks.find(
-    (decisionTask) =>
-      !usedDecisionTaskIds.has(decisionTask.taskId) &&
-      decisionTask.taskId === compiledTask.taskId
-  );
-
-  if (exactIdMatch) {
-    return exactIdMatch;
-  }
-
-  const exactTitleMatch = decisionTasks.find(
-    (decisionTask) =>
-      !usedDecisionTaskIds.has(decisionTask.taskId) &&
-      decisionTask.title === compiledTask.title
-  );
-
-  if (exactTitleMatch) {
-    throw new Error(
-      `Live compile returned task ${compiledTask.taskId} with approved title "${compiledTask.title}" but without preserving the approved task id ${exactTitleMatch.taskId}. Phase 2 requires task ids to remain stable.`
-    );
-  }
-
-  return null;
-}
-
-function canonicalizeDependsOn(
-  compiledTask: CompiledTaskPlan,
-  decisionTask: DecisionPackage["tasks"][number],
-  dependencyTaskIds: Map<string, string>
-) {
-  return Array.from(
-    new Set(
-      compiledTask.dependsOn.map((taskId) => {
-        const translatedTaskId = dependencyTaskIds.get(taskId);
-
-        if (!translatedTaskId) {
-          throw new Error(
-            `Live compile returned unsupported dependency ${taskId} for task ${compiledTask.taskId}. Phase 2 requires every dependsOn entry to preserve an approved task id.`
-          );
-        }
-
-        if (translatedTaskId === decisionTask.taskId) {
-          throw new Error(
-            `Live compile returned self-dependency ${taskId} for task ${compiledTask.taskId}. Phase 2 does not rewrite self-referential dependsOn entries.`
-          );
-        }
-
-        return translatedTaskId;
-      })
-    )
-  );
-}
-
-function canonicalizeCompiledPlan(
-  plan: CompiledRunPlan,
-  decisionPackage: DecisionPackage
-): CompiledRunPlan {
-  if (plan.decisionPackageId !== decisionPackage.decisionPackageId) {
-    throw new Error(
-      `Live compile returned decision package ${plan.decisionPackageId}; expected ${decisionPackage.decisionPackageId}.`
-    );
-  }
-
-  if (plan.tasks.length !== decisionPackage.tasks.length) {
-    throw new Error(
-      `Live compile returned ${plan.tasks.length} tasks for decision package ${decisionPackage.decisionPackageId}; expected ${decisionPackage.tasks.length}.`
-    );
-  }
-
-  const usedDecisionTaskIds = new Set<string>();
-  const matchedTasks = plan.tasks.map((compiledTask) => {
-    const decisionTask = resolveDecisionTaskMatch(compiledTask, decisionPackage.tasks, usedDecisionTaskIds);
-
-    if (!decisionTask) {
-      throw new Error(
-        `Live compile could not reconcile task ${compiledTask.taskId} (${compiledTask.title}) with the approved decision package shape; expected a matching task id or title.`
-      );
-    }
-
-    usedDecisionTaskIds.add(decisionTask.taskId);
-
-    return {
-      compiledTask,
-      decisionTask
-    };
-  });
-
-  const dependencyTaskIds = new Map<string, string>();
-
-  for (const { compiledTask, decisionTask } of matchedTasks) {
-    dependencyTaskIds.set(compiledTask.taskId, decisionTask.taskId);
-    dependencyTaskIds.set(decisionTask.taskId, decisionTask.taskId);
-  }
-
-  return compiledRunPlanSchema.parse({
-    decisionPackageId: decisionPackage.decisionPackageId,
-    summary: plan.summary,
-    tasks: matchedTasks.map(({ compiledTask, decisionTask }) => ({
-      ...compiledTask,
-      taskId: decisionTask.taskId,
-      title: decisionTask.title,
-      dependsOn: canonicalizeDependsOn(compiledTask, decisionTask, dependencyTaskIds)
-    }))
-  });
-}
-
 async function writeJsonArtifact(
   input: {
     env: WorkerBindings;
@@ -402,12 +292,9 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
       messages: buildCompileMessages(input.repo, decisionPackage),
       temperature: 0
     });
-    // Phase 2 still expects the approved fixture task ids. Keep the live compile
-    // prose, but fail closed unless the model preserves that task-id contract.
-    const plan = canonicalizeCompiledPlan(
-      parseStructuredChatCompletion(completion, compiledRunPlanSchema),
-      decisionPackage
-    );
+    const plan = parseStructuredChatCompletion(completion, compiledRunPlanSchema);
+
+    assertFixtureScopedCompiledPlan(plan, decisionPackage, "Live Think compile");
     const planArtifactRef = await writeJsonArtifact({
       env: input.env,
       client: input.client,

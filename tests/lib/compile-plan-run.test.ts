@@ -13,8 +13,8 @@ const mocked = vi.hoisted(() => {
     summary: "Live compile produced a task with model-authored instructions.",
     tasks: [
       {
-        taskId: "task-greeting-tone",
-        title: "Implement the approved live task",
+        taskId: "task-live-implementation",
+        title: "Adjust the greeting implementation",
         summary: "Use the live compiler output as the task source.",
         instructions: ["Implement the approved change.", "Run the relevant checks."],
         acceptanceCriteria: ["Relevant checks pass."],
@@ -178,11 +178,11 @@ describe("plan-run compile metadata", () => {
     mocked.reset();
   });
 
-  it("canonicalizes live compile output onto the decision-package task contract and stamps compileMode", async () => {
-    const decisionTask = demoDecisionPackageFixture.tasks[0];
+  it("accepts fixture-scoped live compile output and stamps compileMode", async () => {
+    const liveTask = mocked.liveParsedPlan.tasks[0];
 
-    if (!decisionTask) {
-      throw new Error("Expected the demo decision package fixture to include a task.");
+    if (!liveTask) {
+      throw new Error("Expected the live parsed plan to include a task.");
     }
 
     const result = await compileRunPlan(createCompileInput());
@@ -190,20 +190,10 @@ describe("plan-run compile metadata", () => {
       (entry) => entry.key === runPlanArtifactKey("tenant-fixture", "run-123")
     );
     const taskHandoffWrite = mocked.state.jsonWrites.find(
-      (entry) =>
-        entry.key === taskHandoffArtifactKey("tenant-fixture", "run-123", decisionTask.taskId)
+      (entry) => entry.key === taskHandoffArtifactKey("tenant-fixture", "run-123", liveTask.taskId)
     );
 
-    expect(result.plan).toEqual({
-      decisionPackageId: demoDecisionPackageFixture.decisionPackageId,
-      summary: mocked.liveParsedPlan.summary,
-      tasks: [
-        {
-          ...mocked.liveParsedPlan.tasks[0],
-          title: decisionTask.title
-        }
-      ]
-    });
+    expect(result.plan).toEqual(mocked.liveParsedPlan);
     expect(mocked.parseStructuredChatCompletion).toHaveBeenCalledTimes(1);
     expect(mocked.state.statusUpdates).toEqual(
       expect.arrayContaining([
@@ -284,8 +274,8 @@ describe("plan-run compile metadata", () => {
           kind: "task_handoff",
           metadata: expect.objectContaining({
             compileMode: "live",
-            taskId: decisionTask.taskId,
-            title: decisionTask.title
+            taskId: liveTask.taskId,
+            title: liveTask.title
           })
         })
       ])
@@ -301,7 +291,7 @@ describe("plan-run compile metadata", () => {
           value: result.plan
         }),
         expect.objectContaining({
-          key: taskHandoffArtifactKey("tenant-fixture", "run-123", decisionTask.taskId),
+          key: taskHandoffArtifactKey("tenant-fixture", "run-123", liveTask.taskId),
           value: {
             runId: "run-123",
             decisionPackageId: demoDecisionPackageFixture.decisionPackageId,
@@ -325,23 +315,17 @@ describe("plan-run compile metadata", () => {
     });
 
     await expect(compileRunPlan(createCompileInput())).rejects.toThrow(
-      /returned decision package unexpected-decision-package; expected demo-greeting-update/
+      /produced decision package unexpected-decision-package, expected demo-greeting-update/
     );
   });
 
-  it("rejects live compile output when the task only matches by title", async () => {
-    const decisionTask = demoDecisionPackageFixture.tasks[0];
-
-    if (!decisionTask) {
-      throw new Error("Expected the demo decision package fixture to include a task.");
-    }
-
+  it("rejects live compile output when the task matches neither an approved id nor title", async () => {
     mocked.replaceLiveParsedPlan({
       ...mocked.liveParsedPlan,
       tasks: [
         {
-          taskId: "task-live-implementation",
-          title: decisionTask.title,
+          taskId: "task-unapproved",
+          title: "Unexpected task title",
           summary: "Use the live compiler output as the task source.",
           instructions: ["Implement the approved change.", "Run the relevant checks."],
           acceptanceCriteria: ["Relevant checks pass."],
@@ -351,39 +335,33 @@ describe("plan-run compile metadata", () => {
     });
 
     await expect(compileRunPlan(createCompileInput())).rejects.toThrow(
-      /without preserving the approved task id task-greeting-tone/
+      /could not reconcile task task-unapproved \(Unexpected task title\) with the approved fixture decision package/
     );
   });
 
-  it("rejects live compile output when dependsOn cannot be reconciled to approved task ids", async () => {
+  it("rejects live compile output when dependsOn exceeds the fixture-scoped happy path", async () => {
     mocked.replaceLiveParsedPlan({
       ...mocked.liveParsedPlan,
       tasks: [
         {
           ...mocked.liveParsedPlan.tasks[0],
-          dependsOn: ["task-missing"]
+          dependsOn: ["task-setup"]
         }
       ]
     });
 
     await expect(compileRunPlan(createCompileInput())).rejects.toThrow(
-      /unsupported dependency task-missing/
+      /returned unsupported dependsOn entries for task task-live-implementation/
     );
   });
 
   it("records live compile failures without persisting run-plan or task-handoff artifacts", async () => {
-    const decisionTask = demoDecisionPackageFixture.tasks[0];
-
-    if (!decisionTask) {
-      throw new Error("Expected the demo decision package fixture to include a task.");
-    }
-
     mocked.replaceLiveParsedPlan({
       ...mocked.liveParsedPlan,
       tasks: [
         {
-          taskId: "task-live-implementation",
-          title: decisionTask.title,
+          taskId: "task-unapproved",
+          title: "Unexpected task title",
           summary: "Use the live compiler output as the task source.",
           instructions: ["Implement the approved change.", "Run the relevant checks."],
           acceptanceCriteria: ["Relevant checks pass."],
@@ -411,7 +389,7 @@ describe("plan-run compile metadata", () => {
     });
 
     await expect(compileRunPlan(createCompileInput())).rejects.toThrow(
-      /without preserving the approved task id task-greeting-tone/
+      /could not reconcile task task-unapproved \(Unexpected task title\) with the approved fixture decision package/
     );
 
     expect(
@@ -440,7 +418,7 @@ describe("plan-run compile metadata", () => {
             compileMode: "live",
             decisionPackageId: demoDecisionPackageFixture.decisionPackageId,
             errorMessage: expect.stringMatching(
-              /without preserving the approved task id task-greeting-tone/
+              /could not reconcile task task-unapproved \(Unexpected task title\) with the approved fixture decision package/
             )
           })
         })
@@ -455,7 +433,7 @@ describe("plan-run compile metadata", () => {
           payload: expect.objectContaining({
             compileMode: "live",
             message: expect.stringMatching(
-              /without preserving the approved task id task-greeting-tone/
+              /could not reconcile task task-unapproved \(Unexpected task title\) with the approved fixture decision package/
             )
           }),
           status: "failed"

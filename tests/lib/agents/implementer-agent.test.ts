@@ -211,6 +211,7 @@ describe("implementer agent helpers", () => {
     });
 
     expect(buildImplementerSystemPrompt(context)).toContain("/keystone/session.json");
+    expect(buildImplementerSystemPrompt(context)).toContain("decision_package");
     expect(buildImplementerSystemPrompt(context)).toContain("/artifacts/out");
     expect(buildImplementerSystemPrompt(context)).toContain("Update the greeting and stage a summary.");
   });

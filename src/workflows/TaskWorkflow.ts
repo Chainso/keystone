@@ -18,6 +18,7 @@ import { createWorkerDatabaseClient } from "../lib/db/client";
 import { listSessionEvents } from "../lib/db/events";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { getTaskSessionStub } from "../lib/auth/tenant";
+import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
 import type { RunExecutionOptions } from "../lib/runs/options";
 import { resolveRunExecutionOptions } from "../lib/runs/options";
 import { demoTargetFixtureFiles } from "../lib/workspace/fixtures";
@@ -493,9 +494,14 @@ function buildThinkImplementerPrompt(handoff: Awaited<ReturnType<typeof loadTask
   const acceptanceCriteria = handoff.task.acceptanceCriteria
     .map((criterion) => `- ${criterion}`)
     .join("\n");
+  const dependencySummary =
+    handoff.task.dependsOn.length === 0 ? "none" : handoff.task.dependsOn.join(", ");
 
   return [
+    `Decision package: ${handoff.decisionPackageId}`,
+    `Task ID: ${handoff.task.taskId}`,
     `Task: ${handoff.task.title}`,
+    `Depends on: ${dependencySummary}`,
     "",
     handoff.task.summary,
     "",
@@ -504,6 +510,8 @@ function buildThinkImplementerPrompt(handoff: Awaited<ReturnType<typeof loadTask
     "",
     "Acceptance criteria:",
     acceptanceCriteria,
+    "",
+    "Projected decision_package, run_plan, and task_handoff artifacts are available under /artifacts/in if you need broader context before editing.",
     "",
     "When you finish, stage a concise durable handoff note under /artifacts/out and leave the workspace in a test-passing state."
   ].join("\n");
@@ -517,7 +525,8 @@ function resolveThinkTurnInput(
   if (
     payload.repo.source === "localPath" &&
     payload.repo.localPath?.endsWith("fixtures/demo-target") &&
-    handoff.task.taskId === "task-greeting-tone"
+    handoff.decisionPackageId === demoDecisionPackageFixture.decisionPackageId &&
+    handoff.task.dependsOn.length === 0
   ) {
     if (options.thinkMode === "live") {
       return {};
@@ -529,7 +538,7 @@ function resolveThinkTurnInput(
   }
 
   throw new NonRetryableError(
-    "The Think runtime is only wired for the fixture-backed demo task path."
+    "The Think runtime currently supports only independent fixture-scoped compiled demo handoffs."
   );
 }
 

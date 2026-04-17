@@ -38,7 +38,10 @@ import {
 } from "../keystone/compile/plan-run";
 import { decisionPackageSchema, type DecisionPackage } from "../keystone/compile/contracts";
 import { finalizeRun } from "../keystone/integration/finalize-run";
-import { loadCompiledRunPlanArtifact } from "../keystone/tasks/load-task-contracts";
+import {
+  assertFixtureScopedCompiledPlan,
+  loadCompiledRunPlanArtifact
+} from "../keystone/tasks/load-task-contracts";
 import { isTerminalWorkflowInstanceStatus } from "../keystone/tasks/task-status";
 
 export type RunWorkflowDecisionPackageInput =
@@ -134,32 +137,6 @@ export function shouldUseFixtureCompileForRun(
     repo.localPath.endsWith("fixtures/demo-target") &&
     decisionPackage.decisionPackageId === "demo-greeting-update"
   );
-}
-
-function assertPhaseTwoLiveThinkTaskShape(
-  plan: Awaited<ReturnType<typeof loadCompiledRunPlanArtifact>>,
-  decisionPackage: DecisionPackage
-) {
-  if (plan.decisionPackageId !== decisionPackage.decisionPackageId) {
-    throw new NonRetryableError(
-      `Live Think compile produced decision package ${plan.decisionPackageId}, expected ${decisionPackage.decisionPackageId}.`
-    );
-  }
-
-  if (plan.tasks.length !== decisionPackage.tasks.length) {
-    throw new NonRetryableError(
-      `Live Think compile produced ${plan.tasks.length} tasks, expected ${decisionPackage.tasks.length} for the current Phase 2 demo path.`
-    );
-  }
-
-  const expectedTaskIds = new Set(decisionPackage.tasks.map((task) => task.taskId));
-  const incompatibleTask = plan.tasks.find((task) => !expectedTaskIds.has(task.taskId));
-
-  if (incompatibleTask) {
-    throw new NonRetryableError(
-      `Live Think compile produced unsupported task handoff ${incompatibleTask.taskId} before Phase 3 lifts the fixture task gate.`
-    );
-  }
 }
 
 export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowParams> {
@@ -430,7 +407,17 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
       const plan = await loadCompiledRunPlanArtifact(this.env, event.payload.tenantId, event.payload.runId);
 
       if (isLiveThinkExecution(runContext.runtime, runContext.options)) {
-        assertPhaseTwoLiveThinkTaskShape(plan, decisionPackage);
+        try {
+          assertFixtureScopedCompiledPlan(
+            plan,
+            decisionPackage,
+            "Persisted live Think plan"
+          );
+        } catch (error) {
+          throw new NonRetryableError(
+            error instanceof Error ? error.message : String(error)
+          );
+        }
       }
 
       const batch = plan.tasks.map((task) => ({
