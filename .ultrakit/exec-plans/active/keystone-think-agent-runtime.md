@@ -122,6 +122,11 @@ Backward compatibility with an external shipped product is not required because 
   **Decision:** Execute the deterministic mock-model path directly in `KeystoneThinkAgent` instead of routing it through Think’s local chat queue when `mockModelPlan` is present.  
   **Rationale:** Local Wrangler validation hit a Think runtime crash (`appendMessage` on undefined) even though the fixture path is mock-driven. Direct execution preserves the `runImplementerTurn()` contract and keeps host-local validation viable.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 5  
+  **Decision:** Update the durable docs now, but keep the plan active until the exact Think demo rerun can be repeated on a host session with a valid `CLOUDFLARE_API_TOKEN`.  
+  **Rationale:** The Phase 5 archive gate requires rerunning `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` exactly as documented. On this machine, local Wrangler startup fails before the Worker is ready if the host token is missing or invalid.
+
 ## Progress
 
 - [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remained active.
@@ -131,7 +136,7 @@ Backward compatibility with an external shipped product is not required because 
 - [x] 2026-04-17 Phase 2 fix pass completed: bridge re-materialization now clears `/artifacts/out`, and a repeat-materialization regression test covers stale staged-output leakage.
 - [x] 2026-04-17 Phase 3 completed: a Think-backed implementer role now consumes the sandbox bridge, emits agent/tool/staged-artifact events, exposes a dev Think smoke route, and has deterministic smoke/test coverage.
 - [x] 2026-04-17 Phase 4 completed: run creation now carries an explicit runtime selector, `TaskWorkflow` can execute the Think-backed implementer path, staged outputs are promoted into canonical artifact refs, and the fixture demo run validates end to end.
-- [ ] Phase 5: Update developer docs, runbooks, and archive the plan when acceptance is met.
+- [ ] Phase 5: Durable docs and runbooks are updated, but the required exact Think rerun and archive remain blocked until local Wrangler can start with a valid host `CLOUDFLARE_API_TOKEN`.
 
 ## Surprises & Discoveries
 
@@ -147,6 +152,7 @@ Backward compatibility with an external shipped product is not required because 
 - **2026-04-17:** The AI SDK mock-model path does not auto-continue into a final assistant-text step in the same way a live Think turn does, so the durable smoke proof for Phase 3 is better anchored on filesystem edits, bash execution, staged outputs, and emitted events than on final assistant text.
 - **2026-04-17:** The local `@cloudflare/think` path under `wrangler dev --local` crashed inside Think’s chat queue (`appendMessage` on undefined) for mock turns, so the deterministic Phase 4 path had to execute the mock plan directly while keeping the same `runImplementerTurn()` surface.
 - **2026-04-17:** Re-calling `TaskSessionDO.ensureWorkspace()` inside the Think workflow step retried `git worktree add` against an existing task worktree. The stable fix was to carry a serialized bridge snapshot across the workflow step boundary rather than rematerializing the workspace a second time.
+- **2026-04-17:** Local `wrangler dev` now has an additional hard prerequisite beyond the sandbox escape hatch on this host: it also needs a valid `CLOUDFLARE_API_TOKEN` because the Worker keeps a remote `AI` binding. A placeholder token fails early against the `/memberships` API before the Worker is ready.
 
 ## Outcomes & Retrospective
 
@@ -164,6 +170,13 @@ Phase 4 outcome on 2026-04-17:
 - The fixture demo flow now sends runtime selection explicitly, waits for a real terminal run summary, and validates the promoted Think artifact shape instead of compile-only intermediates.
 - Host validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `KEYSTONE_AGENT_RUNTIME=think npm run demo:run`, and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` against a host `wrangler dev --local` instance on this machine.
 - The next contributor should move to Phase 5 documentation and keep `scripted` as the default runtime until a later plan explicitly changes that decision.
+
+Phase 5 status on 2026-04-17:
+
+- Durable docs now describe the runtime selector, the `/workspace` + `/artifacts/*` + `/keystone` bridge contract, the staged-artifact promotion path, and the exact Think fixture commands.
+- Narrow local smoke validation still passed with `npm run sandbox:smoke` and `npm run think:smoke`.
+- The required exact Phase 5 rerun could not be completed in this session because host `wrangler dev` failed before startup without a valid `CLOUDFLARE_API_TOKEN`, and a placeholder token failed against the Cloudflare `/memberships` API.
+- Because the documented Think path was not rerun exactly as written in this phase, the plan must remain active and cannot be archived yet.
 
 ## Context and Orientation
 
@@ -740,10 +753,14 @@ Accurate architecture/runbook docs and an archived plan when acceptance is met.
 Do not archive the plan if the documented Think-backed path has not been rerun exactly as written.
 
 **Status**  
-Queued until Phase 4 completes.
+In progress, but blocked on host validation as of 2026-04-17.
 
 **Completion Notes**  
-Not started.
+- Added durable developer docs for the shipped Think-backed runtime architecture and local runbook.
+- Updated the root README and M1 runbook so the documented local commands, compile backend URL, runtime selector, and artifact expectations match the shipped code, and corrected the validation docs to distinguish the exact Phase 5 gate from the convenience `--run-id` form.
+- Revalidated the narrow local smokes with `npm run sandbox:smoke` and `npm run think:smoke`.
+- Attempted to rerun the required host validation path, but `npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false` failed before startup without a valid host `CLOUDFLARE_API_TOKEN`; retrying with a placeholder token failed against Cloudflare `/memberships`.
+- The plan is intentionally not archived because the exact documented Think rerun did not complete in this phase.
 
 **Next Starter Context**  
-The docs must describe what the runtime actually does, not what Think could do in theory.
+Provide a valid host `CLOUDFLARE_API_TOKEN`, restart local Wrangler with the documented boot command, rerun `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` exactly as written, then archive this plan only if those commands pass unchanged.

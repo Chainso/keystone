@@ -1,13 +1,14 @@
 # Keystone Cloudflare Prototype
 
-Keystone M1 is a single hand-authored Cloudflare Worker project that proves:
+Keystone is a single Cloudflare Worker project that currently proves:
 
 - tenant-scoped run intake over HTTP
 - durable run and task orchestration with Cloudflare Workflows
 - realtime run projection with Durable Objects and WebSockets
 - file-first artifact persistence in R2 with Postgres as the operational index
 - sandboxed task execution with session sandboxes and task worktrees
-- provider-backed compile using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
+- provider-backed compile using the local OpenAI-compatible chat-completions endpoint at `http://localhost:4001`
+- a runtime selector that keeps `scripted` as the default path and enables a Think-backed implementer turn for the fixture demo task
 
 ## Core Commands
 
@@ -27,6 +28,8 @@ npm run build
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
+`npm run dev` needs a valid `CLOUDFLARE_API_TOKEN` in the host environment because `env.AI` is a remote binding, even when the Think demo uses the deterministic mock plan.
+
 ## Demo Flow
 
 With Wrangler dev running, target the exact `Ready on http://127.0.0.1:<port>` URL that Wrangler prints. If `8787` is already occupied, export the actual ready URL first:
@@ -39,8 +42,34 @@ Then run:
 
 ```bash
 npm run demo:run
+npm run demo:validate
+```
+
+For ad hoc manual validation when you need to supply the run id yourself, the convenience form is:
+
+```bash
 npm run demo:validate -- --run-id=<run-id-from-demo-run>
 ```
+
+The scripted path stays the default runtime and should yield a `task_log` artifact. The exact Phase 5 Think gate uses:
+
+```bash
+KEYSTONE_AGENT_RUNTIME=think npm run demo:run
+KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
+```
+
+For ad hoc manual Think validation when you need to supply the run id explicitly, use:
+
+```bash
+KEYSTONE_AGENT_RUNTIME=think npm run demo:validate -- --run-id=<run-id-from-demo-run>
+```
+
+The current Think path is intentionally narrow:
+
+- runtime selection is accepted through `X-Keystone-Agent-Runtime` and defaults to `scripted`
+- only the fixture-backed `task-greeting-tone` task is wired for `think`
+- the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
+- final run success is still anchored on a `run_summary` artifact and an archived run session
 
 You can also submit a run directly:
 
@@ -61,3 +90,5 @@ Start from `.dev.vars.example` and keep local overrides in `.dev.vars`.
 
 - [M1 architecture](.ultrakit/developer-docs/m1-architecture.md)
 - [M1 local runbook](.ultrakit/developer-docs/m1-local-runbook.md)
+- [Think runtime architecture](.ultrakit/developer-docs/think-runtime-architecture.md)
+- [Think runtime runbook](.ultrakit/developer-docs/think-runtime-runbook.md)
