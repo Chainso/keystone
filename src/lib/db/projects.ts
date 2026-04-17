@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type {
   ProjectComponent,
@@ -70,17 +70,13 @@ async function loadStoredProject(
   client: DatabaseClient,
   projectRow: typeof projects.$inferSelect
 ): Promise<StoredProject> {
-  const [ruleSetRow, componentRows, overrideRows, envVarRows, integrationRows] = await Promise.all([
+  const [ruleSetRow, componentRows, envVarRows, integrationRows] = await Promise.all([
     client.db.query.projectRuleSets.findFirst({
       where: eq(projectRuleSets.projectId, projectRow.projectId)
     }),
     client.db.query.projectComponents.findMany({
       where: eq(projectComponents.projectId, projectRow.projectId),
       orderBy: [asc(projectComponents.componentKey)]
-    }),
-    client.db.query.projectComponentRuleOverrides.findMany({
-      where: eq(projectComponentRuleOverrides.projectId, projectRow.projectId),
-      orderBy: [asc(projectComponentRuleOverrides.componentId)]
     }),
     client.db.query.projectEnvVars.findMany({
       where: eq(projectEnvVars.projectId, projectRow.projectId),
@@ -91,6 +87,16 @@ async function loadStoredProject(
       orderBy: [asc(projectIntegrationBindings.bindingKey)]
     })
   ]);
+  const overrideRows =
+    componentRows.length === 0
+      ? []
+      : await client.db.query.projectComponentRuleOverrides.findMany({
+          where: inArray(
+            projectComponentRuleOverrides.componentId,
+            componentRows.map((row) => row.componentId)
+          ),
+          orderBy: [asc(projectComponentRuleOverrides.componentId)]
+        });
 
   const overrideByComponentId = new Map(overrideRows.map((row) => [row.componentId, row]));
   const components = componentRows.map((componentRow): ProjectComponent => {
@@ -174,7 +180,6 @@ async function replaceProjectChildren(
       }
     });
 
-  await tx.delete(projectComponentRuleOverrides).where(eq(projectComponentRuleOverrides.projectId, input.projectId));
   await tx.delete(projectEnvVars).where(eq(projectEnvVars.projectId, input.projectId));
   await tx
     .delete(projectIntegrationBindings)
@@ -211,7 +216,6 @@ async function replaceProjectChildren(
       return [
         {
           componentId,
-          projectId: input.projectId,
           reviewInstructions: component.ruleOverride.reviewInstructions ?? null,
           testInstructions: component.ruleOverride.testInstructions ?? null,
           createdAt: now,

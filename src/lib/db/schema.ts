@@ -200,9 +200,6 @@ export const projectComponentRuleOverrides = pgTable("project_component_rule_ove
   componentId: uuid("component_id")
     .primaryKey()
     .references(() => projectComponents.componentId, { onDelete: "cascade" }),
-  projectId: uuid("project_id")
-    .notNull()
-    .references(() => projects.projectId, { onDelete: "cascade" }),
   reviewInstructions: jsonb("review_instructions").$type<string[] | null>(),
   testInstructions: jsonb("test_instructions").$type<string[] | null>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

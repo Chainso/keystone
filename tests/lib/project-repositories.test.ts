@@ -28,6 +28,7 @@ describeIfDatabase("project repositories", () => {
   let client: DatabaseClient;
 
   const tenantId = `tenant-project-${crypto.randomUUID()}`;
+  const otherTenantId = `tenant-project-${crypto.randomUUID()}`;
 
   beforeAll(async () => {
     const resolvedConnectionString = resolveDatabaseConnectionString({
@@ -49,77 +50,82 @@ describeIfDatabase("project repositories", () => {
     }
 
     await client.sql`DELETE FROM projects WHERE tenant_id = ${tenantId}`;
+    await client.sql`DELETE FROM projects WHERE tenant_id = ${otherTenantId}`;
     await client.close();
   });
+
+  function buildProjectConfig(projectKey: string) {
+    return {
+      projectKey,
+      displayName: "Demo Project",
+      description: "Fixture project for repository tests.",
+      ruleSet: {
+        reviewInstructions: ["Require a code review summary."],
+        testInstructions: ["Run unit tests before handoff."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository" as const,
+          config: {
+            localPath: "./fixtures/demo-target",
+            defaultRef: "main"
+          },
+          ruleOverride: {
+            testInstructions: ["Run targeted API integration tests."],
+            metadata: {
+              owner: "platform"
+            }
+          },
+          metadata: {
+            purpose: "service"
+          }
+        },
+        {
+          componentKey: "docs",
+          displayName: "Docs",
+          kind: "git_repository" as const,
+          config: {
+            gitUrl: "https://github.com/example/docs.git",
+            defaultRef: "main"
+          },
+          metadata: {
+            purpose: "documentation"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "NODE_ENV",
+          value: "test",
+          metadata: {
+            scope: "project"
+          }
+        }
+      ],
+      integrationBindings: [
+        {
+          bindingKey: "github-primary",
+          tenantIntegrationId: "tenant-int-github-primary",
+          overrides: {
+            repoOwner: "example"
+          },
+          metadata: {
+            channel: "default"
+          }
+        }
+      ],
+      metadata: {
+        source: "test"
+      }
+    };
+  }
 
   it("creates and loads a project with components, rules, env vars, and integration bindings", async () => {
     const created = await createProject(client, {
       tenantId,
-      config: {
-        projectKey: "demo-project",
-        displayName: "Demo Project",
-        description: "Fixture project for repository tests.",
-        ruleSet: {
-          reviewInstructions: ["Require a code review summary."],
-          testInstructions: ["Run unit tests before handoff."]
-        },
-        components: [
-          {
-            componentKey: "api",
-            displayName: "API",
-            kind: "git_repository",
-            config: {
-              localPath: "./fixtures/demo-target",
-              defaultRef: "main"
-            },
-            ruleOverride: {
-              testInstructions: ["Run targeted API integration tests."],
-              metadata: {
-                owner: "platform"
-              }
-            },
-            metadata: {
-              purpose: "service"
-            }
-          },
-          {
-            componentKey: "docs",
-            displayName: "Docs",
-            kind: "git_repository",
-            config: {
-              gitUrl: "https://github.com/example/docs.git",
-              defaultRef: "main"
-            },
-            metadata: {
-              purpose: "documentation"
-            }
-          }
-        ],
-        envVars: [
-          {
-            name: "NODE_ENV",
-            value: "test",
-            metadata: {
-              scope: "project"
-            }
-          }
-        ],
-        integrationBindings: [
-          {
-            bindingKey: "github-primary",
-            tenantIntegrationId: "tenant-int-github-primary",
-            overrides: {
-              repoOwner: "example"
-            },
-            metadata: {
-              channel: "default"
-            }
-          }
-        ],
-        metadata: {
-          source: "test"
-        }
-      }
+      config: buildProjectConfig("demo-project")
     });
 
     expect(created.projectKey).toBe("demo-project");
@@ -163,20 +169,16 @@ describeIfDatabase("project repositories", () => {
   });
 
   it("replaces nested project configuration during update", async () => {
-    const existing = await getProjectByKey(client, {
+    const existing = await createProject(client, {
       tenantId,
-      projectKey: "demo-project"
+      config: buildProjectConfig("update-project")
     });
-
-    if (!existing) {
-      throw new Error("Expected seeded project to exist before update.");
-    }
 
     const updated = await updateProject(client, {
       tenantId,
       projectId: existing.projectId,
       config: {
-        projectKey: "demo-project",
+        projectKey: "update-project",
         displayName: "Demo Project v2",
         description: "Updated fixture project.",
         ruleSet: {
@@ -238,7 +240,72 @@ describeIfDatabase("project repositories", () => {
       tenantId
     });
 
-    expect(projectList).toHaveLength(1);
-    expect(projectList[0]?.displayName).toBe("Demo Project v2");
+    expect(projectList.some((project) => project.projectId === existing.projectId)).toBe(true);
+    expect(projectList.find((project) => project.projectId === existing.projectId)?.displayName).toBe(
+      "Demo Project v2"
+    );
+  });
+
+  it("keeps project lookups tenant isolated", async () => {
+    const created = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig("tenant-isolated-project")
+    });
+
+    const byWrongTenantId = await getProject(client, {
+      tenantId: otherTenantId,
+      projectId: created.projectId
+    });
+    const byWrongTenantKey = await getProjectByKey(client, {
+      tenantId: otherTenantId,
+      projectKey: created.projectKey
+    });
+    const otherTenantProjects = await listProjects(client, {
+      tenantId: otherTenantId
+    });
+
+    expect(byWrongTenantId).toBeUndefined();
+    expect(byWrongTenantKey).toBeUndefined();
+    expect(otherTenantProjects).toEqual([]);
+  });
+
+  it("rejects duplicate project keys within a tenant while allowing reuse across tenants", async () => {
+    const config = buildProjectConfig("duplicate-project");
+
+    await createProject(client, {
+      tenantId,
+      config
+    });
+
+    await expect(
+      createProject(client, {
+        tenantId,
+        config
+      })
+    ).rejects.toThrow(/duplicate key value|uq_projects_tenant_key/i);
+
+    const otherTenantProject = await createProject(client, {
+      tenantId: otherTenantId,
+      config
+    });
+
+    expect(otherTenantProject.projectKey).toBe("duplicate-project");
+  });
+
+  it("loads component rule overrides through their component rows", async () => {
+    const created = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig("override-storage-project")
+    });
+
+    const loaded = await getProject(client, {
+      tenantId,
+      projectId: created.projectId
+    });
+
+    expect(
+      loaded?.components.find((component) => component.componentKey === "api")?.ruleOverride
+        ?.testInstructions
+    ).toEqual(["Run targeted API integration tests."]);
   });
 });

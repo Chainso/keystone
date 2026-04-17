@@ -117,6 +117,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Model the project foundation with dedicated tables for projects, project-level rule sets, components, component rule overrides, env vars, and integration bindings, while keeping `git_repository` as the only active component kind in the typed contracts.  
   **Rationale:** Later phases need a durable, queryable project graph before HTTP CRUD or run/workspace rewiring can land, and the user explicitly wants a generic project abstraction without adding snapshot tables or compatibility shims.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 1 Fix Pass  
+  **Decision:** Keep `project_component_rule_overrides` normalized on `component_id` only and align the Drizzle schema/repository loading logic to that table shape instead of adding a redundant `project_id` column after the fact.  
+  **Rationale:** The Phase 1 migration already established a valid 1:1 override-to-component model. Fixing the repository/runtime mismatch in code preserves the cleaner schema, avoids duplicate foreign-key state, and restores fresh-migration correctness.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -124,6 +129,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Broad baseline captured before execution: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` all pass.
 - [x] 2026-04-17 User approved execution; active index now marks this plan `In Progress`, and execution-stage phase handoffs are populated.
 - [x] 2026-04-17 Phase 1 completed: added append-only project-domain migrations, Drizzle schema, typed project contracts, repository helpers, and repository-level tests for project/config graph persistence.
+- [x] 2026-04-17 Phase 1 fix pass completed: repository override loading now matches the normalized migration shape, and project repository tests are isolated and cover tenant scoping plus duplicate-key rejection.
 - [ ] Phase 2: add project CRUD plus reusable integration/rule/env configuration APIs and fixture-project bootstrap support.
 - [ ] Phase 3: generalize workspace materialization from single-repo to multi-component project workspaces.
 - [ ] Phase 4: require `projectId` on runs and wire project-backed workspace execution through workflows, task sessions, and demo scripts.
@@ -139,6 +145,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - The operator-facing demo scripts still create runs with fixture repo paths rather than a project reference.
 - Broad baseline validation is currently clean, which means the plan can use repo-wide `lint`, `typecheck`, `test`, and `build` as trustworthy gates instead of targeted-only validation.
 - `wrangler deploy --dry-run --outdir .wrangler/deploy` still needs to run outside the Codex sandbox boundary on this host because Wrangler logging and Docker buildx both write under non-writable home-directory paths during the build.
+- `project_component_rule_overrides` does not need its own `project_id` column because the owning project is derivable from `project_components`; the Phase 1 repository mismatch came from the runtime layer, not from the migration design.
 
 ## Outcomes & Retrospective
 
@@ -155,6 +162,7 @@ Phase 1 outcome on 2026-04-17:
 - The repository layer can create, fetch, list, and replace a full project configuration graph without touching run creation or workspace execution yet.
 - Typed backend contracts now define the generic project/component/config surface for later HTTP and workflow phases, while constraining `v1` execution to `git_repository` components only.
 - Broad validation remains green after the new schema/repository layer landed.
+- The targeted fix pass resolved the override-table rollout blocker by matching the repository layer to the shipped migration shape and expanded repository tests to cover tenant isolation, duplicate project-key rejection, and isolated update setup.
 
 ## Context and Orientation
 
@@ -462,10 +470,10 @@ Keep the abstraction generic even though `git_repository` is the only active com
 Completed on 2026-04-17.
 
 **Completion Notes**  
-Added `0002_project_model.sql`, expanded `src/lib/db/schema.ts` with project-domain tables, introduced `src/lib/db/projects.ts` for project graph persistence, added typed contracts in `src/keystone/projects/contracts.ts`, and covered the new repository layer with `tests/lib/project-repositories.test.ts`. Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` (the build required escalation outside the Codex sandbox because Wrangler/Docker write outside writable roots on this host).
+Added `0002_project_model.sql`, expanded `src/lib/db/schema.ts` with project-domain tables, introduced `src/lib/db/projects.ts` for project graph persistence, added typed contracts in `src/keystone/projects/contracts.ts`, and covered the new repository layer with `tests/lib/project-repositories.test.ts`. The targeted fix pass then aligned the repository/schema code with the normalized `project_component_rule_overrides(component_id)` table shape and made the repository tests independent while adding tenant-isolation and duplicate-project-key coverage. Validation passed with `npm run lint`, `npm run typecheck`, and `npm run test`; the earlier phase build remains the last broad build proof because this fix stayed inside repository/runtime-test surface only.
 
 **Next Starter Context**  
-Phase 2 can build directly on `src/lib/db/projects.ts` and `src/keystone/projects/contracts.ts` to expose tenant-scoped project CRUD plus deterministic fixture-project bootstrap support. Run creation is still repo-backed at this point, so do not touch `/v1/runs` until the workspace and workflow phases.
+Phase 2 can build directly on `src/lib/db/projects.ts` and `src/keystone/projects/contracts.ts` to expose tenant-scoped project CRUD plus deterministic fixture-project bootstrap support. The component override table should continue to treat `component_id` as its only key and derive project ownership through `project_components`. Run creation is still repo-backed at this point, so do not touch `/v1/runs` until the workspace and workflow phases.
 
 ### Phase 2: Add project CRUD, overrides, and fixture-project bootstrap support
 
