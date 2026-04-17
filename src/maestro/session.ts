@@ -1,4 +1,5 @@
 import type { Session, SessionSpec, SessionStatus } from "./contracts";
+import type { AgentTurnOutcome } from "./agent-runtime";
 
 export const sessionStatusTransitions: Record<SessionStatus, readonly SessionStatus[]> = {
   configured: ["configured", "provisioning", "failed", "cancelled", "archived"],
@@ -50,4 +51,17 @@ export function buildConfiguredSession(
     createdAt,
     updatedAt
   };
+}
+
+export function deriveSessionStatusForAgentTurnOutcome(
+  outcome: AgentTurnOutcome
+): SessionStatus {
+  switch (outcome) {
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "cancelled";
+    default:
+      return "active";
+  }
 }

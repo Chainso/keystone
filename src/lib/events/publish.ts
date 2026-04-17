@@ -28,3 +28,21 @@ export async function appendAndPublishRunEvent(
 
   return event;
 }
+
+export async function appendAndPublishRunEvents(
+  client: DatabaseClient,
+  env: Pick<WorkerBindings, "RUN_COORDINATOR">,
+  inputs: Array<
+    AppendSessionEventInput & {
+      status?: SessionStatus | undefined;
+    }
+  >
+) {
+  const events = [];
+
+  for (const input of inputs) {
+    events.push(await appendAndPublishRunEvent(client, env, input));
+  }
+
+  return events;
+}

@@ -23,9 +23,13 @@ export const knownSessionEventTypes = [
   "lease.released",
   "approval.requested",
   "approval.resolved",
+  "agent.turn.started",
+  "agent.turn.completed",
+  "agent.turn.failed",
   "agent.message",
   "agent.tool_call",
   "agent.tool_result",
+  "artifact.staged",
   "artifact.put",
   "artifact.linked",
   "task.status_changed"

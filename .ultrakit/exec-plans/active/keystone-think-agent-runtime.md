@@ -102,6 +102,11 @@ Backward compatibility with an external shipped product is not required because 
   **Decision:** Reset `/artifacts/out` whenever the bridge is re-materialized for an existing sandbox session.  
   **Rationale:** Repeated `ensureWorkspace()` calls must not leak stale staged outputs into the next turn’s view. Clearing the staging root preserves the explicit rule that promotion from `/artifacts/out` remains manual rather than implicit.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 3  
+  **Decision:** Keep the first Think-backed implementer role filesystem-first and drive the smoke proof with a deterministic mock model plan rather than a live provider dependency.  
+  **Rationale:** Phase 3's acceptance target is the harness path itself: prompt/control-file handling, sandbox bridge tools, event emission, and staged outputs. A mock plan proves those seams in-process while keeping Think session state conversational and avoiding new runtime dependencies or workflow changes.
+
 ## Progress
 
 - [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remained active.
@@ -109,7 +114,7 @@ Backward compatibility with an external shipped product is not required because 
 - [x] 2026-04-16 Phase 1 completed: Think dependencies, bindings, generated types, runtime contract scaffolding, and a base `KeystoneThinkAgent` landed cleanly.
 - [x] 2026-04-17 Phase 2 completed: `TaskSessionDO` now projects prior run artifacts into `/artifacts/in`, stages writable outputs under `/artifacts/out`, materializes `/keystone/*.json` control files, and exposes reusable filesystem/bash bridge helpers plus smoke coverage.
 - [x] 2026-04-17 Phase 2 fix pass completed: bridge re-materialization now clears `/artifacts/out`, and a repeat-materialization regression test covers stale staged-output leakage.
-- [ ] Phase 3: Build the Think-backed `ImplementerAgent` and event/artifact mapping.
+- [x] 2026-04-17 Phase 3 completed: a Think-backed implementer role now consumes the sandbox bridge, emits agent/tool/staged-artifact events, exposes a dev Think smoke route, and has deterministic smoke/test coverage.
 - [ ] Phase 4: Integrate the Think runtime into `TaskWorkflow` behind a runtime selector and prove one fixture-backed task.
 - [ ] Phase 5: Update developer docs, runbooks, and archive the plan when acceptance is met.
 
@@ -124,6 +129,7 @@ Backward compatibility with an external shipped product is not required because 
 - **2026-04-17:** Durable Object stub inference for `TaskSessionDO` still collapsed to `never` in some callers until the DO methods had explicit public RPC return types, so the Phase 2 validation needed those signatures tightened.
 - **2026-04-17:** A meaningful Phase 2 smoke path does not need live `wrangler dev`; an in-process contract smoke over the bridge helpers is enough to prove projection, staged outputs, and command path rewriting while avoiding host-only local Worker constraints.
 - **2026-04-17:** The repeat-materialization path is part of the Phase 2 contract too. Leaving `/artifacts/out` untouched made staged files appear durable across turns even though promotion is supposed to stay explicit.
+- **2026-04-17:** The AI SDK mock-model path does not auto-continue into a final assistant-text step in the same way a live Think turn does, so the durable smoke proof for Phase 3 is better anchored on filesystem edits, bash execution, staged outputs, and emitted events than on final assistant text.
 
 ## Outcomes & Retrospective
 
@@ -146,7 +152,7 @@ Current repository state relevant to this plan:
 - `package.json` now includes `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `ai`, `@cloudflare/shell`, and `workers-ai-provider`.
 - `wrangler.jsonc` now enables the `experimental` compatibility flag, binds `AI`, and registers the `KEYSTONE_THINK_AGENT` Durable Object plus a `v3` migration while preserving the existing M1 runtime path.
 - `src/maestro/agent-runtime.ts` now defines the shared runtime contract and the standardized filesystem roots for later Think phases.
-- `src/keystone/agents/base/KeystoneThinkAgent.ts` is a bindable Think scaffold only; it is not yet routed into `TaskWorkflow` or the Hono app.
+- `src/keystone/agents/base/KeystoneThinkAgent.ts` now wraps a concrete implementer role: it parses per-turn prompt/bridge metadata, binds Think tools onto the sandbox bridge, emits agent lifecycle events, and stages outputs for later promotion.
 
 Relevant source documents and current runtime files:
 
@@ -318,6 +324,12 @@ Phase 2 implementation notes:
 - `/keystone/session.json`, `/keystone/filesystem.json`, and `/keystone/artifacts.json` are now the durable control-file contract for later Think roles.
 - `src/keystone/agents/tools/filesystem.ts` and `src/keystone/agents/tools/bash.ts` provide the reusable bridge helpers for later Think-backed tools.
 - `scripts/sandbox-smoke.ts` now validates the bridge contract directly instead of depending on a live local Worker.
+
+Phase 3 implementation notes:
+
+- `src/keystone/agents/implementer/ImplementerAgent.ts` now owns the implementer-role prompt, deterministic mock-model plan, staged-artifact collection, and tool wiring for `read_file`, `list_files`, `write_file`, and `run_bash`.
+- `src/keystone/agents/base/KeystoneThinkAgent.ts` now opens a sandbox session for the turn, feeds the implementer metadata into Think, and publishes `agent.turn.*`, `agent.message`, `agent.tool_*`, and `artifact.staged` events through the existing event pipeline.
+- `src/http/handlers/dev-think.ts` and `scripts/think-smoke.ts` provide the dedicated Phase 3 smoke path: the HTTP route proves the Worker seam, while the script keeps validation in-process and deterministic for the implementation pass.
 - The Phase 2 fix pass now clears `/artifacts/out` during bridge re-materialization so stale staged outputs do not survive repeated `ensureWorkspace()` calls on the same sandbox session.
 
 ## Interfaces and Dependencies
@@ -561,13 +573,17 @@ A working Think-backed implementer role plus a smoke path and event/artifact map
 Do not introduce sub-agent RPC or custom artifact-only tools in this phase. The point is to prove the filesystem-first harness path.
 
 **Status**  
-Ready to start.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Not started.
+- Added `src/keystone/agents/implementer/ImplementerAgent.ts` with the implementer system prompt, sandbox-bridge tool set, staged-artifact mapping, and deterministic mock-model plan for smoke coverage.
+- Upgraded `src/keystone/agents/base/KeystoneThinkAgent.ts` from scaffold to executable runtime: it now resolves bridge metadata from the turn context, opens the sandbox session, runs a Think turn, records agent/tool events, and returns staged outputs for later promotion.
+- Added `artifact.staged` plus `agent.turn.started|completed|failed` to the known event catalog and reused the existing publish path for the new Think-backed events.
+- Added `/internal/dev/think-smoke`, `scripts/think-smoke.ts`, unit coverage in `tests/lib/agents/implementer-agent.test.ts`, and app coverage in `tests/http/app.test.ts`.
+- Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `npm run think:smoke` (the Wrangler dry-run build still required host execution outside the Codex sandbox because Wrangler and Docker write under the home directory).
 
 **Next Starter Context**  
-Keep Think session state conversational only. Output files and promoted artifacts remain the durable handoff surface.
+Phase 4 should integrate `KeystoneThinkAgent.runImplementerTurn()` into `TaskWorkflow` behind an explicit runtime selector and promote staged `/artifacts/out` files into canonical R2-backed artifact refs. Keep the mock-model smoke path intact for deterministic harness validation even after live workflow wiring lands.
 
 ### Phase 4: Integrate the Think runtime into TaskWorkflow behind a runtime selector
 

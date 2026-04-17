@@ -76,7 +76,29 @@ const mocked = vi.hoisted(() => {
       ensureWorkspace: vi.fn(async () => ({
         workspace: {
           workspaceId: "workspace-smoke",
-          worktreePath: "/workspace/tasks/sandbox-smoke"
+          worktreePath: "/workspace/tasks/sandbox-smoke",
+          agentBridge: {
+            layout: {
+              workspaceRoot: "/workspace",
+              artifactsInRoot: "/artifacts/in",
+              artifactsOutRoot: "/artifacts/out",
+              keystoneRoot: "/keystone"
+            },
+            targets: {
+              workspaceRoot: "/workspace/tasks/sandbox-smoke",
+              artifactsInRoot: "/artifacts/in",
+              artifactsOutRoot: "/artifacts/out",
+              keystoneRoot: "/keystone"
+            },
+            readOnlyRoots: ["/artifacts/in", "/keystone"],
+            writableRoots: ["/workspace", "/artifacts/out"],
+            controlFiles: {
+              session: "/keystone/session.json",
+              filesystem: "/keystone/filesystem.json",
+              artifacts: "/keystone/artifacts.json"
+            },
+            projectedArtifacts: []
+          }
         }
       })),
       startProcess: vi.fn(async () => undefined),
@@ -87,6 +109,33 @@ const mocked = vi.hoisted(() => {
         }
       })),
       teardown: vi.fn(async () => undefined)
+    })),
+    getThinkAgentStub: vi.fn(() => ({
+      runImplementerTurn: vi.fn(async () => ({
+        outcome: "completed",
+        stagedArtifacts: [
+          {
+            path: "/artifacts/out/implementer-summary.md",
+            kind: "run_note",
+            contentType: "text/markdown; charset=utf-8",
+            metadata: {
+              fileName: "implementer-summary.md"
+            }
+          }
+        ],
+        events: [
+          {
+            eventType: "agent.turn.completed",
+            payload: {
+              stagedArtifactCount: 1
+            }
+          }
+        ],
+        summary: "Updated the greeting implementation.",
+        metadata: {
+          modelId: "mock-implementer"
+        }
+      }))
     })),
     compileRunPlan: vi.fn(async () => ({
       plan: {
@@ -183,7 +232,10 @@ const env = {
   } as unknown as Workflow<unknown>,
   RUN_COORDINATOR: {} as DurableObjectNamespace,
   SANDBOX: {} as DurableObjectNamespace,
-  TASK_SESSION: {} as DurableObjectNamespace
+  TASK_SESSION: {} as DurableObjectNamespace,
+  KEYSTONE_THINK_AGENT: {
+    getByName: mocked.getThinkAgentStub
+  } as unknown as DurableObjectNamespace
 } as const;
 
 describe("app", () => {
@@ -379,6 +431,31 @@ describe("app", () => {
       ok: true,
       taskCount: 1,
       model: "gpt-5.4-mini"
+    });
+  });
+
+  it("executes the think smoke route with dev auth", async () => {
+    const response = await app.request(
+      "http://example.com/internal/dev/think-smoke",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      summary: "Updated the greeting implementation.",
+      stagedArtifacts: [
+        expect.objectContaining({
+          path: "/artifacts/out/implementer-summary.md"
+        })
+      ]
     });
   });
 });
