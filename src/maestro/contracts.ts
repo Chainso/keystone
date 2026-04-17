@@ -26,6 +26,10 @@ export const workspaceStrategyValues = ["worktree", "clone_fetch"] as const;
 
 export type WorkspaceStrategy = (typeof workspaceStrategyValues)[number];
 
+export const agentRuntimeKindValues = ["scripted", "think"] as const;
+
+export type AgentRuntimeKind = (typeof agentRuntimeKindValues)[number];
+
 export const artifactStorageBackendValues = ["r2", "external"] as const;
 
 export type ArtifactStorageBackend = (typeof artifactStorageBackendValues)[number];
@@ -51,7 +55,7 @@ export interface EnvironmentDefinition {
 
 export interface RuntimeProfile {
   id: string;
-  runtime: string;
+  runtime: AgentRuntimeKind;
   cpuClass?: string | undefined;
   memoryMb?: number | undefined;
   metadata?: Record<string, unknown> | undefined;

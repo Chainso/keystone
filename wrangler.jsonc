@@ -3,7 +3,10 @@
   "name": "keystone-cloudflare",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-14",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "experimental"],
+  "ai": {
+    "binding": "AI"
+  },
   "containers": [
     {
       "class_name": "Sandbox",
@@ -21,6 +24,10 @@
       {
         "name": "TASK_SESSION",
         "class_name": "TaskSessionDO"
+      },
+      {
+        "name": "KEYSTONE_THINK_AGENT",
+        "class_name": "KeystoneThinkAgent"
       },
       {
         "name": "SANDBOX",
@@ -48,6 +55,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["TaskSessionDO", "Sandbox"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["KeystoneThinkAgent"]
     }
   ],
   "vars": {

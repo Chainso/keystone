@@ -7,8 +7,11 @@ export interface AuthContext {
 }
 
 export interface WorkerBindings extends Env {
-  KEYSTONE_DEV_TOKEN?: string;
+  KEYSTONE_DEV_TOKEN: string;
   SANDBOX: DurableObjectNamespace<import("@cloudflare/sandbox").Sandbox>;
+  KEYSTONE_THINK_AGENT: DurableObjectNamespace<
+    import("./keystone/agents/base/KeystoneThinkAgent").KeystoneThinkAgent
+  >;
   TASK_SESSION: DurableObjectNamespace<import("./durable-objects/TaskSessionDO").TaskSessionDO>;
   RUN_WORKFLOW: Workflow<import("./workflows/RunWorkflow").RunWorkflowParams>;
   TASK_WORKFLOW: Workflow<import("./workflows/TaskWorkflow").TaskWorkflowParams>;

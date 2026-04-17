@@ -6,7 +6,7 @@ This plan introduces a Think-backed runtime for Keystone agent turns without cha
 
 The observable outcome is not “Think is installed.” The observable outcome is that Keystone can start a task attempt using a Think-backed harness, the agent can read and modify files in the real sandbox worktree, staged outputs are promoted into R2-backed artifacts, the event log shows the turn lifecycle, and the existing M1 scripted path remains available until the Think path is proven.
 
-This plan is a queued successor to [keystone-m1-cloudflare-foundation](./keystone-m1-cloudflare-foundation.md). Execution of this plan should not begin until M1 is archived or the user explicitly reprioritizes work.
+This plan is a successor to [keystone-m1-cloudflare-foundation](./keystone-m1-cloudflare-foundation.md). M1 is now archived, so this plan can move into execution without reopening milestone 1 scope.
 
 ## Backward Compatibility
 
@@ -67,11 +67,26 @@ Backward compatibility with an external shipped product is not required because 
   **Decision:** Tie the first Think integration to the existing `TaskSessionDO` and workspace/artifact layers instead of inventing a parallel execution substrate.  
   **Rationale:** The current repo already has the right sandbox/worktree/artifact seams. The new plan should exploit them, not bypass them.
 
+- **Date:** 2026-04-17  
+  **Phase:** Planning  
+  **Decision:** Transition this plan from queued successor status to active execution now that M1 is archived.  
+  **Rationale:** The blocking milestone has completed, so the Think runtime work can start without changing the plan's scope or acceptance criteria.
+
+- **Date:** 2026-04-16  
+  **Phase:** Phase 1  
+  **Decision:** Add a dedicated `KeystoneThinkAgent` Durable Object export and Wrangler binding, but keep the existing Hono app as the fetch entry point for now.  
+  **Rationale:** Phase 1 needs a real Think-backed harness seam and valid Worker bindings without changing current HTTP routing or task execution behavior.
+
+- **Date:** 2026-04-16  
+  **Phase:** Phase 1  
+  **Decision:** Define the kernel-facing harness boundary in `src/maestro/agent-runtime.ts` with standardized filesystem roots and turn/result contracts, and narrow `RuntimeProfile.runtime` to `scripted | think`.  
+  **Rationale:** Later phases need a stable harness-agnostic contract for runtime selection, filesystem projection, and artifact/event mapping before real agent turns are wired in.
+
 ## Progress
 
-- [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remains active.
-- [ ] 2026-04-16 Wait for `keystone-m1-cloudflare-foundation` to archive before starting implementation.
-- [ ] Phase 1: Add Think dependencies, bindings, and the harness/runtime contract.
+- [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remained active.
+- [x] 2026-04-17 `keystone-m1-cloudflare-foundation` archived; Think plan is now unblocked and eligible to start.
+- [x] 2026-04-16 Phase 1 completed: Think dependencies, bindings, generated types, runtime contract scaffolding, and a base `KeystoneThinkAgent` landed cleanly.
 - [ ] Phase 2: Project artifacts into the sandbox and expose the filesystem/bash bridge.
 - [ ] Phase 3: Build the Think-backed `ImplementerAgent` and event/artifact mapping.
 - [ ] Phase 4: Integrate the Think runtime into `TaskWorkflow` behind a runtime selector and prove one fixture-backed task.
@@ -82,6 +97,8 @@ Backward compatibility with an external shipped product is not required because 
 - **2026-04-16:** The product specs already describe mounted or projected artifact access inside the sandbox, so the best Think integration path is more filesystem-first than initially assumed in discussion.
 - **2026-04-16:** The repository already has strong seams for the new runtime: `TaskSessionDO`, workspace materialization under `/workspace/runs/...`, artifact promotion helpers, event publication, and workflow-driven task attempts.
 - **2026-04-16:** Local Worker development on this host must still run outside the Codex sandbox boundary. Any live Think/Agents SDK validation that depends on `wrangler dev` inherits that same host constraint from M1.
+- **2026-04-16:** Think currently requires both the Worker `experimental` compatibility flag and an `AI` binding in `wrangler.jsonc` even when the first scaffolded agent is not yet handling live traffic.
+- **2026-04-16:** `wrangler types` and `wrangler deploy --dry-run` both attempt writes under `~/.config/.wrangler`, and the dry-run container build also touches Docker state under `~/.docker`, so build validation must run outside the Codex sandbox boundary.
 
 ## Outcomes & Retrospective
 
@@ -89,7 +106,8 @@ Planning outcome on 2026-04-16:
 
 - The Think integration work is now captured in a separate successor plan instead of being mixed into M1 closeout.
 - The plan resolves the high-level boundary question: Think is a harness runtime for agent turns, not a new source of workflow truth.
-- Execution has not started. The next contributor should begin only after M1 is archived or the user explicitly reprioritizes work.
+- Phase 1 is now complete: the repo has current Think/Agents dependencies, a bindable `KeystoneThinkAgent`, generated Worker types, and a harness contract module that later phases can build on without re-deciding the boundary.
+- The next contributor should begin with Phase 2 and keep the existing task path unchanged until the filesystem bridge and runtime selector are ready.
 
 ## Context and Orientation
 
@@ -100,8 +118,10 @@ Current repository state relevant to this plan:
 - Workspace paths are already deterministic under `/workspace/runs/...` via `src/lib/workspace/worktree.ts`, with repo and task worktree layout established by `src/lib/workspace/init.ts`.
 - Artifact promotion currently happens through `src/lib/artifacts/r2.ts`, `src/lib/artifacts/keys.ts`, `src/lib/db/artifacts.ts`, and `src/lib/events/publish.ts`.
 - The current task path is not an agent harness. It is a workflow-driven sandbox process loop with artifactization and event logging.
-- `package.json` does not yet include `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `ai`, `@cloudflare/shell`, or `workers-ai-provider`.
-- `wrangler.jsonc` currently binds `RunCoordinatorDO`, `TaskSessionDO`, `Sandbox`, `RunWorkflow`, `TaskWorkflow`, `ARTIFACTS_BUCKET`, and `HYPERDRIVE`. It does not yet include Agent/Think Durable Object bindings or migrations.
+- `package.json` now includes `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `ai`, `@cloudflare/shell`, and `workers-ai-provider`.
+- `wrangler.jsonc` now enables the `experimental` compatibility flag, binds `AI`, and registers the `KEYSTONE_THINK_AGENT` Durable Object plus a `v3` migration while preserving the existing M1 runtime path.
+- `src/maestro/agent-runtime.ts` now defines the shared runtime contract and the standardized filesystem roots for later Think phases.
+- `src/keystone/agents/base/KeystoneThinkAgent.ts` is a bindable Think scaffold only; it is not yet routed into `TaskWorkflow` or the Hono app.
 
 Relevant source documents and current runtime files:
 
@@ -330,6 +350,7 @@ Out of scope: sandbox artifact projection, real agent roles, workflow integratio
 `package.json`  
 `package-lock.json`  
 `wrangler.jsonc`  
+`worker-configuration.d.ts`  
 `src/env.d.ts`  
 `src/index.ts`  
 `src/maestro/contracts.ts`  
@@ -364,13 +385,17 @@ Installed Think/Agents dependencies, bindings/migrations, typed env updates, and
 Think is experimental and its docs currently require additional flags and DO migrations. Local Worker validation on this host must still run outside the Codex sandbox boundary.
 
 **Status**  
-Queued until `keystone-m1-cloudflare-foundation` is archived.
+Completed on 2026-04-16.
 
 **Completion Notes**  
-Not started.
+- Installed `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `ai`, `@cloudflare/shell`, and `workers-ai-provider`.
+- Added the `experimental` compatibility flag, `AI` binding, `KEYSTONE_THINK_AGENT` Durable Object binding, and `v3` migration in `wrangler.jsonc`.
+- Generated updated Worker bindings in `worker-configuration.d.ts`.
+- Added `src/maestro/agent-runtime.ts`, narrowed `RuntimeProfile.runtime`, exported `KeystoneThinkAgent`, and added contract coverage in `tests/lib/agents/runtime-contract.test.ts`.
+- Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` (the dry-run build required host execution outside the sandbox because Wrangler and Docker write to home-directory state).
 
 **Next Starter Context**  
-Do not wire Think directly into `TaskWorkflow` in this phase. Land the runtime seam first so later phases are editing against a stable boundary.
+Phase 2 should build directly on `src/maestro/agent-runtime.ts` and the filesystem roots it defines. Keep the current Hono fetch entry point and `TaskWorkflow` path unchanged while you add `/artifacts/in`, `/artifacts/out`, and `/keystone` projection inside the sandbox.
 
 ### Phase 2: Project artifacts into the sandbox and expose the filesystem/bash bridge
 
@@ -431,13 +456,13 @@ Standardized sandbox directory layout and reusable bridge helpers for filesystem
 Artifact projection must not silently make staged outputs canonical. Promotion to R2 remains explicit and belongs to later phases or explicit promotion helpers.
 
 **Status**  
-Queued until Phase 1 completes.
+Ready to start after Phase 1.
 
 **Completion Notes**  
 Not started.
 
 **Next Starter Context**  
-Keep the bridge generic enough for multiple future roles, but do not expand into review/tester roles yet.
+Use the stable filesystem constants from `src/maestro/agent-runtime.ts` instead of re-declaring path strings inside the sandbox layer. Keep the bridge generic enough for multiple future roles, but do not expand into review/tester roles yet.
 
 ### Phase 3: Build the Think-backed ImplementerAgent and event/artifact mapping
 
