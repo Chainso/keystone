@@ -105,7 +105,7 @@ const mocked = vi.hoisted(() => {
       },
       completion: {
         id: "chatcmpl-demo",
-        model: "gemini-3-flash-preview",
+        model: "gpt-5.4-mini",
         finishReason: "stop",
         usage: {
           totalTokens: 42
@@ -173,8 +173,8 @@ const env = {
   HYPERDRIVE: {
     connectionString: "postgres://test"
   } as Hyperdrive,
-  KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:4001",
-  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gemini-3-flash-preview",
+  KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
+  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4-mini",
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
   KEYSTONE_DEV_TOKEN: "secret-dev-token",
   RUN_WORKFLOW: {
@@ -208,7 +208,7 @@ describe("app", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
-      llmBaseUrl: "http://localhost:4001"
+      llmBaseUrl: "http://localhost:10531"
     });
   });
 
@@ -378,7 +378,7 @@ describe("app", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       taskCount: 1,
-      model: "gemini-3-flash-preview"
+      model: "gpt-5.4-mini"
     });
   });
 });

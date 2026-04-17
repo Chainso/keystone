@@ -7,7 +7,7 @@ Keystone M1 is a single hand-authored Cloudflare Worker project that proves:
 - realtime run projection with Durable Objects and WebSockets
 - file-first artifact persistence in R2 with Postgres as the operational index
 - sandboxed task execution with session sandboxes and task worktrees
-- provider-backed compile using the local OpenAI-compatible chat-completions endpoint at `http://localhost:4001`
+- provider-backed compile using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
 
 ## Core Commands
 
@@ -29,7 +29,13 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 ## Demo Flow
 
-With Wrangler dev running:
+With Wrangler dev running, target the exact `Ready on http://127.0.0.1:<port>` URL that Wrangler prints. If `8787` is already occupied, export the actual ready URL first:
+
+```bash
+export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
+```
+
+Then run:
 
 ```bash
 npm run demo:run

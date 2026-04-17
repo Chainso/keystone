@@ -14,14 +14,159 @@ describe("chat completions client", () => {
   });
 
   it("parses streamed SSE chat completion chunks", async () => {
+    const sseData = (payload: unknown) => `data: ${JSON.stringify(payload)}`;
+
     const fetchMock = vi.fn(async () =>
       new Response(
         [
-          'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gemini-3-flash-preview","choices":[{"index":0,"delta":{"role":"assistant","content":"{\\"ok\\":"},"finish_reason":null}],"usage":null}',
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant"
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
           "",
-          'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gemini-3-flash-preview","choices":[{"index":0,"delta":{"content":"true}"},"finish_reason":null}],"usage":null}',
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: '{"'
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
           "",
-          'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gemini-3-flash-preview","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}',
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: "response"
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
+          "",
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: '":"'
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
+          "",
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: "Under"
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
+          "",
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: "stood"
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
+          "",
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: '."'
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
+          "",
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  content: "}"
+                },
+                finish_reason: null
+              }
+            ],
+            usage: null
+          }),
+          "",
+          sseData({
+            id: "chatcmpl-1",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "gpt-5.4-mini",
+            choices: [],
+            usage: {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0
+            }
+          }),
           "",
           "data: [DONE]",
           ""
@@ -38,8 +183,8 @@ describe("chat completions client", () => {
 
     const result = await createChatCompletion({
       env: {
-        KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:4001",
-        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gemini-3-flash-preview"
+        KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
+        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4-mini"
       },
       messages: [
         {
@@ -49,11 +194,11 @@ describe("chat completions client", () => {
       ]
     });
 
-    expect(result.content).toBe('{"ok":true}');
-    expect(result.finishReason).toBe("stop");
-    expect(result.usage?.totalTokens).toBe(5);
+    expect(result.content).toBe('{"response":"Understood."}');
+    expect(result.finishReason).toBeNull();
+    expect(result.usage?.totalTokens).toBe(0);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:4001/v1/chat/completions",
+      "http://localhost:10531/v1/chat/completions",
       expect.objectContaining({
         method: "POST"
       })
@@ -88,7 +233,7 @@ describe("chat completions client", () => {
     const result = parseChatCompletionResponse(
       JSON.stringify({
         id: "chatcmpl-json",
-        model: "gemini-3-flash-preview",
+        model: "gpt-5.4-mini",
         choices: [
           {
             message: {

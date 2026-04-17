@@ -50,8 +50,7 @@ const streamedChunkSchema = z.object({
           .default({}),
         finish_reason: z.string().nullable().optional()
       })
-    )
-    .min(1),
+    ),
   usage: usageSchema.optional().nullable()
 });
 

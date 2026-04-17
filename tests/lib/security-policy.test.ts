@@ -29,8 +29,8 @@ describe("security policy", () => {
   it("allows the configured chat completions origin", () => {
     expect(
       evaluateOutboundHttpPolicy({
-        requestedUrl: "http://localhost:4001/v1/chat/completions",
-        allowedBaseUrl: "http://localhost:4001"
+        requestedUrl: "http://localhost:10531/v1/chat/completions",
+        allowedBaseUrl: "http://localhost:10531"
       })
     ).toMatchObject({
       result: "allow"
@@ -41,7 +41,7 @@ describe("security policy", () => {
     expect(
       evaluateOutboundHttpPolicy({
         requestedUrl: "https://example.com/v1/chat/completions",
-        allowedBaseUrl: "http://localhost:4001"
+        allowedBaseUrl: "http://localhost:10531"
       })
     ).toMatchObject({
       result: "deny"
