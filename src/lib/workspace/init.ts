@@ -6,18 +6,22 @@ import {
 } from "../../maestro/agent-runtime";
 import type { WorkspaceStrategy } from "../../maestro/contracts";
 import {
-  buildRepositoryPath,
+  buildComponentRepositoryPath,
+  buildComponentWorktreePath,
   buildTaskBranchName,
-  buildTaskWorktreePath,
+  buildWorkspaceCodeRoot,
   buildWorkspaceId,
   buildWorkspaceRoot,
   slugifySegment
 } from "./worktree";
-import { createTaskWorktree, getHeadSha, initializeGitRepository } from "./git";
+import { ensureTaskWorktree, getHeadSha, initializeGitRepository } from "./git";
 import type { WorkspaceSeedFile } from "./fixtures";
+
+const LEGACY_WORKSPACE_COMPONENT_KEY = "repo";
 
 export interface InlineWorkspaceSource {
   type: "inline";
+  componentKey?: string | undefined;
   repoUrl: string;
   repoRef?: string | undefined;
   baseRef?: string | undefined;
@@ -26,12 +30,25 @@ export interface InlineWorkspaceSource {
 
 export interface GitWorkspaceSource {
   type: "git";
+  componentKey?: string | undefined;
   repoUrl: string;
   repoRef?: string | undefined;
   baseRef?: string | undefined;
 }
 
 export type WorkspaceSource = InlineWorkspaceSource | GitWorkspaceSource;
+
+export interface WorkspaceComponentSource extends Omit<InlineWorkspaceSource, "componentKey"> {
+  componentKey: string;
+}
+
+export interface GitWorkspaceComponentSource extends Omit<GitWorkspaceSource, "componentKey"> {
+  componentKey: string;
+}
+
+export type WorkspaceMaterializationSource =
+  | WorkspaceComponentSource
+  | GitWorkspaceComponentSource;
 
 export interface ProjectedArtifactManifestEntry {
   artifactRefId: string;
@@ -59,15 +76,31 @@ export interface SandboxAgentBridge {
 export interface MaterializedWorkspace {
   workspaceId: string;
   strategy: WorkspaceStrategy;
+  defaultComponentKey: string;
   repoUrl: string;
   repoRef: string;
   baseRef: string;
   workspaceRoot: string;
+  workspaceTargetPath: string;
+  codeRoot: string;
+  defaultCwd: string;
   repositoryPath: string;
   worktreePath: string;
   branchName: string;
   headSha: string;
+  components: MaterializedWorkspaceComponent[];
   agentBridge: SandboxAgentBridge;
+}
+
+export interface MaterializedWorkspaceComponent {
+  componentKey: string;
+  repoUrl: string;
+  repoRef: string;
+  baseRef: string;
+  repositoryPath: string;
+  worktreePath: string;
+  branchName: string;
+  headSha: string;
 }
 
 export interface ProjectedArtifactInput {
@@ -93,7 +126,7 @@ export interface MaterializeSandboxAgentBridgeInput {
 }
 
 function createSandboxAgentBridge(
-  worktreePath: string,
+  workspaceTargetPath: string,
   projectedArtifacts: ProjectedArtifactManifestEntry[] = []
 ): SandboxAgentBridge {
   const layout = createAgentFilesystemLayout();
@@ -102,7 +135,7 @@ function createSandboxAgentBridge(
     layout,
     targets: {
       ...layout,
-      workspaceRoot: worktreePath
+      workspaceRoot: workspaceTargetPath
     },
     readOnlyRoots: [layout.artifactsInRoot, layout.keystoneRoot],
     writableRoots: [layout.workspaceRoot, layout.artifactsOutRoot],
@@ -233,7 +266,7 @@ export async function materializeSandboxAgentBridge(
   input: MaterializeSandboxAgentBridgeInput
 ): Promise<SandboxAgentBridge> {
   const projectedArtifactsInput = input.artifacts ?? [];
-  const bridge = createSandboxAgentBridge(input.workspace.worktreePath);
+  const bridge = createSandboxAgentBridge(input.workspace.workspaceTargetPath);
 
   await prepareProjectionRoots(session, bridge);
 
@@ -242,7 +275,10 @@ export async function materializeSandboxAgentBridge(
     bridge,
     projectedArtifactsInput
   );
-  const nextBridge = createSandboxAgentBridge(input.workspace.worktreePath, projectedArtifacts);
+  const nextBridge = createSandboxAgentBridge(
+    input.workspace.workspaceTargetPath,
+    projectedArtifacts
+  );
 
   await writeJsonFile(session, nextBridge.controlFiles.session, {
     tenantId: input.tenantId,
@@ -253,12 +289,22 @@ export async function materializeSandboxAgentBridge(
     workspace: {
       workspaceId: input.workspace.workspaceId,
       strategy: input.workspace.strategy,
-      repoUrl: input.workspace.repoUrl,
-      repoRef: input.workspace.repoRef,
-      baseRef: input.workspace.baseRef,
+      defaultComponentKey: input.workspace.defaultComponentKey,
       workspaceRoot: nextBridge.layout.workspaceRoot,
-      branchName: input.workspace.branchName,
-      headSha: input.workspace.headSha
+      workspaceTargetPath: input.workspace.workspaceTargetPath,
+      codeRoot: `${nextBridge.layout.workspaceRoot}/code`,
+      defaultCwd: input.workspace.defaultCwd,
+      components: input.workspace.components.map((component) => ({
+        componentKey: component.componentKey,
+        repoUrl: component.repoUrl,
+        repoRef: component.repoRef,
+        baseRef: component.baseRef,
+        repositoryPath: component.repositoryPath,
+        worktreePath: component.worktreePath,
+        branchName: component.branchName,
+        headSha: component.headSha,
+        sandboxPath: `${nextBridge.layout.workspaceRoot}/code/${slugifySegment(component.componentKey)}`
+      }))
     }
   });
   await writeJsonFile(session, nextBridge.controlFiles.filesystem, {
@@ -307,7 +353,7 @@ async function ensureInlineRepository(
 async function ensureGitRepository(
   session: ExecutionSession,
   repositoryPath: string,
-  source: GitWorkspaceSource
+  source: GitWorkspaceComponentSource
 ) {
   const gitDirectory = `${repositoryPath}/.git`;
   const existingGitDirectory = await session.exists(gitDirectory);
@@ -329,48 +375,142 @@ async function ensureGitRepository(
   );
 }
 
-export async function ensureWorkspaceMaterialized(
-  session: ExecutionSession,
+function normalizeWorkspaceSources(
+  input:
+    | {
+        source: WorkspaceSource;
+        components?: never;
+      }
+    | {
+        source?: never;
+        components: WorkspaceMaterializationSource[];
+      }
+) {
+  if ("components" in input) {
+    return input.components;
+  }
+
+  return [
+    {
+      ...input.source,
+      componentKey: input.source.componentKey ?? LEGACY_WORKSPACE_COMPONENT_KEY
+    } satisfies WorkspaceMaterializationSource
+  ];
+}
+
+function resolveWorkspaceComponentRefs(source: WorkspaceMaterializationSource) {
+  if (source.type === "inline") {
+    const repoRef = source.repoRef ?? "main";
+
+    return {
+      repoRef,
+      baseRef: source.baseRef ?? repoRef
+    };
+  }
+
+  return {
+    repoRef: source.repoRef ?? "HEAD",
+    baseRef: source.baseRef ?? "HEAD"
+  };
+}
+
+function createMaterializedWorkspace(
   input: {
     runId: string;
     sessionId: string;
-    taskId: string;
-    source: WorkspaceSource;
+    workspaceRoot: string;
+    components: MaterializedWorkspaceComponent[];
   }
-): Promise<MaterializedWorkspace> {
-  const workspaceRoot = buildWorkspaceRoot(input.runId, input.sessionId);
-  const repositoryPath = buildRepositoryPath(workspaceRoot);
-  const worktreePath = buildTaskWorktreePath(workspaceRoot, input.taskId);
-  const branchName = buildTaskBranchName(input.taskId);
-  const repoRef = input.source.type === "inline" ? input.source.repoRef ?? "main" : input.source.repoRef ?? "HEAD";
-  const baseRef = input.source.type === "inline" ? input.source.baseRef ?? repoRef : input.source.baseRef ?? "HEAD";
+): MaterializedWorkspace {
+  const defaultComponent = input.components[0];
 
-  await session.mkdir(`${workspaceRoot}/tasks`, { recursive: true });
-
-  if (input.source.type === "inline") {
-    await ensureInlineRepository(session, repositoryPath, input.source.files);
-  } else {
-    await ensureGitRepository(session, repositoryPath, input.source);
+  if (!defaultComponent) {
+    throw new Error("At least one workspace component is required.");
   }
 
-  await createTaskWorktree(session, {
-    repositoryPath,
-    worktreePath,
-    branchName,
-    baseRef
-  });
+  const codeRoot = buildWorkspaceCodeRoot(input.workspaceRoot);
+  const defaultCwd =
+    input.components.length === 1 ? defaultComponent.worktreePath : input.workspaceRoot;
 
   return {
     workspaceId: buildWorkspaceId(input.runId, input.sessionId),
     strategy: "worktree",
-    repoUrl: input.source.repoUrl,
-    repoRef,
-    baseRef,
-    workspaceRoot,
-    repositoryPath,
-    worktreePath,
-    branchName,
-    headSha: await getHeadSha(session, repositoryPath),
-    agentBridge: createSandboxAgentBridge(worktreePath)
+    defaultComponentKey: defaultComponent.componentKey,
+    repoUrl: defaultComponent.repoUrl,
+    repoRef: defaultComponent.repoRef,
+    baseRef: defaultComponent.baseRef,
+    workspaceRoot: input.workspaceRoot,
+    workspaceTargetPath: input.workspaceRoot,
+    codeRoot,
+    defaultCwd,
+    repositoryPath: defaultComponent.repositoryPath,
+    worktreePath: defaultComponent.worktreePath,
+    branchName: defaultComponent.branchName,
+    headSha: defaultComponent.headSha,
+    components: input.components,
+    agentBridge: createSandboxAgentBridge(input.workspaceRoot)
   };
+}
+
+export async function ensureWorkspaceMaterialized(
+  session: ExecutionSession,
+  input:
+    | {
+        runId: string;
+        sessionId: string;
+        taskId: string;
+        source: WorkspaceSource;
+        components?: never;
+      }
+    | {
+        runId: string;
+        sessionId: string;
+        taskId: string;
+        source?: never;
+        components: WorkspaceMaterializationSource[];
+      }
+): Promise<MaterializedWorkspace> {
+  const workspaceRoot = buildWorkspaceRoot(input.runId, input.sessionId);
+  const branchName = buildTaskBranchName(input.taskId);
+  const componentSources = normalizeWorkspaceSources(input);
+  const materializedComponents: MaterializedWorkspaceComponent[] = [];
+
+  await session.mkdir(buildWorkspaceCodeRoot(workspaceRoot), { recursive: true });
+
+  for (const component of componentSources) {
+    const repositoryPath = buildComponentRepositoryPath(workspaceRoot, component.componentKey);
+    const worktreePath = buildComponentWorktreePath(workspaceRoot, component.componentKey);
+    const { repoRef, baseRef } = resolveWorkspaceComponentRefs(component);
+
+    if (component.type === "inline") {
+      await ensureInlineRepository(session, repositoryPath, component.files);
+    } else {
+      await ensureGitRepository(session, repositoryPath, component);
+    }
+
+    await ensureTaskWorktree(session, {
+      repositoryPath,
+      worktreePath,
+      branchName,
+      baseRef
+    });
+
+    materializedComponents.push({
+      componentKey: component.componentKey,
+      repoUrl: component.repoUrl,
+      repoRef,
+      baseRef,
+      repositoryPath,
+      worktreePath,
+      branchName,
+      headSha: await getHeadSha(session, repositoryPath)
+    });
+  }
+
+  return createMaterializedWorkspace({
+    runId: input.runId,
+    sessionId: input.sessionId,
+    workspaceRoot,
+    components: materializedComponents
+  });
 }

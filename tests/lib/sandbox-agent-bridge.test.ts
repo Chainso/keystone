@@ -204,24 +204,41 @@ class FakeExecutionSession {
 
 function createWorkspace(): MaterializedWorkspace {
   const layout = createAgentFilesystemLayout();
-  const worktreePath = "/workspace/runs/run-123/tasks/task-1";
+  const workspaceRoot = "/workspace/runs/run-123";
+  const worktreePath = `${workspaceRoot}/code/repo`;
 
   return {
     workspaceId: "workspace-run-123",
     strategy: "worktree",
+    defaultComponentKey: "repo",
     repoUrl: "fixture://demo-target",
     repoRef: "main",
     baseRef: "main",
-    workspaceRoot: "/workspace/runs/run-123",
-    repositoryPath: "/workspace/runs/run-123/repo",
+    workspaceRoot,
+    workspaceTargetPath: workspaceRoot,
+    codeRoot: `${workspaceRoot}/code`,
+    defaultCwd: worktreePath,
+    repositoryPath: `${workspaceRoot}/repositories/repo`,
     worktreePath,
     branchName: "keystone/task-1",
     headSha: "abc123",
+    components: [
+      {
+        componentKey: "repo",
+        repoUrl: "fixture://demo-target",
+        repoRef: "main",
+        baseRef: "main",
+        repositoryPath: `${workspaceRoot}/repositories/repo`,
+        worktreePath,
+        branchName: "keystone/task-1",
+        headSha: "abc123"
+      }
+    ],
     agentBridge: {
       layout,
       targets: {
         ...layout,
-        workspaceRoot: worktreePath
+        workspaceRoot
       },
       readOnlyRoots: [layout.artifactsInRoot, layout.keystoneRoot],
       writableRoots: [layout.workspaceRoot, layout.artifactsOutRoot],
@@ -281,10 +298,11 @@ describe("sandbox agent bridge", () => {
       runId: "run-123",
       taskId: "task-1",
       workspace: {
-        workspaceRoot: "/workspace"
+        workspaceRoot: "/workspace",
+        defaultComponentKey: "repo",
+        defaultCwd: "/workspace/runs/run-123/code/repo"
       }
     });
-    expect(sessionJson.content).not.toContain("/workspace/runs/run-123");
     expect(JSON.parse(filesystemJson.content)).toMatchObject({
       layout: bridge.layout,
       readOnlyRoots: bridge.readOnlyRoots,
@@ -307,7 +325,7 @@ describe("sandbox agent bridge", () => {
         session: session as unknown as ExecutionSession,
         bridge
       },
-      "/workspace/src/index.ts",
+      "/workspace/code/repo/src/index.ts",
       "export const value = 1;\n"
     );
     await writeSandboxAgentFile(
@@ -320,7 +338,7 @@ describe("sandbox agent bridge", () => {
     );
 
     expect(
-      session.files.get("/workspace/runs/run-123/tasks/task-1/src/index.ts")?.content
+      session.files.get("/workspace/runs/run-123/code/repo/src/index.ts")?.content
     ).toContain("value = 1");
 
     const stagedOutputs = await listSandboxAgentStagedOutputs({
@@ -336,20 +354,20 @@ describe("sandbox agent bridge", () => {
         session: session as unknown as ExecutionSession,
         bridge
       },
-      "/workspace/src",
+      "/workspace/code/repo/src",
       {
         recursive: true
       }
     );
 
-    expect(listedWorkspaceFiles.files[0]?.absolutePath).toBe("/workspace/src/index.ts");
+    expect(listedWorkspaceFiles.files[0]?.absolutePath).toBe("/workspace/code/repo/src/index.ts");
   });
 
   it("rejects writes to read-only roots and resolves workspace paths through the bridge", async () => {
     const { session, bridge } = await createMaterializedBridge();
     const resolvedPath = resolveSandboxAgentPath(bridge, "/workspace/package.json");
 
-    expect(resolvedPath.sandboxPath).toBe("/workspace/runs/run-123/tasks/task-1/package.json");
+    expect(resolvedPath.sandboxPath).toBe("/workspace/runs/run-123/package.json");
     await expect(
       writeSandboxAgentFile(
         {
@@ -380,15 +398,15 @@ describe("sandbox agent bridge", () => {
         bridge
       },
       {
-        command: "cat /workspace/src/index.ts && ls /artifacts/in",
-        cwd: "/workspace/src",
+        command: "cat /workspace/code/repo/src/index.ts && ls /artifacts/in",
+        cwd: "/workspace/code/repo/src",
         timeout: 5000
       }
     );
 
-    expect(result.cwd).toBe("/workspace/runs/run-123/tasks/task-1/src");
+    expect(result.cwd).toBe("/workspace/runs/run-123/code/repo/src");
     expect(result.resolvedCommand).toContain(
-      "/workspace/runs/run-123/tasks/task-1/src/index.ts"
+      "/workspace/runs/run-123/code/repo/src/index.ts"
     );
     expect(result.resolvedCommand).toContain("/artifacts/in");
     expect(session.execCalls.at(-1)?.options?.timeout).toBe(5000);

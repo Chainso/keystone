@@ -2,7 +2,19 @@ import { and, asc, eq } from "drizzle-orm";
 
 import type { WorkspaceStrategy } from "../../maestro/contracts";
 import type { DatabaseClient } from "./client";
-import { workspaceBindings } from "./schema";
+import { workspaceBindings, workspaceMaterializedComponents } from "./schema";
+
+export interface CreateWorkspaceMaterializedComponentInput {
+  componentKey: string;
+  repoUrl: string;
+  repoRef: string;
+  baseRef: string;
+  repositoryPath: string;
+  worktreePath: string;
+  branchName: string;
+  headSha: string;
+  metadata?: Record<string, unknown> | undefined;
+}
 
 export interface CreateWorkspaceBindingInput {
   tenantId: string;
@@ -12,11 +24,10 @@ export interface CreateWorkspaceBindingInput {
   taskId?: string | null | undefined;
   strategy: WorkspaceStrategy;
   sandboxId: string;
-  repoUrl: string;
-  repoRef: string;
-  baseRef: string;
-  worktreePath: string;
-  branchName: string;
+  workspaceRoot: string;
+  workspaceTargetPath: string;
+  defaultComponentKey?: string | undefined;
+  materializedComponents: CreateWorkspaceMaterializedComponentInput[];
   metadata?: Record<string, unknown> | undefined;
 }
 
@@ -24,27 +35,60 @@ export async function createWorkspaceBinding(
   client: DatabaseClient,
   input: CreateWorkspaceBindingInput
 ) {
-  const [inserted] = await client.db
-    .insert(workspaceBindings)
-    .values({
-      tenantId: input.tenantId,
-      bindingId: crypto.randomUUID(),
-      workspaceId: input.workspaceId,
-      runId: input.runId,
-      sessionId: input.sessionId,
-      taskId: input.taskId ?? null,
-      strategy: input.strategy,
-      sandboxId: input.sandboxId,
-      repoUrl: input.repoUrl,
-      repoRef: input.repoRef,
-      baseRef: input.baseRef,
-      worktreePath: input.worktreePath,
-      branchName: input.branchName,
-      metadata: input.metadata ?? {}
-    })
-    .returning();
+  const defaultComponent =
+    input.materializedComponents.find((component) => component.componentKey === input.defaultComponentKey) ??
+    input.materializedComponents[0];
 
-  return inserted;
+  return client.db.transaction(async (tx) => {
+    const bindingId = crypto.randomUUID();
+    const [inserted] = await tx
+      .insert(workspaceBindings)
+      .values({
+        tenantId: input.tenantId,
+        bindingId,
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        sessionId: input.sessionId,
+        taskId: input.taskId ?? null,
+        strategy: input.strategy,
+        sandboxId: input.sandboxId,
+        repoUrl: defaultComponent?.repoUrl ?? null,
+        repoRef: defaultComponent?.repoRef ?? null,
+        baseRef: defaultComponent?.baseRef ?? null,
+        worktreePath: defaultComponent?.worktreePath ?? null,
+        branchName: defaultComponent?.branchName ?? null,
+        workspaceRoot: input.workspaceRoot,
+        workspaceTargetPath: input.workspaceTargetPath,
+        defaultComponentKey: defaultComponent?.componentKey ?? input.defaultComponentKey ?? null,
+        metadata: input.metadata ?? {}
+      })
+      .returning();
+
+    if (input.materializedComponents.length > 0) {
+      await tx.insert(workspaceMaterializedComponents).values(
+        input.materializedComponents.map((component) => ({
+          tenantId: input.tenantId,
+          materializationId: crypto.randomUUID(),
+          bindingId,
+          workspaceId: input.workspaceId,
+          runId: input.runId,
+          sessionId: input.sessionId,
+          taskId: input.taskId ?? null,
+          componentKey: component.componentKey,
+          repoUrl: component.repoUrl,
+          repoRef: component.repoRef,
+          baseRef: component.baseRef,
+          repositoryPath: component.repositoryPath,
+          worktreePath: component.worktreePath,
+          branchName: component.branchName,
+          headSha: component.headSha,
+          metadata: component.metadata ?? {}
+        }))
+      );
+    }
+
+    return inserted;
+  });
 }
 
 export async function getWorkspaceBindingForSession(
@@ -75,6 +119,22 @@ export async function listRunWorkspaceBindings(
       eq(workspaceBindings.runId, input.runId)
     ),
     orderBy: [asc(workspaceBindings.createdAt)]
+  });
+}
+
+export async function listWorkspaceMaterializedComponents(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    workspaceId: string;
+  }
+) {
+  return client.db.query.workspaceMaterializedComponents.findMany({
+    where: and(
+      eq(workspaceMaterializedComponents.tenantId, input.tenantId),
+      eq(workspaceMaterializedComponents.workspaceId, input.workspaceId)
+    ),
+    orderBy: [asc(workspaceMaterializedComponents.componentKey)]
   });
 }
 

@@ -67,7 +67,31 @@ const mocked = vi.hoisted(() => {
         sandboxId: "sandbox-123",
         workspace: {
           workspaceId: "workspace-123",
-          worktreePath: "/workspace/runs/run-123/tasks/task-live-implementation",
+          strategy: "worktree",
+          defaultComponentKey: "repo",
+          repoUrl: "fixture://demo-target",
+          repoRef: "main",
+          baseRef: "main",
+          workspaceRoot: "/workspace/runs/run-123",
+          workspaceTargetPath: "/workspace/runs/run-123",
+          codeRoot: "/workspace/runs/run-123/code",
+          defaultCwd: "/workspace/runs/run-123/code/repo",
+          repositoryPath: "/workspace/runs/run-123/repositories/repo",
+          worktreePath: "/workspace/runs/run-123/code/repo",
+          branchName: "keystone/task-live-implementation",
+          headSha: "abc123",
+          components: [
+            {
+              componentKey: "repo",
+              worktreePath: "/workspace/runs/run-123/code/repo",
+              branchName: "keystone/task-live-implementation",
+              baseRef: "main",
+              repoUrl: "fixture://demo-target",
+              repoRef: "main",
+              repositoryPath: "/workspace/runs/run-123/repositories/repo",
+              headSha: "abc123"
+            }
+          ],
           agentBridge: JSON.parse(JSON.stringify(bridge))
         }
       })),

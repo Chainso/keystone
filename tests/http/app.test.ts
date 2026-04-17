@@ -103,7 +103,31 @@ const mocked = vi.hoisted(() => {
       ensureWorkspace: vi.fn(async () => ({
         workspace: {
           workspaceId: "workspace-smoke",
-          worktreePath: "/workspace/tasks/sandbox-smoke",
+          strategy: "worktree",
+          defaultComponentKey: "repo",
+          repoUrl: "fixture://demo-target",
+          repoRef: "main",
+          baseRef: "main",
+          workspaceRoot: "/workspace/runs/sandbox-smoke",
+          workspaceTargetPath: "/workspace/runs/sandbox-smoke",
+          codeRoot: "/workspace/runs/sandbox-smoke/code",
+          defaultCwd: "/workspace/runs/sandbox-smoke/code/repo",
+          repositoryPath: "/workspace/runs/sandbox-smoke/repositories/repo",
+          worktreePath: "/workspace/runs/sandbox-smoke/code/repo",
+          branchName: "keystone/sandbox-smoke",
+          headSha: "abc123",
+          components: [
+            {
+              componentKey: "repo",
+              repoUrl: "fixture://demo-target",
+              repoRef: "main",
+              baseRef: "main",
+              repositoryPath: "/workspace/runs/sandbox-smoke/repositories/repo",
+              worktreePath: "/workspace/runs/sandbox-smoke/code/repo",
+              branchName: "keystone/sandbox-smoke",
+              headSha: "abc123"
+            }
+          ],
           agentBridge: {
             layout: {
               workspaceRoot: "/workspace",
@@ -112,7 +136,7 @@ const mocked = vi.hoisted(() => {
               keystoneRoot: "/keystone"
             },
             targets: {
-              workspaceRoot: "/workspace/tasks/sandbox-smoke",
+              workspaceRoot: "/workspace/runs/sandbox-smoke",
               artifactsInRoot: "/artifacts/in",
               artifactsOutRoot: "/artifacts/out",
               keystoneRoot: "/keystone"
@@ -494,8 +518,14 @@ describe("app", () => {
         idempotencyKey: null,
         artifactRefId: null,
         payload: {
-          worktreePath: "/workspace/runs/run-123/tasks/task-greeting-tone",
-          workspaceTargetPath: "/workspace/runs/run-123/tasks/task-greeting-tone"
+          workspaceTargetPath: "/workspace/runs/run-123",
+          defaultCwd: "/workspace/runs/run-123/code/repo",
+          components: [
+            {
+              componentKey: "repo",
+              worktreePath: "/workspace/runs/run-123/code/repo"
+            }
+          ]
         }
       },
       {
@@ -513,7 +543,7 @@ describe("app", () => {
         artifactRefId: null,
         payload: {
           toolName: "write_file",
-          path: "/workspace/src/greeting.js"
+          path: "/workspace/code/repo/src/greeting.js"
         }
       }
     ] as never);
@@ -540,7 +570,7 @@ describe("app", () => {
           eventType: "workspace.task_view_created",
           taskId: "task-greeting-tone",
           payload: {
-            worktreePath: "/workspace/runs/run-123/tasks/task-greeting-tone"
+            defaultCwd: "/workspace/runs/run-123/code/repo"
           }
         },
         {
@@ -548,7 +578,7 @@ describe("app", () => {
           actor: "keystone-think-implementer",
           payload: {
             toolName: "write_file",
-            path: "/workspace/src/greeting.js"
+            path: "/workspace/code/repo/src/greeting.js"
           }
         }
       ]

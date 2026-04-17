@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildRepositoryPath,
+  buildComponentRepositoryPath,
+  buildComponentWorktreePath,
   buildSandboxId,
   buildTaskBranchName,
-  buildTaskWorktreePath,
   buildWorkspaceId,
+  buildWorkspaceCodeRoot,
   buildWorkspaceRoot
 } from "../../src/lib/workspace/worktree";
 
@@ -17,9 +18,14 @@ describe("workspace path helpers", () => {
 
     expect(buildWorkspaceId(runId, sessionId)).toBe("workspace-run-with-spaces-de305d54");
     expect(workspaceRoot).toBe("/workspace/runs/run-with-spaces-de305d54");
-    expect(buildRepositoryPath(workspaceRoot)).toBe("/workspace/runs/run-with-spaces-de305d54/repo");
-    expect(buildTaskWorktreePath(workspaceRoot, "Task 42")).toBe(
-      "/workspace/runs/run-with-spaces-de305d54/tasks/task-42"
+    expect(buildWorkspaceCodeRoot(workspaceRoot)).toBe(
+      "/workspace/runs/run-with-spaces-de305d54/code"
+    );
+    expect(buildComponentRepositoryPath(workspaceRoot, "API Server")).toBe(
+      "/workspace/runs/run-with-spaces-de305d54/repositories/api-server"
+    );
+    expect(buildComponentWorktreePath(workspaceRoot, "API Server")).toBe(
+      "/workspace/runs/run-with-spaces-de305d54/code/api-server"
     );
   });
 

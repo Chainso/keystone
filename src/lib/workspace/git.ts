@@ -43,6 +43,24 @@ export async function createTaskWorktree(
   );
 }
 
+export async function ensureTaskWorktree(
+  session: ExecutionSession,
+  input: {
+    repositoryPath: string;
+    worktreePath: string;
+    branchName: string;
+    baseRef: string;
+  }
+) {
+  const existingGitDirectory = await session.exists(`${input.worktreePath}/.git`);
+
+  if (existingGitDirectory.exists) {
+    return;
+  }
+
+  await createTaskWorktree(session, input);
+}
+
 export async function getHeadSha(
   session: ExecutionSession,
   repositoryPath: string

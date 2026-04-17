@@ -24,6 +24,7 @@ import {
   materializeSandboxAgentBridge,
   type MaterializedWorkspace,
   type ProjectedArtifactInput,
+  type WorkspaceMaterializationSource,
   type WorkspaceSource
 } from "../lib/workspace/init";
 
@@ -49,7 +50,8 @@ export type InitializeTaskSessionInput = {
 };
 
 export type EnsureWorkspaceInput = {
-  source: WorkspaceSource;
+  source?: WorkspaceSource | undefined;
+  components?: WorkspaceMaterializationSource[] | undefined;
 };
 
 export type StartProcessInput = {
@@ -183,6 +185,10 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
     const client = createWorkerDatabaseClient(this.env);
 
     try {
+      if (snapshot.workspace) {
+        return snapshot;
+      }
+
       let session = await getSessionRecord(client, snapshot.tenantId, snapshot.sessionId);
 
       if (!session) {
@@ -230,12 +236,31 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         sandboxId: snapshot.sandboxId,
         sessionId: snapshot.sessionId
       });
-      let workspace = await ensureWorkspaceMaterialized(sandboxSession, {
-        runId: snapshot.runId,
-        sessionId: snapshot.sessionId,
-        taskId: snapshot.taskId,
-        source: input.source
-      });
+      const workspaceMaterializationInput =
+        input.components && input.components.length > 0
+          ? {
+              runId: snapshot.runId,
+              sessionId: snapshot.sessionId,
+              taskId: snapshot.taskId,
+              components: input.components
+            }
+          : input.source
+            ? {
+                runId: snapshot.runId,
+                sessionId: snapshot.sessionId,
+                taskId: snapshot.taskId,
+                source: input.source
+              }
+            : null;
+
+      if (!workspaceMaterializationInput) {
+        throw new Error("Workspace materialization requires a source or components.");
+      }
+
+      let workspace = await ensureWorkspaceMaterialized(
+        sandboxSession,
+        workspaceMaterializationInput
+      );
       const artifactsForProjection = await listArtifactsForSandboxProjection(client, {
         tenantId: snapshot.tenantId,
         runId: snapshot.runId,
@@ -270,17 +295,30 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
           taskId: snapshot.taskId,
           strategy: workspace.strategy,
           sandboxId: snapshot.sandboxId,
-          repoUrl: workspace.repoUrl,
-          repoRef: workspace.repoRef,
-          baseRef: workspace.baseRef,
-          worktreePath: workspace.worktreePath,
-          branchName: workspace.branchName,
+          workspaceRoot: workspace.workspaceRoot,
+          workspaceTargetPath: workspace.workspaceTargetPath,
+          defaultComponentKey: workspace.defaultComponentKey,
+          materializedComponents: workspace.components.map((component) => ({
+            componentKey: component.componentKey,
+            repoUrl: component.repoUrl,
+            repoRef: component.repoRef,
+            baseRef: component.baseRef,
+            repositoryPath: component.repositoryPath,
+            worktreePath: component.worktreePath,
+            branchName: component.branchName,
+            headSha: component.headSha
+          })),
           metadata: {
-            workspaceRoot: workspace.workspaceRoot,
-            repositoryPath: workspace.repositoryPath,
-            headSha: workspace.headSha,
+            codeRoot: workspace.codeRoot,
+            defaultCwd: workspace.defaultCwd,
             agentFilesystem: workspace.agentBridge.layout,
-            agentTargets: workspace.agentBridge.targets
+            agentTargets: workspace.agentBridge.targets,
+            components: workspace.components.map((component) => ({
+              componentKey: component.componentKey,
+              repositoryPath: component.repositoryPath,
+              worktreePath: component.worktreePath,
+              headSha: component.headSha
+            }))
           }
         });
       }
@@ -323,9 +361,9 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         eventType: "workspace.initialized",
         payload: {
           workspaceId: workspace.workspaceId,
-          repositoryPath: workspace.repositoryPath,
-          repoUrl: workspace.repoUrl,
-          repoRef: workspace.repoRef,
+          workspaceRoot: workspace.workspaceRoot,
+          defaultComponentKey: workspace.defaultComponentKey,
+          componentKeys: workspace.components.map((component) => component.componentKey),
           filesystemRoots: workspace.agentBridge.layout,
           projectedArtifactCount: workspace.agentBridge.projectedArtifacts.length
         },
@@ -338,10 +376,14 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         taskId: snapshot.taskId,
         eventType: "workspace.task_view_created",
         payload: {
-          worktreePath: workspace.worktreePath,
-          branchName: workspace.branchName,
-          baseRef: workspace.baseRef,
-          workspaceTargetPath: workspace.agentBridge.targets.workspaceRoot
+          workspaceTargetPath: workspace.agentBridge.targets.workspaceRoot,
+          defaultCwd: workspace.defaultCwd,
+          components: workspace.components.map((component) => ({
+            componentKey: component.componentKey,
+            worktreePath: component.worktreePath,
+            branchName: component.branchName,
+            baseRef: component.baseRef
+          }))
         },
         status: durableSessionStatus
       });
@@ -392,7 +434,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         env?: Record<string, string | undefined>;
         processId?: string;
       } = {
-        cwd: input.cwd ?? snapshot.workspace.worktreePath
+        cwd: input.cwd ?? snapshot.workspace.defaultCwd
       };
 
       if (input.env) {
@@ -421,7 +463,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         payload: {
           processId: process.id,
           command: process.command,
-          cwd: input.cwd ?? snapshot.workspace.worktreePath
+          cwd: input.cwd ?? snapshot.workspace.defaultCwd
         },
         status: "active"
       });

@@ -112,11 +112,14 @@ export const workspaceBindings = pgTable(
     taskId: text("task_id"),
     strategy: text("strategy").notNull().default("worktree"),
     sandboxId: text("sandbox_id").notNull(),
-    repoUrl: text("repo_url").notNull(),
-    repoRef: text("repo_ref").notNull(),
-    baseRef: text("base_ref").notNull(),
-    worktreePath: text("worktree_path").notNull(),
-    branchName: text("branch_name").notNull(),
+    repoUrl: text("repo_url"),
+    repoRef: text("repo_ref"),
+    baseRef: text("base_ref"),
+    worktreePath: text("worktree_path"),
+    branchName: text("branch_name"),
+    workspaceRoot: text("workspace_root"),
+    workspaceTargetPath: text("workspace_target_path"),
+    defaultComponentKey: text("default_component_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
@@ -124,6 +127,42 @@ export const workspaceBindings = pgTable(
   (table) => [
     uniqueIndex("uq_workspace_binding_workspace").on(table.tenantId, table.workspaceId),
     index("idx_workspace_bindings_tenant_run").on(table.tenantId, table.runId)
+  ]
+);
+
+export const workspaceMaterializedComponents = pgTable(
+  "workspace_materialized_components",
+  {
+    tenantId: text("tenant_id").notNull(),
+    materializationId: uuid("materialization_id").primaryKey(),
+    bindingId: uuid("binding_id")
+      .notNull()
+      .references(() => workspaceBindings.bindingId, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull(),
+    runId: text("run_id").notNull(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => sessions.sessionId, { onDelete: "cascade" }),
+    taskId: text("task_id"),
+    componentKey: text("component_key").notNull(),
+    repoUrl: text("repo_url").notNull(),
+    repoRef: text("repo_ref").notNull(),
+    baseRef: text("base_ref").notNull(),
+    repositoryPath: text("repository_path").notNull(),
+    worktreePath: text("worktree_path").notNull(),
+    branchName: text("branch_name").notNull(),
+    headSha: text("head_sha").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
+  },
+  (table) => [
+    uniqueIndex("uq_workspace_materialized_components_workspace_key").on(
+      table.tenantId,
+      table.workspaceId,
+      table.componentKey
+    ),
+    index("idx_workspace_materialized_components_tenant_run").on(table.tenantId, table.runId)
   ]
 );
 
@@ -258,6 +297,7 @@ export type ArtifactRefRow = typeof artifactRefs.$inferSelect;
 export type NewArtifactRefRow = typeof artifactRefs.$inferInsert;
 export type ApprovalRow = typeof approvals.$inferSelect;
 export type WorkspaceBindingRow = typeof workspaceBindings.$inferSelect;
+export type WorkspaceMaterializedComponentRow = typeof workspaceMaterializedComponents.$inferSelect;
 export type WorkerLeaseRow = typeof workerLeases.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
 export type ProjectRuleSetRow = typeof projectRuleSets.$inferSelect;
@@ -271,6 +311,7 @@ export const schema = {
   sessionEvents,
   approvals,
   workspaceBindings,
+  workspaceMaterializedComponents,
   workerLeases,
   artifactRefs,
   projects,

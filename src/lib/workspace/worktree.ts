@@ -27,12 +27,16 @@ export function buildWorkspaceRoot(runId: string, sessionId: string) {
   return `/workspace/runs/${slugifySegment(runId)}-${sessionId.slice(0, 8)}`;
 }
 
-export function buildRepositoryPath(workspaceRoot: string) {
-  return `${workspaceRoot}/repo`;
+export function buildWorkspaceCodeRoot(workspaceRoot: string) {
+  return `${workspaceRoot}/code`;
 }
 
-export function buildTaskWorktreePath(workspaceRoot: string, taskId: string) {
-  return `${workspaceRoot}/tasks/${slugifySegment(taskId)}`;
+export function buildComponentRepositoryPath(workspaceRoot: string, componentKey: string) {
+  return `${workspaceRoot}/repositories/${slugifySegment(componentKey)}`;
+}
+
+export function buildComponentWorktreePath(workspaceRoot: string, componentKey: string) {
+  return `${buildWorkspaceCodeRoot(workspaceRoot)}/${slugifySegment(componentKey)}`;
 }
 
 export function buildTaskBranchName(taskId: string) {

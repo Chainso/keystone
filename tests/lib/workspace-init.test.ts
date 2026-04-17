@@ -43,10 +43,13 @@ describe("ensureWorkspaceMaterialized", () => {
     expect(session.gitCheckout).toHaveBeenCalledWith(
       "https://github.com/octocat/Hello-World.git",
       {
-        targetDir: "/workspace/runs/run-123-de305d54/repo"
+        targetDir: "/workspace/runs/run-123-de305d54/repositories/repo"
       }
     );
     expect(workspace.repoRef).toBe("HEAD");
     expect(workspace.baseRef).toBe("HEAD");
+    expect(workspace.defaultComponentKey).toBe("repo");
+    expect(workspace.worktreePath).toBe("/workspace/runs/run-123-de305d54/code/repo");
+    expect(workspace.defaultCwd).toBe("/workspace/runs/run-123-de305d54/code/repo");
   });
 });

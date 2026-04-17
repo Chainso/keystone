@@ -15,7 +15,8 @@ import {
 } from "../../src/lib/db/runs";
 import {
   createWorkspaceBinding,
-  listRunWorkspaceBindings
+  listRunWorkspaceBindings,
+  listWorkspaceMaterializedComponents
 } from "../../src/lib/db/workspaces";
 
 const connectionString =
@@ -139,29 +140,47 @@ describeIfDatabase("database repositories", () => {
   });
 
   it("stores task workspace bindings for later cleanup", async () => {
+    const workspaceId = `workspace-${crypto.randomUUID()}`;
     const binding = await createWorkspaceBinding(client, {
       tenantId,
-      workspaceId: `workspace-${crypto.randomUUID()}`,
+      workspaceId,
       runId,
       sessionId,
       taskId: "task-smoke",
       strategy: "worktree",
       sandboxId: "sandbox-smoke",
-      repoUrl: "fixture://demo-target",
-      repoRef: "main",
-      baseRef: "main",
-      worktreePath: "/workspace/runs/demo/tasks/task-smoke",
-      branchName: "keystone/task-smoke"
+      workspaceRoot: "/workspace/runs/demo",
+      workspaceTargetPath: "/workspace/runs/demo",
+      defaultComponentKey: "repo",
+      materializedComponents: [
+        {
+          componentKey: "repo",
+          repoUrl: "fixture://demo-target",
+          repoRef: "main",
+          baseRef: "main",
+          repositoryPath: "/workspace/runs/demo/repositories/repo",
+          worktreePath: "/workspace/runs/demo/code/repo",
+          branchName: "keystone/task-smoke",
+          headSha: "abc123"
+        }
+      ]
     });
 
     expect(binding?.repoUrl).toBe("fixture://demo-target");
+    expect(binding?.workspaceRoot).toBe("/workspace/runs/demo");
 
     const bindings = await listRunWorkspaceBindings(client, {
       tenantId,
       runId
     });
+    const components = await listWorkspaceMaterializedComponents(client, {
+      tenantId,
+      workspaceId
+    });
 
     expect(bindings).toHaveLength(1);
-    expect(bindings[0]?.worktreePath).toContain("task-smoke");
+    expect(bindings[0]?.worktreePath).toContain("/code/repo");
+    expect(components).toHaveLength(1);
+    expect(components[0]?.componentKey).toBe("repo");
   });
 });

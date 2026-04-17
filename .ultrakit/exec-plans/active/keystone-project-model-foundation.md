@@ -132,6 +132,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Move request-validation error shaping back onto the project HTTP surface, add nested uniqueness checks in the project contract, and deepen the project/bootstrap tests to assert the full Phase 2 config graph.  
   **Rationale:** The review findings showed the broad `app.onError` Zod handling changed non-project routes like `/v1/runs`, duplicate nested keys were still leaking to database unique constraints, and the existing tests were too shallow to catch regressions in rule sets, overrides, env vars, bindings, or metadata.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 3  
+  **Decision:** Keep one durable `workspace_bindings` row per task workspace and add a separate per-component materialization table, while exposing the agent-visible workspace as a shared root that contains `/workspace/code/<component-key>` entries plus a derived `defaultCwd` for legacy single-component flows.  
+  **Rationale:** Phase 3 needs stable per-run component refs/paths without losing the existing workspace/session identity, and the current task/process paths still need a safe default cwd until Phase 4 rewires workflows fully onto projects.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -142,7 +147,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Phase 1 fix pass completed: repository override loading now matches the normalized migration shape, and project repository tests are isolated and cover tenant scoping plus duplicate-key rejection.
 - [x] 2026-04-17 Phase 2 completed: added tenant-scoped project CRUD routes, typed project API contracts with request validation, and a deterministic fixture-project bootstrap helper plus route/script coverage.
 - [x] 2026-04-17 Phase 2 fix pass completed: project-only validation errors are now scoped to `/v1/projects`, duplicate nested keys are rejected at the contract layer, and the route/script tests assert the richer project config surface.
-- [ ] Phase 3: generalize workspace materialization from single-repo to multi-component project workspaces.
+- [x] 2026-04-17 Phase 3 completed: workspace persistence now records per-component materializations, the sandbox workspace root exposes `/workspace/code/<component-key>`, and task sessions derive a stable default cwd from the materialized component set.
 - [ ] Phase 4: require `projectId` on runs and wire project-backed workspace execution through workflows, task sessions, and demo scripts.
 - [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
 
@@ -159,6 +164,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - `project_component_rule_overrides` does not need its own `project_id` column because the owning project is derivable from `project_components`; the Phase 1 repository mismatch came from the runtime layer, not from the migration design.
 - Route-level tests that import `src/http/app.ts` need to stub unrelated run/dev handler modules when they only care about project routes; otherwise the full router import can walk into Cloudflare-only workflow entrypoints during Node test execution.
 - Project request validation has to stay route-scoped in Phase 2: handling raw `ZodError` globally in `src/http/app.ts` also changes invalid `/v1/runs` behavior before the run-contract migration is ready.
+- The agent-visible workspace root can move to the shared run workspace in Phase 3 without breaking the current single-component task flows as long as task sessions persist a derived `defaultCwd` that still points at the one materialized component worktree.
 
 ## Outcomes & Retrospective
 
@@ -185,6 +191,13 @@ Phase 2 outcome on 2026-04-17:
 - The repo now includes `scripts/ensure-demo-project.ts` plus `npm run demo:ensure-project`, which safely creates or updates one deterministic `fixture-demo-project` per tenant without changing the still-repo-backed `/v1/runs` path.
 - The route and script tests now assert the richer Phase 2 config surface, including rule sets, per-component rule overrides, env vars, integration bindings, and metadata.
 - Broad validation passed again for `lint`, `typecheck`, and `test` after the targeted fix pass; the earlier Phase 2 build remains the last broad build proof because this fix stayed inside project request handling and test coverage.
+
+Phase 3 outcome on 2026-04-17:
+
+- Workspace persistence now keeps one durable binding row per task workspace plus per-component materialization rows that record the actual refs, repository paths, worktree paths, branch names, and head SHAs used for that run.
+- Sandbox workspaces now expose a shared root whose code surface lives under `/workspace/code/<component-key>`, while the agent bridge control files describe the full component set instead of a single repo/worktree pair.
+- Task sessions now materialize and persist multi-component workspaces, publish component-aware workspace events, and derive a `defaultCwd` so the current single-component demo/runtime paths still execute without forcing the Phase 4 run-contract migration early.
+- Broad validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` after rerunning the build outside the sandbox boundary due the known Wrangler/Docker host-write requirement on this machine.
 
 ## Context and Orientation
 
@@ -402,6 +415,30 @@ $ npm run typecheck
 $ npm run test
 Test Files  28 passed | 2 skipped (30)
 Tests  105 passed | 8 skipped (113)
+```
+
+```text
+$ npm run build
+> wrangler deploy --dry-run --outdir .wrangler/deploy
+--dry-run: exiting now.
+```
+
+Phase 3 validation captured on 2026-04-17:
+
+```text
+$ npm run lint
+> eslint .
+```
+
+```text
+$ npm run typecheck
+> tsc --noEmit
+```
+
+```text
+$ npm run test
+Test Files  29 passed | 2 skipped (31)
+Tests  111 passed | 8 skipped (119)
 ```
 
 ```text
@@ -643,13 +680,13 @@ Project-backed workspace materialization, multi-component code layout, and per-c
 Do not invent non-code component execution semantics here. Keep the runtime surface centered on code components under `/workspace/code`.
 
 **Status**  
-Not started.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Pending.
+Added `0003_project_workspace_components.sql` to generalize workspace persistence, updated `src/lib/db/schema.ts` and `src/lib/db/workspaces.ts` to keep one workspace binding plus per-component materialization rows, and refactored `src/lib/workspace/init.ts`, `src/lib/workspace/worktree.ts`, and `src/lib/workspace/git.ts` to materialize multiple code components under `/workspace/code/<component-key>`. `src/durable-objects/TaskSessionDO.ts` now persists the component set, publishes component-aware workspace events, and uses a derived `defaultCwd` for current single-component execution. Targeted workspace, bridge, worktree, workflow-stub, and database tests were updated and expanded in `tests/lib/workspace-init.test.ts`, `tests/lib/project-workspace-materialization.test.ts`, `tests/lib/sandbox-agent-bridge.test.ts`, `tests/lib/worktree.test.ts`, `tests/lib/db-repositories.test.ts`, `tests/lib/workflows/task-workflow-think.test.ts`, and `tests/http/app.test.ts`. Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` after rerunning the build outside the sandbox due the known Wrangler/Docker host-write requirement.
 
 **Next Starter Context**  
-When this phase lands, workflows should have a stable multi-component workspace substrate available, but runs do not need to require `projectId` until the next phase.
+Phase 4 can now treat the workspace substrate as project-ready: task sessions can materialize a full component set and persist stable per-component refs/paths for the life of the run. The next pass should change `/v1/runs`, `RunWorkflow`, `TaskWorkflow`, and the demo scripts to resolve project components/env vars/rules and pass `components` into task-session workspace materialization instead of the legacy single-source path.
 
 ### Phase 4: Require project-backed runs and wire projects through workflows and demos
 
