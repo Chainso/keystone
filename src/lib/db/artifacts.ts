@@ -56,6 +56,37 @@ export async function getArtifactRef(
   });
 }
 
+export async function findArtifactRefByStorageUri(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    runId: string;
+    storageUri: string;
+    sessionId?: string | null | undefined;
+    taskId?: string | null | undefined;
+    kind?: string | undefined;
+  }
+) {
+  return client.db.query.artifactRefs.findFirst({
+    where: and(
+      eq(artifactRefs.tenantId, input.tenantId),
+      eq(artifactRefs.runId, input.runId),
+      eq(artifactRefs.storageUri, input.storageUri),
+      input.sessionId === undefined
+        ? undefined
+        : input.sessionId === null
+          ? isNull(artifactRefs.sessionId)
+          : eq(artifactRefs.sessionId, input.sessionId),
+      input.taskId === undefined
+        ? undefined
+        : input.taskId === null
+          ? isNull(artifactRefs.taskId)
+          : eq(artifactRefs.taskId, input.taskId),
+      input.kind ? eq(artifactRefs.kind, input.kind) : undefined
+    )
+  });
+}
+
 export async function listRunArtifacts(
   client: DatabaseClient,
   tenantId: string,

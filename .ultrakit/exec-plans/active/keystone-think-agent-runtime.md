@@ -107,6 +107,21 @@ Backward compatibility with an external shipped product is not required because 
   **Decision:** Keep the first Think-backed implementer role filesystem-first and drive the smoke proof with a deterministic mock model plan rather than a live provider dependency.  
   **Rationale:** Phase 3's acceptance target is the harness path itself: prompt/control-file handling, sandbox bridge tools, event emission, and staged outputs. A mock plan proves those seams in-process while keeping Think session state conversational and avoiding new runtime dependencies or workflow changes.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 4  
+  **Decision:** Carry the runtime selector from run creation into `RunWorkflow` and `TaskWorkflow`, default it to `scripted`, and use the fixture-backed Think path only when explicitly requested.  
+  **Rationale:** Phase 4 must prove the Think-backed implementer path without removing the existing scripted fallback or requiring a global default switch.
+
+- **Date:** 2026-04-17  
+  **Phase:** Phase 4  
+  **Decision:** Promote staged `/artifacts/out` files from inside `TaskWorkflow` into canonical R2-backed artifact refs using the existing artifact/event pipeline.  
+  **Rationale:** The workflow already owns durable task completion. Making promotion explicit there preserves `/artifacts/out` as staging space while keeping `artifact_refs` and `artifact.put` events canonical.
+
+- **Date:** 2026-04-17  
+  **Phase:** Phase 4  
+  **Decision:** Execute the deterministic mock-model path directly in `KeystoneThinkAgent` instead of routing it through Think’s local chat queue when `mockModelPlan` is present.  
+  **Rationale:** Local Wrangler validation hit a Think runtime crash (`appendMessage` on undefined) even though the fixture path is mock-driven. Direct execution preserves the `runImplementerTurn()` contract and keeps host-local validation viable.
+
 ## Progress
 
 - [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remained active.
@@ -115,7 +130,7 @@ Backward compatibility with an external shipped product is not required because 
 - [x] 2026-04-17 Phase 2 completed: `TaskSessionDO` now projects prior run artifacts into `/artifacts/in`, stages writable outputs under `/artifacts/out`, materializes `/keystone/*.json` control files, and exposes reusable filesystem/bash bridge helpers plus smoke coverage.
 - [x] 2026-04-17 Phase 2 fix pass completed: bridge re-materialization now clears `/artifacts/out`, and a repeat-materialization regression test covers stale staged-output leakage.
 - [x] 2026-04-17 Phase 3 completed: a Think-backed implementer role now consumes the sandbox bridge, emits agent/tool/staged-artifact events, exposes a dev Think smoke route, and has deterministic smoke/test coverage.
-- [ ] Phase 4: Integrate the Think runtime into `TaskWorkflow` behind a runtime selector and prove one fixture-backed task.
+- [x] 2026-04-17 Phase 4 completed: run creation now carries an explicit runtime selector, `TaskWorkflow` can execute the Think-backed implementer path, staged outputs are promoted into canonical artifact refs, and the fixture demo run validates end to end.
 - [ ] Phase 5: Update developer docs, runbooks, and archive the plan when acceptance is met.
 
 ## Surprises & Discoveries
@@ -130,6 +145,8 @@ Backward compatibility with an external shipped product is not required because 
 - **2026-04-17:** A meaningful Phase 2 smoke path does not need live `wrangler dev`; an in-process contract smoke over the bridge helpers is enough to prove projection, staged outputs, and command path rewriting while avoiding host-only local Worker constraints.
 - **2026-04-17:** The repeat-materialization path is part of the Phase 2 contract too. Leaving `/artifacts/out` untouched made staged files appear durable across turns even though promotion is supposed to stay explicit.
 - **2026-04-17:** The AI SDK mock-model path does not auto-continue into a final assistant-text step in the same way a live Think turn does, so the durable smoke proof for Phase 3 is better anchored on filesystem edits, bash execution, staged outputs, and emitted events than on final assistant text.
+- **2026-04-17:** The local `@cloudflare/think` path under `wrangler dev --local` crashed inside Think’s chat queue (`appendMessage` on undefined) for mock turns, so the deterministic Phase 4 path had to execute the mock plan directly while keeping the same `runImplementerTurn()` surface.
+- **2026-04-17:** Re-calling `TaskSessionDO.ensureWorkspace()` inside the Think workflow step retried `git worktree add` against an existing task worktree. The stable fix was to carry a serialized bridge snapshot across the workflow step boundary rather than rematerializing the workspace a second time.
 
 ## Outcomes & Retrospective
 
@@ -139,6 +156,14 @@ Planning outcome on 2026-04-16:
 - The plan resolves the high-level boundary question: Think is a harness runtime for agent turns, not a new source of workflow truth.
 - Phase 1 is now complete: the repo has current Think/Agents dependencies, a bindable `KeystoneThinkAgent`, generated Worker types, and a harness contract module that later phases can build on without re-deciding the boundary.
 - The next contributor should begin with Phase 2 and keep the existing task path unchanged until the filesystem bridge and runtime selector are ready.
+
+Phase 4 outcome on 2026-04-17:
+
+- `RunWorkflow` and `TaskWorkflow` now honor an explicit runtime selector while keeping `scripted` as the default path.
+- The Think-backed fixture run now promotes staged `/artifacts/out` files into canonical R2-backed `run_note` artifacts and records them through the existing artifact/event pipeline.
+- The fixture demo flow now sends runtime selection explicitly, waits for a real terminal run summary, and validates the promoted Think artifact shape instead of compile-only intermediates.
+- Host validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `KEYSTONE_AGENT_RUNTIME=think npm run demo:run`, and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` against a host `wrangler dev --local` instance on this machine.
+- The next contributor should move to Phase 5 documentation and keep `scripted` as the default runtime until a later plan explicitly changes that decision.
 
 ## Context and Orientation
 
@@ -331,6 +356,13 @@ Phase 3 implementation notes:
 - `src/keystone/agents/base/KeystoneThinkAgent.ts` now opens a sandbox session for the turn, feeds the implementer metadata into Think, and publishes `agent.turn.*`, `agent.message`, `agent.tool_*`, and `artifact.staged` events through the existing event pipeline.
 - `src/http/handlers/dev-think.ts` and `scripts/think-smoke.ts` provide the dedicated Phase 3 smoke path: the HTTP route proves the Worker seam, while the script keeps validation in-process and deterministic for the implementation pass.
 - The Phase 2 fix pass now clears `/artifacts/out` during bridge re-materialization so stale staged outputs do not survive repeated `ensureWorkspace()` calls on the same sandbox session.
+
+Phase 4 implementation notes:
+
+- `src/http/handlers/runs.ts`, `src/workflows/RunWorkflow.ts`, and `src/lib/workflows/idempotency.ts` now persist and forward an explicit runtime selector, defaulting to `scripted` when none is provided.
+- `src/workflows/TaskWorkflow.ts` now branches between the existing scripted `npm test` path and the Think-backed implementer path, promotes staged outputs into R2-backed refs, and keeps the fixture-backed Think path deterministic by reusing the mock plan.
+- `scripts/demo-run.ts` now waits for a terminal `run_summary` artifact instead of exiting on transient workflow status, and `scripts/demo-validate.ts` asserts the promoted Think artifact shape (`run_note` + `run_summary`) rather than compile-only metadata.
+- `src/keystone/agents/base/KeystoneThinkAgent.ts` now executes deterministic mock turns directly with the existing toolset during local validation so `wrangler dev --local` can exercise the fixture path without hitting Think’s local chat-queue bug.
 
 ## Interfaces and Dependencies
 
@@ -645,13 +677,17 @@ Workflow integration of the Think-backed implementer path with an explicit runti
 Live validation still depends on local Worker development working outside the Codex sandbox boundary on this host.
 
 **Status**  
-Queued until Phase 3 completes.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Not started.
+- Added explicit runtime selection at run creation and propagated it through `RunWorkflow` into `TaskWorkflow`, keeping `scripted` as the default fallback.
+- Integrated `KeystoneThinkAgent.runImplementerTurn()` into `TaskWorkflow` for the fixture-backed implementer path and promoted staged `/artifacts/out` files into canonical R2-backed artifact refs plus `artifact.put` events.
+- Tightened the fixture demo scripts so they send runtime selection explicitly, wait for a real terminal run summary, and validate the Think-backed artifact outcome (`run_note` + `run_summary`).
+- Added regression coverage for runtime selection in `tests/http/app.test.ts` and `tests/lib/workflow-ids.test.ts`.
+- Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `KEYSTONE_AGENT_RUNTIME=think npm run demo:run`, and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` against host `wrangler dev --local` because this machine still cannot run local Worker dev inside the Codex sandbox.
 
 **Next Starter Context**  
-Do not remove the existing scripted path in this phase even if the Think path looks healthy. Default switching is a later decision.
+Phase 5 should document the runtime selector, the Think-backed artifact-promotion behavior, the local `wrangler dev --local` validation flow, and the fact that `scripted` remains the default path until a later explicit decision changes it.
 
 ### Phase 5: Document the Think-backed runtime and close out the plan
 

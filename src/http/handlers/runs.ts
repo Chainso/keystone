@@ -9,6 +9,7 @@ import { createSessionRecord, listRunSessions } from "../../lib/db/runs";
 import { jsonErrorResponse } from "../../lib/http/errors";
 import { buildRunSummary } from "../../lib/runs/summary";
 import { buildRunWorkflowInstanceId } from "../../lib/workflows/ids";
+import { resolveRunAgentRuntime } from "../../lib/workflows/idempotency";
 import { decisionPackageSchema } from "../../keystone/compile/contracts";
 import { parseRunInput } from "../contracts/run-input";
 
@@ -16,6 +17,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
   const body = await context.req.json();
   const auth = context.get("auth");
   const input = parseRunInput(body);
+  const runtime = resolveRunAgentRuntime(context.req.header("X-Keystone-Agent-Runtime"));
   const runId = crypto.randomUUID();
   const workflowInstanceId = buildRunWorkflowInstanceId(auth.tenantId, runId);
   const workflowDecisionPackage =
@@ -35,7 +37,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
       metadata: {
         authMode: auth.authMode,
         repo: input.repo,
-        decisionPackage: input.decisionPackage
+        decisionPackage: input.decisionPackage,
+        runtime
       }
     });
 
@@ -75,7 +78,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
         runId,
         runSessionId: session.sessionId,
         repo: input.repo,
-        decisionPackage: workflowDecisionPackage
+        decisionPackage: workflowDecisionPackage,
+        runtime
       }
     });
 
@@ -89,6 +93,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
           repo: input.repo.source,
           decisionPackage: input.decisionPackage.source
         },
+        runtime,
         workflowInstanceId,
         summaryUrl: `/v1/runs/${runId}`,
         websocketUrl: `/v1/runs/${runId}/ws`,

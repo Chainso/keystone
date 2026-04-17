@@ -1,4 +1,5 @@
 import { Think } from "@cloudflare/think";
+import { generateText } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 
 import type { WorkerBindings } from "../../../env";
@@ -186,15 +187,34 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
         }
       };
 
-      await this.chat(
-        metadata.prompt,
-        callback,
-        signal
-          ? {
-              signal
-            }
-          : undefined
-      );
+      if (metadata.mockModelPlan) {
+        const result = await generateText({
+          model: createMockImplementerModel(metadata.mockModelPlan),
+          system: buildImplementerSystemPrompt(input),
+          prompt: metadata.prompt,
+          tools: this.getTools()
+        });
+
+        this.activeTurn.lastAssistantText = result.text;
+
+        await this.recordTurnEvent("agent.message", {
+          role: this.role,
+          requestId: "mock-implementer-turn",
+          continuation: false,
+          status: "complete",
+          text: result.text
+        });
+      } else {
+        await this.chat(
+          metadata.prompt,
+          callback,
+          signal
+            ? {
+                signal
+              }
+            : undefined
+        );
+      }
 
       const stagedArtifacts = await collectStagedArtifacts(session, metadata.agentBridge);
 

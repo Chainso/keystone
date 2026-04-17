@@ -16,6 +16,8 @@ export interface R2ArtifactGetResult {
   contentType: string | null;
 }
 
+export type ArtifactBodyEncoding = "utf-8" | "base64" | undefined;
+
 export function toR2Uri(bucketName: string, key: string) {
   return `r2://${bucketName}/${key}`;
 }
@@ -98,6 +100,21 @@ export async function getArtifactBytes(
     body: await object.arrayBuffer(),
     contentType: object.httpMetadata?.contentType ?? null
   };
+}
+
+export function decodeArtifactBody(content: string, encoding?: ArtifactBodyEncoding) {
+  if (encoding === "base64") {
+    const binary = atob(content);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return bytes;
+  }
+
+  return content;
 }
 
 export function isTextArtifactContentType(contentType: string | null | undefined) {

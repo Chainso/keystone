@@ -20,13 +20,34 @@ function resolveBaseUrl() {
   return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
 }
 
+function resolveRuntime() {
+  return getArg("runtime") ?? process.env.KEYSTONE_AGENT_RUNTIME ?? "scripted";
+}
+
+function isRunComplete(summary: Record<string, unknown>) {
+  const status = String(summary.status ?? "unknown");
+  const artifacts = summary.artifacts as
+    | {
+        byKind?: Record<string, number>;
+      }
+    | undefined;
+
+  if (status === "failed" || status === "cancelled") {
+    return true;
+  }
+
+  return status === "archived" && (artifacts?.byKind?.run_summary ?? 0) >= 1;
+}
+
 async function createFixtureRun() {
   const baseUrl = resolveBaseUrl();
+  const runtime = resolveRuntime();
   const response = await fetch(`${baseUrl}/v1/runs`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
       "Content-Type": "application/json",
+      "X-Keystone-Agent-Runtime": runtime,
       "X-Keystone-Tenant-Id": process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local"
     },
     body: JSON.stringify({
@@ -69,6 +90,7 @@ async function main() {
   const createdRun = await createFixtureRun();
   const runId = String(createdRun.runId ?? "");
   const baseUrl = resolveBaseUrl();
+  const runtime = resolveRuntime();
 
   if (!runId) {
     throw new Error("Run creation response did not include runId.");
@@ -78,12 +100,13 @@ async function main() {
     const summary = await fetchRunSummary(runId);
     const status = String(summary.status ?? "unknown");
 
-    if (status === "archived" || status === "failed" || status === "cancelled") {
+    if (isRunComplete(summary)) {
       console.log(
         JSON.stringify(
           {
             baseUrl,
             runId,
+            runtime,
             status,
             summary
           },

@@ -313,12 +313,57 @@ describe("app", () => {
     await expect(response.json()).resolves.toMatchObject({
       status: "accepted",
       tenantId: "tenant-fixture",
+      runtime: "scripted",
       inputMode: {
         repo: "localPath",
         decisionPackage: "localPath"
       },
       workflowInstanceId: expect.any(String)
     });
+    expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          runtime: "scripted"
+        })
+      })
+    );
+  });
+
+  it("passes an explicit Think runtime selection into the workflow", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Agent-Runtime": "think",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          repo: {
+            localPath: "./fixtures/demo-target"
+          },
+          decisionPackage: {
+            localPath: "./fixtures/demo-decision-package/decision-package.json"
+          }
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "accepted",
+      runtime: "think"
+    });
+    expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          runtime: "think"
+        })
+      })
+    );
   });
 
   it("returns a run summary for an existing run", async () => {

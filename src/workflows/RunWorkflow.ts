@@ -10,6 +10,7 @@ import type { WorkerBindings } from "../env";
 import { getRunCoordinatorStub } from "../lib/auth/tenant";
 import { ensureApprovalRequest } from "../lib/approvals/service";
 import { createWorkerDatabaseClient } from "../lib/db/client";
+import type { AgentRuntimeKind } from "../maestro/contracts";
 import { getSessionRecord, updateSessionStatus } from "../lib/db/runs";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
@@ -19,7 +20,11 @@ import {
   buildStableSessionId,
   buildTaskWorkflowInstanceId
 } from "../lib/workflows/ids";
-import { ensureSessionRecord, loadExistingRunPlan } from "../lib/workflows/idempotency";
+import {
+  ensureSessionRecord,
+  loadExistingRunPlan,
+  resolveRunAgentRuntime
+} from "../lib/workflows/idempotency";
 import { compileRunPlan, type CompileRepoSource } from "../keystone/compile/plan-run";
 import { decisionPackageSchema, type DecisionPackage } from "../keystone/compile/contracts";
 import { finalizeRun } from "../keystone/integration/finalize-run";
@@ -42,6 +47,7 @@ export interface RunWorkflowParams {
   runSessionId?: string | undefined;
   repo?: CompileRepoSource | undefined;
   decisionPackage?: RunWorkflowDecisionPackageInput | undefined;
+  runtime?: AgentRuntimeKind | undefined;
 }
 
 const MAX_TASK_POLL_ATTEMPTS = 20;
@@ -113,7 +119,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
       (await buildStableSessionId("run-session", event.payload.tenantId, event.payload.runId));
     const workflowInstanceId = buildRunWorkflowInstanceId(event.payload.tenantId, event.payload.runId);
 
-    await step.do("load run context", async () => {
+    const runContext = await step.do("load run context", async () => {
       const client = createWorkerDatabaseClient(this.env);
 
       try {
@@ -142,7 +148,8 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         const statusMetadata = {
           repo,
           decisionPackageId: decisionPackage.decisionPackageId,
-          workflowInstanceId
+          workflowInstanceId,
+          runtime: resolveRunAgentRuntime(event.payload.runtime, currentSession.metadata)
         };
 
         if (currentSession.status === "configured") {
@@ -201,7 +208,8 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
 
         return {
           runSessionId,
-          workflowInstanceId
+          workflowInstanceId,
+          runtime: statusMetadata.runtime
         };
       } finally {
         await client.close();
@@ -365,7 +373,8 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           runId: event.payload.runId,
           runSessionId,
           taskId: task.taskId,
-          repo
+          repo,
+          runtime: runContext.runtime
         }
       }));
 

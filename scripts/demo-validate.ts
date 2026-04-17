@@ -9,9 +9,14 @@ function resolveBaseUrl() {
   return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
 }
 
+function resolveRuntime() {
+  return getArg("runtime") ?? process.env.KEYSTONE_AGENT_RUNTIME ?? "scripted";
+}
+
 async function main() {
   const runId = getArg("run-id") ?? process.env.KEYSTONE_RUN_ID;
   const baseUrl = resolveBaseUrl();
+  const runtime = resolveRuntime();
 
   if (!runId) {
     throw new Error("Provide --run-id=<id> or set KEYSTONE_RUN_ID.");
@@ -33,6 +38,9 @@ async function main() {
 
   const summary = (await response.json()) as {
     status?: string;
+    inputs?: {
+      runtime?: string;
+    };
     artifacts?: {
       total?: number;
       byKind?: Record<string, number>;
@@ -58,12 +66,21 @@ async function main() {
     throw new Error("Expected a run_summary artifact.");
   }
 
+  if (runtime === "think" && (summary.artifacts?.byKind?.run_note ?? 0) < 1) {
+    throw new Error("Expected at least one promoted run_note artifact for the Think runtime.");
+  }
+
+  if (runtime === "scripted" && (summary.artifacts?.byKind?.task_log ?? 0) < 1) {
+    throw new Error("Expected at least one task_log artifact for the scripted runtime.");
+  }
+
   console.log(
     JSON.stringify(
       {
         ok: true,
         baseUrl,
         runId,
+        runtime,
         status: summary.status,
         sessions: summary.sessions?.total ?? 0,
         artifacts: summary.artifacts ?? {}
