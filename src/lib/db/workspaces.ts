@@ -31,13 +31,45 @@ export interface CreateWorkspaceBindingInput {
   metadata?: Record<string, unknown> | undefined;
 }
 
+function resolveDefaultMaterializedComponent(input: CreateWorkspaceBindingInput) {
+  if (input.materializedComponents.length === 0) {
+    if (input.defaultComponentKey) {
+      throw new Error(
+        `Workspace binding default component "${input.defaultComponentKey}" was provided without any materialized components.`
+      );
+    }
+
+    return null;
+  }
+
+  if (input.defaultComponentKey) {
+    const defaultComponent = input.materializedComponents.find(
+      (component) => component.componentKey === input.defaultComponentKey
+    );
+
+    if (!defaultComponent) {
+      throw new Error(
+        `Workspace binding default component "${input.defaultComponentKey}" was not materialized.`
+      );
+    }
+
+    return defaultComponent;
+  }
+
+  if (input.materializedComponents.length === 1) {
+    return input.materializedComponents[0] ?? null;
+  }
+
+  throw new Error(
+    "Workspace binding default component key is required when multiple components are materialized."
+  );
+}
+
 export async function createWorkspaceBinding(
   client: DatabaseClient,
   input: CreateWorkspaceBindingInput
 ) {
-  const defaultComponent =
-    input.materializedComponents.find((component) => component.componentKey === input.defaultComponentKey) ??
-    input.materializedComponents[0];
+  const defaultComponent = resolveDefaultMaterializedComponent(input);
 
   return client.db.transaction(async (tx) => {
     const bindingId = crypto.randomUUID();

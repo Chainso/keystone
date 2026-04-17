@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildComponentPathSegment,
   buildComponentRepositoryPath,
   buildComponentWorktreePath,
   buildSandboxId,
@@ -22,10 +23,19 @@ describe("workspace path helpers", () => {
       "/workspace/runs/run-with-spaces-de305d54/code"
     );
     expect(buildComponentRepositoryPath(workspaceRoot, "API Server")).toBe(
-      "/workspace/runs/run-with-spaces-de305d54/repositories/api-server"
+      "/workspace/runs/run-with-spaces-de305d54/repositories/API%20Server"
     );
     expect(buildComponentWorktreePath(workspaceRoot, "API Server")).toBe(
-      "/workspace/runs/run-with-spaces-de305d54/code/api-server"
+      "/workspace/runs/run-with-spaces-de305d54/code/API%20Server"
+    );
+  });
+
+  it("encodes component path segments without collapsing distinct keys", () => {
+    expect(buildComponentPathSegment("api server")).toBe("api%20server");
+    expect(buildComponentPathSegment("api/server")).toBe("api%2Fserver");
+    expect(buildComponentPathSegment(".")).toBe("%2E");
+    expect(buildComponentPathSegment("api server")).not.toBe(
+      buildComponentPathSegment("api/server")
     );
   });
 

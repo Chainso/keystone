@@ -75,7 +75,7 @@ const mocked = vi.hoisted(() => {
           workspaceRoot: "/workspace/runs/run-123",
           workspaceTargetPath: "/workspace/runs/run-123",
           codeRoot: "/workspace/runs/run-123/code",
-          defaultCwd: "/workspace/runs/run-123/code/repo",
+          defaultCwd: "/workspace/runs/run-123",
           repositoryPath: "/workspace/runs/run-123/repositories/repo",
           worktreePath: "/workspace/runs/run-123/code/repo",
           branchName: "keystone/task-live-implementation",
@@ -90,6 +90,16 @@ const mocked = vi.hoisted(() => {
               repoRef: "main",
               repositoryPath: "/workspace/runs/run-123/repositories/repo",
               headSha: "abc123"
+            },
+            {
+              componentKey: "docs",
+              worktreePath: "/workspace/runs/run-123/code/docs",
+              branchName: "keystone/task-live-implementation",
+              baseRef: "main",
+              repoUrl: "fixture://demo-docs",
+              repoRef: "main",
+              repositoryPath: "/workspace/runs/run-123/repositories/docs",
+              headSha: "def456"
             }
           ],
           agentBridge: JSON.parse(JSON.stringify(bridge))
@@ -236,6 +246,11 @@ type RunImplementerTurnCall = {
   taskId: string;
   sandboxId: string;
   prompt: string;
+  agentBridge: {
+    targets: {
+      workspaceRoot: string;
+    };
+  };
   mockModelPlan?: unknown[] | undefined;
 };
 
@@ -315,7 +330,12 @@ describe("TaskWorkflow Think runtime", () => {
       runId: "run-123",
       sessionId: "task-session-123",
       taskId: "task-live-implementation",
-      sandboxId: "sandbox-123"
+      sandboxId: "sandbox-123",
+      agentBridge: {
+        targets: {
+          workspaceRoot: "/workspace/runs/run-123/tasks/task-live-implementation"
+        }
+      }
     });
     expect(call?.mockModelPlan).toBeUndefined();
     expect(call?.prompt).toContain("Decision package: demo-greeting-update");
@@ -342,6 +362,24 @@ describe("TaskWorkflow Think runtime", () => {
       processStatus: "completed",
       exitCode: 0,
       workflowStatus: "complete"
+    });
+    expect(mocked.getTaskSessionStub).toHaveBeenCalledWith(
+      expect.anything(),
+      "tenant-fixture",
+      "run-123",
+      "task-session-123",
+      "task-live-implementation"
+    );
+    const taskSession = await mocked.getTaskSessionStub.mock.results[0]?.value;
+
+    expect(taskSession?.ensureWorkspace).toHaveBeenCalledWith({
+      source: {
+        type: "inline",
+        repoUrl: "fixture://demo-target",
+        repoRef: "main",
+        baseRef: "main",
+        files: expect.any(Array)
+      }
     });
   });
 

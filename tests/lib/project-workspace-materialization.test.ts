@@ -2,12 +2,17 @@ import type { ExecutionSession } from "@cloudflare/sandbox";
 import { describe, expect, it, vi } from "vitest";
 
 import { ensureWorkspaceMaterialized } from "../../src/lib/workspace/init";
+import {
+  buildComponentRepositoryPath,
+  buildComponentWorktreePath,
+  buildWorkspaceCodeRoot
+} from "../../src/lib/workspace/worktree";
 
 describe("project workspace materialization", () => {
-  it("materializes multiple code components into the shared /workspace/code layout", async () => {
+  it("materializes component repositories and worktrees under the shared workspace root", async () => {
     const session = {
-      exists: vi.fn(async (targetPath: string) => ({
-        exists: targetPath.endsWith("/.git") ? false : false
+      exists: vi.fn(async () => ({
+        exists: false
       })),
       mkdir: vi.fn(async () => undefined),
       writeFile: vi.fn(async () => undefined),
@@ -46,6 +51,10 @@ describe("project workspace materialization", () => {
             {
               path: "package.json",
               content: "{\"name\":\"web-app\"}\n"
+            },
+            {
+              path: "src/index.ts",
+              content: "export const ready = true;\n"
             }
           ]
         },
@@ -57,29 +66,65 @@ describe("project workspace materialization", () => {
       ]
     });
 
-    expect(workspace.workspaceRoot).toBe("/workspace/runs/run-456-de305d54");
-    expect(workspace.codeRoot).toBe("/workspace/runs/run-456-de305d54/code");
-    expect(workspace.defaultCwd).toBe("/workspace/runs/run-456-de305d54");
-    expect(workspace.components.map((component) => component.componentKey)).toEqual([
-      "web-app",
-      "api"
+    const workspaceRoot = "/workspace/runs/run-456-de305d54";
+    const codeRoot = buildWorkspaceCodeRoot(workspaceRoot);
+    const webRepositoryPath = buildComponentRepositoryPath(workspaceRoot, "web-app");
+    const webWorktreePath = buildComponentWorktreePath(workspaceRoot, "web-app");
+    const apiRepositoryPath = buildComponentRepositoryPath(workspaceRoot, "api");
+    const apiWorktreePath = buildComponentWorktreePath(workspaceRoot, "api");
+
+    expect(workspace.workspaceRoot).toBe(workspaceRoot);
+    expect(workspace.codeRoot).toBe(codeRoot);
+    expect(workspace.defaultCwd).toBe(workspaceRoot);
+    expect(workspace.components).toEqual([
+      expect.objectContaining({
+        componentKey: "web-app",
+        repositoryPath: webRepositoryPath,
+        worktreePath: webWorktreePath,
+        branchName: "keystone/task-2"
+      }),
+      expect.objectContaining({
+        componentKey: "api",
+        repositoryPath: apiRepositoryPath,
+        worktreePath: apiWorktreePath,
+        repoRef: "HEAD",
+        baseRef: "HEAD",
+        branchName: "keystone/task-2"
+      })
     ]);
-    expect(workspace.components[0]).toMatchObject({
-      repositoryPath: "/workspace/runs/run-456-de305d54/repositories/web-app",
-      worktreePath: "/workspace/runs/run-456-de305d54/code/web-app",
-      branchName: "keystone/task-2"
+    expect(session.mkdir).toHaveBeenCalledWith(codeRoot, {
+      recursive: true
     });
-    expect(workspace.components[1]).toMatchObject({
-      repositoryPath: "/workspace/runs/run-456-de305d54/repositories/api",
-      worktreePath: "/workspace/runs/run-456-de305d54/code/api",
-      repoRef: "HEAD",
-      baseRef: "HEAD",
-      branchName: "keystone/task-2"
+    expect(session.mkdir).toHaveBeenCalledWith(webRepositoryPath, {
+      recursive: true
     });
+    expect(session.mkdir).toHaveBeenCalledWith(`${webRepositoryPath}/src`, {
+      recursive: true
+    });
+    expect(session.writeFile).toHaveBeenCalledWith(
+      `${webRepositoryPath}/package.json`,
+      "{\"name\":\"web-app\"}\n"
+    );
+    expect(session.writeFile).toHaveBeenCalledWith(
+      `${webRepositoryPath}/src/index.ts`,
+      "export const ready = true;\n"
+    );
     expect(session.gitCheckout).toHaveBeenCalledWith(
       "https://github.com/octocat/Hello-World.git",
       {
-        targetDir: "/workspace/runs/run-456-de305d54/repositories/api"
+        targetDir: apiRepositoryPath
+      }
+    );
+    expect(session.exec).toHaveBeenCalledWith(
+      expect.stringContaining(`git worktree add --force -B 'keystone/task-2' '${webWorktreePath}' 'main'`),
+      {
+        cwd: webRepositoryPath
+      }
+    );
+    expect(session.exec).toHaveBeenCalledWith(
+      expect.stringContaining(`git worktree add --force -B 'keystone/task-2' '${apiWorktreePath}' 'HEAD'`),
+      {
+        cwd: apiRepositoryPath
       }
     );
   });

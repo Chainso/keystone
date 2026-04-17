@@ -16,6 +16,10 @@ async function execOrThrow(session: ExecutionSession, command: string, cwd?: str
   return result;
 }
 
+async function tryExec(session: ExecutionSession, command: string, cwd?: string) {
+  return session.exec(command, cwd ? { cwd } : undefined);
+}
+
 export async function initializeGitRepository(
   session: ExecutionSession,
   repositoryPath: string
@@ -43,6 +47,73 @@ export async function createTaskWorktree(
   );
 }
 
+async function isReusableTaskWorktree(
+  session: ExecutionSession,
+  input: {
+    repositoryPath: string;
+    worktreePath: string;
+    branchName: string;
+    baseRef: string;
+  }
+) {
+  const insideWorktree = await tryExec(
+    session,
+    "git rev-parse --is-inside-work-tree",
+    input.worktreePath
+  );
+
+  if (!insideWorktree.success || insideWorktree.stdout.trim() !== "true") {
+    return false;
+  }
+
+  const commonDir = await tryExec(
+    session,
+    "git rev-parse --path-format=absolute --git-common-dir",
+    input.worktreePath
+  );
+
+  if (!commonDir.success || commonDir.stdout.trim() !== `${input.repositoryPath}/.git`) {
+    return false;
+  }
+
+  const currentBranch = await tryExec(
+    session,
+    "git symbolic-ref --quiet --short HEAD",
+    input.worktreePath
+  );
+
+  if (!currentBranch.success || currentBranch.stdout.trim() !== input.branchName) {
+    return false;
+  }
+
+  const baseReachable = await tryExec(
+    session,
+    `git rev-parse --verify ${quoteShellArgument(input.baseRef)}^{commit}`,
+    input.worktreePath
+  );
+
+  return baseReachable.success;
+}
+
+async function recreateTaskWorktree(
+  session: ExecutionSession,
+  input: {
+    repositoryPath: string;
+    worktreePath: string;
+    branchName: string;
+    baseRef: string;
+  }
+) {
+  await session.exec(
+    `chmod -R u+w ${quoteShellArgument(input.worktreePath)} 2>/dev/null || true && rm -rf ${quoteShellArgument(input.worktreePath)}`,
+    {}
+  );
+  await session.exec("git worktree prune", {
+    cwd: input.repositoryPath
+  });
+  await createTaskWorktree(session, input);
+}
+
 export async function ensureTaskWorktree(
   session: ExecutionSession,
   input: {
@@ -55,6 +126,11 @@ export async function ensureTaskWorktree(
   const existingGitDirectory = await session.exists(`${input.worktreePath}/.git`);
 
   if (existingGitDirectory.exists) {
+    if (await isReusableTaskWorktree(session, input)) {
+      return;
+    }
+
+    await recreateTaskWorktree(session, input);
     return;
   }
 

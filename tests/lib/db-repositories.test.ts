@@ -55,6 +55,7 @@ describeIfDatabase("database repositories", () => {
     await client.sql`DELETE FROM projects WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM session_events WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM artifact_refs WHERE tenant_id = ${tenantId}`;
+    await client.sql`DELETE FROM workspace_materialized_components WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM workspace_bindings WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM sessions WHERE tenant_id = ${tenantId}`;
     await client.close();
@@ -150,8 +151,8 @@ describeIfDatabase("database repositories", () => {
       strategy: "worktree",
       sandboxId: "sandbox-smoke",
       workspaceRoot: "/workspace/runs/demo",
-      workspaceTargetPath: "/workspace/runs/demo",
-      defaultComponentKey: "repo",
+      workspaceTargetPath: "/workspace/runs/demo/code",
+      defaultComponentKey: "docs",
       materializedComponents: [
         {
           componentKey: "repo",
@@ -162,12 +163,29 @@ describeIfDatabase("database repositories", () => {
           worktreePath: "/workspace/runs/demo/code/repo",
           branchName: "keystone/task-smoke",
           headSha: "abc123"
+        },
+        {
+          componentKey: "docs",
+          repoUrl: "fixture://demo-docs",
+          repoRef: "release",
+          baseRef: "release",
+          repositoryPath: "/workspace/runs/demo/repositories/docs",
+          worktreePath: "/workspace/runs/demo/code/docs",
+          branchName: "keystone/task-smoke",
+          headSha: "def456"
         }
-      ]
+      ],
+      metadata: {
+        defaultCwd: "/workspace/runs/demo",
+        codeRoot: "/workspace/runs/demo/code"
+      }
     });
 
-    expect(binding?.repoUrl).toBe("fixture://demo-target");
+    expect(binding?.repoUrl).toBe("fixture://demo-docs");
     expect(binding?.workspaceRoot).toBe("/workspace/runs/demo");
+    expect(binding?.workspaceTargetPath).toBe("/workspace/runs/demo/code");
+    expect(binding?.defaultComponentKey).toBe("docs");
+    expect(binding?.worktreePath).toBe("/workspace/runs/demo/code/docs");
 
     const bindings = await listRunWorkspaceBindings(client, {
       tenantId,
@@ -179,8 +197,21 @@ describeIfDatabase("database repositories", () => {
     });
 
     expect(bindings).toHaveLength(1);
-    expect(bindings[0]?.worktreePath).toContain("/code/repo");
-    expect(components).toHaveLength(1);
-    expect(components[0]?.componentKey).toBe("repo");
+    expect(bindings[0]?.metadata).toMatchObject({
+      defaultCwd: "/workspace/runs/demo",
+      codeRoot: "/workspace/runs/demo/code"
+    });
+    expect(components).toHaveLength(2);
+    expect(components.map((component) => component.componentKey)).toEqual(["docs", "repo"]);
+    expect(components[0]).toMatchObject({
+      componentKey: "docs",
+      worktreePath: "/workspace/runs/demo/code/docs",
+      headSha: "def456"
+    });
+    expect(components[1]).toMatchObject({
+      componentKey: "repo",
+      worktreePath: "/workspace/runs/demo/code/repo",
+      headSha: "abc123"
+    });
   });
 });

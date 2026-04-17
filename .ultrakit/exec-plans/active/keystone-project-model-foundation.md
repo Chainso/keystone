@@ -137,6 +137,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Keep one durable `workspace_bindings` row per task workspace and add a separate per-component materialization table, while exposing the agent-visible workspace as a shared root that contains `/workspace/code/<component-key>` entries plus a derived `defaultCwd` for legacy single-component flows.  
   **Rationale:** Phase 3 needs stable per-run component refs/paths without losing the existing workspace/session identity, and the current task/process paths still need a safe default cwd until Phase 4 rewires workflows fully onto projects.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 3 Fix Pass  
+  **Decision:** Make component workspace paths collision-safe by percent-encoding full component keys, require explicit valid default-component selection when persisting workspace bindings, and treat pre-existing task worktrees as reusable only after validating the expected repository/branch shape.  
+  **Rationale:** The review pass found that slug-and-truncate path derivation could collapse distinct component keys, workspace binding persistence could silently point at the wrong default component, and `.git` presence alone was too weak to trust an existing worktree.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -148,6 +153,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Phase 2 completed: added tenant-scoped project CRUD routes, typed project API contracts with request validation, and a deterministic fixture-project bootstrap helper plus route/script coverage.
 - [x] 2026-04-17 Phase 2 fix pass completed: project-only validation errors are now scoped to `/v1/projects`, duplicate nested keys are rejected at the contract layer, and the route/script tests assert the richer project config surface.
 - [x] 2026-04-17 Phase 3 completed: workspace persistence now records per-component materializations, the sandbox workspace root exposes `/workspace/code/<component-key>`, and task sessions derive a stable default cwd from the materialized component set.
+- [x] 2026-04-17 Phase 3 fix pass completed: component workspace paths now preserve key uniqueness, workspace bindings reject invalid default-component selection, stale task worktrees are recreated instead of silently reused, and targeted Phase 3 tests cover persistence shape, filesystem side effects, and task-workflow integration more deeply.
 - [ ] Phase 4: require `projectId` on runs and wire project-backed workspace execution through workflows, task sessions, and demo scripts.
 - [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
 
@@ -165,6 +171,8 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - Route-level tests that import `src/http/app.ts` need to stub unrelated run/dev handler modules when they only care about project routes; otherwise the full router import can walk into Cloudflare-only workflow entrypoints during Node test execution.
 - Project request validation has to stay route-scoped in Phase 2: handling raw `ZodError` globally in `src/http/app.ts` also changes invalid `/v1/runs` behavior before the run-contract migration is ready.
 - The agent-visible workspace root can move to the shared run workspace in Phase 3 without breaking the current single-component task flows as long as task sessions persist a derived `defaultCwd` that still points at the one materialized component worktree.
+- Phase 3 path derivation should preserve the full `componentKey` identity instead of slugging/truncating it: percent-encoded path segments keep `/workspace/code/<component-key>` stable for safe keys while avoiding collisions from spaces, slashes, or long names.
+- Reusing an on-disk task worktree safely needs more than `worktree/.git` existence; validating the common git dir, checked-out branch, and base-ref reachability is enough to distinguish a real reusable worktree from stale leftovers in the sandbox filesystem.
 
 ## Outcomes & Retrospective
 
@@ -198,6 +206,14 @@ Phase 3 outcome on 2026-04-17:
 - Sandbox workspaces now expose a shared root whose code surface lives under `/workspace/code/<component-key>`, while the agent bridge control files describe the full component set instead of a single repo/worktree pair.
 - Task sessions now materialize and persist multi-component workspaces, publish component-aware workspace events, and derive a `defaultCwd` so the current single-component demo/runtime paths still execute without forcing the Phase 4 run-contract migration early.
 - Broad validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` after rerunning the build outside the sandbox boundary due the known Wrangler/Docker host-write requirement on this machine.
+
+Phase 3 fix-pass outcome on 2026-04-17:
+
+- Component repository/worktree paths are now collision-safe for valid component keys without collapsing the agent-visible `/workspace/code/<component-key>` contract down to lossy slugs.
+- Workspace binding persistence now fails fast if the requested `defaultComponentKey` is missing or invalid, so Phase 3 can no longer silently persist the wrong repo/worktree metadata.
+- Task worktree reuse now validates the existing checkout before reusing it and recreates stale worktrees safely when the repository/branch shape no longer matches.
+- The Phase 3 tests now cover multi-row workspace component persistence, shared-root filesystem materialization effects, and the Think task workflow’s task-session workspace integration in addition to new worktree reuse validation.
+- Broad validation passed for `npm run lint`, `npm run typecheck`, and `npm run test`; no additional `npm run build` pass was needed because this fix stayed within workspace helpers and tests.
 
 ## Context and Orientation
 
@@ -683,10 +699,10 @@ Do not invent non-code component execution semantics here. Keep the runtime surf
 Completed on 2026-04-17.
 
 **Completion Notes**  
-Added `0003_project_workspace_components.sql` to generalize workspace persistence, updated `src/lib/db/schema.ts` and `src/lib/db/workspaces.ts` to keep one workspace binding plus per-component materialization rows, and refactored `src/lib/workspace/init.ts`, `src/lib/workspace/worktree.ts`, and `src/lib/workspace/git.ts` to materialize multiple code components under `/workspace/code/<component-key>`. `src/durable-objects/TaskSessionDO.ts` now persists the component set, publishes component-aware workspace events, and uses a derived `defaultCwd` for current single-component execution. Targeted workspace, bridge, worktree, workflow-stub, and database tests were updated and expanded in `tests/lib/workspace-init.test.ts`, `tests/lib/project-workspace-materialization.test.ts`, `tests/lib/sandbox-agent-bridge.test.ts`, `tests/lib/worktree.test.ts`, `tests/lib/db-repositories.test.ts`, `tests/lib/workflows/task-workflow-think.test.ts`, and `tests/http/app.test.ts`. Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` after rerunning the build outside the sandbox due the known Wrangler/Docker host-write requirement.
+Added `0003_project_workspace_components.sql` to generalize workspace persistence, updated `src/lib/db/schema.ts` and `src/lib/db/workspaces.ts` to keep one workspace binding plus per-component materialization rows, and refactored `src/lib/workspace/init.ts`, `src/lib/workspace/worktree.ts`, and `src/lib/workspace/git.ts` to materialize multiple code components under `/workspace/code/<component-key>`. `src/durable-objects/TaskSessionDO.ts` now persists the component set, publishes component-aware workspace events, and uses a derived `defaultCwd` for current single-component execution. The targeted Phase 3 fix pass tightened the filesystem contract by using collision-safe encoded component path segments, requiring a valid `defaultComponentKey` when multiple components are persisted, and validating existing task worktrees before reuse. Targeted workspace, bridge, worktree, workflow-stub, and database tests were updated and expanded in `tests/lib/workspace-init.test.ts`, `tests/lib/project-workspace-materialization.test.ts`, `tests/lib/sandbox-agent-bridge.test.ts`, `tests/lib/worktree.test.ts`, `tests/lib/workspace-git.test.ts`, `tests/lib/db-repositories.test.ts`, `tests/lib/workflows/task-workflow-think.test.ts`, and `tests/http/app.test.ts`. Validation passed with `npm run lint`, `npm run typecheck`, and `npm run test`; the earlier successful Phase 3 build remains the current broad build proof because the fix pass changed only workspace helpers and tests.
 
 **Next Starter Context**  
-Phase 4 can now treat the workspace substrate as project-ready: task sessions can materialize a full component set and persist stable per-component refs/paths for the life of the run. The next pass should change `/v1/runs`, `RunWorkflow`, `TaskWorkflow`, and the demo scripts to resolve project components/env vars/rules and pass `components` into task-session workspace materialization instead of the legacy single-source path.
+Phase 4 can now treat the workspace substrate as project-ready: task sessions can materialize a full component set, persist stable per-component refs/paths for the life of the run, and reject stale default/worktree state instead of silently drifting. The next pass should change `/v1/runs`, `RunWorkflow`, `TaskWorkflow`, and the demo scripts to resolve project components/env vars/rules and pass `components` into task-session workspace materialization instead of the legacy single-source path.
 
 ### Phase 4: Require project-backed runs and wire projects through workflows and demos
 

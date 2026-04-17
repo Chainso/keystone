@@ -6,6 +6,7 @@ import {
 } from "../../maestro/agent-runtime";
 import type { WorkspaceStrategy } from "../../maestro/contracts";
 import {
+  buildComponentPathSegment,
   buildComponentRepositoryPath,
   buildComponentWorktreePath,
   buildTaskBranchName,
@@ -303,7 +304,7 @@ export async function materializeSandboxAgentBridge(
         worktreePath: component.worktreePath,
         branchName: component.branchName,
         headSha: component.headSha,
-        sandboxPath: `${nextBridge.layout.workspaceRoot}/code/${slugifySegment(component.componentKey)}`
+        sandboxPath: `${nextBridge.layout.workspaceRoot}/code/${buildComponentPathSegment(component.componentKey)}`
       }))
     }
   });

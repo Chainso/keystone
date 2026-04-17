@@ -31,12 +31,22 @@ export function buildWorkspaceCodeRoot(workspaceRoot: string) {
   return `${workspaceRoot}/code`;
 }
 
+export function buildComponentPathSegment(componentKey: string) {
+  const trimmed = componentKey.trim();
+
+  if (!trimmed) {
+    return "default";
+  }
+
+  return encodeURIComponent(trimmed).replaceAll(".", "%2E");
+}
+
 export function buildComponentRepositoryPath(workspaceRoot: string, componentKey: string) {
-  return `${workspaceRoot}/repositories/${slugifySegment(componentKey)}`;
+  return `${workspaceRoot}/repositories/${buildComponentPathSegment(componentKey)}`;
 }
 
 export function buildComponentWorktreePath(workspaceRoot: string, componentKey: string) {
-  return `${buildWorkspaceCodeRoot(workspaceRoot)}/${slugifySegment(componentKey)}`;
+  return `${buildWorkspaceCodeRoot(workspaceRoot)}/${buildComponentPathSegment(componentKey)}`;
 }
 
 export function buildTaskBranchName(taskId: string) {
