@@ -264,6 +264,19 @@ Scion’s `scion-agent.yaml` makes this explicit: “Templates must be harness-a
 
 This is exactly the abstraction you want for your “internal platform first” direction: it lets you keep your conceptual model stable even if the underlying agent runtime changes.
 
+### Decision: standardize on a Think-backed harness adapter first, while keeping the kernel harness-agnostic
+
+Cloudflare's `Think` is a good *first* harness for Keystone agent turns because it already provides the high-friction inner-loop mechanics: persistent conversation history, tool orchestration, streaming, and turn recovery. The important boundary is that Keystone should consume Think through a harness adapter, not treat Think as part of the kernel contract or as the owner of workflow truth.
+
+The concrete split should be:
+
+- `Think` owns turn-local conversation state, the model loop, and basic file/bash style tooling ergonomics.
+- The sandbox owns the real execution environment.
+- Maestro owns the append-only session log, artifact promotion, policy enforcement, and workspace bindings.
+- Keystone owns orchestration, task semantics, approvals, and evidence requirements.
+
+This keeps the platform's promise intact: harnesses remain swappable, but the first concrete harness can be productive immediately without forcing Keystone to reinvent chat persistence or tool-calling infrastructure.
+
 ### Decision: make environments composable and hierarchical using “base + overlays/features”
 
 Claude environments already behave like reusable templates with cached package installation across sessions sharing the environment. citeturn10view1 If you want explicit hierarchy, the Dev Container spec ecosystem provides an existence proof of “base image + ordered features layered on top,” with an implementor reference that features are installed atop a base image and can be ordered and distributed. citeturn25search0turn25search7
@@ -273,6 +286,7 @@ A concrete environment hierarchy that tends to work well in practice:
 - `BaseEnvironment`: OS image + universal utilities  
 - `LanguageToolchainOverlay`: node/python/go/rust/etc + package managers  
 - `ProjectOverlay`: repo mount strategy + caches + build deps  
+- `ArtifactProjectionOverlay`: mounted run/task inputs plus writable output staging (for example `/artifacts/in`, `/artifacts/out`, `/keystone`)  
 - `WorkflowOverlay`: browser automation, test databases/fixtures, etc.  
 - `PolicyOverlay`: network egress rules, secret projections, resource limits
 

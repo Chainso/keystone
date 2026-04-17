@@ -711,6 +711,24 @@ The main code you rewrite is the orchestration layer; keep (1) R2 artifact conve
 
 Prove that Keystone can run **a real repo change end‑to‑end**, with **durable orchestration**, **hour+ execution capability**, **file-first artifacts in R2**, and full local development support.
 
+### Think-backed agent runtime direction
+
+`M1` does not need to finish a `Think` integration to be valid, but it should leave behind the *right execution environment* for one. The intended post-`M1` direction is:
+
+- Keystone keeps Workflows, approvals, artifact promotion, and operational state as its durable control plane.
+- A Think-backed harness becomes the preferred runtime for individual agent turns.
+- The agent operates in the real sandbox filesystem with basic `read`, `write`, `edit`, `grep`, and `bash` tooling.
+- Artifact exposure happens through mounted or projected directories rather than bespoke harness-owned storage.
+
+The target sandbox layout is:
+
+- `/workspace` for the real repo or task worktree
+- `/artifacts/in` for read-only projected R2-backed inputs
+- `/artifacts/out` for writable output staging that Keystone later promotes to R2
+- `/keystone` for role instructions, task capsules, and other control files
+
+This preserves the existing M1 architecture. It simply clarifies that the sandbox/workflow/artifact model being proven in `M1` is intentionally compatible with a future Think-backed harness.
+
 ### M1 work breakdown
 
 | Workstream | Concrete tasks | Cloudflare services | Acceptance criteria |

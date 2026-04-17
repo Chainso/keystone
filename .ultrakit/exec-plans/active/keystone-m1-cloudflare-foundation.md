@@ -139,6 +139,11 @@ Compatibility is still required at the contract level:
     **Rationale:** This keeps the auth path close to production request handling while making tenant scoping explicit and easy to exercise during local development.  
     **Alternatives considered:** A custom one-off debug header only; disabling auth entirely in local mode.
 
+24. **Date:** 2026-04-16  
+    **Decision:** Record `Think` as the preferred future harness for Keystone agent turns, but keep orchestration, approvals, artifact promotion, and durable truth in Keystone Workflows, R2, and Postgres.  
+    **Rationale:** The product specs already assume a filesystem-first sandbox environment with mounted or projected artifact inputs. A Think-backed harness can take advantage of that environment with basic file and bash tooling without changing the product boundary or making Think session storage canonical.  
+    **Alternatives considered:** Continue toward a fully custom chat/tool loop; expose only bespoke artifact RPC tools instead of a filesystem-like environment; let Think own orchestration or artifact truth.
+
 ## Execution Log
 
 - **Date:** 2026-04-13  
@@ -246,6 +251,16 @@ Compatibility is still required at the contract level:
   **Decision:** Treat the local chat-completions backend as plain HTTP and consume its streamed SSE chunk format directly, rather than assuming a TLS or non-streaming OpenAI response shape.  
   **Rationale:** The real endpoint that passed validation is `http://localhost:4001/v1/chat/completions`, and it emits `data:` chat-completion chunks ending with `[DONE]`. Building the compile client against the actual local wire format is required to make the pre-workflow compile seam real.
 
+- **Date:** 2026-04-16  
+  **Phase:** Planning / Phase 8 docs  
+  **Decision:** Update the product specs now to capture the Think-backed harness direction and expand the remaining documentation phase to include those spec changes, without rewriting completed M1 implementation phases around a not-yet-implemented runtime swap.  
+  **Rationale:** The right place to fold this decision in is the architecture and milestone docs plus the unfinished plan work. That preserves the integrity of the completed execution history while giving later contributors a clear harness direction.
+
+- **Date:** 2026-04-16  
+  **Phase:** Phase 7 / Phase 8 resume  
+  **Decision:** Stop assuming `http://127.0.0.1:8787` for helper scripts and runbook commands; the Phase 7 demo flow must target Wrangler's actual `Ready on ...` URL through `KEYSTONE_BASE_URL` or an explicit `--base-url` flag.  
+  **Rationale:** On this host, a stale local server on `8787` intercepted the first scripted rerun while the newly started Wrangler session bound `8788`. The milestone demo needs an explicit base-url path so it always validates the intended Worker instance.
+
 ## Progress
 
 - [x] 2026-04-13 Discovery completed from `product-specs/keystone-m1.md`, `product-specs/keystone-on-cloudflare.md`, `product-specs/keystone-relaxed-design.md`, and `product-specs/platform-vs-vertical.md`.
@@ -271,6 +286,8 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-15 Phase 5 completed: `RunWorkflow` and `TaskWorkflow` now pass static validation, `POST /v1/runs` completes a real fixture-backed run to `archived`, and a fresh direct `npx wrangler workflows trigger run-workflow --local` instance also completes after the coordinator/bootstrap fixes.
 - [x] 2026-04-15 Phase 6 completed: outbound allow-list enforcement now gates the chat-completions backend, git-url repo inputs create durable approval requests and wait-event wiring, and targeted `npm run test:security` / `npm run test:workflows` validation is in place.
 - [x] 2026-04-16 Phase 6 follow-up fix completed: the live `gitUrl` approval path now reaches `paused_for_approval` and resumes on approval after removing per-request Hyperdrive client shutdown and dropping the incorrect implicit `main` branch fallback for unpinned git repos.
+- [x] 2026-04-16 Product specs updated to record the Think-backed harness direction while preserving Keystone ownership of workflows, artifacts, approvals, and operational truth.
+- [x] 2026-04-16 Demo helper scripts and runbook guidance updated to accept an explicit Wrangler base URL after a stale `8787` server intercepted the first Phase 7 rerun attempt.
 - [ ] 2026-04-15 Phase 7 in progress: demo scripts and local runbook commands landed, but the new scripted live rerun was not completed because a host-side escalation refusal blocked an extra local HTTP validation call outside the repo sandbox.
 - [ ] 2026-04-15 Phase 8 in progress: architecture docs, local runbook, README, and `.ultrakit/notes.md` are updated, but the docs are not ready for final archive until the scripted demo flow is rerun exactly as documented.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
@@ -308,6 +325,8 @@ Compatibility is still required at the contract level:
 - **2026-04-15:** The direct local workflow trigger path exercises a different bootstrap seam from the HTTP create-run path. `RunWorkflow` must initialize `RunCoordinatorDO` before the first published event, otherwise `npx wrangler workflows trigger run-workflow --local` errors even though the API-driven path appears healthy.
 - **2026-04-15:** The named session lifecycle is strict enough that the run session cannot skip `configured -> provisioning -> ready -> active`. The first live workflow proof surfaced this immediately.
 - **2026-04-15:** A host-side escalation refusal can block additional local HTTP validation calls even after the repo code is ready. That is separate from the Worker code and should be recorded explicitly instead of worked around indirectly.
+- **2026-04-16:** The Think discussion clarified that the product specs already planned a filesystem-first sandbox plus mounted artifact projections. That makes a Think-backed harness a better fit than a bespoke artifact-RPC tool surface, as long as Think stays inside Keystone’s existing workflow and artifact boundaries.
+- **2026-04-16:** A fixed `127.0.0.1:8787` assumption is unsafe for the M1 demo helpers. If another local server is already bound there, Wrangler may choose a different port and the scripts can silently hit the wrong Worker unless `KEYSTONE_BASE_URL` or `--base-url` is set from the actual `Ready on ...` line.
 - **2026-04-16:** The `CONNECTION_ENDED` failure on the approval-gated `gitUrl` path was a real implementation bug, not just host instability. Ending the `postgres.js` client on Worker/Hyperdrive request paths can kill later awaited queries in the workflow step. Worker-scoped Hyperdrive clients should not call `sql.end()` on the normal request/workflow close path.
 - **2026-04-16:** Defaulting unpinned `gitUrl` repos to branch `main` is too strong for M1. For remote repos with no explicit `ref`, the sandbox checkout path should use the remote default branch instead of assuming `main`.
 
@@ -389,6 +408,7 @@ Implementation context to create during M1:
 - Dev auth shape for M1: `Authorization: Bearer <KEYSTONE_DEV_TOKEN>` and `X-Keystone-Tenant-Id: <tenant>`.
 - Local env vars for M1: `KEYSTONE_DEV_TENANT_ID`, `KEYSTONE_DEV_TOKEN`, `KEYSTONE_CHAT_COMPLETIONS_BASE_URL`, `KEYSTONE_CHAT_COMPLETIONS_MODEL`, plus Cloudflare's `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
 - Local scripts and runbooks: `scripts/` plus `.ultrakit/developer-docs/` updates.
+- Agent runtime direction: future Keystone agent roles should prefer a Think-backed harness that operates against the real sandbox filesystem and projected artifact directories rather than bespoke artifact-only tools.
 
 Target runtime shape for M1:
 
@@ -417,6 +437,8 @@ The execution path intentionally builds from the kernel outward:
 8. update documentation and operator runbooks.
 
 This sequence keeps each phase small enough for a single contributor while ensuring later phases are building on real abstractions rather than placeholders.
+
+The remaining documentation work should now also capture the Think-backed harness direction without pretending that M1 already implemented it. The completed phases remain workflow/sandbox/artifact work; the unfinished docs need to describe how those pieces become the execution environment for future agent roles.
 
 ### Phase 1: Scaffold the repository and fixture assets
 
@@ -859,7 +881,7 @@ Run the real fixture-backed M1 scenario and make the proof easy to inspect. This
 Produce a repeatable local demonstration that proves the full M1 story end to end for both the deterministic fixture path and an operator-supplied repo/package path.
 
 **Scope Boundary**  
-In scope: fixture decision package execution, operator-supplied repo/package execution, integration/finalization proof, run summary inspection, R2 artifact inspection helpers, local/staging logging runbooks, and high-signal observability commands.  
+In scope: fixture decision package execution, operator-supplied repo/package execution, integration/finalization proof, run summary inspection, R2 artifact inspection helpers, local/staging logging runbooks, and high-signal observability commands. The proof should also continue to validate the sandbox/worktree plus artifact-projection shape that a future Think-backed harness will depend on.  
 Out of scope: production deployment polish, full UI, post-M1 optimization.
 
 **Read First**  
@@ -910,10 +932,10 @@ Do not attempt final Phase 7 proof until the provider-backed compile slice and t
 In progress on 2026-04-15.
 
 **Completion Notes**  
-Landed `scripts/run-local.ts`, `scripts/demo-run.ts`, and `scripts/demo-validate.ts`, and the live fixture run path has already been proven manually through the API and Wrangler workflow commands. The remaining gap is rerunning the exact scripted `demo:run` / `demo:validate` flow once the host allows another local HTTP validation command outside the sandbox boundary.
+Landed `scripts/run-local.ts`, `scripts/demo-run.ts`, and `scripts/demo-validate.ts`, and the live fixture run path has already been proven manually through the API and Wrangler workflow commands. During resume, a stale process on `127.0.0.1:8787` intercepted the first scripted rerun while the fresh Wrangler session bound `8788`, so the helper scripts now also accept `--base-url=` and the runbook now tells contributors to export `KEYSTONE_BASE_URL` from Wrangler's `Ready on ...` line before running the demo commands.
 
 **Next Starter Context**  
-Make the demo path easy to rerun. The point of this phase is not only green tests but a convincing operator proof that another contributor can reproduce quickly.
+Rerun `npm run demo:run` and `npm run demo:validate` against the exact `Ready on ...` URL from the active Wrangler session. Do not trust `127.0.0.1:8787` unless the current startup output explicitly says that is the active port.
 
 ### Phase 8: Update documentation and close out the milestone
 
@@ -925,12 +947,16 @@ Document the architecture that now exists, the local development flow, the valid
 Leave behind durable documentation and notes that explain the implemented M1 system and how to operate it.
 
 **Scope Boundary**  
-In scope: developer docs, local runbook, architecture notes, `.ultrakit/notes.md`, plan finalization, and any lightweight README updates needed to rerun the system.  
+In scope: developer docs, local runbook, architecture notes, product-spec updates for the Think-backed harness direction, `.ultrakit/notes.md`, plan finalization, and any lightweight README updates needed to rerun the system.  
 Out of scope: future-milestone planning beyond clearly identified follow-up debt.
 
 **Read First**  
 This execution plan in its latest state  
 `.ultrakit/developer-docs/README.md`  
+`product-specs/platform-vs-vertical.md`  
+`product-specs/keystone-relaxed-design.md`  
+`product-specs/keystone-on-cloudflare.md`  
+`product-specs/keystone-m1.md`  
 All run scripts and validation results produced in earlier phases
 
 **Files Expected To Change**  
@@ -938,6 +964,10 @@ All run scripts and validation results produced in earlier phases
 `.ultrakit/developer-docs/m1-local-runbook.md`  
 `.ultrakit/notes.md`  
 `README.md`  
+`product-specs/platform-vs-vertical.md`  
+`product-specs/keystone-relaxed-design.md`  
+`product-specs/keystone-on-cloudflare.md`  
+`product-specs/keystone-m1.md`  
 This plan file
 
 **Validation**  
@@ -966,7 +996,7 @@ Do not archive the plan if the docs describe a flow that has not been rerun from
 In progress on 2026-04-15.
 
 **Completion Notes**  
-Added `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, updated `README.md`, and refreshed `.ultrakit/notes.md` with project-specific operating constraints. Final archive should wait until the documented demo commands are rerun exactly as written.
+Added `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, updated `README.md`, refreshed `.ultrakit/notes.md` with project-specific operating constraints, and updated the product specs to record the Think-backed harness direction. Resume work also corrected the runbook/demo tooling so they can target Wrangler's actual ready URL instead of assuming `127.0.0.1:8787`. Final archive should wait until the documented demo commands are rerun exactly as written against that explicit base URL.
 
 **Next Starter Context**  
 The docs need to reflect what actually shipped, not what the early design docs hoped might exist. Favor concrete commands, paths, and failure modes over aspirational prose.

@@ -66,7 +66,7 @@ Keystone’s core Cloudflare components (and why each exists):
 | API + edge runtime | Workers | REST/JSON API, auth, tenancy enforcement, triggers Workflows, issues R2 signed URLs (if needed), routes WebSockets to DOs. citeturn8search0turn8search7 |
 | Durable, long-running orchestration | Workflows | Run-level and task-level durable execution with retries, sleep, and wait-for-event (approvals, webhooks, human decisions). citeturn15search3turn10view2turn15search14 |
 | Strong consistency coordination + real-time UI | Durable Objects (or Agents SDK on top) | Run coordinator, per-tenant concurrency gate, per-task session state, webhook inbox/dedup. DOs are single-threaded and provide strongly consistent storage close to compute. citeturn6search15turn6search21turn0search3 |
-| “Agent-like” realtime patterns (optional) | Agents SDK | If you want built-in WebSockets/state/scheduling patterns, Agents run on Durable Objects; pair with Workflows for long background work. citeturn6search4turn6search17 |
+| “Agent-like” realtime patterns and turn harnesses (optional) | Agents SDK + Think | Use Agents SDK when you want built-in WebSockets/state/scheduling patterns, and use Think when you want a higher-level harness for agent turns with persistence, tool orchestration, and recovery. Keep Workflows as the durable run orchestrator and keep R2/Postgres as the durable truth. citeturn6search4turn6search17 |
 | Isolated filesystem + processes | Sandboxes (Sandbox SDK) | Session containers + task worktrees; git clone/branch/merge; builds/tests; background processes; sandbox backups (snapshots) and mounted R2 storage. citeturn0search18turn4search6turn4search10turn5search0turn5search3 |
 | Artifact store | R2 | File-first artifacts, evidence packs, logs, task outputs, sandbox backups, large Workflow step outputs (store references in PG). R2 is S3-compatible and strongly consistent. citeturn1search10turn10view0 |
 | Async fanout & housekeeping | Queues | Fire-and-forget tasks (indexing, notifications, delayed cleanup), decouple latency, reliable delivery semantics. citeturn1search7turn1search3 |
@@ -406,11 +406,31 @@ Keystone’s safest posture is **capability-based** access:
 
 This matches Keystone’s initial “no outbound network” bias while still enabling controlled future expansion. fileciteturn0file2 citeturn5search2
 
+### Think-backed harness inside sandboxes
+
+Cloudflare `Think` is a strong fit for the *inside* of a Keystone agent turn as long as it stays inside the existing control-plane / execution-plane split.
+
+The intended shape is:
+
+- Workflows decide when an attempt starts, pauses, resumes, or ends.
+- A Think-backed agent owns the turn-local loop: prompt history, tool calling, streaming, and recovery.
+- The agent works against the **real sandbox filesystem**, not a separate virtual workspace.
+- Keystone still promotes durable outputs into R2 and records `artifact_refs` in Postgres.
+
+A practical filesystem contract for those agent turns is:
+
+- `/workspace`: real repo or task worktree
+- `/artifacts/in`: read-only projected inputs from R2
+- `/artifacts/out`: writable staging area for outputs that Keystone will promote to R2
+- `/keystone`: control files, role instructions, and session metadata
+
+This keeps basic `read`, `write`, `edit`, `grep`, and `bash` tooling available to the agent, which is valuable for coding performance, while preserving Keystone’s file-first artifact model. Think session state is helpful conversational memory, but it is not the system of record.
+
 ### AI Gateway and Workers AI placement
 
 A clean Keystone placement model:
 
-- **All LLM calls originate from Workers/Workflows**, not from sandboxes.
+- **All LLM calls originate from Workers, Agents, or Workflows**, not from sandboxes.
 - Route requests through AI Gateway’s OpenAI-compatible endpoint so you get centralized logging, caching, rate limits, retries/fallback, and per-request cost visibility. citeturn1search12turn1search0turn1search8  
 - Use Workers AI as either:
   - a direct inference target for low-latency tasks, or  
@@ -525,5 +545,6 @@ Checklist:
 Decision points to lock for M1:
 - **Sandbox-per-run** vs **sandbox-per-task**: start with sandbox-per-run + task worktrees (matches Keystone intent), but ensure the system can fall back to per-task sandboxes for isolation. fileciteturn0file2  
 - **Single Worker (monorepo) vs service bindings**: start as one Worker project (simpler local dev); split later only if needed. citeturn3search10turn2search11  
+- **Default agent harness**: keep the kernel harness-agnostic, but prefer a Think-backed harness for future agent turns so the model can use basic file/bash tooling against the sandbox filesystem while Workflows, R2, and Postgres remain the durable control plane.  
 
 This plan preserves your platform/vertical split direction while keeping Keystone’s artifact model evolvable. fileciteturn0file1

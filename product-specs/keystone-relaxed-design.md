@@ -6,6 +6,8 @@ A relaxed, file-first Keystone product should treat repositories and an artifact
 
 The practical architecture is “static workflow phases, dynamic scheduling.” Dependencies are declared in lightweight task files (frontmatter) and computed at runtime by the orchestrator reading the files, while task execution is bounded and auditable via platform sessions and an append-only event log.
 
+The preferred harness for future Keystone agent turns should be a Think-backed agent running *against the real sandbox filesystem*, not a separate virtual workspace. Think can own turn-local chat history, built-in tool orchestration, and recovery, while Maestro still owns the sandbox, workspace bindings, event log, and artifact store and Keystone still owns orchestration and software-delivery meaning.
+
 Temporal is the right durability spine for the orchestrator loop, but Temporal workflows must remain deterministic; the file system and Git operations should be performed in Activities (or by platform workers invoked from Activities), then the workflow reacts via Signals/Updates and durable timers. Temporal’s docs explicitly position workflows as long-lived, replayable executions driven by an event history, with deterministic constraints, durable timers, message passing primitives (signals/queries/updates), child workflows, and stateless workers that can handle very large numbers of blocked executions. citeturn5view0turn6view0turn7view0turn10view0turn11view0turn9view0turn8view0
 
 Maestro's API surface should be a small kernel: sessions, sandboxes, workspace ops, event log, artifact store, policy/secret mediation, and worker leasing. This aligns with patterns in modern managed-agent systems: decouple the “session log” from the “harness” and “sandbox,” keep the session as an append-only log outside the sandbox, make sandboxes replaceable “cattle,” and ensure secrets are not reachable from untrusted code in the execution environment. citeturn22view0
@@ -90,6 +92,25 @@ Minimal API for the `M1` slice:
 - `workspace_create_task_view(workspace_id, task_id, base_ref) -> {path, branch}`
 - `workspace_merge(workspace_id, parents[], strategy=octopus|single_parent) -> merge_result`
 - `workspace_snapshot(workspace_id) -> snapshot_ref` (optional but very helpful for determinism)
+
+### Think-backed harness inside the sandbox
+
+The nicest way to adopt `Think` without distorting Keystone is to treat it as the **default harness for an agent turn**, not as the orchestrator and not as the artifact store.
+
+The sandbox filesystem should expose a small, stable layout that any Think-backed role can rely on:
+
+- `/workspace`: the real repo or task worktree
+- `/artifacts/in`: read-only projections of the task capsule, prior evidence, review notes, test summaries, and other R2-backed inputs
+- `/artifacts/out`: writable staging area for findings, handoff notes, logs, summaries, and other outputs that Keystone will later promote into the artifact store
+- `/keystone`: small control files such as role instructions, status markers, and session metadata
+
+This keeps the agent in the kind of file-rich environment that coding agents perform well in, while preserving the file-first product model:
+
+- Think session storage is conversational memory.
+- Mounted files plus promoted artifacts are workflow memory.
+- R2 and `artifact_refs` remain the canonical durable surface.
+
+In that model, the built-in file and bash style tools are a feature, not a threat. They operate against the real sandbox environment, while Maestro still records events, enforces policy, and decides what leaves the sandbox as a durable artifact.
 
 ### Event log
 
