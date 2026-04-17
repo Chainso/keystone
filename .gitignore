@@ -5,3 +5,6 @@ coverage/
 .dev.vars
 .codex/
 *.tsbuildinfo
+
+# Localflare generated files
+.localflare/
