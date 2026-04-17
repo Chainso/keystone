@@ -237,6 +237,93 @@ describe("demo scripts", () => {
     }
   }, 15_000);
 
+  it("executes the demo:run entrypoint for deterministic Think mock requests", async () => {
+    const server = await startStubServer((request) => {
+      if (request.method === "POST" && request.path === "/v1/runs") {
+        return {
+          body: {
+            runId: "run-think-mock",
+            runtime: "think",
+            options: {
+              thinkMode: "mock",
+              preserveSandbox: false
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-think-mock") {
+        return {
+          body: {
+            status: "archived",
+            artifacts: {
+              total: 5,
+              byKind: {
+                run_summary: 1,
+                run_note: 1
+              }
+            },
+            sessions: {
+              total: 3
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      const { stdout } = await runDemoScript("demo:run", [
+        `--base-url=${server.baseUrl}`,
+        "--runtime=think",
+        "--think-mode=mock"
+      ]);
+      const payload = parseCommandJson(stdout);
+
+      expect(stdout).not.toContain("[demo] streaming persisted run events");
+      expect(payload).toMatchObject({
+        baseUrl: server.baseUrl,
+        runId: "run-think-mock",
+        runtime: "think",
+        thinkMode: "mock",
+        preserveSandbox: false,
+        status: "archived",
+        demoContract: {
+          contractId: "think-mock-validation",
+          proofScope: "Fixture-backed Think task path",
+          modelExecution: "Deterministic mock Think model",
+          workflowStatus:
+            "Stable validation path for the current fixture-backed compile and task handoff behavior."
+        },
+        summary: {
+          artifacts: {
+            byKind: {
+              run_summary: 1,
+              run_note: 1
+            }
+          }
+        }
+      });
+
+      expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
+        "POST /v1/runs",
+        "GET /v1/runs/run-think-mock"
+      ]);
+      expect(server.requests[0]).toMatchObject({
+        body: {
+          options: {
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        }
+      });
+      expect(server.requests[0]?.headers["x-keystone-agent-runtime"]).toBe("think");
+    } finally {
+      await server.close();
+    }
+  }, 15_000);
+
   it("executes the demo:run entrypoint for live Think requests, including event polling", async () => {
     const server = await startStubServer((request) => {
       if (request.method === "POST" && request.path === "/v1/runs") {
@@ -333,6 +420,70 @@ describe("demo scripts", () => {
         "GET /v1/runs/run-live"
       ]);
       expect(server.requests[0]?.headers["x-keystone-agent-runtime"]).toBe("think");
+    } finally {
+      await server.close();
+    }
+  }, 15_000);
+
+  it("executes the demo:validate entrypoint for deterministic Think mock requests", async () => {
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock") {
+        return {
+          body: {
+            status: "archived",
+            sessions: {
+              total: 3
+            },
+            artifacts: {
+              total: 5,
+              byKind: {
+                run_summary: 1,
+                run_note: 1
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      const { stdout } = await runDemoScript("demo:validate", [
+        `--base-url=${server.baseUrl}`,
+        "--run-id=run-validate-mock",
+        "--runtime=think",
+        "--think-mode=mock"
+      ]);
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        ok: true,
+        baseUrl: server.baseUrl,
+        runId: "run-validate-mock",
+        runtime: "think",
+        thinkMode: "mock",
+        status: "archived",
+        sessions: 3,
+        artifacts: {
+          total: 5,
+          byKind: {
+            run_summary: 1,
+            run_note: 1
+          }
+        },
+        demoContract: {
+          contractId: "think-mock-validation",
+          workflowStatus:
+            "Stable validation path for the current fixture-backed compile and task handoff behavior."
+        }
+      });
+
+      expect(server.requests).toHaveLength(1);
+      expect(server.requests[0]).toMatchObject({
+        method: "GET",
+        path: "/v1/runs/run-validate-mock"
+      });
     } finally {
       await server.close();
     }

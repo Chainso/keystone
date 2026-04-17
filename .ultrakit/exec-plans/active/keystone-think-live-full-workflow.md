@@ -83,6 +83,11 @@ Backward compatibility with arbitrary local repository ingestion is not required
   **Decision:** Exercise the actual `npm run demo:run` and `npm run demo:validate` entrypoints against a local stub HTTP server and assert the emitted JSON and live event output.  
   **Rationale:** This closes the remaining test-quality gap around direct-execution bootstrap, fetch/poll wiring, and the exact operator-facing output without changing Phase 1 runtime semantics.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 1 Extra Fix Pass  
+  **Decision:** Add black-box CLI coverage for the preserved deterministic `runtime=think` plus `thinkMode=mock` path through the real `npm run demo:run` and `npm run demo:validate` entrypoints.  
+  **Rationale:** The prior pass covered the scripted default path and the live Think path at the command boundary, but the operator-facing mock Think contract still was not proven end to end.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery decisions resolved in conversation: no new `Thread`/`Lease` primitives, no HITL on the happy path, and keep the first proof fixture-scoped.
@@ -91,6 +96,7 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - [x] 2026-04-17 Phase 1: Stabilize the operator-facing live demo contract and clean baseline validation noise.
 - [x] 2026-04-17 Phase 1 fix pass: add automated script-level coverage for `demo-run` / `demo-validate` contract defaults and live overrides.
 - [x] 2026-04-17 Phase 1 second fix pass: exercise the real `demo:run` / `demo:validate` npm entrypoints against a stub HTTP server and lock the emitted JSON/event output.
+- [x] 2026-04-17 Phase 1 extra fix pass: cover the deterministic `think/mock` operator contract at the real `npm run demo:run` / `demo:validate` boundary.
 - [ ] Phase 2: Route `thinkMode=live` through live compile and compiled handoffs instead of deterministic fixture compile.
 - [ ] Phase 3: Generalize the Think task path from the fixture greeting gate to compiled task handoffs on the happy path.
 - [ ] Phase 4: Revalidate the live full-workflow demo, update docs, and archive the plan.
@@ -105,12 +111,14 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - **2026-04-17:** `demo:validate` can derive runtime and `thinkMode` from persisted run metadata, so the validation output can describe the actual contract that ran instead of trusting caller-supplied environment flags.
 - **2026-04-17:** The cleanest narrow fix for the remaining script-quality gap was to run the real `npm run --silent demo:run` / `demo:validate` entrypoints against a local stub HTTP server, which exercises CLI bootstrap, fetch/poll wiring, live event streaming, and final JSON without altering runtime semantics.
 - **2026-04-17:** After the Phase 1 second fix pass, repo-wide validation remains clean: `npm run lint`, `npm run typecheck`, and `npm run test` pass, with `npm run test` now reporting `22 passed | 1 skipped` test files and `70 passed | 3 skipped` tests.
+- **2026-04-17:** The remaining command-level gap was narrow enough to close entirely in `tests/scripts/demo-contracts.test.ts`: the real `npm run demo:run` and `npm run demo:validate` mock Think branch can be proven with the same stub-server harness used for the scripted and live CLI paths, without adding new script hooks.
+- **2026-04-17:** After the Phase 1 extra fix pass, repo-wide validation remains clean: `npm run lint`, `npm run typecheck`, and `npm run test` pass, with `npm run test` now reporting `22 passed | 1 skipped` test files and `72 passed | 3 skipped` tests.
 
 ## Outcomes & Retrospective
 
 This section will be completed as phases land. The target retrospective for the finished plan is:
 
-- Phase 1 restored a trustworthy lint baseline, made the demo/docs explicit that the current live Think path is still fixture-backed in this phase, and added direct automated coverage for that operator-facing contract.
+- Phase 1 restored a trustworthy lint baseline, made the demo/docs explicit that the current live Think path is still fixture-backed in this phase, and added direct automated coverage for the operator-facing scripted, deterministic Think mock, and live Think CLI contracts.
 - the live Think demo proves the workflow from run input to archived run summary,
 - the mock Think demo remains available for deterministic validation,
 - the repo-wide validation baseline is cleaner and easier to trust, and
@@ -229,7 +237,7 @@ Completed 2026-04-17.
 - `scripts/demo-run.ts` and `scripts/demo-validate.ts` now emit explicit contract metadata that distinguishes deterministic mock Think validation from the current live Think-turn fixture path.
 - `README.md` and `.ultrakit/developer-docs/think-runtime-runbook.md` now say plainly that Phase 1 `thinkMode=live` does not yet prove live compile or compiled task handoffs.
 - `tests/http/app.test.ts` now locks `runtime=think` requests to the default `thinkMode=mock` / `preserveSandbox=false` contract unless explicitly overridden.
-- `tests/scripts/demo-contracts.test.ts` now covers both the pure contract helpers and the real `npm run demo:run` / `demo:validate` entrypoints against a stub HTTP server, including POST/GET wiring, live event polling, and the emitted JSON operators see.
+- `tests/scripts/demo-contracts.test.ts` now covers both the pure contract helpers and the real `npm run demo:run` / `demo:validate` entrypoints against a stub HTTP server, including the scripted default path, the deterministic `think/mock` path, the live Think event-polling path, and the emitted JSON operators see.
 
 **Next Starter Context**  
 Phase 2 should leave the new contract wording intact and change only the workflow semantics behind `runtime=think` plus `thinkMode=live`: remove the deterministic fixture-compile bypass, keep `thinkMode=mock` deterministic, and add tests that prove live compile output is now the source of task handoffs.
