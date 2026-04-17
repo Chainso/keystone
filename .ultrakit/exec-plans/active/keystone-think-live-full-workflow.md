@@ -78,6 +78,11 @@ Backward compatibility with arbitrary local repository ingestion is not required
   **Decision:** Extract the demo-script contract resolution into direct-test helpers and add script-level coverage for the default and live-override branches.  
   **Rationale:** Phase 1 validation needs to prove the operator-facing `demo:run` / `demo:validate` contract itself, not only the `/v1/runs` handler defaults.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 1 Second Fix Pass  
+  **Decision:** Exercise the actual `npm run demo:run` and `npm run demo:validate` entrypoints against a local stub HTTP server and assert the emitted JSON and live event output.  
+  **Rationale:** This closes the remaining test-quality gap around direct-execution bootstrap, fetch/poll wiring, and the exact operator-facing output without changing Phase 1 runtime semantics.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery decisions resolved in conversation: no new `Thread`/`Lease` primitives, no HITL on the happy path, and keep the first proof fixture-scoped.
@@ -85,6 +90,7 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - [x] 2026-04-17 Active execution plan created under `.ultrakit/exec-plans/active/`.
 - [x] 2026-04-17 Phase 1: Stabilize the operator-facing live demo contract and clean baseline validation noise.
 - [x] 2026-04-17 Phase 1 fix pass: add automated script-level coverage for `demo-run` / `demo-validate` contract defaults and live overrides.
+- [x] 2026-04-17 Phase 1 second fix pass: exercise the real `demo:run` / `demo:validate` npm entrypoints against a stub HTTP server and lock the emitted JSON/event output.
 - [ ] Phase 2: Route `thinkMode=live` through live compile and compiled handoffs instead of deterministic fixture compile.
 - [ ] Phase 3: Generalize the Think task path from the fixture greeting gate to compiled task handoffs on the happy path.
 - [ ] Phase 4: Revalidate the live full-workflow demo, update docs, and archive the plan.
@@ -97,8 +103,8 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - **2026-04-17:** `npm run build` fails inside the Codex sandbox because Wrangler and Docker try to write under `/home/chanzo/.config/.wrangler` and `/home/chanzo/.docker/buildx`. This is a host-environment constraint already documented in `.ultrakit/notes.md`, not a code regression.
 - **2026-04-17:** The current live Think demo already has a real-model code path inside `KeystoneThinkAgent`; the remaining gap is the workflow contract around compile selection and task handoff execution.
 - **2026-04-17:** `demo:validate` can derive runtime and `thinkMode` from persisted run metadata, so the validation output can describe the actual contract that ran instead of trusting caller-supplied environment flags.
-- **2026-04-17:** The smallest safe way to test the operator-facing demo contract was to add direct-execution guards plus exported pure helpers in the scripts, so Vitest can assert the CLI defaults and persisted-contract branches without altering runtime semantics.
-- **2026-04-17:** After the Phase 1 fix pass, repo-wide validation remains clean: `npm run lint`, `npm run typecheck`, and `npm run test` pass, with `npm run test` now reporting `22 passed | 1 skipped` test files and `67 passed | 3 skipped` tests.
+- **2026-04-17:** The cleanest narrow fix for the remaining script-quality gap was to run the real `npm run --silent demo:run` / `demo:validate` entrypoints against a local stub HTTP server, which exercises CLI bootstrap, fetch/poll wiring, live event streaming, and final JSON without altering runtime semantics.
+- **2026-04-17:** After the Phase 1 second fix pass, repo-wide validation remains clean: `npm run lint`, `npm run typecheck`, and `npm run test` pass, with `npm run test` now reporting `22 passed | 1 skipped` test files and `70 passed | 3 skipped` tests.
 
 ## Outcomes & Retrospective
 
@@ -223,7 +229,7 @@ Completed 2026-04-17.
 - `scripts/demo-run.ts` and `scripts/demo-validate.ts` now emit explicit contract metadata that distinguishes deterministic mock Think validation from the current live Think-turn fixture path.
 - `README.md` and `.ultrakit/developer-docs/think-runtime-runbook.md` now say plainly that Phase 1 `thinkMode=live` does not yet prove live compile or compiled task handoffs.
 - `tests/http/app.test.ts` now locks `runtime=think` requests to the default `thinkMode=mock` / `preserveSandbox=false` contract unless explicitly overridden.
-- `tests/scripts/demo-contracts.test.ts` now proves the operator-facing script contract directly: `demo-run` defaults to the scripted fixture path, explicit live Think requests retain the Phase 1 fixture-backed wording, and `demo-validate` prefers persisted runtime metadata over caller fallbacks.
+- `tests/scripts/demo-contracts.test.ts` now covers both the pure contract helpers and the real `npm run demo:run` / `demo:validate` entrypoints against a stub HTTP server, including POST/GET wiring, live event polling, and the emitted JSON operators see.
 
 **Next Starter Context**  
 Phase 2 should leave the new contract wording intact and change only the workflow semantics behind `runtime=think` plus `thinkMode=live`: remove the deterministic fixture-compile bypass, keep `thinkMode=mock` deterministic, and add tests that prove live compile output is now the source of task handoffs.
