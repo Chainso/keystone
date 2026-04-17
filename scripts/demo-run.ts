@@ -1,6 +1,13 @@
 const POLL_INTERVAL_MS = 2_000;
 const MAX_POLL_ATTEMPTS = 30;
 
+function getArg(name: string) {
+  const prefix = `--${name}=`;
+  const argument = process.argv.slice(2).find((value) => value.startsWith(prefix));
+
+  return argument ? argument.slice(prefix.length) : undefined;
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -9,8 +16,13 @@ function readJsonResponse(response: Response) {
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+function resolveBaseUrl() {
+  return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
+}
+
 async function createFixtureRun() {
-  const response = await fetch(`${process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787"}/v1/runs`, {
+  const baseUrl = resolveBaseUrl();
+  const response = await fetch(`${baseUrl}/v1/runs`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
@@ -35,8 +47,9 @@ async function createFixtureRun() {
 }
 
 async function fetchRunSummary(runId: string) {
+  const baseUrl = resolveBaseUrl();
   const response = await fetch(
-    `${process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787"}/v1/runs/${runId}`,
+    `${baseUrl}/v1/runs/${runId}`,
     {
       headers: {
         Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
@@ -55,6 +68,7 @@ async function fetchRunSummary(runId: string) {
 async function main() {
   const createdRun = await createFixtureRun();
   const runId = String(createdRun.runId ?? "");
+  const baseUrl = resolveBaseUrl();
 
   if (!runId) {
     throw new Error("Run creation response did not include runId.");
@@ -68,6 +82,7 @@ async function main() {
       console.log(
         JSON.stringify(
           {
+            baseUrl,
             runId,
             status,
             summary

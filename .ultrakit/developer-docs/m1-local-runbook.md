@@ -18,14 +18,20 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 Expected signals:
 
-- `Ready on http://127.0.0.1:8787`
+- `Ready on http://127.0.0.1:<port>`
 - container image preparation succeeds
 - workflow bindings are listed in Wrangler startup output
+
+If Wrangler binds a different port because `8787` is already in use, export the ready URL before running any helper scripts:
+
+```bash
+export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
+```
 
 ## Sanity Checks
 
 ```bash
-curl -i http://127.0.0.1:8787/v1/health
+curl -i "${KEYSTONE_BASE_URL:-http://127.0.0.1:8787}/v1/health"
 npx wrangler workflows list --local
 ```
 

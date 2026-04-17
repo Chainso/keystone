@@ -32,7 +32,7 @@ function resolveConfig(): RunLocalConfig {
   const decisionPackagePayload = getArg("decision-package-payload");
 
   return {
-    baseUrl: process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787",
+    baseUrl: getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787",
     token: process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token",
     tenantId: process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local",
     repo: repoGitUrl

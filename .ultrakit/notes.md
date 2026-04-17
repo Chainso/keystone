@@ -17,3 +17,4 @@ These notes help future agents work effectively without rediscovering project-sp
 - The local chat-completions backend is plain HTTP at `http://localhost:4001`, streams SSE chunks by default, and is the only supported M1 compile backend.
 - The fixture happy path depends on `npm test` inside the sandboxed task worktree; task workflows assume the target repo can run that command.
 - Direct `wrangler workflows trigger run-workflow --local` must keep `RunCoordinatorDO` initialization inside the workflow path itself because the HTTP create-run path is not present there to seed the coordinator first.
+- If port `8787` is already occupied, `wrangler dev` may bind another local port. Use Wrangler's `Ready on ...` URL via `KEYSTONE_BASE_URL` or the scripts' `--base-url=` flag instead of assuming `127.0.0.1:8787`.

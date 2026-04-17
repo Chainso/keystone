@@ -5,15 +5,20 @@ function getArg(name: string) {
   return argument ? argument.slice(prefix.length) : undefined;
 }
 
+function resolveBaseUrl() {
+  return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
+}
+
 async function main() {
   const runId = getArg("run-id") ?? process.env.KEYSTONE_RUN_ID;
+  const baseUrl = resolveBaseUrl();
 
   if (!runId) {
     throw new Error("Provide --run-id=<id> or set KEYSTONE_RUN_ID.");
   }
 
   const response = await fetch(
-    `${process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787"}/v1/runs/${runId}`,
+    `${baseUrl}/v1/runs/${runId}`,
     {
       headers: {
         Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
@@ -57,6 +62,7 @@ async function main() {
     JSON.stringify(
       {
         ok: true,
+        baseUrl,
         runId,
         status: summary.status,
         sessions: summary.sessions?.total ?? 0,

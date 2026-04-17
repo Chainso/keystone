@@ -4,7 +4,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 
 ## Archive
 
-_No completed plans yet._
+| [keystone-m1-cloudflare-foundation](./keystone-m1-cloudflare-foundation.md) | 2026-04-17 | Delivered the full Keystone M1 demo, docs, and archive proof. |
 
 Add completed plans using this format:
 

@@ -261,6 +261,11 @@ Compatibility is still required at the contract level:
   **Decision:** Stop assuming `http://127.0.0.1:8787` for helper scripts and runbook commands; the Phase 7 demo flow must target Wrangler's actual `Ready on ...` URL through `KEYSTONE_BASE_URL` or an explicit `--base-url` flag.  
   **Rationale:** On this host, a stale local server on `8787` intercepted the first scripted rerun while the newly started Wrangler session bound `8788`. The milestone demo needs an explicit base-url path so it always validates the intended Worker instance.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 7 / Phase 8 completion  
+  **Decision:** Archive the M1 plan after rerunning the fixture demo and validation scripts against the live Worker at `http://127.0.0.1:8787` and confirming the expected artifact counts and archived status.  
+  **Rationale:** The milestone proof now exists in the repo plus the checked-in documentation. Keeping the plan open after a passing rerun would misrepresent the actual state of the work.
+
 ## Progress
 
 - [x] 2026-04-13 Discovery completed from `product-specs/keystone-m1.md`, `product-specs/keystone-on-cloudflare.md`, `product-specs/keystone-relaxed-design.md`, and `product-specs/platform-vs-vertical.md`.
@@ -288,16 +293,16 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-16 Phase 6 follow-up fix completed: the live `gitUrl` approval path now reaches `paused_for_approval` and resumes on approval after removing per-request Hyperdrive client shutdown and dropping the incorrect implicit `main` branch fallback for unpinned git repos.
 - [x] 2026-04-16 Product specs updated to record the Think-backed harness direction while preserving Keystone ownership of workflows, artifacts, approvals, and operational truth.
 - [x] 2026-04-16 Demo helper scripts and runbook guidance updated to accept an explicit Wrangler base URL after a stale `8787` server intercepted the first Phase 7 rerun attempt.
-- [ ] 2026-04-15 Phase 7 in progress: demo scripts and local runbook commands landed, but the new scripted live rerun was not completed because a host-side escalation refusal blocked an extra local HTTP validation call outside the repo sandbox.
-- [ ] 2026-04-15 Phase 8 in progress: architecture docs, local runbook, README, and `.ultrakit/notes.md` are updated, but the docs are not ready for final archive until the scripted demo flow is rerun exactly as documented.
+- [x] 2026-04-17 Phase 7 completed: the fixture demo reran successfully against the live Worker, `npm run demo:run` archived run `a7dd14dc-3b0b-4044-bd9a-a04bd151b5da` on `http://127.0.0.1:8787`, and `npm run demo:validate` confirmed `sessions: 3` and `artifacts.total: 5`.
+- [x] 2026-04-17 Phase 8 completed: the local runbook, README, project notes, and product-spec context now document the validated demo flow, the explicit `KEYSTONE_BASE_URL` pattern, and the Think-backed harness direction for future agent turns.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
 - [x] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
 - [x] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
 - [x] Phase 4: Build `TaskSessionDO`, sandbox lifecycle management, and workspace/worktree handling.
 - [x] Phase 5: Build `RunWorkflow` and `TaskWorkflow` with durable long-running execution and artifact persistence.
 - [x] Phase 6: Add security gating, approval plumbing, and custom chat-completions compile behavior.
-- [ ] Phase 7: Prove the end-to-end run, observability flow, and local runbook.
-- [ ] Phase 8: Update developer documentation, project notes, and milestone closeout evidence.
+- [x] Phase 7: Prove the end-to-end run, observability flow, and local runbook.
+- [x] Phase 8: Update developer documentation, project notes, and milestone closeout evidence.
 
 ## Surprises & Discoveries
 
@@ -381,6 +386,18 @@ Phase 6 outcome on 2026-04-15:
 - The repository now has explicit policy modules under `src/lib/security/`, a durable approval-request service under `src/lib/approvals/service.ts`, approval resolution that sends Workflow events back to `RUN_WORKFLOW`, and an allow-listed outbound check around the local chat-completions backend.
 - Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:security`, `npm run test:workflows`, and `npm run build`.
 - The remaining live gap is a rerun of the new approval-gated git-url path, which was blocked by a host-side escalation refusal unrelated to the repository code.
+
+Phase 7 outcome on 2026-04-17:
+
+- The repository now has a passing operator-facing demo proof: `npm run demo:run` against `http://127.0.0.1:8787` archived run `a7dd14dc-3b0b-4044-bd9a-a04bd151b5da`, and `npm run demo:validate` confirmed the expected archived run shape with `sessions: 3` and `artifacts.total: 5`.
+- The local Worker launch path is now resilient to a busy `8787` by using `KEYSTONE_BASE_URL` or `--base-url=` against Wrangler's actual `Ready on ...` port.
+- The final validation transcript is captured in the plan artifacts section and the local runbook so another contributor can reproduce it without chat history.
+
+Phase 8 outcome on 2026-04-17:
+
+- The checked-in developer docs now explain the live M1 runtime, the local runbook, the validated demo commands, and the future Think-backed harness direction.
+- `.ultrakit/notes.md` now captures the host-specific Wrangler port behavior so future runs do not silently hit a stale worker.
+- The milestone is ready for archive because the docs match the scripts and the scripts match the passing live demo.
 
 ## Context and Orientation
 
@@ -929,13 +946,13 @@ Provider sequencing note:
 Do not attempt final Phase 7 proof until the provider-backed compile slice and the remaining Phase 6 security work have both landed. The workflow phase should already be consuming the real compile path by this point.
 
 **Status**  
-In progress on 2026-04-15.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Landed `scripts/run-local.ts`, `scripts/demo-run.ts`, and `scripts/demo-validate.ts`, and the live fixture run path has already been proven manually through the API and Wrangler workflow commands. During resume, a stale process on `127.0.0.1:8787` intercepted the first scripted rerun while the fresh Wrangler session bound `8788`, so the helper scripts now also accept `--base-url=` and the runbook now tells contributors to export `KEYSTONE_BASE_URL` from Wrangler's `Ready on ...` line before running the demo commands.
+Landed `scripts/run-local.ts`, `scripts/demo-run.ts`, and `scripts/demo-validate.ts`, and the live fixture run path has now been rerun successfully from the documented demo scripts. The final proof used `KEYSTONE_BASE_URL=http://127.0.0.1:8787`, produced archived run `a7dd14dc-3b0b-4044-bd9a-a04bd151b5da`, and the validation script confirmed `sessions: 3` and `artifacts.total: 5`. The helper scripts now also accept `--base-url=`, and the runbook tells contributors to export `KEYSTONE_BASE_URL` from Wrangler's `Ready on ...` line before running the demo commands.
 
 **Next Starter Context**  
-Rerun `npm run demo:run` and `npm run demo:validate` against the exact `Ready on ...` URL from the active Wrangler session. Do not trust `127.0.0.1:8787` unless the current startup output explicitly says that is the active port.
+No further execution is needed for this milestone. Archive the plan, keep the explicit base-url guidance in the runbook, and use the completed demo transcript as the operator reference for M1.
 
 ### Phase 8: Update documentation and close out the milestone
 
@@ -993,13 +1010,13 @@ Durable architecture and runbook docs, updated project notes, and a plan ready f
 Do not archive the plan if the docs describe a flow that has not been rerun from the documented commands.
 
 **Status**  
-In progress on 2026-04-15.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Added `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, updated `README.md`, refreshed `.ultrakit/notes.md` with project-specific operating constraints, and updated the product specs to record the Think-backed harness direction. Resume work also corrected the runbook/demo tooling so they can target Wrangler's actual ready URL instead of assuming `127.0.0.1:8787`. Final archive should wait until the documented demo commands are rerun exactly as written against that explicit base URL.
+Added `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, updated `README.md`, refreshed `.ultrakit/notes.md` with project-specific operating constraints, and updated the product specs to record the Think-backed harness direction. Resume work also corrected the runbook/demo tooling so they can target Wrangler's actual ready URL instead of assuming `127.0.0.1:8787`, and the documented demo commands were rerun successfully against the explicit base URL before archive.
 
 **Next Starter Context**  
-The docs need to reflect what actually shipped, not what the early design docs hoped might exist. Favor concrete commands, paths, and failure modes over aspirational prose.
+Archive the plan and keep the docs aligned with the passing transcript. Favor concrete commands, paths, and failure modes over aspirational prose.
 
 ## Concrete Steps
 
@@ -1282,6 +1299,44 @@ env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL ("http://localhost:4001")
 $ POST /internal/dev/compile-smoke
 HTTP/1.1 200 OK
 {"ok":true,"taskCount":1,"model":"gemini-3-flash-preview","taskHandoffArtifactCount":1,"artifactsObserved":3}
+```
+
+Phase 7 / 8 completion evidence captured on 2026-04-17:
+
+```text
+$ curl -i http://127.0.0.1:8787/v1/health
+HTTP/1.1 200 OK
+{"ok":true,"worker":"keystone-cloudflare","phase":"m1-phase-6-compile","llmBaseUrl":"http://localhost:4001"}
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8787 npm run demo:run
+{
+  "baseUrl": "http://127.0.0.1:8787",
+  "runId": "a7dd14dc-3b0b-4044-bd9a-a04bd151b5da",
+  "status": "archived"
+}
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8787 KEYSTONE_RUN_ID=a7dd14dc-3b0b-4044-bd9a-a04bd151b5da npm run demo:validate
+{
+  "ok": true,
+  "baseUrl": "http://127.0.0.1:8787",
+  "runId": "a7dd14dc-3b0b-4044-bd9a-a04bd151b5da",
+  "status": "archived",
+  "sessions": 3,
+  "artifacts": {
+    "total": 5,
+    "byKind": {
+      "decision_package": 1,
+      "run_plan": 1,
+      "task_handoff": 1,
+      "task_log": 1,
+      "run_summary": 1
+    }
+  }
+}
 ```
 
 ## Interfaces and Dependencies
