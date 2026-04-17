@@ -136,6 +136,32 @@ export function shouldUseFixtureCompileForRun(
   );
 }
 
+function assertPhaseTwoLiveThinkTaskShape(
+  plan: Awaited<ReturnType<typeof loadCompiledRunPlanArtifact>>,
+  decisionPackage: DecisionPackage
+) {
+  if (plan.decisionPackageId !== decisionPackage.decisionPackageId) {
+    throw new NonRetryableError(
+      `Live Think compile produced decision package ${plan.decisionPackageId}, expected ${decisionPackage.decisionPackageId}.`
+    );
+  }
+
+  if (plan.tasks.length !== decisionPackage.tasks.length) {
+    throw new NonRetryableError(
+      `Live Think compile produced ${plan.tasks.length} tasks, expected ${decisionPackage.tasks.length} for the current Phase 2 demo path.`
+    );
+  }
+
+  const expectedTaskIds = new Set(decisionPackage.tasks.map((task) => task.taskId));
+  const incompatibleTask = plan.tasks.find((task) => !expectedTaskIds.has(task.taskId));
+
+  if (incompatibleTask) {
+    throw new NonRetryableError(
+      `Live Think compile produced unsupported task handoff ${incompatibleTask.taskId} before Phase 3 lifts the fixture task gate.`
+    );
+  }
+}
+
 export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowParams> {
   async run(event: Readonly<WorkflowEvent<RunWorkflowParams>>, step: WorkflowStep) {
     const repo = resolveRunRepo(event.payload.repo);
@@ -402,6 +428,11 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
 
     const taskInstanceIds = await step.do("fanout tasks", async () => {
       const plan = await loadCompiledRunPlanArtifact(this.env, event.payload.tenantId, event.payload.runId);
+
+      if (isLiveThinkExecution(runContext.runtime, runContext.options)) {
+        assertPhaseTwoLiveThinkTaskShape(plan, decisionPackage);
+      }
+
       const batch = plan.tasks.map((task) => ({
         id: buildTaskWorkflowInstanceId(event.payload.tenantId, event.payload.runId, task.taskId),
         params: {

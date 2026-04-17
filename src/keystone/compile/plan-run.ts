@@ -159,6 +159,102 @@ export function buildDemoFixtureCompiledPlan(decisionPackage: DecisionPackage): 
   });
 }
 
+function resolveDecisionTaskMatch(
+  compiledTask: CompiledTaskPlan,
+  index: number,
+  decisionTasks: DecisionPackage["tasks"],
+  usedDecisionTaskIds: Set<string>
+) {
+  const exactIdMatch = decisionTasks.find(
+    (decisionTask) =>
+      !usedDecisionTaskIds.has(decisionTask.taskId) &&
+      decisionTask.taskId === compiledTask.taskId
+  );
+
+  if (exactIdMatch) {
+    return exactIdMatch;
+  }
+
+  const exactTitleMatch = decisionTasks.find(
+    (decisionTask) =>
+      !usedDecisionTaskIds.has(decisionTask.taskId) &&
+      decisionTask.title === compiledTask.title
+  );
+
+  if (exactTitleMatch) {
+    return exactTitleMatch;
+  }
+
+  const indexMatch = decisionTasks[index];
+
+  if (indexMatch && !usedDecisionTaskIds.has(indexMatch.taskId)) {
+    return indexMatch;
+  }
+
+  return null;
+}
+
+function canonicalizeCompiledPlan(
+  plan: CompiledRunPlan,
+  decisionPackage: DecisionPackage
+): CompiledRunPlan {
+  if (plan.tasks.length !== decisionPackage.tasks.length) {
+    throw new Error(
+      `Live compile returned ${plan.tasks.length} tasks for decision package ${decisionPackage.decisionPackageId}; expected ${decisionPackage.tasks.length}.`
+    );
+  }
+
+  const usedDecisionTaskIds = new Set<string>();
+  const matchedTasks = plan.tasks.map((compiledTask, index) => {
+    const decisionTask = resolveDecisionTaskMatch(
+      compiledTask,
+      index,
+      decisionPackage.tasks,
+      usedDecisionTaskIds
+    );
+
+    if (!decisionTask) {
+      throw new Error(
+        `Live compile could not reconcile task ${compiledTask.taskId} with the approved decision package shape.`
+      );
+    }
+
+    usedDecisionTaskIds.add(decisionTask.taskId);
+
+    return {
+      compiledTask,
+      decisionTask
+    };
+  });
+
+  const dependencyTaskIds = new Map<string, string>();
+
+  for (const { compiledTask, decisionTask } of matchedTasks) {
+    dependencyTaskIds.set(compiledTask.taskId, decisionTask.taskId);
+    dependencyTaskIds.set(decisionTask.taskId, decisionTask.taskId);
+  }
+
+  return compiledRunPlanSchema.parse({
+    decisionPackageId: decisionPackage.decisionPackageId,
+    summary: plan.summary,
+    tasks: matchedTasks.map(({ compiledTask, decisionTask }) => ({
+      ...compiledTask,
+      taskId: decisionTask.taskId,
+      title: decisionTask.title,
+      dependsOn: Array.from(
+        new Set(
+          compiledTask.dependsOn
+            .map((taskId) => dependencyTaskIds.get(taskId))
+            .filter(
+              (taskId): taskId is string =>
+                typeof taskId === "string" && taskId.length > 0 && taskId !== decisionTask.taskId
+            )
+        )
+      )
+    }))
+  });
+}
+
 async function writeJsonArtifact(
   input: {
     env: WorkerBindings;
@@ -291,7 +387,12 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
       messages: buildCompileMessages(input.repo, decisionPackage),
       temperature: 0
     });
-    const plan = parseStructuredChatCompletion(completion, compiledRunPlanSchema);
+    // Keep the live compile text, but pin task ids/titles back to the approved
+    // decision-package contract until TaskWorkflow is generalized in Phase 3.
+    const plan = canonicalizeCompiledPlan(
+      parseStructuredChatCompletion(completion, compiledRunPlanSchema),
+      decisionPackage
+    );
     const planArtifactRef = await writeJsonArtifact({
       env: input.env,
       client: input.client,

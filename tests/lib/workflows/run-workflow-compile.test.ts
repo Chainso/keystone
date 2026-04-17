@@ -17,6 +17,20 @@ const mocked = vi.hoisted(() => {
       }
     ]
   };
+  const persistedLivePlan = {
+    decisionPackageId: "demo-greeting-update",
+    summary: "Persisted live compile output was canonicalized for the Phase 2 task gate.",
+    tasks: [
+      {
+        taskId: "task-greeting-tone",
+        title: "Adjust the greeting implementation",
+        summary: "Use the persisted compile artifact as the task source.",
+        instructions: ["Implement the approved change.", "Run the relevant checks."],
+        acceptanceCriteria: ["Relevant checks pass."],
+        dependsOn: []
+      }
+    ]
+  };
   const fixturePlan = {
     decisionPackageId: "demo-greeting-update",
     summary: "Compile smoke produced a single implementation task.",
@@ -39,6 +53,7 @@ const mocked = vi.hoisted(() => {
   return {
     close,
     livePlan,
+    persistedLivePlan,
     fixturePlan,
     state,
     getRunCoordinatorStub: vi.fn(() => ({
@@ -82,7 +97,7 @@ const mocked = vi.hoisted(() => {
       result: "allow"
     })),
     compileRunPlan: vi.fn(async () => {
-      state.compiledPlan = livePlan;
+      state.compiledPlan = persistedLivePlan;
 
       return {
         plan: livePlan,
@@ -308,32 +323,35 @@ describe("RunWorkflow compile routing", () => {
     });
   });
 
-  it("uses the real compiler for think/live fixture runs", async () => {
+  it("uses the persisted compile artifact for think/live fanout", async () => {
     const env = createWorkflowEnv();
     const step = createStep();
     const workflow = new RunWorkflow({} as ExecutionContext, env as never);
     const liveTask = mocked.livePlan.tasks[0];
+    const persistedTask = mocked.persistedLivePlan.tasks[0];
 
-    if (!liveTask) {
+    if (!liveTask || !persistedTask) {
       throw new Error("Expected the live compile fixture to include a task.");
     }
 
     const result = await workflow.run(createWorkflowEvent("live") as never, step as never);
+    const [fanoutBatch] = env.TASK_WORKFLOW.createBatch.mock.calls[0] ?? [];
+
+    if (!fanoutBatch?.[0]) {
+      throw new Error("Expected the task fanout batch to include one task.");
+    }
 
     expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
     expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
-    expect(env.TASK_WORKFLOW.createBatch).toHaveBeenCalledWith([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          taskId: liveTask.taskId,
-          runtime: "think",
-          options: {
-            thinkMode: "live",
-            preserveSandbox: false
-          }
-        })
-      })
-    ]);
+    expect(fanoutBatch[0].params).toMatchObject({
+      taskId: persistedTask.taskId,
+      runtime: "think",
+      options: {
+        thinkMode: "live",
+        preserveSandbox: false
+      }
+    });
+    expect(fanoutBatch[0].params.taskId).not.toBe(liveTask.taskId);
     expect(mocked.loadCompiledRunPlanArtifact).toHaveBeenCalledWith(
       env,
       "tenant-fixture",
@@ -346,6 +364,44 @@ describe("RunWorkflow compile routing", () => {
       finalStatus: "archived",
       runSummaryArtifactRefId: "run-summary-artifact"
     });
+  });
+
+  it("rejects persisted live compile plans that still fall outside the Phase 2 task gate", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+
+    mocked.compileRunPlan.mockImplementationOnce(async () => {
+      mocked.state.compiledPlan = mocked.livePlan;
+
+      return {
+        plan: mocked.livePlan,
+        completion: {
+          id: "chatcmpl-live-invalid",
+          model: "gpt-5.4",
+          finishReason: "stop",
+          usage: {
+            totalTokens: 64
+          }
+        },
+        decisionPackageArtifactRef: {
+          artifactRefId: "decision-package-live"
+        },
+        planArtifactRef: {
+          artifactRefId: "run-plan-live"
+        },
+        taskHandoffArtifactRefs: [
+          {
+            artifactRefId: "task-handoff-live"
+          }
+        ]
+      };
+    });
+
+    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
+      /unsupported task handoff task-live-implementation/
+    );
+    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
   });
 
   it("preserves the deterministic fixture compiler for think/mock runs", async () => {
