@@ -161,7 +161,6 @@ export function buildDemoFixtureCompiledPlan(decisionPackage: DecisionPackage): 
 
 function resolveDecisionTaskMatch(
   compiledTask: CompiledTaskPlan,
-  index: number,
   decisionTasks: DecisionPackage["tasks"],
   usedDecisionTaskIds: Set<string>
 ) {
@@ -185,12 +184,6 @@ function resolveDecisionTaskMatch(
     return exactTitleMatch;
   }
 
-  const indexMatch = decisionTasks[index];
-
-  if (indexMatch && !usedDecisionTaskIds.has(indexMatch.taskId)) {
-    return indexMatch;
-  }
-
   return null;
 }
 
@@ -198,6 +191,12 @@ function canonicalizeCompiledPlan(
   plan: CompiledRunPlan,
   decisionPackage: DecisionPackage
 ): CompiledRunPlan {
+  if (plan.decisionPackageId !== decisionPackage.decisionPackageId) {
+    throw new Error(
+      `Live compile returned decision package ${plan.decisionPackageId}; expected ${decisionPackage.decisionPackageId}.`
+    );
+  }
+
   if (plan.tasks.length !== decisionPackage.tasks.length) {
     throw new Error(
       `Live compile returned ${plan.tasks.length} tasks for decision package ${decisionPackage.decisionPackageId}; expected ${decisionPackage.tasks.length}.`
@@ -205,17 +204,12 @@ function canonicalizeCompiledPlan(
   }
 
   const usedDecisionTaskIds = new Set<string>();
-  const matchedTasks = plan.tasks.map((compiledTask, index) => {
-    const decisionTask = resolveDecisionTaskMatch(
-      compiledTask,
-      index,
-      decisionPackage.tasks,
-      usedDecisionTaskIds
-    );
+  const matchedTasks = plan.tasks.map((compiledTask) => {
+    const decisionTask = resolveDecisionTaskMatch(compiledTask, decisionPackage.tasks, usedDecisionTaskIds);
 
     if (!decisionTask) {
       throw new Error(
-        `Live compile could not reconcile task ${compiledTask.taskId} with the approved decision package shape.`
+        `Live compile could not reconcile task ${compiledTask.taskId} (${compiledTask.title}) with the approved decision package shape; expected a matching task id or title.`
       );
     }
 

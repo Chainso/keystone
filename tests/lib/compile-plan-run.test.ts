@@ -8,19 +8,30 @@ import {
 import { demoDecisionPackageFixture } from "../../src/lib/fixtures/demo-decision-package";
 
 const mocked = vi.hoisted(() => {
-  const liveParsedPlan = {
-    decisionPackageId: "live-compiler-output",
+  const defaultLiveParsedPlan = {
+    decisionPackageId: "demo-greeting-update",
     summary: "Live compile produced a task with model-authored instructions.",
     tasks: [
       {
         taskId: "task-live-implementation",
-        title: "Implement the approved live task",
+        title: "Adjust the greeting implementation",
         summary: "Use the live compiler output as the task source.",
         instructions: ["Implement the approved change.", "Run the relevant checks."],
         acceptanceCriteria: ["Relevant checks pass."],
         dependsOn: []
       }
     ]
+  };
+  const liveParsedPlan = {
+    ...JSON.parse(JSON.stringify(defaultLiveParsedPlan))
+  };
+
+  function replaceLiveParsedPlan(value: typeof defaultLiveParsedPlan) {
+    const next = JSON.parse(JSON.stringify(value)) as typeof defaultLiveParsedPlan;
+
+    liveParsedPlan.decisionPackageId = next.decisionPackageId;
+    liveParsedPlan.summary = next.summary;
+    liveParsedPlan.tasks = next.tasks;
   };
 
   const state = {
@@ -35,10 +46,12 @@ const mocked = vi.hoisted(() => {
     state.events.length = 0;
     state.jsonWrites.length = 0;
     state.statusUpdates.length = 0;
+    replaceLiveParsedPlan(defaultLiveParsedPlan);
   }
 
   return {
     liveParsedPlan,
+    replaceLiveParsedPlan,
     state,
     reset,
     createArtifactRef: vi.fn(async (_client, input) => {
@@ -313,6 +326,37 @@ describe("plan-run compile metadata", () => {
       task: result.plan.tasks[0]
     });
     expect(unexpectedTaskHandoffWrite).toBeUndefined();
+  });
+
+  it("rejects live compile output when the decision package id does not match", async () => {
+    mocked.replaceLiveParsedPlan({
+      ...mocked.liveParsedPlan,
+      decisionPackageId: "unexpected-decision-package"
+    });
+
+    await expect(compileRunPlan(createCompileInput())).rejects.toThrow(
+      /returned decision package unexpected-decision-package; expected demo-greeting-update/
+    );
+  });
+
+  it("rejects live compile output when no task id or title matches the approved task", async () => {
+    mocked.replaceLiveParsedPlan({
+      ...mocked.liveParsedPlan,
+      tasks: [
+        {
+          taskId: "task-live-implementation",
+          title: "Implement the approved live task",
+          summary: "Use the live compiler output as the task source.",
+          instructions: ["Implement the approved change.", "Run the relevant checks."],
+          acceptanceCriteria: ["Relevant checks pass."],
+          dependsOn: []
+        }
+      ]
+    });
+
+    await expect(compileRunPlan(createCompileInput())).rejects.toThrow(
+      /expected a matching task id or title/
+    );
   });
 
   it("stamps compileMode across the deterministic fixture compile path", async () => {

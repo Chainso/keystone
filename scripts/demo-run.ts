@@ -85,11 +85,11 @@ export function resolveMaxPollAttempts(runtime: string, thinkMode: string) {
 export function describeDemoContract(runtime: string, thinkMode: string): DemoContract {
   if (runtime === "think" && thinkMode === "live") {
     return {
-      contractId: "think-live-fixture-demo",
-      proofScope: "Fixture-backed Think task path",
+      contractId: "think-live-compile-demo",
+      proofScope: "Live compile plus fixture-gated Think task path",
       modelExecution: "Live local chat-completions backend",
       workflowStatus:
-        "Phase 1 contract only swaps in the live Think turn. It does not yet prove live compile or compiled task handoffs."
+        "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
     };
   }
 

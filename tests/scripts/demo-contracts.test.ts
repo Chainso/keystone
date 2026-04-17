@@ -406,11 +406,11 @@ describe("demo scripts", () => {
         sandboxShellHint:
           "Sandbox preserved for inspection. Run `npm run sandbox:shell` while the local Worker is still running.",
         demoContract: {
-          contractId: "think-live-fixture-demo",
-          proofScope: "Fixture-backed Think task path",
+          contractId: "think-live-compile-demo",
+          proofScope: "Live compile plus fixture-gated Think task path",
           modelExecution: "Live local chat-completions backend",
           workflowStatus:
-            "Phase 1 contract only swaps in the live Think turn. It does not yet prove live compile or compiled task handoffs."
+            "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
         }
       });
 
@@ -541,9 +541,9 @@ describe("demo scripts", () => {
           }
         },
         demoContract: {
-          contractId: "think-live-fixture-demo",
+          contractId: "think-live-compile-demo",
           workflowStatus:
-            "Phase 1 validation still checks the fixture-backed run contract. It does not yet prove live compile or compiled task handoffs."
+            "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
         }
       });
 
@@ -580,7 +580,7 @@ describe("demo scripts", () => {
     });
   });
 
-  it("treats an explicit live Think request as the Phase 1 fixture-backed demo contract", () => {
+  it("treats an explicit live Think request as the Phase 2 live-compile demo contract", () => {
     process.argv = ["node", "scripts/demo-run.ts", "--runtime=think", "--think-mode=live"];
     clearDemoEnv();
 
@@ -602,11 +602,11 @@ describe("demo scripts", () => {
       streamEvents: true,
       maxPollAttempts: 90,
       demoContract: {
-        contractId: "think-live-fixture-demo",
-        proofScope: "Fixture-backed Think task path",
+        contractId: "think-live-compile-demo",
+        proofScope: "Live compile plus fixture-gated Think task path",
         modelExecution: "Live local chat-completions backend",
         workflowStatus:
-          "Phase 1 contract only swaps in the live Think turn. It does not yet prove live compile or compiled task handoffs."
+          "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
       }
     });
   });
@@ -629,9 +629,9 @@ describe("demo scripts", () => {
       runtime: "think",
       thinkMode: "live",
       demoContract: {
-        contractId: "think-live-fixture-demo",
+        contractId: "think-live-compile-demo",
         workflowStatus:
-          "Phase 1 validation still checks the fixture-backed run contract. It does not yet prove live compile or compiled task handoffs."
+          "Phase 2 proves the real compile path and persisted compiled handoffs. Phase 3 still owns the remaining task-execution seam."
       }
     });
   });

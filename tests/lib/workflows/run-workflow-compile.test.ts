@@ -313,6 +313,31 @@ function createWorkflowEvent(thinkMode: "live" | "mock") {
   };
 }
 
+function createLiveCompileResult() {
+  return {
+    plan: mocked.livePlan,
+    completion: {
+      id: "chatcmpl-live",
+      model: "gpt-5.4",
+      finishReason: "stop",
+      usage: {
+        totalTokens: 64
+      }
+    },
+    decisionPackageArtifactRef: {
+      artifactRefId: "decision-package-live"
+    },
+    planArtifactRef: {
+      artifactRefId: "run-plan-live"
+    },
+    taskHandoffArtifactRefs: [
+      {
+        artifactRefId: "task-handoff-live"
+      }
+    ]
+  };
+}
+
 describe("RunWorkflow compile routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -366,7 +391,7 @@ describe("RunWorkflow compile routing", () => {
     });
   });
 
-  it("rejects persisted live compile plans that still fall outside the Phase 2 task gate", async () => {
+  it("rejects persisted live compile plans when the task id still falls outside the Phase 2 gate", async () => {
     const env = createWorkflowEnv();
     const step = createStep();
     const workflow = new RunWorkflow({} as ExecutionContext, env as never);
@@ -374,32 +399,63 @@ describe("RunWorkflow compile routing", () => {
     mocked.compileRunPlan.mockImplementationOnce(async () => {
       mocked.state.compiledPlan = mocked.livePlan;
 
-      return {
-        plan: mocked.livePlan,
-        completion: {
-          id: "chatcmpl-live-invalid",
-          model: "gpt-5.4",
-          finishReason: "stop",
-          usage: {
-            totalTokens: 64
-          }
-        },
-        decisionPackageArtifactRef: {
-          artifactRefId: "decision-package-live"
-        },
-        planArtifactRef: {
-          artifactRefId: "run-plan-live"
-        },
-        taskHandoffArtifactRefs: [
-          {
-            artifactRefId: "task-handoff-live"
-          }
-        ]
-      };
+      return createLiveCompileResult();
     });
 
     await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
       /unsupported task handoff task-live-implementation/
+    );
+    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects persisted live compile plans when the task count still falls outside the Phase 2 gate", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const persistedTask = mocked.persistedLivePlan.tasks[0];
+
+    if (!persistedTask) {
+      throw new Error("Expected the persisted live compile fixture to include a task.");
+    }
+
+    mocked.compileRunPlan.mockImplementationOnce(async () => {
+      mocked.state.compiledPlan = {
+        ...mocked.persistedLivePlan,
+        tasks: [
+          persistedTask,
+          {
+            ...persistedTask,
+            taskId: "task-extra",
+            title: "Extra unexpected task"
+          }
+        ]
+      };
+
+      return createLiveCompileResult();
+    });
+
+    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
+      /produced 2 tasks, expected 1/
+    );
+    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects persisted live compile plans when the decision package id still falls outside the Phase 2 gate", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+
+    mocked.compileRunPlan.mockImplementationOnce(async () => {
+      mocked.state.compiledPlan = {
+        ...mocked.persistedLivePlan,
+        decisionPackageId: "unexpected-decision-package"
+      };
+
+      return createLiveCompileResult();
+    });
+
+    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
+      /produced decision package unexpected-decision-package, expected demo-greeting-update/
     );
     expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
   });
