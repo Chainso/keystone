@@ -1,11 +1,14 @@
-type DemoContract = {
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export type DemoContract = {
   contractId: string;
   proofScope: string;
   modelExecution: string;
   workflowStatus: string;
 };
 
-type RunSummary = {
+export type RunSummary = {
   status?: string;
   inputs?: {
     runtime?: unknown;
@@ -22,6 +25,12 @@ type RunSummary = {
   };
 };
 
+export type DemoValidationContract = {
+  runtime: string;
+  thinkMode: string;
+  demoContract: DemoContract;
+};
+
 function getArg(name: string) {
   const prefix = `--${name}=`;
   const argument = process.argv.slice(2).find((value) => value.startsWith(prefix));
@@ -29,19 +38,19 @@ function getArg(name: string) {
   return argument ? argument.slice(prefix.length) : undefined;
 }
 
-function resolveBaseUrl() {
+export function resolveBaseUrl() {
   return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
 }
 
-function resolveRuntime() {
+export function resolveRuntime() {
   return getArg("runtime") ?? process.env.KEYSTONE_AGENT_RUNTIME ?? "scripted";
 }
 
-function resolveThinkMode() {
+export function resolveThinkMode() {
   return getArg("think-mode") ?? process.env.KEYSTONE_THINK_DEMO_MODE ?? "mock";
 }
 
-function describeDemoContract(runtime: string, thinkMode: string): DemoContract {
+export function describeDemoContract(runtime: string, thinkMode: string): DemoContract {
   if (runtime === "think" && thinkMode === "live") {
     return {
       contractId: "think-live-fixture-demo",
@@ -70,19 +79,34 @@ function describeDemoContract(runtime: string, thinkMode: string): DemoContract 
   };
 }
 
-function resolveActualRuntime(summary: RunSummary, fallback: string) {
+export function resolveActualRuntime(summary: RunSummary, fallback: string) {
   return summary.inputs?.runtime === "think" || summary.inputs?.runtime === "scripted"
     ? summary.inputs.runtime
     : fallback;
 }
 
-function resolveActualThinkMode(summary: RunSummary, fallback: string) {
+export function resolveActualThinkMode(summary: RunSummary, fallback: string) {
   const actualThinkMode = summary.inputs?.options?.thinkMode;
 
   return actualThinkMode === "live" || actualThinkMode === "mock" ? actualThinkMode : fallback;
 }
 
-async function main() {
+export function resolveValidatedRunContract(
+  summary: RunSummary,
+  requestedRuntime: string,
+  requestedThinkMode: string
+): DemoValidationContract {
+  const runtime = resolveActualRuntime(summary, requestedRuntime);
+  const thinkMode = resolveActualThinkMode(summary, requestedThinkMode);
+
+  return {
+    runtime,
+    thinkMode,
+    demoContract: describeDemoContract(runtime, thinkMode)
+  };
+}
+
+export async function main() {
   const runId = getArg("run-id") ?? process.env.KEYSTONE_RUN_ID;
   const baseUrl = resolveBaseUrl();
   const requestedRuntime = resolveRuntime();
@@ -107,9 +131,11 @@ async function main() {
   }
 
   const summary = (await response.json()) as RunSummary;
-  const runtime = resolveActualRuntime(summary, requestedRuntime);
-  const thinkMode = resolveActualThinkMode(summary, requestedThinkMode);
-  const demoContract = describeDemoContract(runtime, thinkMode);
+  const { runtime, thinkMode, demoContract } = resolveValidatedRunContract(
+    summary,
+    requestedRuntime,
+    requestedThinkMode
+  );
 
   if (summary.status !== "archived") {
     throw new Error(`Expected archived run, received ${summary.status ?? "unknown"}.`);
@@ -154,4 +180,9 @@ async function main() {
   );
 }
 
-await main();
+const isDirectExecution =
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectExecution) {
+  await main();
+}

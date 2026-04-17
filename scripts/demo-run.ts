@@ -1,12 +1,24 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 const POLL_INTERVAL_MS = 2_000;
 const DEFAULT_MAX_POLL_ATTEMPTS = 30;
 const LIVE_THINK_MAX_POLL_ATTEMPTS = 90;
 
-type DemoContract = {
+export type DemoContract = {
   contractId: string;
   proofScope: string;
   modelExecution: string;
   workflowStatus: string;
+};
+
+export type DemoRunExecutionContract = {
+  runtime: string;
+  thinkMode: string;
+  preserveSandbox: boolean;
+  streamEvents: boolean;
+  maxPollAttempts: number;
+  demoContract: DemoContract;
 };
 
 function getArg(name: string) {
@@ -28,15 +40,15 @@ function asObject(value: unknown) {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
 }
 
-function resolveBaseUrl() {
+export function resolveBaseUrl() {
   return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
 }
 
-function resolveRuntime() {
+export function resolveRuntime() {
   return getArg("runtime") ?? process.env.KEYSTONE_AGENT_RUNTIME ?? "scripted";
 }
 
-function resolveThinkMode() {
+export function resolveThinkMode() {
   return getArg("think-mode") ?? process.env.KEYSTONE_THINK_DEMO_MODE ?? "mock";
 }
 
@@ -48,21 +60,21 @@ function parseBooleanFlag(value: string | undefined, fallback: boolean) {
   return !["0", "false", "no"].includes(value.trim().toLowerCase());
 }
 
-function resolvePreserveSandbox(runtime: string, thinkMode: string) {
+export function resolvePreserveSandbox(runtime: string, thinkMode: string) {
   return parseBooleanFlag(
     getArg("preserve-sandbox") ?? process.env.KEYSTONE_PRESERVE_SANDBOX,
     runtime === "think" && thinkMode === "live"
   );
 }
 
-function resolveStreamEvents(runtime: string, thinkMode: string) {
+export function resolveStreamEvents(runtime: string, thinkMode: string) {
   return parseBooleanFlag(
     getArg("stream-events") ?? process.env.KEYSTONE_STREAM_EVENTS,
     runtime === "think" && thinkMode === "live"
   );
 }
 
-function resolveMaxPollAttempts(runtime: string, thinkMode: string) {
+export function resolveMaxPollAttempts(runtime: string, thinkMode: string) {
   if (runtime === "think" && thinkMode === "live") {
     return LIVE_THINK_MAX_POLL_ATTEMPTS;
   }
@@ -70,7 +82,7 @@ function resolveMaxPollAttempts(runtime: string, thinkMode: string) {
   return DEFAULT_MAX_POLL_ATTEMPTS;
 }
 
-function describeDemoContract(runtime: string, thinkMode: string): DemoContract {
+export function describeDemoContract(runtime: string, thinkMode: string): DemoContract {
   if (runtime === "think" && thinkMode === "live") {
     return {
       contractId: "think-live-fixture-demo",
@@ -96,6 +108,35 @@ function describeDemoContract(runtime: string, thinkMode: string): DemoContract 
     proofScope: "Fixture-backed scripted path",
     modelExecution: "Scripted task runner",
     workflowStatus: "Default non-Think demo path."
+  };
+}
+
+export function resolveCreatedRunExecutionContract(
+  createdRun: Record<string, unknown>,
+  requestedRuntime: string,
+  requestedThinkMode: string
+): DemoRunExecutionContract {
+  const runtime =
+    createdRun.runtime === "think" || createdRun.runtime === "scripted"
+      ? createdRun.runtime
+      : requestedRuntime;
+  const createdOptions = asObject(createdRun.options);
+  const thinkMode =
+    createdOptions?.thinkMode === "live" || createdOptions?.thinkMode === "mock"
+      ? createdOptions.thinkMode
+      : requestedThinkMode;
+  const preserveSandbox =
+    typeof createdOptions?.preserveSandbox === "boolean"
+      ? createdOptions.preserveSandbox
+      : resolvePreserveSandbox(runtime, thinkMode);
+
+  return {
+    runtime,
+    thinkMode,
+    preserveSandbox,
+    streamEvents: resolveStreamEvents(runtime, thinkMode),
+    maxPollAttempts: resolveMaxPollAttempts(runtime, thinkMode),
+    demoContract: describeDemoContract(runtime, thinkMode)
   };
 }
 
@@ -262,28 +303,20 @@ function emitNewEvents(
   }
 }
 
-async function main() {
+export async function main() {
   const createdRun = await createFixtureRun();
   const runId = String(createdRun.runId ?? "");
   const baseUrl = resolveBaseUrl();
   const requestedRuntime = resolveRuntime();
   const requestedThinkMode = resolveThinkMode();
-  const runtime =
-    createdRun.runtime === "think" || createdRun.runtime === "scripted"
-      ? createdRun.runtime
-      : requestedRuntime;
-  const createdOptions = asObject(createdRun.options);
-  const thinkMode =
-    createdOptions?.thinkMode === "live" || createdOptions?.thinkMode === "mock"
-      ? createdOptions.thinkMode
-      : requestedThinkMode;
-  const preserveSandbox =
-    typeof createdOptions?.preserveSandbox === "boolean"
-      ? createdOptions.preserveSandbox
-      : resolvePreserveSandbox(runtime, thinkMode);
-  const streamEvents = resolveStreamEvents(runtime, thinkMode);
-  const maxPollAttempts = resolveMaxPollAttempts(runtime, thinkMode);
-  const demoContract = describeDemoContract(runtime, thinkMode);
+  const {
+    runtime,
+    thinkMode,
+    preserveSandbox,
+    streamEvents,
+    maxPollAttempts,
+    demoContract
+  } = resolveCreatedRunExecutionContract(createdRun, requestedRuntime, requestedThinkMode);
   const seenEventIds = new Set<string>();
 
   if (!runId) {
@@ -335,4 +368,9 @@ async function main() {
   throw new Error(`Demo run ${runId} did not finish within ${maxPollAttempts * POLL_INTERVAL_MS}ms.`);
 }
 
-await main();
+const isDirectExecution =
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectExecution) {
+  await main();
+}
