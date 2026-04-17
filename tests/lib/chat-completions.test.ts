@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import {
+  buildChatCompletionsApiBaseUrl,
   createChatCompletion,
   parseChatCompletionResponse,
   parseStructuredChatCompletion
@@ -251,5 +252,14 @@ describe("chat completions client", () => {
 
     expect(result.content).toBe('{"ok":true}');
     expect(result.usage?.totalTokens).toBe(7);
+  });
+
+  it("normalizes the provider base URL to the shared /v1 root", () => {
+    expect(buildChatCompletionsApiBaseUrl("http://localhost:10531")).toBe(
+      "http://localhost:10531/v1"
+    );
+    expect(buildChatCompletionsApiBaseUrl("http://localhost:10531/v1")).toBe(
+      "http://localhost:10531/v1"
+    );
   });
 });

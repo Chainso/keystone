@@ -77,10 +77,20 @@ export interface CreateChatCompletionInput {
   temperature?: number | undefined;
 }
 
-function buildChatCompletionsUrl(baseUrl: string) {
+export function buildChatCompletionsApiBaseUrl(baseUrl: string) {
   const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const url = new URL(normalizedBaseUrl);
+  const trimmedPath = url.pathname.replace(/\/$/, "");
 
-  return new URL("v1/chat/completions", normalizedBaseUrl).toString();
+  url.pathname = trimmedPath.endsWith("/v1")
+    ? trimmedPath || "/"
+    : `${trimmedPath}/v1`.replace(/^\/?/, "/");
+
+  return url.toString().replace(/\/$/, "");
+}
+
+function buildChatCompletionsUrl(baseUrl: string) {
+  return `${buildChatCompletionsApiBaseUrl(baseUrl)}/chat/completions`;
 }
 
 function mapUsage(

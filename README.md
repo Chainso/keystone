@@ -7,7 +7,7 @@ Keystone is a single Cloudflare Worker project that currently proves:
 - realtime run projection with Durable Objects and WebSockets
 - file-first artifact persistence in R2 with Postgres as the operational index
 - sandboxed task execution with session sandboxes and task worktrees
-- provider-backed compile using the local OpenAI-compatible chat-completions endpoint at `http://localhost:4001`
+- provider-backed compile and Think live-model turns using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
 - a runtime selector that keeps `scripted` as the default path and enables a Think-backed implementer turn for the fixture demo task
 
 ## Core Commands
@@ -28,7 +28,7 @@ npm run build
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
-`npm run dev` needs a valid `CLOUDFLARE_API_TOKEN` in the host environment because `env.AI` is a remote binding, even when the Think demo uses the deterministic mock plan.
+`npm run dev` no longer needs a host `CLOUDFLARE_API_TOKEN` just to satisfy the Think runtime. The Think-backed model path now uses `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` and `KEYSTONE_CHAT_COMPLETIONS_MODEL` directly.
 
 ## Demo Flow
 

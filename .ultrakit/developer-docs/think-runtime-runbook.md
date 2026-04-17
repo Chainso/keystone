@@ -9,8 +9,7 @@ Use this runbook when you need to exercise the shipped Think-backed fixture path
 - Docker with the local Postgres container available
 - Node/npm
 - `.dev.vars` populated from `.dev.vars.example`
-- the local chat-completions backend reachable at `http://localhost:4001`
-- a valid host `CLOUDFLARE_API_TOKEN` so `npm run dev` can start Wrangler with the remote `AI` binding
+- the local chat-completions backend reachable at `http://localhost:10531`
 
 ## Boot Local Dependencies
 
@@ -26,7 +25,7 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 Expected signals:
 
 - Wrangler prints `Ready on http://127.0.0.1:<port>`
-- bindings show `RUN_WORKFLOW`, `TASK_WORKFLOW`, `TASK_SESSION`, `KEYSTONE_THINK_AGENT`, `ARTIFACTS_BUCKET`, `HYPERDRIVE`, and remote `AI`
+- bindings show `RUN_WORKFLOW`, `TASK_WORKFLOW`, `TASK_SESSION`, `KEYSTONE_THINK_AGENT`, `ARTIFACTS_BUCKET`, and `HYPERDRIVE`
 - the sandbox container image is discovered successfully
 
 If Wrangler binds a different port because `8787` is already occupied, export the actual ready URL:
@@ -83,8 +82,6 @@ npm run think:smoke
 
 ## Failure Patterns
 
-- `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN`: the host environment is missing the API token required for Wrangler startup
-- `A request to the Cloudflare API (/memberships) failed`: the token is present but invalid for local Wrangler startup
 - `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted Codex sandbox boundary on this host
 - `Expected at least one promoted run_note artifact for the Think runtime`: the Think task path did not promote staged `/artifacts/out` files through `TaskWorkflow`
 - `The Think runtime is only wired for the fixture-backed Phase 4 task path`: a non-fixture repo/task was sent through the current Think runtime

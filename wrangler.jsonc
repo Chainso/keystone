@@ -4,9 +4,6 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-04-14",
   "compatibility_flags": ["nodejs_compat", "experimental"],
-  "ai": {
-    "binding": "AI"
-  },
   "containers": [
     {
       "class_name": "Sandbox",

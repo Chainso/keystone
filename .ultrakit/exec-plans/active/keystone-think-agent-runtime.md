@@ -124,13 +124,18 @@ Backward compatibility with an external shipped product is not required because 
 
 - **Date:** 2026-04-17  
   **Phase:** Phase 5  
-  **Decision:** Update the durable docs now, but keep the plan active until the exact Think demo rerun can be repeated on a host session with a valid `CLOUDFLARE_API_TOKEN`.  
-  **Rationale:** The Phase 5 archive gate requires rerunning `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` exactly as documented. On this machine, local Wrangler startup fails before the Worker is ready if the host token is missing or invalid.
+  **Decision:** Update the durable docs now, then rerun the exact documented Think demo path before closing the phase.  
+  **Rationale:** The Phase 5 gate is the exact `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` sequence, so docs and runtime wiring had to converge before the final rerun.
 
 - **Date:** 2026-04-17  
   **Phase:** Phase 5 Fix Pass  
   **Decision:** Correct the Phase 5 docs so the exact gate sequence remains `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`, and label the `--run-id` form as a manual convenience path only.  
   **Rationale:** The review finding was accurate: the docs had drifted from the plan gate and were describing a different invocation as exact validation.
+
+- **Date:** 2026-04-17  
+  **Phase:** Phase 5 Fix Pass  
+  **Decision:** Switch `KeystoneThinkAgent` from `workers-ai-provider` / `env.AI` to the local OpenAI-compatible chat-completions backend via `@ai-sdk/openai`, and remove the Wrangler `AI` binding.  
+  **Rationale:** The Think-backed live-model path should share Keystone's existing local chat-completions configuration, and local Think validation should not require a host `CLOUDFLARE_API_TOKEN` just to satisfy a remote Workers AI binding.
 
 ## Progress
 
@@ -141,14 +146,14 @@ Backward compatibility with an external shipped product is not required because 
 - [x] 2026-04-17 Phase 2 fix pass completed: bridge re-materialization now clears `/artifacts/out`, and a repeat-materialization regression test covers stale staged-output leakage.
 - [x] 2026-04-17 Phase 3 completed: a Think-backed implementer role now consumes the sandbox bridge, emits agent/tool/staged-artifact events, exposes a dev Think smoke route, and has deterministic smoke/test coverage.
 - [x] 2026-04-17 Phase 4 completed: run creation now carries an explicit runtime selector, `TaskWorkflow` can execute the Think-backed implementer path, staged outputs are promoted into canonical artifact refs, and the fixture demo run validates end to end.
-- [ ] Phase 5: Durable docs and runbooks are updated, but the required exact Think rerun and archive remain blocked until local Wrangler can start with a valid host `CLOUDFLARE_API_TOKEN`.
+- [x] 2026-04-17 Phase 5 completed: durable docs now match the shipped runtime, the Think live-model path uses the local chat-completions backend instead of Workers AI, and the exact documented Think rerun passed locally.
 
 ## Surprises & Discoveries
 
 - **2026-04-16:** The product specs already describe mounted or projected artifact access inside the sandbox, so the best Think integration path is more filesystem-first than initially assumed in discussion.
 - **2026-04-16:** The repository already has strong seams for the new runtime: `TaskSessionDO`, workspace materialization under `/workspace/runs/...`, artifact promotion helpers, event publication, and workflow-driven task attempts.
 - **2026-04-16:** Local Worker development on this host must still run outside the Codex sandbox boundary. Any live Think/Agents SDK validation that depends on `wrangler dev` inherits that same host constraint from M1.
-- **2026-04-16:** Think currently requires both the Worker `experimental` compatibility flag and an `AI` binding in `wrangler.jsonc` even when the first scaffolded agent is not yet handling live traffic.
+- **2026-04-17:** Removing the Wrangler `AI` binding and routing Think through the same OpenAI-compatible backend as compile also removes the host `CLOUDFLARE_API_TOKEN` startup requirement for local Think validation.
 - **2026-04-16:** `wrangler types` and `wrangler deploy --dry-run` both attempt writes under `~/.config/.wrangler`, and the dry-run container build also touches Docker state under `~/.docker`, so build validation must run outside the Codex sandbox boundary.
 - **2026-04-17:** The cleanest way to honor the `/workspace` contract without disturbing M1’s deterministic worktree layout is to treat `/workspace` as a virtual root in the bridge and resolve it onto the real task worktree path under `/workspace/runs/...`.
 - **2026-04-17:** Durable Object stub inference for `TaskSessionDO` still collapsed to `never` in some callers until the DO methods had explicit public RPC return types, so the Phase 2 validation needed those signatures tightened.
@@ -157,7 +162,7 @@ Backward compatibility with an external shipped product is not required because 
 - **2026-04-17:** The AI SDK mock-model path does not auto-continue into a final assistant-text step in the same way a live Think turn does, so the durable smoke proof for Phase 3 is better anchored on filesystem edits, bash execution, staged outputs, and emitted events than on final assistant text.
 - **2026-04-17:** The local `@cloudflare/think` path under `wrangler dev --local` crashed inside Think’s chat queue (`appendMessage` on undefined) for mock turns, so the deterministic Phase 4 path had to execute the mock plan directly while keeping the same `runImplementerTurn()` surface.
 - **2026-04-17:** Re-calling `TaskSessionDO.ensureWorkspace()` inside the Think workflow step retried `git worktree add` against an existing task worktree. The stable fix was to carry a serialized bridge snapshot across the workflow step boundary rather than rematerializing the workspace a second time.
-- **2026-04-17:** Local `wrangler dev` now has an additional hard prerequisite beyond the sandbox escape hatch on this host: it also needs a valid `CLOUDFLARE_API_TOKEN` because the Worker keeps a remote `AI` binding. A placeholder token fails early against the `/memberships` API before the Worker is ready.
+- **2026-04-17:** Inside the Codex sandbox, `wrangler dev` can now reach `Ready on ...` without any Cloudflare token once the `AI` binding is gone, but it still needs writable overrides such as `XDG_CONFIG_HOME=/tmp/xdg`, `WRANGLER_HOME=/tmp/wrangler`, and `DOCKER_CONFIG=/tmp/docker` to avoid home-directory writes during local container startup.
 
 ## Outcomes & Retrospective
 
@@ -176,12 +181,12 @@ Phase 4 outcome on 2026-04-17:
 - Host validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `KEYSTONE_AGENT_RUNTIME=think npm run demo:run`, and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` against a host `wrangler dev --local` instance on this machine.
 - The next contributor should move to Phase 5 documentation and keep `scripted` as the default runtime until a later plan explicitly changes that decision.
 
-Phase 5 status on 2026-04-17:
+Phase 5 outcome on 2026-04-17:
 
-- Durable docs now describe the runtime selector, the `/workspace` + `/artifacts/*` + `/keystone` bridge contract, the staged-artifact promotion path, and the exact Think fixture commands.
-- Narrow local smoke validation still passed with `npm run sandbox:smoke` and `npm run think:smoke`.
-- The required exact Phase 5 rerun could not be completed in this session because host `wrangler dev` failed before startup without a valid `CLOUDFLARE_API_TOKEN`, and a placeholder token failed against the Cloudflare `/memberships` API.
-- Because the documented Think path was not rerun exactly as written in this phase, the plan must remain active and cannot be archived yet.
+- Durable docs now describe the runtime selector, the `/workspace` + `/artifacts/*` + `/keystone` bridge contract, the staged-artifact promotion path, the local OpenAI-compatible Think model wiring, and the exact Think fixture commands.
+- `KeystoneThinkAgent` now resolves live models through `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` plus `KEYSTONE_CHAT_COMPLETIONS_MODEL` using `@ai-sdk/openai`, and local Wrangler config no longer binds Cloudflare `AI`.
+- Validation passed with `npm run cf-typegen`, `npm run lint`, `npm run typecheck`, `npm run test`, `npm run sandbox:smoke`, `npm run think:smoke`, `KEYSTONE_AGENT_RUNTIME=think npm run demo:run`, and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`.
+- Local `wrangler dev` reached `Ready on http://127.0.0.1:8787` without a host `CLOUDFLARE_API_TOKEN`; the remaining local requirement inside Codex is writable temporary config/docker directories for Wrangler and Docker state.
 
 ## Context and Orientation
 
@@ -192,8 +197,8 @@ Current repository state relevant to this plan:
 - Workspace paths are already deterministic under `/workspace/runs/...` via `src/lib/workspace/worktree.ts`, with repo and task worktree layout established by `src/lib/workspace/init.ts`.
 - Artifact promotion currently happens through `src/lib/artifacts/r2.ts`, `src/lib/artifacts/keys.ts`, `src/lib/db/artifacts.ts`, and `src/lib/events/publish.ts`.
 - The current task path is not an agent harness. It is a workflow-driven sandbox process loop with artifactization and event logging.
-- `package.json` now includes `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `ai`, `@cloudflare/shell`, and `workers-ai-provider`.
-- `wrangler.jsonc` now enables the `experimental` compatibility flag, binds `AI`, and registers the `KEYSTONE_THINK_AGENT` Durable Object plus a `v3` migration while preserving the existing M1 runtime path.
+- `package.json` now includes `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `@ai-sdk/openai`, `ai`, and `@cloudflare/shell`.
+- `wrangler.jsonc` now enables the `experimental` compatibility flag and registers the `KEYSTONE_THINK_AGENT` Durable Object plus a `v3` migration without a Cloudflare `AI` binding.
 - `src/maestro/agent-runtime.ts` now defines the shared runtime contract and the standardized filesystem roots for later Think phases.
 - `src/keystone/agents/base/KeystoneThinkAgent.ts` now wraps a concrete implementer role: it parses per-turn prompt/bridge metadata, binds Think tools onto the sandbox bridge, emits agent lifecycle events, and stages outputs for later promotion.
 
@@ -248,7 +253,7 @@ The commands below are the intended execution spine once this plan starts. Updat
 
 ```bash
 cd /home/chanzo/code/large-projects/keystone-cloudflare
-npm install agents @cloudflare/think @cloudflare/ai-chat ai @cloudflare/shell workers-ai-provider
+npm install agents @cloudflare/think @cloudflare/ai-chat @ai-sdk/openai ai @cloudflare/shell
 npm run cf-typegen
 ```
 
@@ -357,7 +362,7 @@ Current runtime seams to preserve:
 Project-specific constraints from `.ultrakit/notes.md`:
 
 - Local `wrangler dev` on this host must run outside the Codex sandbox boundary.
-- The local chat-completions backend is plain HTTP at `http://localhost:4001`.
+- The local chat-completions backend is plain HTTP at `http://localhost:10531`.
 - The fixture happy path depends on `npm test` succeeding inside the sandboxed task worktree.
 
 Phase 2 implementation notes:
@@ -389,9 +394,9 @@ Expected external dependencies to add or evaluate in this plan:
 - `agents`
 - `@cloudflare/think`
 - `@cloudflare/ai-chat`
+- `@ai-sdk/openai`
 - `ai`
 - `@cloudflare/shell`
-- `workers-ai-provider`
 
 Important modules and interfaces likely involved:
 
@@ -484,8 +489,8 @@ Think is experimental and its docs currently require additional flags and DO mig
 Completed on 2026-04-16.
 
 **Completion Notes**  
-- Installed `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `ai`, `@cloudflare/shell`, and `workers-ai-provider`.
-- Added the `experimental` compatibility flag, `AI` binding, `KEYSTONE_THINK_AGENT` Durable Object binding, and `v3` migration in `wrangler.jsonc`.
+- Installed `agents`, `@cloudflare/think`, `@cloudflare/ai-chat`, `@ai-sdk/openai`, `ai`, and `@cloudflare/shell`.
+- Added the `experimental` compatibility flag, `KEYSTONE_THINK_AGENT` Durable Object binding, and `v3` migration in `wrangler.jsonc`.
 - Generated updated Worker bindings in `worker-configuration.d.ts`.
 - Added `src/maestro/agent-runtime.ts`, narrowed `RuntimeProfile.runtime`, exported `KeystoneThinkAgent`, and added contract coverage in `tests/lib/agents/runtime-contract.test.ts`.
 - Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` (the dry-run build required host execution outside the sandbox because Wrangler and Docker write to home-directory state).
@@ -758,14 +763,15 @@ Accurate architecture/runbook docs and an archived plan when acceptance is met.
 Do not archive the plan if the documented Think-backed path has not been rerun exactly as written.
 
 **Status**  
-In progress, but blocked on host validation as of 2026-04-17.
+Completed on 2026-04-17.
 
 **Completion Notes**  
 - Added durable developer docs for the shipped Think-backed runtime architecture and local runbook.
-- Updated the root README and M1 runbook so the documented local commands, compile backend URL, runtime selector, and artifact expectations match the shipped code, and corrected the validation docs to distinguish the exact Phase 5 gate from the convenience `--run-id` form.
+- Updated the root README, `.ultrakit/notes.md`, and local runbooks so the documented backend URL, runtime selector, and artifact expectations match the shipped code, and corrected the validation docs to distinguish the exact Phase 5 gate from the convenience `--run-id` form.
+- Switched the Think live-model path to `@ai-sdk/openai` against `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` / `KEYSTONE_CHAT_COMPLETIONS_MODEL`, removed the Wrangler `AI` binding, and regenerated Worker binding types.
 - Revalidated the narrow local smokes with `npm run sandbox:smoke` and `npm run think:smoke`.
-- Attempted to rerun the required host validation path, but `npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false` failed before startup without a valid host `CLOUDFLARE_API_TOKEN`; retrying with a placeholder token failed against Cloudflare `/memberships`.
-- The plan is intentionally not archived because the exact documented Think rerun did not complete in this phase.
+- Re-ran the exact documented Think validation path successfully with local `wrangler dev`, `KEYSTONE_AGENT_RUNTIME=think npm run demo:run`, and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` against run `5dfefb3d-c7ab-4b61-b32e-42e32463670d`.
+- The remaining host-local wrinkle inside Codex is filesystem-related rather than Cloudflare-auth related: Wrangler and Docker need writable temporary config directories when run inside the sandbox.
 
 **Next Starter Context**  
-Provide a valid host `CLOUDFLARE_API_TOKEN`, restart local Wrangler with the documented boot command, rerun `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` and `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate` exactly as written, then archive this plan only if those commands pass unchanged.
+Archive or move this plan out of `active/` on the next plan-maintenance pass; the documented Think runtime gate now passes exactly as written.

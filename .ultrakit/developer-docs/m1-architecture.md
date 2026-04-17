@@ -46,4 +46,4 @@ M1 keeps the security model explicit:
 Two environment-specific constraints matter in this repo:
 
 - `wrangler dev` with container bindings must be run outside the Codex sandbox boundary on this host.
-- The local chat-completions backend is plain HTTP at `http://localhost:4001`, not HTTPS.
+- The local chat-completions backend is plain HTTP at `http://localhost:10531`, not HTTPS.

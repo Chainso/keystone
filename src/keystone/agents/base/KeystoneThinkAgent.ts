@@ -1,6 +1,6 @@
 import { Think } from "@cloudflare/think";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
 
 import type { WorkerBindings } from "../../../env";
 import type { EventSeverity } from "../../../lib/events/types";
@@ -16,6 +16,8 @@ import { ensureSandboxSession } from "../../../lib/sandbox/client";
 import { createWorkerDatabaseClient, type DatabaseClient } from "../../../lib/db/client";
 import { appendAndPublishRunEvent } from "../../../lib/events/publish";
 import { getSessionRecord, updateSessionStatus } from "../../../lib/db/runs";
+import { buildChatCompletionsApiBaseUrl } from "../../../lib/llm/chat-completions";
+import { assertOutboundUrlAllowed } from "../../../lib/security/outbound";
 import {
   buildImplementerSystemPrompt,
   collectStagedArtifacts,
@@ -38,6 +40,19 @@ type ActiveTurnState = {
 
 const thinkActor = "keystone-think-implementer";
 
+function createLocalChatCompletionsModel(
+  env: Pick<WorkerBindings, "KEYSTONE_CHAT_COMPLETIONS_BASE_URL" | "KEYSTONE_CHAT_COMPLETIONS_MODEL">,
+  modelId: string
+) {
+  assertOutboundUrlAllowed(env, env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL, "think chat completions");
+
+  return createOpenAI({
+    apiKey: "keystone-local",
+    name: "keystone-chat-completions",
+    baseURL: buildChatCompletionsApiBaseUrl(env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL)
+  }).chat(modelId);
+}
+
 export class KeystoneThinkAgent<Config = Record<string, unknown>>
   extends Think<WorkerBindings, Config>
   implements AgentRuntimeAdapter
@@ -53,15 +68,10 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
       return createMockImplementerModel(this.activeTurn.metadata.mockModelPlan);
     }
 
-    const modelId = this.activeTurn?.metadata.modelId;
-
-    if (!modelId) {
-      throw new Error("ImplementerAgent requires metadata.modelId or metadata.mockModelPlan.");
-    }
-
-    return createWorkersAI({
-      binding: this.env.AI
-    })(modelId);
+    return createLocalChatCompletionsModel(
+      this.env,
+      this.activeTurn?.metadata.modelId ?? this.env.KEYSTONE_CHAT_COMPLETIONS_MODEL
+    );
   }
 
   override getSystemPrompt() {

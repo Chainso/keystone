@@ -64,6 +64,12 @@ Current artifact expectations:
 - the run-level terminal proof remains `run_summary`
 - the scripted fallback path still promotes `task_log`
 
+The live-model provider path now reuses the existing local OpenAI-compatible chat-completions backend:
+
+- `KeystoneThinkAgent` builds an AI SDK OpenAI chat model against `KEYSTONE_CHAT_COMPLETIONS_BASE_URL`
+- the configured `KEYSTONE_CHAT_COMPLETIONS_MODEL` is the default Think model id unless a turn overrides it explicitly
+- local Think validation no longer depends on a Cloudflare `AI` binding
+
 ## Current Limitations
 
 These are current runtime facts, not future design goals:
@@ -71,4 +77,3 @@ These are current runtime facts, not future design goals:
 - `scripted` remains the default runtime
 - the Think path is only wired for the fixture-backed demo task
 - the shipped local proof uses the deterministic mock implementer plan, not a live model provider turn
-- local `wrangler dev` still requires a valid host `CLOUDFLARE_API_TOKEN` because the Worker keeps a remote `AI` binding

@@ -5,8 +5,7 @@
 - Docker with `buildx`
 - Node/npm
 - A local `.dev.vars` copied from `.dev.vars.example`
-- The local chat-completions backend reachable at `http://localhost:4001`
-- A valid host `CLOUDFLARE_API_TOKEN` so Wrangler can start with the remote `AI` binding
+- The local chat-completions backend reachable at `http://localhost:10531`
 
 ## Boot
 
@@ -90,7 +89,5 @@ The approval-gated path is a `gitUrl` repo input. It should:
 
 - `Invalid session status transition`: a workflow is skipping the named session lifecycle.
 - `RunCoordinatorDO was not initialized before use`: a workflow path is publishing events before initializing the coordinator.
-- `In a non-interactive environment, it's necessary to set a CLOUDFLARE_API_TOKEN`: local Wrangler startup is missing the required host token.
-- `A request to the Cloudflare API (/memberships) failed`: the supplied Cloudflare token is invalid for local Wrangler startup.
 - `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted sandbox boundary on this host.
-- empty or stalled compile output: confirm the backend is reachable at `http://localhost:4001/v1/chat/completions`.
+- empty or stalled compile output: confirm the backend is reachable at `http://localhost:10531/v1/chat/completions`.
