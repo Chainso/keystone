@@ -38,6 +38,12 @@ function rewriteCommandPaths(command: string, bridge: SandboxAgentBridge) {
   }, command);
 }
 
+function hasEnvOverrides(
+  value: Record<string, string | undefined> | undefined
+): value is Record<string, string | undefined> {
+  return !!value && Object.keys(value).length > 0;
+}
+
 export async function execSandboxAgentBash(
   bridge: SandboxBashBridge,
   input: {
@@ -64,7 +70,7 @@ export async function execSandboxAgentBash(
         }
       : undefined;
 
-  if (mergedEnv) {
+  if (hasEnvOverrides(mergedEnv)) {
     execOptions.env = mergedEnv;
   }
 

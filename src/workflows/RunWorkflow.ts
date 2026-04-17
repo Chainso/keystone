@@ -103,6 +103,7 @@ interface ApprovalResolutionPayload {
 interface RunContextSnapshot {
   runSessionId: string;
   workflowInstanceId: string;
+  compileRepo: CompileRepoSource;
   projectExecution: ProjectExecutionSnapshot;
   runtime: AgentRuntimeKind;
   options: RunExecutionOptions;
@@ -165,7 +166,17 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           );
         }
 
-        const projectExecution = buildProjectExecutionSnapshot(project);
+        const projectExecution = buildProjectExecutionSnapshot(project, {
+          requireCompileTarget: true
+        });
+
+        if (!projectExecution.compileRepo) {
+          throw new Error(
+            `Project ${project.projectId} did not resolve a compile target after validation.`
+          );
+        }
+
+        const compileRepo = projectExecution.compileRepo;
         const session = await ensureSessionRecord(
           client,
           {
@@ -265,6 +276,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         return {
           runSessionId,
           workflowInstanceId,
+          compileRepo,
           projectExecution,
           runtime: statusMetadata.runtime,
           options: statusMetadata.options
@@ -274,7 +286,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
       }
     })) as RunContextSnapshot;
 
-    const repoPolicyDecision = evaluateRepoSourcePolicy(runContext.projectExecution.compileRepo);
+    const repoPolicyDecision = evaluateRepoSourcePolicy(runContext.compileRepo);
 
     if (repoPolicyDecision.result === "deny") {
       throw new NonRetryableError(repoPolicyDecision.reason);
@@ -293,7 +305,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
               reason: repoPolicyDecision.reason,
               metadata: {
                 projectId: event.payload.projectId,
-                repo: runContext.projectExecution.compileRepo
+                repo: runContext.compileRepo
               }
           });
         } finally {
@@ -404,7 +416,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         );
 
         const compile = shouldUseFixtureCompileForRun(
-          runContext.projectExecution.compileRepo,
+          runContext.compileRepo,
           decisionPackage,
           runContext.runtime,
           runContext.options
@@ -418,7 +430,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           runId: event.payload.runId,
           runSessionId,
           compileSessionId,
-          repo: runContext.projectExecution.compileRepo,
+          repo: runContext.compileRepo,
           decisionPackage
         });
 

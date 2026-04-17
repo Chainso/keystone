@@ -152,6 +152,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Treat the live local blocker as both a workflow-state bug and a local-dev verification issue: stop publishing run-level `archived` on `compile.completed`, launch task workflows with per-instance `create()` calls instead of `createBatch()`, and validate against a fresh Wrangler dev port rather than a potentially stale long-lived local instance.  
   **Rationale:** The blocked run archived its coordinator state at compile time and never showed task/finalize progression, while the green Node tests still covered the logical workflow path. The resumed pass needed to remove the misleading archived transition, use the simpler local-stable task launch path, and verify on a fresh Worker URL so the validation matched the current code rather than an older process on `8787`.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 4 Fix Pass  
+  **Decision:** Make compile-target selection explicit for project-backed runs, omit empty env override maps when invoking sandbox execution, and deepen the HTTP/workflow tests around project gating plus execution metadata/env propagation.  
+  **Rationale:** The review findings showed that silently choosing the first project component as the compile repo violated the peer-component model, `{}` env overrides could replace the runtime environment accidentally, and the existing tests were too shallow to catch regressions in the new project-backed run path.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -166,6 +171,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Phase 3 fix pass completed: component workspace paths now preserve key uniqueness, workspace bindings reject invalid default-component selection, stale task worktrees are recreated instead of silently reused, and targeted Phase 3 tests cover persistence shape, filesystem side effects, and task-workflow integration more deeply.
 - [x] 2026-04-17 Phase 4 implementation landed: `/v1/runs` now requires `projectId`, run/task workflows resolve project-backed components, env vars, and rule context, and the demo scripts bootstrap and target the fixture project instead of a raw repo payload.
 - [x] 2026-04-17 Phase 4 resume pass completed: live local validation now passes on a fresh Wrangler dev instance, with project-backed runs producing task execution and run-summary artifacts end-to-end.
+- [x] 2026-04-17 Phase 4 fix pass completed: ambiguous multi-component compile selection now fails clearly, empty env overrides no longer replace sandbox execution environments, and the project-backed HTTP/workflow tests assert the Phase 4 metadata/env path more deeply.
 - [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
 
 ## Surprises & Discoveries
@@ -186,6 +192,8 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - Reusing an on-disk task worktree safely needs more than `worktree/.git` existence; validating the common git dir, checked-out branch, and base-ref reachability is enough to distinguish a real reusable worktree from stale leftovers in the sandbox filesystem.
 - The local demo Worker on this host needed the project migrations applied explicitly via `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate` before `/v1/projects` stopped returning `500`.
 - The blocked run on `8787` (`306d9180-33a3-4db9-8ecb-9ce7ea5f9acc`) showed two overlapping local issues: `compile.completed` was incorrectly publishing run-coordinator status `archived`, and the live verification target on `8787` was not a reliable proxy for the updated code path. A fresh Wrangler dev instance on `8799` was required to validate the resumed fix pass.
+- The project-backed runtime proof can materialize multiple peer components already, but Phase 4 still does not have an explicit product concept for choosing which component should drive compile-time repo selection. The correct Phase 4 behavior is therefore to fail clearly on ambiguous multi-component compile selection instead of silently picking by array order.
+- Empty env override maps need to be treated as absent at the sandbox boundary. Passing `env: {}` into the Cloudflare sandbox helpers risks replacing the inherited environment rather than leaving it unchanged.
 
 ## Outcomes & Retrospective
 
@@ -241,6 +249,13 @@ Phase 4 resume-pass outcome on 2026-04-17:
 - `RunWorkflow` now launches task workflows with per-instance `TASK_WORKFLOW.create()` calls instead of `createBatch()`, which restored stable local workflow fanout on the fresh Wrangler dev instance used for validation.
 - The compile-plan and run-workflow tests were updated to match the resumed runtime behavior, and repo validation still passed for `lint`, `typecheck`, `test`, and `build`.
 - Live local validation passed on a fresh Worker at `http://127.0.0.1:8799`: `demo:run` completed successfully for run `abd64276-d1a2-4671-8cbc-b5e3cddbe6f9`, and `demo:validate` confirmed the archived run had 3 sessions and 5 artifacts (`decision_package`, `run_plan`, `task_handoff`, `task_log`, `run_summary`).
+
+Phase 4 fix-pass outcome on 2026-04-17:
+
+- `RunWorkflow` now requires an explicit unambiguous compile target at project load time. If a project defines multiple executable components, the phase fails clearly instead of silently compiling against whichever component happened to sort first.
+- The sandbox bash bridge and task-session process launcher now omit `env` entirely when the merged project/input override set is empty, so the Phase 4 env propagation path no longer risks replacing the inherited runtime environment with `{}`.
+- The HTTP and workflow tests now cover the missing project lookup branch, assert the project execution metadata frozen into run-session status updates, and verify that Think/task-session execution receives the merged project env vars through the agent bridge rather than only via prompt text.
+- Broad validation passed again for `lint`, `typecheck`, `test`, and `build`, and live demo validation passed on a fresh Worker at `http://127.0.0.1:8801` with run `776447c9-8743-450b-8856-add72c201335`.
 
 ## Context and Orientation
 
@@ -544,6 +559,53 @@ $ KEYSTONE_BASE_URL=http://127.0.0.1:8799 npm run demo:validate
 {
   "ok": true,
   "runId": "abd64276-d1a2-4671-8cbc-b5e3cddbe6f9",
+  "runtime": "scripted",
+  "thinkMode": "mock",
+  "status": "archived",
+  "sessions": 3,
+  "artifacts": {
+    "total": 5
+  }
+}
+```
+
+```text
+$ npm run lint
+> eslint .
+```
+
+```text
+$ npm run typecheck
+> tsc --noEmit
+```
+
+```text
+$ npm run test
+Test Files  30 passed | 2 skipped (32)
+Tests  117 passed | 8 skipped (125)
+```
+
+```text
+$ npm run build
+> wrangler deploy --dry-run --outdir .wrangler/deploy
+--dry-run: exiting now.
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8801 npm run demo:run
+{
+  "runId": "776447c9-8743-450b-8856-add72c201335",
+  "runtime": "scripted",
+  "thinkMode": "mock",
+  "status": "archived"
+}
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8801 KEYSTONE_RUN_ID=776447c9-8743-450b-8856-add72c201335 npm run demo:validate
+{
+  "ok": true,
+  "runId": "776447c9-8743-450b-8856-add72c201335",
   "runtime": "scripted",
   "thinkMode": "mock",
   "status": "archived",
@@ -863,10 +925,10 @@ Project env vars are non-secret only in `v1`. Keep the current scripted default 
 Completed on 2026-04-17.
 
 **Completion Notes**  
-`/v1/runs` now requires `projectId`, the run/task workflow contracts are project-backed, task execution receives project env vars and rule context, and the fixture demo scripts target the durable fixture project instead of a raw repo payload. The resume pass removed the premature archived coordinator transition at compile time, switched local task fanout onto per-instance workflow creation, and revalidated the phase on a fresh Wrangler dev URL. `lint`, `typecheck`, `test`, `build`, `demo:run`, and `demo:validate` all passed for the completed Phase 4 state.
+`/v1/runs` now requires `projectId`, the run/task workflow contracts are project-backed, task execution receives project env vars and rule context, and the fixture demo scripts target the durable fixture project instead of a raw repo payload. The resume pass removed the premature archived coordinator transition at compile time, switched local task fanout onto per-instance workflow creation, and revalidated the phase on a fresh Wrangler dev URL. The targeted fix pass then tightened the Phase 4 contract by failing clearly on ambiguous multi-component compile selection, omitting empty env override maps at sandbox execution time, and expanding the HTTP/workflow tests around project gating plus execution metadata/env propagation. `lint`, `typecheck`, `test`, `build`, `demo:run`, and `demo:validate` all passed for the completed Phase 4 state.
 
 **Next Starter Context**  
-Phase 4 is complete. Phase 5 can now assume the project-backed run path, fixture project bootstrap, and local demo validation are all green when run against the current Wrangler dev URL.
+Phase 4 is complete. Phase 5 can assume the project-backed run path, fixture project bootstrap, and local demo validation are green when run against the current Wrangler dev URL, and it should preserve the explicit Phase 4 rule that multi-component projects must not compile by implicit component ordering until a real compile-target product concept exists.
 
 ### Phase 5: Document the project-backed backend model and close out the plan
 

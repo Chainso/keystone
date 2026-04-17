@@ -17,11 +17,15 @@ export interface ProjectExecutionSnapshot {
   projectId: string;
   projectKey: string;
   displayName: string;
-  compileRepo: CompileRepoSource;
+  compileRepo?: CompileRepoSource | undefined;
   components: WorkspaceMaterializationSource[];
   environment: Record<string, string>;
   ruleSet: ProjectRuleSet;
   componentRuleOverrides: ProjectExecutionRuleOverride[];
+}
+
+interface BuildProjectExecutionSnapshotOptions {
+  requireCompileTarget?: boolean | undefined;
 }
 
 function isFixtureLocalComponent(component: ProjectComponent) {
@@ -89,20 +93,31 @@ function resolveWorkspaceComponent(
 }
 
 export function buildProjectExecutionSnapshot(
-  project: StoredProject
+  project: StoredProject,
+  options: BuildProjectExecutionSnapshotOptions = {}
 ): ProjectExecutionSnapshot {
-  const compileComponent = project.components[0];
+  const components = project.components.map(resolveWorkspaceComponent);
+  const compileComponents = project.components.filter(
+    (component) => component.kind === "git_repository"
+  );
 
-  if (!compileComponent) {
+  if (compileComponents.length === 0) {
     throw new Error(`Project ${project.projectId} does not define any executable components.`);
+  }
+
+  if (options.requireCompileTarget && compileComponents.length > 1) {
+    throw new Error(
+      `Project ${project.projectId} defines multiple executable components; Phase 4 compile routing requires exactly one compile target until explicit project compile selection exists.`
+    );
   }
 
   return {
     projectId: project.projectId,
     projectKey: project.projectKey,
     displayName: project.displayName,
-    compileRepo: resolveCompileRepo(compileComponent),
-    components: project.components.map(resolveWorkspaceComponent),
+    compileRepo:
+      compileComponents.length === 1 ? resolveCompileRepo(compileComponents[0]!) : undefined,
+    components,
     environment: Object.fromEntries(
       project.envVars.map((envVar) => [envVar.name, envVar.value])
     ),

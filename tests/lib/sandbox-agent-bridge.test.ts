@@ -412,6 +412,23 @@ describe("sandbox agent bridge", () => {
     expect(session.execCalls.at(-1)?.options?.timeout).toBe(5000);
   });
 
+  it("omits exec env overrides when both bridge and input envs are empty", async () => {
+    const { session, bridge } = await createMaterializedBridge();
+    const result = await execSandboxAgentBash(
+      {
+        session: session as unknown as ExecutionSession,
+        bridge
+      },
+      {
+        command: "pwd",
+        env: {}
+      }
+    );
+
+    expect(result.resolvedCommand).toBe("pwd");
+    expect(session.execCalls.at(-1)?.options?.env).toBeUndefined();
+  });
+
   it("clears stale staged outputs when the bridge is materialized again", async () => {
     const session = new FakeExecutionSession();
     const workspace = createWorkspace();

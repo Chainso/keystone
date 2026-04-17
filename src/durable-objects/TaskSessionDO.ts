@@ -64,6 +64,12 @@ export type StartProcessInput = {
 
 const STATE_STORAGE_KEY = "task-session-state";
 
+function hasEnvOverrides(
+  value: Record<string, string | undefined> | undefined
+): value is Record<string, string | undefined> {
+  return !!value && Object.keys(value).length > 0;
+}
+
 function arrayBufferToBase64(value: ArrayBuffer) {
   let binary = "";
   const bytes = new Uint8Array(value);
@@ -449,7 +455,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
             }
           : undefined;
 
-      if (mergedEnv) {
+      if (hasEnvOverrides(mergedEnv)) {
         processOptions.env = mergedEnv;
       }
 

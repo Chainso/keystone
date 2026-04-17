@@ -407,8 +407,24 @@ describe("RunWorkflow compile routing", () => {
       throw new Error("Expected the task fanout call to include one task.");
     }
 
+    const statusMetadata = mocked.updateSessionStatus.mock.calls.at(-1)?.[1]?.metadata;
+
     expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
     expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
+    expect(statusMetadata).toMatchObject({
+      project: {
+        projectId: "project-fixture",
+        projectKey: "fixture-demo-project",
+        displayName: "Fixture Demo Project",
+        componentKeys: ["demo-target"],
+        envVarNames: ["KEYSTONE_FIXTURE_PROJECT"],
+        ruleSet: {
+          reviewInstructions: ["Review the result."],
+          testInstructions: ["Run fixture tests."]
+        },
+        componentRuleOverrides: []
+      }
+    });
     expect(fanoutCall.params).toMatchObject({
       taskId: persistedTask.taskId,
       project: {
@@ -434,6 +450,58 @@ describe("RunWorkflow compile routing", () => {
       finalStatus: "archived",
       runSummaryArtifactRefId: "run-summary-artifact"
     });
+  });
+
+  it("fails clearly when multiple executable project components leave compile target selection ambiguous", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+
+    mocked.getProject.mockResolvedValueOnce({
+      tenantId: "tenant-fixture",
+      projectId: "project-fixture",
+      projectKey: "fixture-demo-project",
+      displayName: "Fixture Demo Project",
+      description: "Fixture project",
+      ruleSet: {
+        reviewInstructions: ["Review the result."],
+        testInstructions: ["Run fixture tests."]
+      },
+      components: [
+        {
+          componentKey: "demo-target",
+          displayName: "Demo Target",
+          kind: "git_repository",
+          config: {
+            localPath: "./fixtures/demo-target",
+            defaultRef: "main"
+          },
+          metadata: {}
+        },
+        {
+          componentKey: "docs",
+          displayName: "Docs",
+          kind: "git_repository",
+          config: {
+            gitUrl: "https://github.com/example/docs.git",
+            defaultRef: "main"
+          },
+          metadata: {}
+        }
+      ],
+      envVars: [],
+      integrationBindings: [],
+      metadata: {},
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    } as never);
+
+    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
+      /requires exactly one compile target until explicit project compile selection exists/
+    );
+    expect(mocked.compileRunPlan).not.toHaveBeenCalled();
+    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
+    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
   });
 
   it("rejects persisted live compile plans when the task no longer matches the approved fixture task shape", async () => {

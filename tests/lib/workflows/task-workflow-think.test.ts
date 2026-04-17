@@ -63,7 +63,7 @@ const mocked = vi.hoisted(() => {
     loadTaskHandoffArtifact: vi.fn(async () => JSON.parse(JSON.stringify(handoff))),
     getTaskSessionStub: vi.fn(() => ({
       initialize: vi.fn(async () => undefined),
-      ensureWorkspace: vi.fn(async () => ({
+      ensureWorkspace: vi.fn(async (input: { env?: Record<string, string> }) => ({
         sandboxId: "sandbox-123",
         workspace: {
           workspaceId: "workspace-123",
@@ -102,7 +102,10 @@ const mocked = vi.hoisted(() => {
               headSha: "def456"
             }
           ],
-          agentBridge: JSON.parse(JSON.stringify(bridge))
+          agentBridge: {
+            ...JSON.parse(JSON.stringify(bridge)),
+            environment: input.env
+          }
         }
       })),
       preserveForInspection: vi.fn(async () => undefined),
@@ -293,6 +296,7 @@ type RunImplementerTurnCall = {
     targets: {
       workspaceRoot: string;
     };
+    environment?: Record<string, string> | undefined;
   };
   mockModelPlan?: unknown[] | undefined;
 };
@@ -377,6 +381,9 @@ describe("TaskWorkflow Think runtime", () => {
       agentBridge: {
         targets: {
           workspaceRoot: "/workspace/runs/run-123/tasks/task-live-implementation"
+        },
+        environment: {
+          KEYSTONE_FIXTURE_PROJECT: "1"
         }
       }
     });
@@ -385,8 +392,8 @@ describe("TaskWorkflow Think runtime", () => {
     expect(call?.prompt).toContain("Task ID: task-live-implementation");
     expect(call?.prompt).toContain("Depends on: none");
     expect(call?.prompt).toContain("Project: Fixture Demo Project (fixture-demo-project)");
-    expect(call?.prompt).toContain("Project review instructions:");
-    expect(call?.prompt).toContain("Component-specific rule overrides:");
+    expect(call?.prompt).toContain("Summarize the implementation result before handoff.");
+    expect(call?.prompt).toContain("Focus on app code paths.");
     expect(call?.prompt).toContain("Projected decision_package, run_plan, and task_handoff artifacts");
     expect(mocked.createArtifactRef).toHaveBeenCalledWith(
       expect.any(Object),

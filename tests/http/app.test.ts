@@ -399,6 +399,38 @@ describe("app", () => {
     );
   });
 
+  it("returns project_not_found when the requested project is missing", async () => {
+    mocked.getProject.mockResolvedValueOnce(undefined as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          projectId: "project-missing",
+          decisionPackage: {
+            localPath: "./fixtures/demo-decision-package/decision-package.json"
+          }
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "project_not_found",
+        message: "Project project-missing was not found."
+      }
+    });
+    expect(mocked.runWorkflowCreate).not.toHaveBeenCalled();
+  });
+
   it("keeps invalid run payloads on the existing non-project error path", async () => {
     const response = await app.request(
       "http://example.com/v1/runs",
