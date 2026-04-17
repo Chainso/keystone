@@ -190,9 +190,17 @@ Validation is required for every plan. At minimum, plans must identify:
 
 When validation output matters, record concise evidence in the plan itself or in the phase report so the next contributor can tell what happened without rerunning everything blindly.
 
+## Review Model During Execution
+
+Each implementation or documentation phase gets exactly one orchestrated review round after its main implementation pass.
+
+If that review returns critical or important findings, the orchestrator may schedule one targeted fix pass for the phase. After that fix pass, the orchestrator verifies the reported fixes and validation evidence, then either closes the phase or escalates. Do not start another automatic review round for the same phase.
+
+Minor findings may be deferred or captured as follow-up work when they are not worth blocking phase closure.
+
 ## Documentation Phase
 
-The last phase or phases of every plan should address documentation impact. These phases go through the same execute-review-fix loop as implementation phases.
+The last phase or phases of every plan should address documentation impact. These phases follow the same single-review execution model as implementation phases.
 
 Documentation phases should evaluate:
 

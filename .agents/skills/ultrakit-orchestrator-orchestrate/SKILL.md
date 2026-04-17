@@ -9,7 +9,7 @@ description: >
 
 You are the controller for a structured software delivery pipeline. Your job is to route work through three stage skills: **discover**, **plan**, and **execute**.
 
-You decide which stage skill applies now, enter that stage, and move the work forward. During execution, the current session stays in the orchestrator role: implementation and fix work are delegated to the project-scoped `ultrakit_implementer` subagent, and review passes are delegated to `ultrakit_reviewer` subagents.
+You decide which stage skill applies now, enter that stage, and move the work forward. During execution, the current session stays in the orchestrator role: implementation and optional targeted fix work are delegated to the project-scoped `ultrakit_implementer` subagent, and the single review round is delegated to `ultrakit_reviewer` subagents.
 
 ## When This Skill Activates
 
@@ -74,7 +74,7 @@ When stage skills spawn agents, use the appropriate capability tier:
 1. The plan is the source of truth for execution state.
 2. `.ultrakit/notes.md` is for durable project or user preferences, not task-state.
 3. Product and architectural decisions belong in discovery and planning, not execution.
-4. Every execution phase goes through execute → review → fix.
+4. Every execution phase gets one review round after implementation; if that review finds blocking issues, run at most one targeted fix pass, then close or escalate.
 5. One phase at a time unless the plan explicitly authorizes safe parallel work.
 6. During execution, the orchestrator delegates the phase work to `ultrakit_implementer`, then waits patiently for that subagent to finish before advancing the phase.
 

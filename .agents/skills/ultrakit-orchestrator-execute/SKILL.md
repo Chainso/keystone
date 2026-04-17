@@ -1,19 +1,20 @@
 ---
 name: ultrakit:orchestrator:execute
 description: >
-  Execution stage for ultrakit. Runs one plan phase at a time through the
-  execute-review-fix loop until the plan is complete and archived.
+  Execution stage for ultrakit. Runs one plan phase at a time through
+  implementation, one review round, and an optional targeted fix pass until
+  the plan is complete and archived.
 ---
 
 # Execution Stage
 
-You are in the execution stage of the pipeline. The plan is written and approved. Now execute it phase by phase using the execute-review-fix loop.
+You are in the execution stage of the pipeline. The plan is written and approved. Now execute it phase by phase using a single-review execution flow.
 
-You are the execution-stage orchestrator. You do not implement phase changes in this session. You delegate implementation and fix passes to the project-scoped `ultrakit_implementer` subagent, use `ultrakit_reviewer` subagents for independent review, and keep the pipeline moving.
+You are the execution-stage orchestrator. You do not implement phase changes in this session. You delegate implementation and one optional targeted fix pass to the project-scoped `ultrakit_implementer` subagent, use `ultrakit_reviewer` subagents for independent review, and keep the pipeline moving.
 
 Read `.ultrakit/notes.md` before managing phase execution. Use it for durable project or user preferences, not phase state.
 
-## The Execute-Review-Fix Loop
+## The Single-Review Execution Flow
 
 For each phase in the plan:
 
@@ -23,12 +24,14 @@ For each phase in the plan:
 ├─ WAIT: stay in the orchestrator role and wait for the subagent to finish
 │   ↓
 ├─ REVIEW: parallel `ultrakit_reviewer` subagents on gpt-5.4-mini
+│          exactly one review round per phase
 │   ↓
-├─ FIX: spawn `ultrakit_implementer` for a fix pass if reviews find blocking issues
+├─ FIX: spawn `ultrakit_implementer` for one targeted fix pass if reviews find
+│      blocking issues
 │   ↓
 ├─ WAIT: stay in the orchestrator role and wait for the fix subagent to finish
 │   ↓
-└─ Loop REVIEW → FIX until reviews come back clean
+└─ CLOSE: verify the review or fix outcome, then advance or escalate
 ```
 
 ### Step 1: Prepare the Handoff
@@ -119,11 +122,11 @@ Collect all review reports. Categorize findings:
 - **Important**: Should be fixed. Missing test coverage, code quality issues, integration problems.
 - **Minor**: Nice to fix but not blocking. Style issues, naming suggestions, documentation gaps.
 
-If all reviews come back clean (no critical or important findings), the phase is complete. Move to Step 7.
+If the review round comes back clean (no critical or important findings), the phase is complete. Move to Step 7.
 
 ### Step 6: Apply Fixes via Subagent
 
-If there are critical or important findings, address them by spawning `ultrakit_implementer` for a fix pass.
+If there are critical or important findings, address them by spawning `ultrakit_implementer` for the one allowed fix pass.
 
 The fix-subagent brief should use:
 
@@ -135,13 +138,18 @@ The fix-subagent brief should use:
 6. The same compatibility constraints and known baseline failures from the phase handoff
 7. A separate fix commit when changes are required
 
-Once the fix subagent is launched, wait patiently for it to finish rather than taking over the fix locally. After the fix pass completes, return to Step 4 (review again). The review-fix loop continues until reviews come back clean.
+Once the fix subagent is launched, wait patiently for it to finish rather than taking over the fix locally. After the fix pass completes, do not launch another review round automatically. Instead, verify that:
 
-To prevent infinite loops: if the same finding persists after two fix attempts, escalate to the user.
+1. the blocking findings were addressed or explicitly explained,
+2. the fix stayed within the phase scope,
+3. the required validation commands were rerun or blocker evidence was recorded,
+4. the plan and `Phase Handoff` reflect the final state.
+
+If the fix pass credibly resolves the blocking findings, move to Step 7. If blocking issues remain unresolved or the fix pass introduces new uncertainty that you cannot clear from the evidence, escalate to the user instead of looping.
 
 ### Step 7: Close the Phase
 
-When reviews are clean:
+When the review is clean, or the one allowed fix pass has been verified:
 
 1. Verify the plan's Phase Handoff has accurate `Status`, `Completion Notes`, and `Next Starter Context`.
 2. Update the plan's `Progress` section if you did not already.
@@ -150,7 +158,7 @@ When reviews are clean:
 
 ### Step 8: Final Documentation Phase(s)
 
-The last phase(s) in the plan should address documentation. These go through the same execute-review-fix loop. For documentation phases, `ultrakit_implementer` should:
+The last phase(s) in the plan should address documentation. These go through the same single-review execution flow. For documentation phases, `ultrakit_implementer` should:
 
 1. Evaluate whether developer documentation needs updating (architecture changes, contract changes, component boundary shifts, key design decisions)
 2. Evaluate whether user-facing documentation needs updating (behavior changes, new features, configuration changes)
@@ -188,8 +196,8 @@ If execution is interrupted mid-phase:
 
 1. **Do not implement or fix in the orchestrator session.** Execution work belongs to spawned `ultrakit_implementer` subagents.
 2. **Wait patiently for subagents.** Once a subagent owns a phase pass, do not duplicate its work locally.
-3. **Always review.** Every phase gets all five review dimensions, and every `ultrakit_reviewer` subagent uses `gpt-5.4-mini`.
-4. **Fix loops have a limit.** Two fix attempts per finding, then escalate.
+3. **Always review.** Every phase gets exactly one review round across all five review dimensions, and every `ultrakit_reviewer` subagent uses `gpt-5.4-mini`.
+4. **At most one targeted fix pass.** If blocking issues remain after that pass, escalate instead of starting another review cycle.
 5. **The plan stays current.** If reality diverges from the plan, update the plan.
 6. **One phase at a time.** Unless the plan explicitly authorizes parallel execution with disjoint scope.
 7. **Finish the phase, not just the read-first pass.** A phase is not complete until implementation, validation, plan updates, review cleanup, and commit creation are done unless a concrete blocker stops progress.

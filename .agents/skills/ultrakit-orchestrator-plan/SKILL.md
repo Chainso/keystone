@@ -95,4 +95,4 @@ Get explicit approval before moving to execution. The user should understand wha
 
 ## Transition to Execution
 
-Once the user approves the plan, use `ultrakit:orchestrator:execute` and begin the execute-review-fix loop.
+Once the user approves the plan, use `ultrakit:orchestrator:execute` and begin the single-review execution flow.
