@@ -31,9 +31,9 @@ Follow the plan contract. Every section marked as required must be present. Key 
 
 **Backward Compatibility**: Record what you resolved during discovery. Explicit statement of whether backward compat is required and what the constraints are.
 
-**Design Decisions**: Record every architectural and pattern decision from discovery. Each entry needs: the decision, the rationale, alternatives considered, and the date. These are the decisions that constrain workers. Workers should never need to revisit these.
+**Design Decisions**: Record every architectural and pattern decision from discovery. Each entry needs: the decision, the rationale, alternatives considered, and the date. These are the decisions that constrain execution subagents. Execution subagents should never need to revisit these.
 
-**Context and Orientation**: Write this for someone with zero context. Name the exact files, modules, and patterns that matter. If a worker needs to understand something to do their job, it goes here.
+**Context and Orientation**: Write this for someone with zero context. Name the exact files, modules, and patterns that matter. If an execution subagent needs to understand something to do its job, it goes here.
 
 **Plan of Work**: Describe the sequence in prose. This is the narrative of what will happen and why, in order.
 
@@ -59,23 +59,23 @@ Common phase patterns:
 
 ### 4. Write Phase Handoffs
 
-For each phase, write a `Phase Handoff` subsection. This is the durable worker brief. The plan contract specifies the required fields:
+For each phase, write a `Phase Handoff` subsection. This is the durable subagent brief. The plan contract specifies the required fields:
 
 1. `Goal` — one sentence, what this phase delivers
 2. `Scope Boundary` — what is in scope and explicitly what is NOT
-3. `Read First` — exact files the worker should read before coding
+3. `Read First` — exact files the implementation subagent should read before coding
 4. `Files Expected To Change` — specific file paths
 5. `Validation` — exact commands to run and what success looks like
-6. `Plan / Docs To Update` — which plan sections the worker must update
-7. `Deliverables` — what the worker must produce
+6. `Plan / Docs To Update` — which plan sections the implementation subagent must update
+7. `Deliverables` — what the implementation subagent must produce
 8. `Commit Expectation` — commit subject line
-9. `Known Constraints / Baseline Failures` — what the worker should expect to fail or work around
+9. `Known Constraints / Baseline Failures` — what the implementation subagent should expect to fail or work around
 
-Make handoffs prescriptive. The worker should be able to execute from the handoff alone without making design decisions. If a handoff requires the worker to choose between approaches, the plan is not detailed enough — resolve it now.
+Make handoffs prescriptive. The implementation subagent should be able to execute from the handoff alone without making design decisions. If a handoff requires the subagent to choose between approaches, the plan is not detailed enough — resolve it now.
 
 ### 5. Run a Baseline
 
-Before execution begins, run the project's broad test, lint, and build commands once. Record known pre-existing failures in the plan so workers can distinguish regressions from baseline noise.
+Before execution begins, run the project's broad test, lint, and build commands once. Record known pre-existing failures in the plan so execution subagents can distinguish regressions from baseline noise.
 
 ### 6. Register the Plan
 

@@ -2,7 +2,7 @@
 
 This document is the canonical source for what an execution plan must contain and how it must be maintained.
 
-The orchestrator skill reads this contract before creating or revising any plan. Worker skills read it before executing any phase. If a skill and this contract disagree, this contract wins.
+The orchestrator skill reads this contract before creating or revising any plan. Execution subagents read it before executing any phase. If a skill or subagent brief and this contract disagree, this contract wins.
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Each phase must be completable by a single agent within its context window. This
 
 If a phase requires reading more files, making more changes, or running more commands than a single agent can manage in one session, the phase is too large and must be split.
 
-The orchestrator is responsible for sizing phases correctly during planning. Each phase should be scoped so one spawned implementation worker can complete it end to end. If a worker discovers mid-execution that a phase is too large, it should complete as much as possible, update the plan with what remains, and report back to the orchestrator for re-planning.
+The orchestrator is responsible for sizing phases correctly during planning. Each phase should be scoped so one spawned implementation subagent can complete it end to end. If a subagent discovers mid-execution that a phase is too large, it should complete as much as possible, update the plan with what remains, and report back to the orchestrator for re-planning.
 
 ## Repository Workflow
 
@@ -58,9 +58,9 @@ State whether backward compatibility is required for this work and why. If it is
 
 Record architectural and pattern decisions made during planning. Each entry must include the decision, the rationale, alternatives considered, and the date.
 
-These must be resolved BEFORE execution begins. They include: technology choices, design patterns, approach decisions, API contracts, data models, and anything that constrains how workers implement phases.
+These must be resolved BEFORE execution begins. They include: technology choices, design patterns, approach decisions, API contracts, data models, and anything that constrains how execution subagents implement phases.
 
-If a worker needs to make a design-level decision during execution, it should escalate to the orchestrator rather than recording it here. A worker making design decisions is a sign that the plan was not detailed enough.
+If an execution subagent needs to make a design-level decision during execution, it should escalate to the orchestrator rather than recording it here. A subagent making design decisions is a sign that the plan was not detailed enough.
 
 ### Execution Log
 
@@ -145,7 +145,7 @@ When you make a granular implementation choice, update `Execution Log`.
 
 When a phase or the full plan closes, update `Outcomes & Retrospective`.
 
-When a phase's worker brief changes or new resume context appears, update that phase's `Phase Handoff` subsection.
+When a phase's subagent brief changes or new resume context appears, update that phase's `Phase Handoff` subsection.
 
 If a design choice changes the meaning of another section, update that section too. Do not leave the plan internally inconsistent.
 
@@ -157,7 +157,7 @@ Default to one phase in progress at a time. If phases can safely run in parallel
 
 Prototype or spike phases are acceptable when they reduce uncertainty. Label them clearly as prototyping, define the proof you need, and state the conditions for promoting or discarding the prototype.
 
-For any multi-phase plan, each phase must include a `Phase Handoff` subsection. Treat this as the durable worker brief for that phase. The orchestrator should be able to hand this subsection to a spawned implementation or fix worker without relying on hidden chat context. A controller prompt may restate or compress it, but the prompt is not the canonical source of truth; the checked-in plan is.
+For any multi-phase plan, each phase must include a `Phase Handoff` subsection. Treat this as the durable subagent brief for that phase. The orchestrator should be able to hand this subsection to a spawned implementation or fix subagent without relying on hidden chat context. A controller prompt may restate or compress it, but the prompt is not the canonical source of truth; the checked-in plan is.
 
 Each `Phase Handoff` subsection must include, at minimum:
 

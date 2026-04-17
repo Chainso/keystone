@@ -2,7 +2,8 @@
 name: ultrakit:init
 description: >
   Initialize ultrakit in the current project. Creates the .ultrakit directory
-  with execution plans and developer docs scaffolding. Run this
+  with execution plans and developer docs scaffolding, and installs the default
+  ultrakit subagent configs under `.codex/agents/`. Run this
   once per project to set up the ultrakit structure.
 ---
 
@@ -14,6 +15,6 @@ Initialize ultrakit in the current project by running the init script:
 bash .agents/skills/ultrakit-init/init.sh
 ```
 
-The script checks if `.ultrakit/` already exists in the project root. If it does, it reports that ultrakit is already initialized. Otherwise, it copies the starter structure from this skill's `scaffold/` directory into `.ultrakit/` at the project root.
+The script checks if `.ultrakit/` already exists in the project root. If it does, it reports that ultrakit is already initialized. Otherwise, it copies the starter structure from this skill's `scaffold/` directory into `.ultrakit/` at the project root and installs the default `ultrakit_implementer` and `ultrakit_reviewer` agent configs into `.codex/agents/`.
 
 Do not run this skill if `.ultrakit/` already exists unless the user explicitly wants to reinitialize.
