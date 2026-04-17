@@ -103,6 +103,11 @@ Backward compatibility with arbitrary local repository ingestion is not required
   **Decision:** Tighten the temporary live-compile compatibility shim so it only canonicalizes plans that still match the approved decision-package id plus at least one task identifier anchor (`taskId` or `title`), and align the operator-facing live demo contract with the new Phase 2 compile proof.  
   **Rationale:** The prior shim still accepted arbitrary single-task output by array position, and the scripts/tests were still describing the pre-Phase-2 live promise instead of the current live-compile proof with the remaining Phase 3 task-execution seam.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 2 Third Fix Pass  
+  **Decision:** Preserve existing run-session metadata during finalization, require live compile output to keep the approved task ids and translatable dependencies before any artifact write, and extend tests around compile failure semantics plus the live CLI request body.  
+  **Rationale:** Archived run summaries must retain `runtime` / `options` so `demo:validate` can recover the actual Think contract, and the temporary Phase 2 compatibility shim needed to fail closed instead of accepting title-only matches or silently dropping bad `dependsOn` edges.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery decisions resolved in conversation: no new `Thread`/`Lease` primitives, no HITL on the happy path, and keep the first proof fixture-scoped.
@@ -115,6 +120,7 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - [x] 2026-04-17 Phase 2: Route `thinkMode=live` through live compile and compiled handoffs instead of deterministic fixture compile.
 - [x] 2026-04-17 Phase 2 fix pass: canonicalize live compile task shape onto the approved decision-package contract and deepen persisted compile-artifact coverage.
 - [x] 2026-04-17 Phase 2 second fix pass: require a meaningful live-compile shape match before canonicalization, cover persisted-plan guard branches more directly, and update the live demo contract wording to the Phase 2 compile proof.
+- [x] 2026-04-17 Phase 2 third fix pass: preserve archived runtime/options metadata, fail closed on ambiguous live compile output, and deepen compile failure plus live CLI request coverage.
 - [ ] Phase 3: Generalize the Think task path from the fixture greeting gate to compiled task handoffs on the happy path.
 - [ ] Phase 4: Revalidate the live full-workflow demo, update docs, and archive the plan.
 
@@ -136,13 +142,16 @@ Backward compatibility with arbitrary local repository ingestion is not required
 - **2026-04-17:** After the Phase 2 fix pass, repo-wide validation remains clean: `npm run typecheck` and `npm run test` pass, with `npm run test` now reporting `24 passed | 1 skipped` test files and `77 passed | 3 skipped` tests.
 - **2026-04-17:** The Phase 2 compatibility shim still needed one more tightening pass: array-position fallback was too permissive for the single-task fixture demo, so the guard now requires the live compile output to preserve the approved decision-package id and at least one matching task anchor (`taskId` or `title`) before canonicalization.
 - **2026-04-17:** After the Phase 2 second fix pass, repo-wide validation remains clean: `npm run typecheck` and `npm run test` pass, with `npm run test` now reporting `24 passed | 1 skipped` test files and `81 passed | 3 skipped` tests. The host-local `demo:run` rerun was not feasible in this session because no local Worker was listening on `127.0.0.1:8787`.
+- **2026-04-17:** Archived run summaries were losing `runtime` and `options` because `finalizeRun` replaced the run-session metadata on archive instead of merging it; preserving the existing metadata is enough for `demo:validate` to recover the actual Think contract from a real archived run.
+- **2026-04-17:** The temporary Phase 2 compatibility shim still was not fail-closed after the second fix pass: title-only task matching and dropped `dependsOn` entries could still reshape incompatible live compile output instead of rejecting it before `run_plan` / `task_handoff` writes.
+- **2026-04-17:** After the Phase 2 third fix pass, repo-wide validation remains clean: `npm run typecheck` and `npm run test` pass, with `npm run test` now reporting `25 passed | 1 skipped` test files and `84 passed | 3 skipped` tests. The host-local `demo:run` command in this session still fails immediately with `connect ECONNREFUSED 127.0.0.1:8787` because no local Worker is listening.
 
 ## Outcomes & Retrospective
 
 This section will be completed as phases land. The target retrospective for the finished plan is:
 
 - Phase 1 restored a trustworthy lint baseline, made the demo/docs explicit that the current live Think path is still fixture-backed in this phase, and added direct automated coverage for the operator-facing scripted, deterministic Think mock, and live Think CLI contracts.
-- Phase 2 removed the hidden `think/live` fixture-compile bypass, added compile-mode metadata that distinguishes live versus fixture compile artifacts/events, tightened the temporary live-compile guard so canonicalization still requires approved decision-package/task anchors, aligned the operator-facing live demo contract with the real compile proof, and proved a host-local live run archived with model-generated `run_plan` and `task_handoff` artifacts.
+- Phase 2 removed the hidden `think/live` fixture-compile bypass, added compile-mode metadata that distinguishes live versus fixture compile artifacts/events, preserved archived run-session metadata so real run summaries still expose `runtime` / `options`, tightened the temporary live-compile guard so Phase 2 now fails closed unless the live output keeps approved task ids plus translatable dependencies, aligned the operator-facing live demo contract with the real compile proof, and proved a host-local live run archived with model-generated `run_plan` and `task_handoff` artifacts.
 - the live Think demo proves the workflow from run input to archived run summary,
 - the mock Think demo remains available for deterministic validation,
 - the repo-wide validation baseline is cleaner and easier to trust, and
@@ -283,18 +292,24 @@ Out of scope: general local file ingestion redesign, arbitrary repository suppor
 `src/workflows/RunWorkflow.ts`  
 `src/keystone/compile/plan-run.ts`  
 `src/http/handlers/runs.ts`  
+`src/keystone/integration/finalize-run.ts`  
 `src/lib/runs/options.ts`  
 `tests/http/app.test.ts`  
-`tests/lib/workflow-ids.test.ts`
+`tests/lib/compile-plan-run.test.ts`  
+`tests/lib/workflows/run-workflow-compile.test.ts`  
+`tests/scripts/demo-contracts.test.ts`
 
 **Files Expected To Change**  
 `src/workflows/RunWorkflow.ts`  
 `src/keystone/compile/plan-run.ts`  
+`src/keystone/integration/finalize-run.ts`  
 `src/lib/runs/options.ts`  
 `src/http/handlers/runs.ts`  
 `tests/http/app.test.ts`  
 `tests/lib/compile-plan-run.test.ts`  
-`tests/lib/workflows/**`
+`tests/lib/finalize-run.test.ts`  
+`tests/lib/workflows/**`  
+`tests/scripts/demo-contracts.test.ts`
 
 **Validation**  
 Run from repo root:
@@ -330,15 +345,17 @@ Completed 2026-04-17.
 **Completion Notes**  
 - `RunWorkflow` now routes the fixture-scoped `runtime=think` plus `thinkMode=live` happy path through `compileRunPlan`, while the preserved deterministic fixture compile shortcut only applies to `runtime=think` plus `thinkMode=mock`.
 - `src/lib/runs/options.ts` now exposes explicit live-versus-mock Think helpers so the workflow routing and live poll-window logic do not duplicate mode checks.
-- `src/keystone/compile/plan-run.ts` now stamps `compileMode` across compile session metadata, compile events, and artifact metadata for both live and fixture compile paths, and canonicalizes live compile task ids/titles only when the live output still preserves the approved decision-package id plus a matching task id or title anchor before artifacts are written.
+- `src/keystone/compile/plan-run.ts` now stamps `compileMode` across compile session metadata, compile events, and artifact metadata for both live and fixture compile paths, and Phase 2 now fails closed unless the live output preserves the approved decision-package id, the approved task ids, and only translatable `dependsOn` references before artifacts are written.
 - `src/workflows/RunWorkflow.ts` now validates the reloaded persisted live `run_plan` artifact against the current Phase 2 fixture gate before task fanout, so incompatible stored handoffs fail fast instead of reaching `TaskWorkflow`.
+- `src/keystone/integration/finalize-run.ts` now preserves existing run-session metadata when archiving, so archived run summaries keep the real `runtime` / `options` contract that `demo:validate` reads back from `/v1/runs/:runId`.
 - `tests/lib/workflows/run-workflow-compile.test.ts` now proves the live fanout consumes the persisted `run_plan` artifact rather than the raw compiler return value, while the mock path still calls `compileDemoFixtureRunPlan`, and rejects incompatible persisted live plans across the task-id, task-count, and decision-package guard branches before batch creation.
-- `tests/lib/compile-plan-run.test.ts` now asserts `compileMode` propagation across live and fixture compile session metadata, compile events, and artifact metadata, proves the live persisted `run_plan` / `task_handoff` JSON roundtrip stays canonicalized onto `task-greeting-tone`, and rejects live compile output that no longer matches the approved decision-package or task anchors.
-- `scripts/demo-run.ts`, `scripts/demo-validate.ts`, and `tests/scripts/demo-contracts.test.ts` now describe `runtime=think` plus `thinkMode=live` as the Phase 2 real-compile proof while Phase 3 remains the task-execution seam.
+- `tests/lib/compile-plan-run.test.ts` now asserts `compileMode` propagation across live and fixture compile session metadata, compile events, and artifact metadata, rejects title-only task matching plus unmappable `dependsOn` edges, and proves rejected live compile output leaves no persisted `run_plan` or `task_handoff` artifacts while still recording the expected failed-session and `compile.failed` semantics with `compileMode: "live"`.
+- `tests/lib/finalize-run.test.ts` and `tests/scripts/demo-contracts.test.ts` now lock the archived metadata preservation path and prove the live `demo:run` CLI POST sends `thinkMode=live` together with the preserved sandbox flag.
 - Host validation succeeded with `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run -- --stream-events=false`: the run archived with one each of `decision_package`, `run_plan`, `task_handoff`, `run_note`, and `run_summary`, emitted `compile.started` / `compile.completed` with `compileMode: "live"`, and persisted model-generated `run_plan` / `task_handoff` text rather than the deterministic fixture summary.
+- This fix pass did not repeat a successful host-local archive because `rtk env KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run -- --stream-events=false` currently fails immediately with `connect ECONNREFUSED 127.0.0.1:8787` when no local Worker is listening; the earlier successful Phase 2 host proof remains the last positive host validation.
 
 **Next Starter Context**  
-Phase 3 should leave the new live compile routing and compile-mode metadata intact, then remove the remaining `TaskWorkflow` fixture gate around `taskId === "task-greeting-tone"` plus the temporary Phase 2 live-compile canonicalization/fanout compatibility guard once compiled happy-path Think handoffs are accepted end to end.
+Phase 3 should leave the new live compile routing, compile-mode metadata, and archived run-session metadata preservation intact, then remove the remaining `TaskWorkflow` fixture gate around `taskId === "task-greeting-tone"` plus the temporary Phase 2 approved-task-id compatibility guard once compiled happy-path Think handoffs are accepted end to end.
 
 ### Phase 3: Execute compiled task handoffs with the Think runtime
 
@@ -599,6 +616,25 @@ compile.started payload.compileMode=live
 compile.completed payload.compileMode=live
 run_plan.summary="Make a small deterministic update to the greeting implementation, verify the fixture tests still pass, and capture evidence-ready outputs for later phases."
 task_handoff.task.summary="Update the greeting source file in a minimal, reviewable way and confirm the existing fixture behavior remains valid."
+```
+
+Phase 2 third fix pass captured on 2026-04-17:
+
+```text
+$ npm run typecheck
+> tsc --noEmit
+```
+
+```text
+$ npm run test
+Test Files  25 passed | 1 skipped (26)
+Tests  84 passed | 3 skipped (87)
+```
+
+```text
+$ KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run -- --stream-events=false
+TypeError: fetch failed
+[cause]: Error: connect ECONNREFUSED 127.0.0.1:8787
 ```
 
 Key current source limitations to remove:

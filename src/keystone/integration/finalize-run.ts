@@ -3,7 +3,7 @@ import { createArtifactRef } from "../../lib/db/artifacts";
 import { putArtifactJson } from "../../lib/artifacts/r2";
 import { runSummaryArtifactKey } from "../../lib/artifacts/keys";
 import { appendAndPublishRunEvent } from "../../lib/events/publish";
-import { updateSessionStatus } from "../../lib/db/runs";
+import { getSessionRecord, updateSessionStatus } from "../../lib/db/runs";
 import type { WorkerBindings } from "../../env";
 
 export interface FinalizeRunTaskResult {
@@ -60,11 +60,23 @@ export async function finalizeRun(
     throw new Error(`Run summary artifact ref could not be created for ${input.runId}.`);
   }
 
+  const runSession = await getSessionRecord(client, input.tenantId, input.runSessionId);
+
+  if (!runSession) {
+    throw new Error(`Run session ${input.runSessionId} could not be loaded during finalization.`);
+  }
+
+  const existingMetadata =
+    runSession.metadata && typeof runSession.metadata === "object"
+      ? (runSession.metadata as Record<string, unknown>)
+      : {};
+
   await updateSessionStatus(client, {
     tenantId: input.tenantId,
     sessionId: input.runSessionId,
     status: finalStatus,
     metadata: {
+      ...existingMetadata,
       runSummaryArtifactRefId: artifactRef.artifactRefId,
       successfulTasks: successfulTasks.length,
       failedTasks: failedTasks.length

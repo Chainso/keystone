@@ -181,10 +181,40 @@ function resolveDecisionTaskMatch(
   );
 
   if (exactTitleMatch) {
-    return exactTitleMatch;
+    throw new Error(
+      `Live compile returned task ${compiledTask.taskId} with approved title "${compiledTask.title}" but without preserving the approved task id ${exactTitleMatch.taskId}. Phase 2 requires task ids to remain stable.`
+    );
   }
 
   return null;
+}
+
+function canonicalizeDependsOn(
+  compiledTask: CompiledTaskPlan,
+  decisionTask: DecisionPackage["tasks"][number],
+  dependencyTaskIds: Map<string, string>
+) {
+  return Array.from(
+    new Set(
+      compiledTask.dependsOn.map((taskId) => {
+        const translatedTaskId = dependencyTaskIds.get(taskId);
+
+        if (!translatedTaskId) {
+          throw new Error(
+            `Live compile returned unsupported dependency ${taskId} for task ${compiledTask.taskId}. Phase 2 requires every dependsOn entry to preserve an approved task id.`
+          );
+        }
+
+        if (translatedTaskId === decisionTask.taskId) {
+          throw new Error(
+            `Live compile returned self-dependency ${taskId} for task ${compiledTask.taskId}. Phase 2 does not rewrite self-referential dependsOn entries.`
+          );
+        }
+
+        return translatedTaskId;
+      })
+    )
+  );
 }
 
 function canonicalizeCompiledPlan(
@@ -235,16 +265,7 @@ function canonicalizeCompiledPlan(
       ...compiledTask,
       taskId: decisionTask.taskId,
       title: decisionTask.title,
-      dependsOn: Array.from(
-        new Set(
-          compiledTask.dependsOn
-            .map((taskId) => dependencyTaskIds.get(taskId))
-            .filter(
-              (taskId): taskId is string =>
-                typeof taskId === "string" && taskId.length > 0 && taskId !== decisionTask.taskId
-            )
-        )
-      )
+      dependsOn: canonicalizeDependsOn(compiledTask, decisionTask, dependencyTaskIds)
     }))
   });
 }
@@ -381,8 +402,8 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
       messages: buildCompileMessages(input.repo, decisionPackage),
       temperature: 0
     });
-    // Keep the live compile text, but pin task ids/titles back to the approved
-    // decision-package contract until TaskWorkflow is generalized in Phase 3.
+    // Phase 2 still expects the approved fixture task ids. Keep the live compile
+    // prose, but fail closed unless the model preserves that task-id contract.
     const plan = canonicalizeCompiledPlan(
       parseStructuredChatCompletion(completion, compiledRunPlanSchema),
       decisionPackage
@@ -485,6 +506,10 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
         status: "failed",
         metadata: {
           ...(existingCompileSession.metadata ?? {}),
+          providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
+          providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
+          decisionPackageId: decisionPackage.decisionPackageId,
+          compileMode,
           errorMessage: error instanceof Error ? error.message : String(error)
         }
       });

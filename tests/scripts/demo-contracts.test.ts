@@ -419,6 +419,20 @@ describe("demo scripts", () => {
         "GET /v1/runs/run-live/events",
         "GET /v1/runs/run-live"
       ]);
+      expect(server.requests[0]).toMatchObject({
+        body: {
+          repo: {
+            localPath: "./fixtures/demo-target"
+          },
+          decisionPackage: {
+            localPath: "./fixtures/demo-decision-package/decision-package.json"
+          },
+          options: {
+            thinkMode: "live",
+            preserveSandbox: true
+          }
+        }
+      });
       expect(server.requests[0]?.headers["x-keystone-agent-runtime"]).toBe("think");
     } finally {
       await server.close();
