@@ -267,12 +267,18 @@ Compatibility is still required at the contract level:
 - [x] 2026-04-15 Phase 4 completed: sandbox image builds, Wrangler local dev starts with container bindings outside the Codex sandbox boundary, and `POST /internal/dev/sandbox-smoke` completes successfully with a sandboxed `npm test` run.
 - [x] 2026-04-15 Phase dependency clarified: live custom chat-completions integration should land before workflow implementation; security gating and approvals can remain after workflows.
 - [x] 2026-04-15 Provider-backed compile slice completed ahead of workflows: the local HTTP chat-completions client, compile artifact persistence, and authenticated `POST /internal/dev/compile-smoke` validation against `http://localhost:4001` are in place.
+- [x] 2026-04-15 Phase 5 execution started: workflow bindings, deterministic workflow ids, artifact-backed task fanout, and run finalization landed in the working tree.
+- [x] 2026-04-15 Phase 5 completed: `RunWorkflow` and `TaskWorkflow` now pass static validation, `POST /v1/runs` completes a real fixture-backed run to `archived`, and a fresh direct `npx wrangler workflows trigger run-workflow --local` instance also completes after the coordinator/bootstrap fixes.
+- [x] 2026-04-15 Phase 6 completed: outbound allow-list enforcement now gates the chat-completions backend, git-url repo inputs create durable approval requests and wait-event wiring, and targeted `npm run test:security` / `npm run test:workflows` validation is in place.
+- [x] 2026-04-16 Phase 6 follow-up fix completed: the live `gitUrl` approval path now reaches `paused_for_approval` and resumes on approval after removing per-request Hyperdrive client shutdown and dropping the incorrect implicit `main` branch fallback for unpinned git repos.
+- [ ] 2026-04-15 Phase 7 in progress: demo scripts and local runbook commands landed, but the new scripted live rerun was not completed because a host-side escalation refusal blocked an extra local HTTP validation call outside the repo sandbox.
+- [ ] 2026-04-15 Phase 8 in progress: architecture docs, local runbook, README, and `.ultrakit/notes.md` are updated, but the docs are not ready for final archive until the scripted demo flow is rerun exactly as documented.
 - [x] Phase 1: Scaffold the Worker project, local developer tooling, and deterministic fixture assets.
 - [x] Phase 2: Build the operational core: schema, DAL, kernel contracts, event model, and artifact storage helpers.
 - [x] Phase 3: Build the API surface, tenant guards, and realtime `RunCoordinatorDO`.
 - [x] Phase 4: Build `TaskSessionDO`, sandbox lifecycle management, and workspace/worktree handling.
-- [ ] Phase 5: Build `RunWorkflow` and `TaskWorkflow` with durable long-running execution and artifact persistence.
-- [ ] Phase 6: Add security gating, approval plumbing, and custom chat-completions compile behavior.
+- [x] Phase 5: Build `RunWorkflow` and `TaskWorkflow` with durable long-running execution and artifact persistence.
+- [x] Phase 6: Add security gating, approval plumbing, and custom chat-completions compile behavior.
 - [ ] Phase 7: Prove the end-to-end run, observability flow, and local runbook.
 - [ ] Phase 8: Update developer documentation, project notes, and milestone closeout evidence.
 
@@ -299,6 +305,11 @@ Compatibility is still required at the contract level:
 - **2026-04-15:** Sandbox IDs must stay DNS-safe after final truncation. A helper that slugifies components and then blindly slices the assembled ID can still produce a trailing `-`, which the Sandbox SDK rejects at runtime.
 - **2026-04-15:** In this environment, `wrangler dev` with container bindings succeeds when run outside the Codex sandbox boundary even though the same command fails inside it with `uv_interface_addresses returned Unknown system error 1`. The remaining Phase 4 issues were code-level, not platform-level.
 - **2026-04-15:** The local chat-completions backend is plain HTTP rather than HTTPS, and it streams SSE `data:` chat-completion chunks by default. A `stream: false` probe did not return a usable JSON payload within the same timeout window, so the M1 client should consume the streamed chunk format directly.
+- **2026-04-15:** The direct local workflow trigger path exercises a different bootstrap seam from the HTTP create-run path. `RunWorkflow` must initialize `RunCoordinatorDO` before the first published event, otherwise `npx wrangler workflows trigger run-workflow --local` errors even though the API-driven path appears healthy.
+- **2026-04-15:** The named session lifecycle is strict enough that the run session cannot skip `configured -> provisioning -> ready -> active`. The first live workflow proof surfaced this immediately.
+- **2026-04-15:** A host-side escalation refusal can block additional local HTTP validation calls even after the repo code is ready. That is separate from the Worker code and should be recorded explicitly instead of worked around indirectly.
+- **2026-04-16:** The `CONNECTION_ENDED` failure on the approval-gated `gitUrl` path was a real implementation bug, not just host instability. Ending the `postgres.js` client on Worker/Hyperdrive request paths can kill later awaited queries in the workflow step. Worker-scoped Hyperdrive clients should not call `sql.end()` on the normal request/workflow close path.
+- **2026-04-16:** Defaulting unpinned `gitUrl` repos to branch `main` is too strong for M1. For remote repos with no explicit `ref`, the sandbox checkout path should use the remote default branch instead of assuming `main`.
 
 ## Outcomes & Retrospective
 
@@ -339,6 +350,18 @@ Provider-backed compile slice outcome on 2026-04-15:
 - The repository now has a real local chat-completions client boundary in `src/lib/llm/chat-completions.ts`, a reusable compile service in `src/keystone/compile/plan-run.ts`, inline deterministic decision-package fixture data, and a dev-only `POST /internal/dev/compile-smoke` route for pre-workflow provider validation.
 - Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run dev`, `GET /v1/health -> 200`, and authenticated `POST /internal/dev/compile-smoke -> 200` against `http://localhost:4001/v1/chat/completions`, yielding a persisted run plan, one task handoff artifact, and compile usage metadata from the live provider.
 - Phase 5 can now start against the real compile contract instead of a placeholder seam. The remaining Phase 6 work is the security gating and approval plumbing after workflows land.
+
+Phase 5 outcome on 2026-04-15:
+
+- The repository now has real durable workflow entrypoints in `src/workflows/RunWorkflow.ts` and `src/workflows/TaskWorkflow.ts`, deterministic workflow/session ids, idempotent run-plan loading, task-handoff artifact loading, and run finalization with a persisted run-summary artifact.
+- Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npx wrangler workflows list --local`, a fresh direct `npx wrangler workflows trigger run-workflow --local` instance that completed successfully, and live local API proof showing `POST /v1/runs -> 202` followed by `GET /v1/runs/{id} -> archived` with `decision_package`, `run_plan`, `task_handoff`, `task_log`, and `run_summary` artifacts.
+- The workflow seam now survives the two live issues that surfaced during validation: strict session lifecycle enforcement and coordinator initialization order for direct local workflow triggers.
+
+Phase 6 outcome on 2026-04-15:
+
+- The repository now has explicit policy modules under `src/lib/security/`, a durable approval-request service under `src/lib/approvals/service.ts`, approval resolution that sends Workflow events back to `RUN_WORKFLOW`, and an allow-listed outbound check around the local chat-completions backend.
+- Validation completed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:security`, `npm run test:workflows`, and `npm run build`.
+- The remaining live gap is a rerun of the new approval-gated git-url path, which was blocked by a host-side escalation refusal unrelated to the repository code.
 
 ## Context and Orientation
 
@@ -749,10 +772,10 @@ Working `RunWorkflow` and `TaskWorkflow` entrypoints with durable long-command o
 The live compile integration is now available and should be consumed by Phase 5. Do not reintroduce a placeholder compile path unless the provider becomes unavailable and the blocker is explicitly recorded in this plan.
 
 **Status**  
-Not started.
+Completed on 2026-04-15.
 
 **Completion Notes**  
-None yet.
+Landed `RunWorkflow` and `TaskWorkflow`, deterministic workflow/session id helpers, task-contract loaders, run finalization, and `/v1/runs` workflow handoff. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npx wrangler workflows list --local`, a fresh direct `npx wrangler workflows trigger run-workflow --local` instance that reached `Completed`, and live local fixture proof showing `POST /v1/runs -> 202` followed by `GET /v1/runs/{id} -> archived` with five artifact kinds persisted.
 
 **Next Starter Context**  
 Keep step names deterministic and side effects inside step bodies or clearly idempotent helpers. This is the phase where replay mistakes become expensive.
@@ -815,10 +838,10 @@ Security policy enforcement, approval plumbing, and custom chat-completions inte
 Live provider validation depends on the custom chat-completions service being reachable at `http://localhost:4001`. The backend currently streams SSE chat-completion chunks, which the M1 client now consumes directly. There is intentionally no offline fallback path in M1.
 
 **Status**  
-In progress on 2026-04-15; the provider-backed compile slice is complete, while the remaining security gating and approval plumbing work is still pending.
+Completed on 2026-04-15.
 
 **Completion Notes**  
-Landed the plain-HTTP chat-completions client in `src/lib/llm/chat-completions.ts`, the reusable compile service in `src/keystone/compile/plan-run.ts`, inline deterministic decision-package fixture data, and the authenticated `/internal/dev/compile-smoke` route. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and live local smoke checks showing `/v1/health -> 200` and `/internal/dev/compile-smoke -> 200` against `http://localhost:4001/v1/chat/completions`, with one compiled task handoff artifact and provider token usage recorded. Security policy and approval-plumbing work remain for the rest of Phase 6.
+The provider-backed compile slice remained intact and Phase 6 added the remaining security edge: explicit outbound allow-list enforcement for chat completions, durable approval request creation, Workflow event delivery from approval resolution, and approval-aware repo policy for `gitUrl` inputs. Validation passed for `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:security`, `npm run test:workflows`, and `npm run build`. A fully scripted live rerun of the new approval-gated path was not completed because an extra host-side escalation request was refused outside the repository boundary.
 
 **Next Starter Context**  
 Phase 5 can start now and should consume the real compile service and artifact outputs from this slice. After workflows land, return here for explicit outbound-policy enforcement and approval-trigger plumbing. Do not let security behavior hide inside sandbox wrappers; keep policy evaluation explicit and observable in events so operators can tell why something was blocked.
@@ -884,10 +907,10 @@ Provider sequencing note:
 Do not attempt final Phase 7 proof until the provider-backed compile slice and the remaining Phase 6 security work have both landed. The workflow phase should already be consuming the real compile path by this point.
 
 **Status**  
-Not started.
+In progress on 2026-04-15.
 
 **Completion Notes**  
-None yet.
+Landed `scripts/run-local.ts`, `scripts/demo-run.ts`, and `scripts/demo-validate.ts`, and the live fixture run path has already been proven manually through the API and Wrangler workflow commands. The remaining gap is rerunning the exact scripted `demo:run` / `demo:validate` flow once the host allows another local HTTP validation command outside the sandbox boundary.
 
 **Next Starter Context**  
 Make the demo path easy to rerun. The point of this phase is not only green tests but a convincing operator proof that another contributor can reproduce quickly.
@@ -940,10 +963,10 @@ Durable architecture and runbook docs, updated project notes, and a plan ready f
 Do not archive the plan if the docs describe a flow that has not been rerun from the documented commands.
 
 **Status**  
-Not started.
+In progress on 2026-04-15.
 
 **Completion Notes**  
-None yet.
+Added `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, updated `README.md`, and refreshed `.ultrakit/notes.md` with project-specific operating constraints. Final archive should wait until the documented demo commands are rerun exactly as written.
 
 **Next Starter Context**  
 The docs need to reflect what actually shipped, not what the early design docs hoped might exist. Favor concrete commands, paths, and failure modes over aspirational prose.

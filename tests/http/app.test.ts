@@ -54,7 +54,8 @@ const mocked = vi.hoisted(() => {
     getApprovalRecord: vi.fn(async () => undefined),
     resolveApprovalRecord: vi.fn(async () => ({
       status: "approved",
-      resolvedAt: new Date("2026-04-14T00:00:02.000Z")
+      resolvedAt: new Date("2026-04-14T00:00:02.000Z"),
+      waitEventType: "approval.resolved.approval-1"
     })),
     getRunCoordinatorStub: vi.fn(() => ({
       initialize: vi.fn(async () => undefined),
@@ -123,6 +124,12 @@ const mocked = vi.hoisted(() => {
       close,
       db: {},
       sql: {}
+    })),
+    runWorkflowCreate: vi.fn(async () => ({
+      id: "run-workflow-instance"
+    })),
+    runWorkflowGet: vi.fn(async () => ({
+      sendEvent: vi.fn(async () => undefined)
     }))
   };
 });
@@ -170,6 +177,10 @@ const env = {
   KEYSTONE_CHAT_COMPLETIONS_MODEL: "gemini-3-flash-preview",
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
   KEYSTONE_DEV_TOKEN: "secret-dev-token",
+  RUN_WORKFLOW: {
+    create: mocked.runWorkflowCreate,
+    get: mocked.runWorkflowGet
+  } as unknown as Workflow<unknown>,
   RUN_COORDINATOR: {} as DurableObjectNamespace,
   SANDBOX: {} as DurableObjectNamespace,
   TASK_SESSION: {} as DurableObjectNamespace
@@ -182,6 +193,12 @@ describe("app", () => {
       close: vi.fn(async () => undefined),
       db: {},
       sql: {}
+    });
+    mocked.runWorkflowCreate.mockResolvedValue({
+      id: "run-workflow-instance"
+    });
+    mocked.runWorkflowGet.mockResolvedValue({
+      sendEvent: vi.fn(async () => undefined)
     });
   });
 
@@ -247,7 +264,8 @@ describe("app", () => {
       inputMode: {
         repo: "localPath",
         decisionPackage: "localPath"
-      }
+      },
+      workflowInstanceId: expect.any(String)
     });
   });
 
@@ -290,6 +308,40 @@ describe("app", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it("resolves approvals and signals the workflow instance", async () => {
+    mocked.getApprovalRecord.mockResolvedValueOnce({
+      approvalId: "approval-1",
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+      waitEventType: "approval.resolved.approval-1"
+    } as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/approvals/approval-1/resolve",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          resolution: "approved"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      approvalId: "approval-1",
+      runId: "run-123",
+      status: "approved"
+    });
+    expect(mocked.runWorkflowGet).toHaveBeenCalledTimes(1);
   });
 
   it("proxies the websocket route to the coordinator stub", async () => {

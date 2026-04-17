@@ -19,6 +19,10 @@ export interface DatabaseClient {
   close: () => Promise<void>;
 }
 
+interface CreateDatabaseClientOptions {
+  endOnClose?: boolean | undefined;
+}
+
 export function resolveDatabaseConnectionString(source: DatabaseConnectionSource) {
   if (source.connectionString) {
     return source.connectionString;
@@ -41,26 +45,38 @@ export function resolveDatabaseConnectionString(source: DatabaseConnectionSource
   );
 }
 
-export function createDatabaseClient(connectionString: string): DatabaseClient {
+export function createDatabaseClient(
+  connectionString: string,
+  options: CreateDatabaseClientOptions = {}
+): DatabaseClient {
   const sqlClient = postgres(connectionString, {
     max: 1,
     prepare: true
   });
+  const close =
+    options.endOnClose === false ? async () => undefined : () => sqlClient.end();
 
   return {
     connectionString,
     sql: sqlClient,
     db: drizzle(sqlClient, { schema }),
-    close: () => sqlClient.end()
+    close
   };
 }
 
-export function createDatabaseClientFromSource(source: DatabaseConnectionSource) {
-  return createDatabaseClient(resolveDatabaseConnectionString(source));
+export function createDatabaseClientFromSource(
+  source: DatabaseConnectionSource,
+  options?: CreateDatabaseClientOptions | undefined
+) {
+  return createDatabaseClient(resolveDatabaseConnectionString(source), options);
 }
 
 export function createWorkerDatabaseClient(env: Pick<WorkerBindings, "HYPERDRIVE">) {
   return createDatabaseClientFromSource({
     HYPERDRIVE: env.HYPERDRIVE
+  }, {
+    // Hyperdrive owns the underlying pool. Ending the client per request can
+    // race later awaited queries and trigger CONNECTION_ENDED in Workers.
+    endOnClose: false
   });
 }

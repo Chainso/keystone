@@ -81,10 +81,17 @@ async function ensureGitRepository(
     return;
   }
 
-  await session.gitCheckout(source.repoUrl, {
-    branch: source.repoRef ?? "main",
-    targetDir: repositoryPath
-  });
+  await session.gitCheckout(
+    source.repoUrl,
+    source.repoRef
+      ? {
+          branch: source.repoRef,
+          targetDir: repositoryPath
+        }
+      : {
+          targetDir: repositoryPath
+        }
+  );
 }
 
 export async function ensureWorkspaceMaterialized(
@@ -100,8 +107,8 @@ export async function ensureWorkspaceMaterialized(
   const repositoryPath = buildRepositoryPath(workspaceRoot);
   const worktreePath = buildTaskWorktreePath(workspaceRoot, input.taskId);
   const branchName = buildTaskBranchName(input.taskId);
-  const repoRef = input.source.repoRef ?? "main";
-  const baseRef = input.source.baseRef ?? repoRef;
+  const repoRef = input.source.type === "inline" ? input.source.repoRef ?? "main" : input.source.repoRef ?? "HEAD";
+  const baseRef = input.source.type === "inline" ? input.source.baseRef ?? repoRef : input.source.baseRef ?? "HEAD";
 
   await session.mkdir(`${workspaceRoot}/tasks`, { recursive: true });
 

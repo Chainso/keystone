@@ -38,7 +38,9 @@ export class RunCoordinatorDO extends DurableObject<WorkerBindings> {
   }
 
   async initialize(input: InitializeInput) {
-    if (!this.snapshot) {
+    const existingSnapshot = await this.loadSnapshot();
+
+    if (!existingSnapshot) {
       this.snapshot = {
         tenantId: input.tenantId,
         runId: input.runId,
@@ -55,7 +57,7 @@ export class RunCoordinatorDO extends DurableObject<WorkerBindings> {
   }
 
   async publish(input: PublishInput) {
-    const snapshot = this.requireSnapshot();
+    const snapshot = await this.requireSnapshot();
     const timestamp = input.timestamp ?? new Date().toISOString();
     const event: PublishedEvent = {
       eventType: input.eventType,
@@ -82,14 +84,16 @@ export class RunCoordinatorDO extends DurableObject<WorkerBindings> {
   }
 
   async getSnapshot() {
-    return this.snapshot;
+    return this.loadSnapshot();
   }
 
   async fetch(request: Request) {
+    const snapshot = await this.loadSnapshot();
+
     if (request.headers.get("Upgrade") !== "websocket") {
       return Response.json(
         {
-          snapshot: this.snapshot
+          snapshot
         },
         { status: 200 }
       );
@@ -116,7 +120,7 @@ export class RunCoordinatorDO extends DurableObject<WorkerBindings> {
     server.send(
       JSON.stringify({
         type: "run.snapshot",
-        snapshot: this.snapshot
+        snapshot
       })
     );
 
@@ -126,12 +130,14 @@ export class RunCoordinatorDO extends DurableObject<WorkerBindings> {
     });
   }
 
-  private requireSnapshot() {
-    if (!this.snapshot) {
+  private async requireSnapshot() {
+    const snapshot = await this.loadSnapshot();
+
+    if (!snapshot) {
       throw new Error("RunCoordinatorDO was not initialized before use.");
     }
 
-    return this.snapshot;
+    return snapshot;
   }
 
   private async updateSocketCount() {
@@ -153,6 +159,17 @@ export class RunCoordinatorDO extends DurableObject<WorkerBindings> {
     }
 
     await this.ctx.storage.put(SNAPSHOT_STORAGE_KEY, this.snapshot);
+  }
+
+  private async loadSnapshot() {
+    if (this.snapshot) {
+      return this.snapshot;
+    }
+
+    this.snapshot =
+      (await this.ctx.storage.get<RunCoordinatorSnapshot>(SNAPSHOT_STORAGE_KEY)) ?? null;
+
+    return this.snapshot;
   }
 
   private broadcast(message: Record<string, unknown>) {

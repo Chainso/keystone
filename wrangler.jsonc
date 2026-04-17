@@ -28,6 +28,18 @@
       }
     ]
   },
+  "workflows": [
+    {
+      "binding": "RUN_WORKFLOW",
+      "name": "run-workflow",
+      "class_name": "RunWorkflow"
+    },
+    {
+      "binding": "TASK_WORKFLOW",
+      "name": "task-workflow",
+      "class_name": "TaskWorkflow"
+    }
+  ],
   "migrations": [
     {
       "tag": "v1",

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { WorkerBindings } from "../../env";
+import { assertOutboundUrlAllowed } from "../security/outbound";
 
 export const chatMessageRoleValues = ["system", "user", "assistant"] as const;
 
@@ -226,7 +227,10 @@ export function parseStructuredChatCompletion<T extends z.ZodTypeAny>(
 export async function createChatCompletion(
   input: CreateChatCompletionInput
 ): Promise<ChatCompletionResult> {
-  const response = await fetch(buildChatCompletionsUrl(input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL), {
+  const url = buildChatCompletionsUrl(input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL);
+  assertOutboundUrlAllowed(input.env, url, "chat completions");
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json"

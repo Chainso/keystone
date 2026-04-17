@@ -56,6 +56,10 @@ export function releasePackArtifactKey(tenantId: string, runId: string) {
   return `${tenantRunPrefix(tenantId, runId)}/release/release-pack.zip`;
 }
 
+export function runSummaryArtifactKey(tenantId: string, runId: string) {
+  return `${tenantRunPrefix(tenantId, runId)}/release/run-summary.json`;
+}
+
 export function sandboxBackupArtifactKey(
   tenantId: string,
   sandboxId: string,

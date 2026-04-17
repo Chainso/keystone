@@ -8,11 +8,16 @@
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run --outdir .wrangler/deploy",
     "test": "vitest run",
+    "test:security": "vitest run tests/lib/security-policy.test.ts",
+    "test:workflows": "vitest run tests/http/app.test.ts tests/lib/workflow-ids.test.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types",
     "db:migrate": "tsx src/lib/db/migrations.ts",
-    "sandbox:smoke": "node --import tsx scripts/sandbox-smoke.ts"
+    "sandbox:smoke": "node --import tsx scripts/sandbox-smoke.ts",
+    "run:local": "node --import tsx scripts/run-local.ts",
+    "demo:run": "node --import tsx scripts/demo-run.ts",
+    "demo:validate": "node --import tsx scripts/demo-validate.ts"
   },
   "dependencies": {
     "@cloudflare/sandbox": "^0.8.10",

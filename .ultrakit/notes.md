@@ -10,3 +10,10 @@ These notes help future agents work effectively without rediscovering project-sp
 - `AGENTS.md` takes precedence over `CLAUDE.md`; in many repos they are the same file or symlinked
 - If a note contradicts either file, flag it to the user instead
 - Keep concise — this should read as a tight cheat sheet, not a journal
+
+## Project Notes
+
+- Local Worker dev on this host must run outside the Codex sandbox boundary; otherwise `wrangler dev` fails before serving traffic with `uv_interface_addresses returned Unknown system error 1`.
+- The local chat-completions backend is plain HTTP at `http://localhost:4001`, streams SSE chunks by default, and is the only supported M1 compile backend.
+- The fixture happy path depends on `npm test` inside the sandboxed task worktree; task workflows assume the target repo can run that command.
+- Direct `wrangler workflows trigger run-workflow --local` must keep `RunCoordinatorDO` initialization inside the workflow path itself because the HTTP create-run path is not present there to seed the coordinator first.

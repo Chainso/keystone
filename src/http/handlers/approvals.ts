@@ -7,6 +7,7 @@ import { resolveApprovalRecord, getApprovalRecord } from "../../lib/db/approvals
 import { createWorkerDatabaseClient } from "../../lib/db/client";
 import { appendSessionEvent } from "../../lib/db/events";
 import { jsonErrorResponse, throwJsonHttpError } from "../../lib/http/errors";
+import { buildRunWorkflowInstanceId } from "../../lib/workflows/ids";
 
 const approvalResolutionSchema = z.object({
   resolution: z.enum(["approved", "rejected", "cancelled"]),
@@ -68,11 +69,26 @@ export async function resolveApprovalHandler(context: Context<AppEnv>) {
       severity: "info"
     });
 
+    if (updated.waitEventType) {
+      const workflow = await context.env.RUN_WORKFLOW.get(
+        buildRunWorkflowInstanceId(auth.tenantId, runId)
+      );
+
+      await workflow.sendEvent({
+        type: updated.waitEventType,
+        payload: {
+          approvalId,
+          resolution: body.resolution
+        }
+      });
+    }
+
     return context.json({
       approvalId,
       runId,
       status: updated.status,
-      resolvedAt: updated.resolvedAt?.toISOString() ?? null
+      resolvedAt:
+        updated.resolvedAt == null ? null : new Date(updated.resolvedAt).toISOString()
     });
   } finally {
     await client.close();
