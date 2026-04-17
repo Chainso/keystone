@@ -6,7 +6,10 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 ## Active Plans
 
-_None._
+| Plan | Status | Owner | Started |
+|------|--------|-------|---------|
+
+No active plans.
 
 Add active plans in priority order using this format:
 

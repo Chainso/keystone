@@ -29,3 +29,23 @@ New entries should follow this format:
 7. **Proposed Fix:** Replace the fixture-scoped single-task validator with a broader compiled-plan contract that can persist, fan out, and validate dependent Think task graphs without reintroducing hidden fixture seams.
 8. **Target Window:** `next workflow-generalization cycle`
 9. **Status:** `open`
+
+1. **ID:** `TD-2026-04-17-002`
+2. **Date Added:** `2026-04-17`
+3. **Area:** `Project-backed compile target selection`
+4. **Description:** Project-backed runs now fail clearly when a project defines multiple executable components because Phase 4 introduced no explicit product concept for selecting which component should drive compile-time repo resolution.
+5. **Impact:** Multi-component projects can materialize and execute at task time, but they cannot enter the compile path unless exactly one executable component exists.
+6. **Owner:** `keystone-project-model-foundation`
+7. **Proposed Fix:** Add an explicit compile-target concept to the project or run contract, then update `RunWorkflow`, validation, and demo tooling to resolve compile routing without hidden component ordering.
+8. **Target Window:** `next project/workflow modeling cycle`
+9. **Status:** `open`
+
+1. **ID:** `TD-2026-04-17-003`
+2. **Date Added:** `2026-04-17`
+3. **Area:** `Local run helper scripts`
+4. **Description:** `npm run run:local` still posts the legacy repo-backed `/v1/runs` payload even though the HTTP contract now requires `projectId`.
+5. **Impact:** Contributors who discover the helper script directly from `package.json` can get misleading local failures and may assume the run API is broken.
+6. **Owner:** `keystone-project-model-foundation`
+7. **Proposed Fix:** Either migrate `scripts/run-local.ts` to the stored-project contract or remove the helper in favor of `demo:ensure-project` plus documented manual `POST /v1/runs` examples.
+8. **Target Window:** `next local-dev cleanup cycle`
+9. **Status:** `open`

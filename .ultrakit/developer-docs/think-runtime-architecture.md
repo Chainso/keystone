@@ -8,7 +8,7 @@ This document covers the shipped Think-backed execution slice in this repository
 
 Keystone still owns orchestration, durable session state, event publication, and artifact promotion. Think only owns the inside of one implementer turn.
 
-- `src/http/handlers/runs.ts` accepts `X-Keystone-Agent-Runtime` and persists the resolved runtime onto the root run session metadata.
+- `src/http/handlers/runs.ts` accepts `projectId`, accepts `X-Keystone-Agent-Runtime`, and persists the resolved runtime plus project identity onto the root run session metadata.
 - `src/workflows/RunWorkflow.ts` and `src/workflows/TaskWorkflow.ts` carry that runtime forward, defaulting to `scripted` when the header is absent.
 - `src/maestro/agent-runtime.ts` is the kernel-facing contract. It fixes the agent filesystem layout at `/workspace`, `/artifacts/in`, `/artifacts/out`, and `/keystone`.
 
@@ -17,7 +17,9 @@ Keystone still owns orchestration, durable session state, event publication, and
 `TaskSessionDO.ensureWorkspace()` materializes the task worktree and then builds an agent bridge with two layers:
 
 - layout: the stable agent-facing roots declared in `src/maestro/agent-runtime.ts`
-- targets: the real sandbox paths, with `/workspace` resolving onto the existing task worktree under `/workspace/runs/...`
+- targets: the real sandbox paths, with `/workspace` resolving onto the existing task workspace under `/workspace/runs/...`
+
+For project-backed runs, the workspace code surface now lives under `/workspace/code/<component-key>`.
 
 The bridge also materializes three control files under `/keystone`:
 
@@ -43,7 +45,7 @@ The first delivered role is `implementer`.
 The shipped validation split is now explicit:
 
 - `runtime=think` plus `thinkMode=mock` stays deterministic and fixture-backed
-- `runtime=think` plus `thinkMode=live` starts from `/v1/runs`, compiles a live `run_plan`, persists compiled `task_handoff` artifacts, and then executes that compiled handoff through the same implementer/runtime bridge
+- `runtime=think` plus `thinkMode=live` starts from `/v1/runs`, reloads the stored project, compiles a live `run_plan`, persists compiled `task_handoff` artifacts, and then executes that compiled handoff through the same implementer/runtime bridge
 
 For deterministic local fixture validation:
 
@@ -57,6 +59,7 @@ For the live proof:
 - `RunWorkflow` persists the live `decision_package`, `run_plan`, and `task_handoff` artifacts before task fanout
 - `TaskWorkflow` accepts the compiled Think handoff only when it matches the approved fixture decision package and the compiled plan stays on the current single independent task shape
 - the live task handoff must keep `dependsOn` empty; dependent or multi-task compiled plans remain out of scope for this proof
+- the live compile path currently requires exactly one unambiguous executable project component; it fails clearly instead of choosing a compile target by component order
 
 ## Artifact and Event Flow
 
@@ -88,5 +91,5 @@ These are current runtime facts, not future design goals:
 - `scripted` remains the default runtime
 - `runtime=think` plus `thinkMode=mock` remains the deterministic validation default
 - `runtime=think` plus `thinkMode=live` now proves live compile plus compiled Think task execution on the approved fixture path
-- the live proof stays fixture-scoped to the committed demo repo and committed decision package; arbitrary repo ingestion is not part of this contract
+- the live proof stays fixture-scoped to the stored fixture project and committed decision package; arbitrary repo ingestion is not part of this contract
 - the compiled Think proof is still limited to the approved single independent task shape and rejects non-empty `dependsOn`

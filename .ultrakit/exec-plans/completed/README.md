@@ -6,6 +6,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 
 | Plan | Completed | Summary |
 |------|-----------|---------|
+| [keystone-project-model-foundation](./keystone-project-model-foundation.md) | 2026-04-17 | Delivered the project-backed backend model, durable docs, demo validation proof, and archived the plan. |
 | [keystone-think-live-full-workflow](./keystone-think-live-full-workflow.md) | 2026-04-17 | Validated the fixture-scoped live Think full-workflow demo, aligned durable docs, and archived the plan. |
 | [think-live-demo-preserve-sandbox](./think-live-demo-preserve-sandbox.md) | 2026-04-17 | Added a live-model Think demo path and preserved demo sandboxes for post-run inspection. |
 | [keystone-think-agent-runtime](./keystone-think-agent-runtime.md) | 2026-04-17 | Delivered the Think-backed implementer runtime, filesystem bridge, durable docs, and local validation proof. |

@@ -2,6 +2,7 @@
 
 Keystone is a single Cloudflare Worker project that currently proves:
 
+- durable `Project` objects as the backend boundary for code components, non-secret env vars, and review/test defaults
 - tenant-scoped run intake over HTTP
 - durable run and task orchestration with Cloudflare Workflows
 - realtime run projection with Durable Objects and WebSockets
@@ -19,6 +20,7 @@ npm install
 docker compose up -d postgres
 export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://postgres:postgres@127.0.0.1:5432/keystone"
 npm run db:migrate
+npm run demo:ensure-project
 npm run lint
 npm run typecheck
 npm run test
@@ -29,6 +31,27 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
 `npm run dev` no longer needs a host `CLOUDFLARE_API_TOKEN` just to satisfy the Think runtime. The Think-backed model path now uses `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` and `KEYSTONE_CHAT_COMPLETIONS_MODEL` directly.
+
+## Project-Backed Backend
+
+The current backend contract is project-first:
+
+- `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:projectId`, and `PUT /v1/projects/:projectId` manage durable project config
+- `POST /v1/runs` now requires `projectId`; direct repo-backed run intake is no longer supported
+- project components materialize under `/workspace/code/<component-key>`
+- project env vars are non-secret only in `v1`
+
+For local validation, the fixture bootstrap helper converges on one deterministic fixture project per tenant:
+
+```bash
+npm run demo:ensure-project
+```
+
+`demo:run` already calls that helper automatically before it posts the run.
+
+Current limitation:
+
+- project-backed compile still requires exactly one unambiguous executable component; multi-component compile-target selection is deferred until a real product concept exists
 
 ## Demo Flow
 
@@ -50,6 +73,8 @@ These commands cover three distinct contracts today:
 - `npm run demo:run` plus `npm run demo:validate`: the default scripted fixture path.
 - `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`: the deterministic mock-backed Think validation path on the current fixture-backed workflow contract.
 - `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate`: the live full-workflow Think proof on the current fixture-backed happy path.
+
+All three flows create project-backed runs through the stored `fixture-demo-project`.
 
 For a zero-argument live rerun after you have exported the runtime once, use:
 
@@ -116,11 +141,7 @@ The current Think path is intentionally narrow:
 - the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
 - final run success is still anchored on a `run_summary` artifact and an archived run session
 
-You can also submit a run directly:
-
-```bash
-npm run run:local
-```
+For manual API validation outside the helper scripts, create or update a project first and then submit `/v1/runs` with `projectId` plus the decision package input.
 
 ## Local Auth
 

@@ -45,6 +45,8 @@ Create and poll a fixture-backed run:
 npm run demo:run
 ```
 
+`demo:run` first calls `npm run demo:ensure-project` internally so the stored `fixture-demo-project` exists before `/v1/runs` is posted.
+
 Validate a completed run:
 
 ```bash
@@ -56,11 +58,18 @@ Expected fixture proof:
 - run status reaches `archived`
 - at least three sessions exist (`run`, `compile`, `task`)
 - artifacts include `decision_package`, `run_plan`, `task_handoff`, `task_log`, and `run_summary`
+- the run summary reports stored project metadata for `fixture-demo-project`
 
 If you are running the validation manually and need to pass the run id explicitly, the convenience form is:
 
 ```bash
 npm run demo:validate -- --run-id=<run-id>
+```
+
+If you need the fixture project without starting a run, use:
+
+```bash
+npm run demo:ensure-project
 ```
 
 For the Think-backed fixture path, use the dedicated runbook. The exact Phase 5 gate is:
@@ -76,9 +85,27 @@ If you are running the Think validation manually and need to pass the run id exp
 KEYSTONE_AGENT_RUNTIME=think npm run demo:validate -- --run-id=<run-id>
 ```
 
+## Manual Project-Backed Run Intake
+
+The current HTTP contract is project-backed. For manual API checks:
+
+1. Create or update a project through `/v1/projects` or `npm run demo:ensure-project`.
+2. Submit `/v1/runs` with `projectId` plus the decision package input.
+
+Minimal local request shape:
+
+```json
+{
+  "projectId": "<stored-project-id>",
+  "decisionPackage": {
+    "localPath": "./fixtures/demo-decision-package/decision-package.json"
+  }
+}
+```
+
 ## Approval Path
 
-The approval-gated path is a `gitUrl` repo input. It should:
+The approval-gated path is a project whose compile target resolves to `gitUrl`. It should:
 
 1. create a run session,
 2. pause in `paused_for_approval`,
@@ -91,3 +118,4 @@ The approval-gated path is a `gitUrl` repo input. It should:
 - `RunCoordinatorDO was not initialized before use`: a workflow path is publishing events before initializing the coordinator.
 - `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted sandbox boundary on this host.
 - empty or stalled compile output: confirm the backend is reachable at `http://localhost:10531/v1/chat/completions`.
+- `defines multiple executable components`: the project materializes multiple code components but still lacks an explicit compile-target selector for Phase 4/5 runtime proof.

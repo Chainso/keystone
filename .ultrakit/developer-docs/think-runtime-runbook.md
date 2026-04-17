@@ -8,7 +8,7 @@ Use this runbook when you need to exercise the shipped demo contracts end to end
 - `runtime=think` plus `thinkMode=mock` remains the deterministic Think validation path
 - `runtime=think` plus `thinkMode=live` now proves the current live happy path from `/v1/runs` input through live compile, persisted compiled handoff artifacts, Think task execution, promoted `run_note`, and archived `run_summary`
 
-The live proof is still intentionally narrow: it stays on the committed fixture repo plus committed decision package, and the compiled plan must remain a single independent task with no `dependsOn`.
+The live proof is still intentionally narrow: it stays on the stored fixture project plus committed decision package, the project must expose exactly one executable compile target, and the compiled plan must remain a single independent task with no `dependsOn`.
 
 ## Prerequisites
 
@@ -61,7 +61,7 @@ npm run demo:validate
 What that proves today:
 
 - `scripted` is still the default runtime when no override is supplied
-- the fixture-backed scripted task path archives normally
+- the fixture-project scripted task path archives normally
 - `demo:validate` expects a promoted `task_log` on the scripted path
 
 Run the deterministic Think validation pair from repo root:
@@ -74,7 +74,7 @@ KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
 What that pair proves today:
 
 - `demo:run` defaults Think requests to `thinkMode=mock`
-- the compile and task handoff behavior stays on the current fixture-backed contract
+- the compile and task handoff behavior stays on the current fixture-project contract
 - `demo:validate` proves archived completion plus the expected Think artifact/session shape for that shipped path
 
 Run the live full-workflow Think pair from repo root:
@@ -93,7 +93,8 @@ What that pair proves today:
 - `TaskWorkflow` executes the persisted compiled handoff through the Think implementer path
 - the Think turn promotes at least one `run_note`
 - the run finishes archived with `run_summary`
-- the proof remains fixture-scoped to the committed demo repo plus committed decision package
+- the proof remains fixture-scoped to the stored fixture project plus committed decision package
+- the project must expose one unambiguous executable compile target
 - the compiled handoff must stay on the current single independent task shape, with empty `dependsOn`
 
 The zero-argument `npm run demo:run` -> `npm run demo:validate` live pair works because `demo:run` stores only the last successful archived run under `.keystone/demo-last-run.json`, and `demo:validate` reuses that state only when you do not supply an explicit `--run-id` or `KEYSTONE_RUN_ID`.
@@ -122,7 +123,7 @@ KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate
 
 What these scripts actually check today:
 
-- `demo:run` sends `X-Keystone-Agent-Runtime`, defaults to `scripted`, defaults Think requests to `thinkMode=mock` unless explicitly overridden, creates the fixture-backed run, and polls until the run reaches `archived` with at least one `run_summary` artifact
+- `demo:run` first ensures the stored fixture project exists, then sends `projectId` plus `X-Keystone-Agent-Runtime`, defaults to `scripted`, defaults Think requests to `thinkMode=mock` unless explicitly overridden, and polls until the run reaches `archived` with at least one `run_summary` artifact
 - `demo:run` writes `.keystone/demo-last-run.json` only when the run reaches `archived`; failed or cancelled runs do not overwrite the last-successful shortcut
 - `demo:validate` re-reads the run summary and asserts:
   - run status is `archived`
@@ -135,7 +136,7 @@ What these scripts actually check today:
 
 What these scripts do not prove yet:
 
-- arbitrary repo ingestion outside the committed fixture repo
+- arbitrary project-backed compile target selection across multiple executable components
 - multi-task or dependent-task Think execution; the current validator requires a single independent compiled task with empty `dependsOn`
 - additional Think roles beyond the implementer turn
 

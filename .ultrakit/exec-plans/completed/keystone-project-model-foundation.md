@@ -157,6 +157,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Make compile-target selection explicit for project-backed runs, omit empty env override maps when invoking sandbox execution, and deepen the HTTP/workflow tests around project gating plus execution metadata/env propagation.  
   **Rationale:** The review findings showed that silently choosing the first project component as the compile repo violated the peer-component model, `{}` env overrides could replace the runtime environment accidentally, and the existing tests were too shallow to catch regressions in the new project-backed run path.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 5  
+  **Decision:** Close the plan by updating the stable docs in place, recording the remaining post-phase gaps in the tech-debt tracker, and archiving the plan once the same project-backed demo path and repo gates pass again.  
+  **Rationale:** The project model changed the durable system boundary rather than just one phase implementation seam, so the repo needed stable docs that describe stored projects, project-backed `/v1/runs`, fixture-project bootstrap, and the remaining explicit limitations before the plan could be archived safely.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -172,7 +177,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Phase 4 implementation landed: `/v1/runs` now requires `projectId`, run/task workflows resolve project-backed components, env vars, and rule context, and the demo scripts bootstrap and target the fixture project instead of a raw repo payload.
 - [x] 2026-04-17 Phase 4 resume pass completed: live local validation now passes on a fresh Wrangler dev instance, with project-backed runs producing task execution and run-summary artifacts end-to-end.
 - [x] 2026-04-17 Phase 4 fix pass completed: ambiguous multi-component compile selection now fails clearly, empty env overrides no longer replace sandbox execution environments, and the project-backed HTTP/workflow tests assert the Phase 4 metadata/env path more deeply.
-- [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
+- [x] 2026-04-17 Phase 5 completed: durable docs, notes, archive indexes, and deferred-debt tracking now reflect the project-backed backend model, and the validation set passed again before archive.
 
 ## Surprises & Discoveries
 
@@ -194,6 +199,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - The blocked run on `8787` (`306d9180-33a3-4db9-8ecb-9ce7ea5f9acc`) showed two overlapping local issues: `compile.completed` was incorrectly publishing run-coordinator status `archived`, and the live verification target on `8787` was not a reliable proxy for the updated code path. A fresh Wrangler dev instance on `8799` was required to validate the resumed fix pass.
 - The project-backed runtime proof can materialize multiple peer components already, but Phase 4 still does not have an explicit product concept for choosing which component should drive compile-time repo selection. The correct Phase 4 behavior is therefore to fail clearly on ambiguous multi-component compile selection instead of silently picking by array order.
 - Empty env override maps need to be treated as absent at the sandbox boundary. Passing `env: {}` into the Cloudflare sandbox helpers risks replacing the inherited environment rather than leaving it unchanged.
+- `npm run run:local` was left behind on the old repo-backed payload even after `/v1/runs` became project-only. Phase 5 documents the correct manual path and records the helper mismatch as deferred debt instead of silently presenting it as a valid local command.
 
 ## Outcomes & Retrospective
 
@@ -256,6 +262,13 @@ Phase 4 fix-pass outcome on 2026-04-17:
 - The sandbox bash bridge and task-session process launcher now omit `env` entirely when the merged project/input override set is empty, so the Phase 4 env propagation path no longer risks replacing the inherited runtime environment with `{}`.
 - The HTTP and workflow tests now cover the missing project lookup branch, assert the project execution metadata frozen into run-session status updates, and verify that Think/task-session execution receives the merged project env vars through the agent bridge rather than only via prompt text.
 - Broad validation passed again for `lint`, `typecheck`, `test`, and `build`, and live demo validation passed on a fresh Worker at `http://127.0.0.1:8801` with run `776447c9-8743-450b-8856-add72c201335`.
+
+Phase 5 outcome on 2026-04-17:
+
+- The stable repo docs now describe the durable project model, the stored fixture-project bootstrap flow, the project-backed `/v1/runs` contract, and the current compile-target limitation instead of the earlier repo-shaped mental model.
+- `.ultrakit/notes.md` now captures the durable execution learnings that matter post-implementation, including the automatic fixture-project bootstrap and the stale `run:local` helper caveat.
+- The remaining post-phase gaps are explicit in `.ultrakit/exec-plans/tech-debt-tracker.md`: multi-component compile-target selection and the repo-shaped `run:local` helper are both recorded instead of being left implicit.
+- The project model plan is ready to archive because the Phase 5 validation reran the same project-backed demo flow plus `lint`, `typecheck`, and `test` successfully against a fresh Wrangler dev URL at `http://127.0.0.1:8802`.
 
 ## Context and Orientation
 
@@ -614,6 +627,44 @@ $ KEYSTONE_BASE_URL=http://127.0.0.1:8801 KEYSTONE_RUN_ID=776447c9-8743-450b-885
     "total": 5
   }
 }
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8802 npm run demo:run
+{
+  "runId": "f2420cea-8793-43c5-92a0-37c6b99e28f8",
+  "runtime": "scripted",
+  "thinkMode": "mock",
+  "status": "archived"
+}
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8802 KEYSTONE_RUN_ID=f2420cea-8793-43c5-92a0-37c6b99e28f8 npm run demo:validate
+{
+  "ok": true,
+  "status": "archived",
+  "sessions": 3,
+  "artifacts": {
+    "total": 5
+  }
+}
+```
+
+```text
+$ npm run lint
+> eslint .
+```
+
+```text
+$ npm run typecheck
+> tsc --noEmit
+```
+
+```text
+$ npm run test
+Test Files  30 passed | 2 skipped (32)
+Tests  117 passed | 8 skipped (125)
 ```
 
 Likely new files/modules by the end of execution:
@@ -985,10 +1036,10 @@ Accurate docs for project-backed execution, updated project notes, and an archiv
 Do not archive the plan if the docs describe a project-backed demo flow that has not been rerun as written.
 
 **Status**  
-Not started.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-Pending.
+README and the stable developer docs now describe the project-backed backend model instead of the old repo-shaped intake, including stored-project CRUD, automatic fixture-project bootstrap, project-backed `/v1/runs`, `/workspace/code/<component-key>` task workspaces, and the explicit single-compile-target limitation. `.ultrakit/notes.md` captures the durable local-dev learnings from execution, the tech-debt tracker records the remaining compile-target and stale-helper gaps, and the plan is ready for archive because the same project-backed demo flow plus `lint`, `typecheck`, and `test` all passed again against the current Wrangler dev URL.
 
 **Next Starter Context**  
-No next phase until execution begins. The first implementation pass should start at Phase 1.
+This plan is complete and should be archived. Future work should start from the archived record plus the open tech-debt entries, especially if the next cycle widens multi-component compile routing or cleans up the remaining repo-shaped local helper.
