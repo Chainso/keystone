@@ -465,7 +465,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         }
       }));
 
-      await this.env.TASK_WORKFLOW.createBatch(batch);
+      await Promise.all(batch.map((entry) => this.env.TASK_WORKFLOW.create(entry)));
 
       return batch.map((entry) => entry.id as string);
     });

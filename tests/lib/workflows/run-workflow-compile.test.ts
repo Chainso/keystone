@@ -307,10 +307,9 @@ function createTaskWorkflowBinding() {
   const batches = new Map<string, { params: { taskId: string } }>();
 
   return {
-    createBatch: vi.fn(async (batch: Array<{ id: string; params: { taskId: string } }>) => {
-      for (const entry of batch) {
-        batches.set(entry.id, entry);
-      }
+    create: vi.fn(async (entry: { id: string; params: { taskId: string } }) => {
+      batches.set(entry.id, entry);
+      return { id: entry.id };
     }),
     get: vi.fn(async (instanceId: string) => ({
       status: vi.fn(async () => ({
@@ -402,15 +401,15 @@ describe("RunWorkflow compile routing", () => {
     }
 
     const result = await workflow.run(createWorkflowEvent("live") as never, step as never);
-    const [fanoutBatch] = env.TASK_WORKFLOW.createBatch.mock.calls[0] ?? [];
+    const [fanoutCall] = env.TASK_WORKFLOW.create.mock.calls[0] ?? [];
 
-    if (!fanoutBatch?.[0]) {
-      throw new Error("Expected the task fanout batch to include one task.");
+    if (!fanoutCall) {
+      throw new Error("Expected the task fanout call to include one task.");
     }
 
     expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
     expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
-    expect(fanoutBatch[0].params).toMatchObject({
+    expect(fanoutCall.params).toMatchObject({
       taskId: persistedTask.taskId,
       project: {
         projectId: "project-fixture",
@@ -422,7 +421,7 @@ describe("RunWorkflow compile routing", () => {
         preserveSandbox: false
       }
     });
-    expect(fanoutBatch[0].params.taskId).not.toBe(liveTask.taskId);
+    expect(fanoutCall.params.taskId).not.toBe(liveTask.taskId);
     expect(mocked.loadCompiledRunPlanArtifact).toHaveBeenCalledWith(
       env,
       "tenant-fixture",
@@ -464,7 +463,7 @@ describe("RunWorkflow compile routing", () => {
     await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
       /could not reconcile task task-live-implementation \(Unexpected task title\) with the approved fixture decision package/
     );
-    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
+    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
   });
 
   it("rejects persisted live compile plans when the task count falls outside the fixture-scoped happy path", async () => {
@@ -496,7 +495,7 @@ describe("RunWorkflow compile routing", () => {
     await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
       /produced 2 tasks, expected 1/
     );
-    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
+    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
   });
 
   it("rejects persisted live compile plans when the decision package id falls outside the fixture-scoped happy path", async () => {
@@ -516,7 +515,7 @@ describe("RunWorkflow compile routing", () => {
     await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
       /produced decision package unexpected-decision-package, expected demo-greeting-update/
     );
-    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
+    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
   });
 
   it("rejects persisted live compile plans when dependsOn exceeds the fixture-scoped happy path", async () => {
@@ -546,7 +545,7 @@ describe("RunWorkflow compile routing", () => {
     await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
       /returned unsupported dependsOn entries for task task-persisted-live-implementation/
     );
-    expect(env.TASK_WORKFLOW.createBatch).not.toHaveBeenCalled();
+    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
   });
 
   it("preserves the deterministic fixture compiler for think/mock runs", async () => {
@@ -563,23 +562,21 @@ describe("RunWorkflow compile routing", () => {
 
     expect(mocked.compileDemoFixtureRunPlan).toHaveBeenCalledTimes(1);
     expect(mocked.compileRunPlan).not.toHaveBeenCalled();
-    expect(env.TASK_WORKFLOW.createBatch).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            taskId: fixtureTask.taskId,
-            project: expect.objectContaining({
-              projectId: "project-fixture",
-              projectKey: "fixture-demo-project"
-            }),
-            runtime: "think",
-            options: {
-              thinkMode: "mock",
-              preserveSandbox: false
-            }
-          })
+    expect(env.TASK_WORKFLOW.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: fixtureTask.taskId,
+          project: expect.objectContaining({
+            projectId: "project-fixture",
+            projectKey: "fixture-demo-project"
+          }),
+          runtime: "think",
+          options: {
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
         })
-      ])
+      })
     );
     expect(result).toMatchObject({
       runId: "run-123",

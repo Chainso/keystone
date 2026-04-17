@@ -147,6 +147,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Make `/v1/runs` project-only and have both run and task workflows resolve project execution state from the durable project model, with task workflows reloading the project by `projectId` instead of carrying seeded component files through workflow params.  
   **Rationale:** Phase 4 needs the repo-backed run contract removed cleanly while keeping the execution path compatible with the current fixture/runtime proof. Resolving the project inside workflows keeps the HTTP surface thin, snapshots the run metadata around durable project state, and avoids brittle local-workflow fanout params.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 4 Resume Pass  
+  **Decision:** Treat the live local blocker as both a workflow-state bug and a local-dev verification issue: stop publishing run-level `archived` on `compile.completed`, launch task workflows with per-instance `create()` calls instead of `createBatch()`, and validate against a fresh Wrangler dev port rather than a potentially stale long-lived local instance.  
+  **Rationale:** The blocked run archived its coordinator state at compile time and never showed task/finalize progression, while the green Node tests still covered the logical workflow path. The resumed pass needed to remove the misleading archived transition, use the simpler local-stable task launch path, and verify on a fresh Worker URL so the validation matched the current code rather than an older process on `8787`.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -160,7 +165,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Phase 3 completed: workspace persistence now records per-component materializations, the sandbox workspace root exposes `/workspace/code/<component-key>`, and task sessions derive a stable default cwd from the materialized component set.
 - [x] 2026-04-17 Phase 3 fix pass completed: component workspace paths now preserve key uniqueness, workspace bindings reject invalid default-component selection, stale task worktrees are recreated instead of silently reused, and targeted Phase 3 tests cover persistence shape, filesystem side effects, and task-workflow integration more deeply.
 - [x] 2026-04-17 Phase 4 implementation landed: `/v1/runs` now requires `projectId`, run/task workflows resolve project-backed components, env vars, and rule context, and the demo scripts bootstrap and target the fixture project instead of a raw repo payload.
-- [ ] Phase 4 live-demo validation follow-up: repo validations are green, but the local Worker currently archives project-backed runs immediately after compile without task fanout/finalization, so `demo:run` and `demo:validate` are still blocked on host-local workflow behavior.
+- [x] 2026-04-17 Phase 4 resume pass completed: live local validation now passes on a fresh Wrangler dev instance, with project-backed runs producing task execution and run-summary artifacts end-to-end.
 - [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
 
 ## Surprises & Discoveries
@@ -180,7 +185,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - Phase 3 path derivation should preserve the full `componentKey` identity instead of slugging/truncating it: percent-encoded path segments keep `/workspace/code/<component-key>` stable for safe keys while avoiding collisions from spaces, slashes, or long names.
 - Reusing an on-disk task worktree safely needs more than `worktree/.git` existence; validating the common git dir, checked-out branch, and base-ref reachability is enough to distinguish a real reusable worktree from stale leftovers in the sandbox filesystem.
 - The local demo Worker on this host needed the project migrations applied explicitly via `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/keystone npm run db:migrate` before `/v1/projects` stopped returning `500`.
-- After the Phase 4 contract migration, the local scripted fixture demo still reaches `compile.completed` and writes `decision_package`, `run_plan`, and `task_handoff`, but the run then archives with only 3 artifacts and no task or finalize events. `demo:run` therefore times out after 60s and `demo:validate` fails its minimum-artifact assertion against that run.
+- The blocked run on `8787` (`306d9180-33a3-4db9-8ecb-9ce7ea5f9acc`) showed two overlapping local issues: `compile.completed` was incorrectly publishing run-coordinator status `archived`, and the live verification target on `8787` was not a reliable proxy for the updated code path. A fresh Wrangler dev instance on `8799` was required to validate the resumed fix pass.
 
 ## Outcomes & Retrospective
 
@@ -229,7 +234,13 @@ Phase 4 implementation outcome on 2026-04-17:
 - `RunWorkflow` now reloads the durable project, freezes project execution metadata into the run session, resolves the compile repo from the project model, and fans tasks out with a project pointer instead of the legacy repo contract.
 - `TaskWorkflow`, `TaskSessionDO`, the sandbox agent bridge, and the Think/bash runtime now propagate project env vars and project rule context into sandbox execution, while project-backed task sessions materialize workspace components from the durable project model.
 - `demo:run` now bootstraps the fixture project automatically and creates project-backed runs; the route/workflow/demo tests were updated accordingly and broad repo validation passed for `lint`, `typecheck`, `test`, and `build`.
-- Local live demo validation is still blocked on this host: after applying migrations, `demo:run` against `http://127.0.0.1:8787` creates and compiles a project-backed run but never emits task/finalize events, so it times out after 60s, and `demo:validate` against run `306d9180-33a3-4db9-8ecb-9ce7ea5f9acc` fails with `Expected at least 5 artifacts, received 3.`
+
+Phase 4 resume-pass outcome on 2026-04-17:
+
+- `compile.completed` no longer publishes a run-level `archived` coordinator status, so local run summaries do not present compile completion as terminal before task execution and finalization actually happen.
+- `RunWorkflow` now launches task workflows with per-instance `TASK_WORKFLOW.create()` calls instead of `createBatch()`, which restored stable local workflow fanout on the fresh Wrangler dev instance used for validation.
+- The compile-plan and run-workflow tests were updated to match the resumed runtime behavior, and repo validation still passed for `lint`, `typecheck`, `test`, and `build`.
+- Live local validation passed on a fresh Worker at `http://127.0.0.1:8799`: `demo:run` completed successfully for run `abd64276-d1a2-4671-8cbc-b5e3cddbe6f9`, and `demo:validate` confirmed the archived run had 3 sessions and 5 artifacts (`decision_package`, `run_plan`, `task_handoff`, `task_log`, `run_summary`).
 
 ## Context and Orientation
 
@@ -516,6 +527,31 @@ Error: Demo run 306d9180-33a3-4db9-8ecb-9ce7ea5f9acc did not finish within 60000
 ```text
 $ KEYSTONE_BASE_URL=http://127.0.0.1:8787 KEYSTONE_RUN_ID=306d9180-33a3-4db9-8ecb-9ce7ea5f9acc npm run demo:validate
 Error: Expected at least 5 artifacts, received 3.
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8799 npm run demo:run
+{
+  "runId": "abd64276-d1a2-4671-8cbc-b5e3cddbe6f9",
+  "runtime": "scripted",
+  "thinkMode": "mock",
+  "status": "archived"
+}
+```
+
+```text
+$ KEYSTONE_BASE_URL=http://127.0.0.1:8799 npm run demo:validate
+{
+  "ok": true,
+  "runId": "abd64276-d1a2-4671-8cbc-b5e3cddbe6f9",
+  "runtime": "scripted",
+  "thinkMode": "mock",
+  "status": "archived",
+  "sessions": 3,
+  "artifacts": {
+    "total": 5
+  }
+}
 ```
 
 Likely new files/modules by the end of execution:
@@ -824,13 +860,13 @@ Project-required run creation, project-backed workflow execution, env-var propag
 Project env vars are non-secret only in `v1`. Keep the current scripted default runtime and Think runtime intact while migrating to project-backed execution.
 
 **Status**  
-Implemented on 2026-04-17, but still blocked on local live demo validation.
+Completed on 2026-04-17.
 
 **Completion Notes**  
-`/v1/runs` now requires `projectId`, the run/task workflow contracts are project-backed, task execution receives project env vars and rule context, and the fixture demo scripts target the durable fixture project instead of a raw repo payload. Route, workflow, run-input, and demo-contract coverage were updated, and `lint`, `typecheck`, `test`, and `build` all passed. The remaining blocker is host-local live validation: after local migrations, project-backed runs on `http://127.0.0.1:8787` compile successfully but never emit task/finalize events, so `demo:run` times out and `demo:validate` fails on the archived compile-only run.
+`/v1/runs` now requires `projectId`, the run/task workflow contracts are project-backed, task execution receives project env vars and rule context, and the fixture demo scripts target the durable fixture project instead of a raw repo payload. The resume pass removed the premature archived coordinator transition at compile time, switched local task fanout onto per-instance workflow creation, and revalidated the phase on a fresh Wrangler dev URL. `lint`, `typecheck`, `test`, `build`, `demo:run`, and `demo:validate` all passed for the completed Phase 4 state.
 
 **Next Starter Context**  
-Investigate why the local Worker archives Phase 4 project-backed runs immediately after `compile.completed` without any `TASK_WORKFLOW` fanout or finalization events. Start from run `306d9180-33a3-4db9-8ecb-9ce7ea5f9acc`, compare the local workflow-engine behavior to the green Node workflow tests, and do not start Phase 5 docs/closeout work until `demo:run` and `demo:validate` both pass against the live Worker.
+Phase 4 is complete. Phase 5 can now assume the project-backed run path, fixture project bootstrap, and local demo validation are all green when run against the current Wrangler dev URL.
 
 ### Phase 5: Document the project-backed backend model and close out the plan
 

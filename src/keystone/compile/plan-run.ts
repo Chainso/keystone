@@ -354,7 +354,7 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
         completionId: completion.id,
         compileMode
       },
-      status: "archived"
+      status: "active"
     });
 
     await updateSessionStatus(input.client, {
@@ -565,7 +565,7 @@ export async function compileDemoFixtureRunPlan(
         completionId: completion.id,
         compileMode
       },
-      status: "archived"
+      status: "active"
     });
 
     await updateSessionStatus(input.client, {

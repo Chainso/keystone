@@ -248,7 +248,7 @@ describe("plan-run compile metadata", () => {
             completionId: "chatcmpl-live",
             model: "gpt-5.4"
           }),
-          status: "archived"
+          status: "active"
         })
       ])
     );
