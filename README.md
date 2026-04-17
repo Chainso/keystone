@@ -20,7 +20,6 @@ npm install
 docker compose up -d postgres
 export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://postgres:postgres@127.0.0.1:5432/keystone"
 npm run db:migrate
-npm run demo:ensure-project
 npm run lint
 npm run typecheck
 npm run test
@@ -44,10 +43,11 @@ The current backend contract is project-first:
 For local validation, the fixture bootstrap helper converges on one deterministic fixture project per tenant:
 
 ```bash
+export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 npm run demo:ensure-project
 ```
 
-`demo:run` already calls that helper automatically before it posts the run.
+Run that only after Wrangler dev is already serving the local API. `demo:run` already calls the same helper automatically before it posts the run.
 
 Current limitation:
 
@@ -71,8 +71,8 @@ npm run demo:validate
 These commands cover three distinct contracts today:
 
 - `npm run demo:run` plus `npm run demo:validate`: the default scripted fixture path.
-- `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`: the deterministic mock-backed Think validation path on the current fixture-backed workflow contract.
-- `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate`: the live full-workflow Think proof on the current fixture-backed happy path.
+- `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`: the deterministic mock-backed Think validation path on the current fixture-project workflow contract.
+- `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate`: the live full-workflow Think proof on the current fixture-project happy path.
 
 All three flows create project-backed runs through the stored `fixture-demo-project`.
 
@@ -97,7 +97,7 @@ The proof remains intentionally narrow:
 
 - `scripted` stays the default runtime
 - `runtime=think` without an explicit mode still defaults to deterministic `thinkMode=mock`
-- the live proof is fixture-scoped to the committed demo repo plus committed decision package
+- the live proof is fixture-scoped to the stored `fixture-demo-project` plus committed decision package
 - the compiled plan must stay on the approved single independent task shape, with no `dependsOn`
 
 `demo:run` persists only the last successful archived run under `.keystone/demo-last-run.json`. `demo:validate` reuses that state only when you do not supply `--run-id` or `KEYSTONE_RUN_ID`.
@@ -136,8 +136,8 @@ The current Think path is intentionally narrow:
 
 - runtime selection is accepted through `X-Keystone-Agent-Runtime` and defaults to `scripted`
 - `thinkMode=mock` is the deterministic validation default for Think requests
-- `thinkMode=live` now means live compile plus compiled Think task execution on the approved fixture happy path
-- the live proof still accepts only the fixture-backed single independent task shape and rejects compiled `dependsOn` edges
+- `thinkMode=live` now means live compile plus compiled Think task execution on the approved fixture-project happy path
+- the live proof still accepts only the fixture-project single independent task shape and rejects compiled `dependsOn` edges
 - the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
 - final run success is still anchored on a `run_summary` artifact and an archived run session
 

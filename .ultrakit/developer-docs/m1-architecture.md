@@ -10,7 +10,7 @@ Keystone M1 is one TypeScript Worker project with these runtime responsibilities
 - `src/workflows/RunWorkflow.ts`: durable run orchestration from compile through finalization
 - `src/workflows/TaskWorkflow.ts`: durable task execution loop with sandbox process polling and task-log persistence
 - `src/keystone/`: vertical-specific compile, task-loading, and finalization logic
-- `src/lib/db/`: operational persistence for sessions, events, approvals, artifacts, and workspace bindings
+- `src/lib/db/`: operational persistence for projects, sessions, events, approvals, artifacts, workspace bindings, and per-component workspace materializations
 - `src/lib/artifacts/`: deterministic R2 keying and artifact storage helpers
 - `src/lib/security/`: explicit outbound and repo-source policy decisions
 
