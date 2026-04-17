@@ -51,6 +51,7 @@ describeIfDatabase("database repositories", () => {
       return;
     }
 
+    await client.sql`DELETE FROM projects WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM session_events WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM artifact_refs WHERE tenant_id = ${tenantId}`;
     await client.sql`DELETE FROM workspace_bindings WHERE tenant_id = ${tenantId}`;

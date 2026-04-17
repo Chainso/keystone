@@ -143,6 +143,116 @@ export const workerLeases = pgTable(
   (table) => [uniqueIndex("uq_worker_lease_key").on(table.tenantId, table.leaseType, table.leaseKey)]
 );
 
+const jsonbArrayDefault = sql`'[]'::jsonb`;
+
+export const projects = pgTable(
+  "projects",
+  {
+    tenantId: text("tenant_id").notNull(),
+    projectId: uuid("project_id").primaryKey(),
+    projectKey: text("project_key").notNull(),
+    displayName: text("display_name").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
+  },
+  (table) => [
+    uniqueIndex("uq_projects_tenant_key").on(table.tenantId, table.projectKey),
+    index("idx_projects_tenant_created").on(table.tenantId, table.createdAt)
+  ]
+);
+
+export const projectRuleSets = pgTable("project_rule_sets", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.projectId, { onDelete: "cascade" }),
+  reviewInstructions: jsonb("review_instructions").$type<string[]>().notNull().default(jsonbArrayDefault),
+  testInstructions: jsonb("test_instructions").$type<string[]>().notNull().default(jsonbArrayDefault),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const projectComponents = pgTable(
+  "project_components",
+  {
+    componentId: uuid("component_id").primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    componentKey: text("component_key").notNull(),
+    displayName: text("display_name").notNull(),
+    kind: text("kind").notNull(),
+    localPath: text("local_path"),
+    gitUrl: text("git_url"),
+    defaultRef: text("default_ref"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
+  },
+  (table) => [
+    uniqueIndex("uq_project_components_project_key").on(table.projectId, table.componentKey),
+    index("idx_project_components_project").on(table.projectId, table.createdAt)
+  ]
+);
+
+export const projectComponentRuleOverrides = pgTable("project_component_rule_overrides", {
+  componentId: uuid("component_id")
+    .primaryKey()
+    .references(() => projectComponents.componentId, { onDelete: "cascade" }),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.projectId, { onDelete: "cascade" }),
+  reviewInstructions: jsonb("review_instructions").$type<string[] | null>(),
+  testInstructions: jsonb("test_instructions").$type<string[] | null>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
+});
+
+export const projectEnvVars = pgTable(
+  "project_env_vars",
+  {
+    envVarId: uuid("env_var_id").primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    envKey: text("env_key").notNull(),
+    envValue: text("env_value").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
+  },
+  (table) => [
+    uniqueIndex("uq_project_env_vars_project_key").on(table.projectId, table.envKey),
+    index("idx_project_env_vars_project").on(table.projectId, table.createdAt)
+  ]
+);
+
+export const projectIntegrationBindings = pgTable(
+  "project_integration_bindings",
+  {
+    bindingId: uuid("binding_id").primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    bindingKey: text("binding_key").notNull(),
+    tenantIntegrationId: text("tenant_integration_id").notNull(),
+    overrides: jsonb("overrides").$type<Record<string, unknown>>().notNull().default(jsonbDefault),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
+  },
+  (table) => [
+    uniqueIndex("uq_project_integration_bindings_project_key").on(table.projectId, table.bindingKey),
+    uniqueIndex("uq_project_integration_bindings_project_integration").on(
+      table.projectId,
+      table.tenantIntegrationId
+    ),
+    index("idx_project_integration_bindings_project").on(table.projectId, table.createdAt)
+  ]
+);
+
 export type SessionRow = typeof sessions.$inferSelect;
 export type NewSessionRow = typeof sessions.$inferInsert;
 export type SessionEventRow = typeof sessionEvents.$inferSelect;
@@ -152,6 +262,12 @@ export type NewArtifactRefRow = typeof artifactRefs.$inferInsert;
 export type ApprovalRow = typeof approvals.$inferSelect;
 export type WorkspaceBindingRow = typeof workspaceBindings.$inferSelect;
 export type WorkerLeaseRow = typeof workerLeases.$inferSelect;
+export type ProjectRow = typeof projects.$inferSelect;
+export type ProjectRuleSetRow = typeof projectRuleSets.$inferSelect;
+export type ProjectComponentRow = typeof projectComponents.$inferSelect;
+export type ProjectComponentRuleOverrideRow = typeof projectComponentRuleOverrides.$inferSelect;
+export type ProjectEnvVarRow = typeof projectEnvVars.$inferSelect;
+export type ProjectIntegrationBindingRow = typeof projectIntegrationBindings.$inferSelect;
 
 export const schema = {
   sessions,
@@ -159,5 +275,11 @@ export const schema = {
   approvals,
   workspaceBindings,
   workerLeases,
-  artifactRefs
+  artifactRefs,
+  projects,
+  projectRuleSets,
+  projectComponents,
+  projectComponentRuleOverrides,
+  projectEnvVars,
+  projectIntegrationBindings
 };
