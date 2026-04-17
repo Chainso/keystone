@@ -166,7 +166,32 @@ afterEach(() => {
 });
 
 describe("demo scripts", () => {
+  it("exposes the full fixture project config contract", () => {
+    expect(resolveEnsureProjectFixtureConfig()).toMatchObject({
+      projectKey: "fixture-demo-project",
+      ruleSet: {
+        reviewInstructions: expect.any(Array),
+        testInstructions: expect.any(Array)
+      },
+      components: [
+        expect.objectContaining({
+          componentKey: "demo-target"
+        })
+      ],
+      envVars: [
+        expect.objectContaining({
+          name: "KEYSTONE_FIXTURE_PROJECT"
+        })
+      ],
+      integrationBindings: expect.any(Array),
+      metadata: {
+        source: "ensure-demo-project"
+      }
+    });
+  });
+
   it("executes the demo:ensure-project entrypoint and creates the fixture project when missing", async () => {
+    const fixtureConfig = resolveEnsureProjectFixtureConfig();
     const server = await startStubServer((request) => {
       if (request.method === "GET" && request.path === "/v1/projects") {
         return {
@@ -217,19 +242,7 @@ describe("demo scripts", () => {
       expect(server.requests[1]).toMatchObject({
         method: "POST",
         path: "/v1/projects",
-        body: {
-          projectKey: "fixture-demo-project",
-          displayName: "Fixture Demo Project",
-          components: [
-            {
-              componentKey: "demo-target",
-              config: {
-                localPath: "./fixtures/demo-target",
-                defaultRef: "main"
-              }
-            }
-          ]
-        }
+        body: fixtureConfig
       });
     } finally {
       await server.close();
@@ -237,6 +250,7 @@ describe("demo scripts", () => {
   }, 15_000);
 
   it("executes the demo:ensure-project entrypoint and updates the fixture project when it already exists", async () => {
+    const fixtureConfig = resolveEnsureProjectFixtureConfig();
     const server = await startStubServer((request) => {
       if (request.method === "GET" && request.path === "/v1/projects") {
         return {
@@ -287,7 +301,8 @@ describe("demo scripts", () => {
       expect(server.requests).toHaveLength(2);
       expect(server.requests[1]).toMatchObject({
         method: "PUT",
-        path: "/v1/projects/project-existing"
+        path: "/v1/projects/project-existing",
+        body: fixtureConfig
       });
     } finally {
       await server.close();

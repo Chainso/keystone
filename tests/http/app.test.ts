@@ -334,6 +334,35 @@ describe("app", () => {
     );
   });
 
+  it("keeps invalid run payloads on the existing non-project error path", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          repo: {},
+          decisionPackage: {
+            localPath: "./fixtures/demo-decision-package/decision-package.json"
+          }
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "internal_error",
+        message: "Unexpected application error."
+      }
+    });
+  });
+
   it("defaults Think runtime requests to mock validation mode", async () => {
     const response = await app.request(
       "http://example.com/v1/runs",

@@ -69,19 +69,72 @@ export const projectIntegrationBindingSchema = z.object({
   metadata: metadataSchema.default({})
 });
 
-export const projectConfigSchema = z.object({
-  projectKey: z.string().trim().min(1),
-  displayName: z.string().trim().min(1),
-  description: z.string().trim().min(1).nullable().default(null),
-  ruleSet: projectRuleSetSchema.default({
-    reviewInstructions: [],
-    testInstructions: []
-  }),
-  components: z.array(projectComponentSchema).min(1),
-  envVars: z.array(projectEnvVarSchema).default([]),
-  integrationBindings: z.array(projectIntegrationBindingSchema).default([]),
-  metadata: metadataSchema.default({})
-});
+function addDuplicateItemIssues(
+  context: z.RefinementCtx,
+  input: {
+    items: Array<Record<string, unknown>>;
+    key: "componentKey" | "name" | "bindingKey";
+    pathPrefix: "components" | "envVars" | "integrationBindings";
+    label: string;
+  }
+) {
+  const seen = new Map<string, number>();
+
+  input.items.forEach((item, index) => {
+    const rawValue = item[input.key];
+
+    if (typeof rawValue !== "string") {
+      return;
+    }
+
+    const existingIndex = seen.get(rawValue);
+    if (existingIndex !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: `${input.label} must be unique within the project.`,
+        path: [input.pathPrefix, index, input.key]
+      });
+      return;
+    }
+
+    seen.set(rawValue, index);
+  });
+}
+
+export const projectConfigSchema = z
+  .object({
+    projectKey: z.string().trim().min(1),
+    displayName: z.string().trim().min(1),
+    description: z.string().trim().min(1).nullable().default(null),
+    ruleSet: projectRuleSetSchema.default({
+      reviewInstructions: [],
+      testInstructions: []
+    }),
+    components: z.array(projectComponentSchema).min(1),
+    envVars: z.array(projectEnvVarSchema).default([]),
+    integrationBindings: z.array(projectIntegrationBindingSchema).default([]),
+    metadata: metadataSchema.default({})
+  })
+  .superRefine((value, context) => {
+    addDuplicateItemIssues(context, {
+      items: value.components as Array<Record<string, unknown>>,
+      key: "componentKey",
+      pathPrefix: "components",
+      label: "Component key"
+    });
+    addDuplicateItemIssues(context, {
+      items: value.envVars as Array<Record<string, unknown>>,
+      key: "name",
+      pathPrefix: "envVars",
+      label: "Environment variable name"
+    });
+    addDuplicateItemIssues(context, {
+      items: value.integrationBindings as Array<Record<string, unknown>>,
+      key: "bindingKey",
+      pathPrefix: "integrationBindings",
+      label: "Integration binding key"
+    });
+  });
 
 export type ProjectRuleSet = z.infer<typeof projectRuleSetSchema>;
 export type ProjectComponentRuleOverride = z.infer<typeof projectComponentRuleOverrideSchema>;

@@ -5,6 +5,7 @@ import {
   type ProjectConfig,
   type StoredProject
 } from "../../keystone/projects/contracts";
+import { throwJsonHttpError } from "../../lib/http/errors";
 
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const metadataSchema = z.record(z.string(), z.unknown());
@@ -34,12 +35,44 @@ export type ProjectWriteInput = ProjectConfig;
 export type ProjectResponse = z.infer<typeof projectResponseSchema>;
 export type ProjectSummaryResponse = z.infer<typeof projectSummaryResponseSchema>;
 
+function buildValidationDetails(error: z.ZodError) {
+  return {
+    issues: error.issues.map((issue) => ({
+      path: issue.path,
+      message: issue.message,
+      code: issue.code
+    }))
+  };
+}
+
 export function parseProjectWriteInput(value: unknown) {
-  return projectConfigSchema.parse(value);
+  const result = projectConfigSchema.safeParse(value);
+
+  if (!result.success) {
+    throwJsonHttpError(
+      400,
+      "invalid_request",
+      "Project request validation failed.",
+      buildValidationDetails(result.error)
+    );
+  }
+
+  return result.data;
 }
 
 export function parseProjectListQuery(value: unknown) {
-  return projectListQuerySchema.parse(value);
+  const result = projectListQuerySchema.safeParse(value);
+
+  if (!result.success) {
+    throwJsonHttpError(
+      400,
+      "invalid_request",
+      "Project request validation failed.",
+      buildValidationDetails(result.error)
+    );
+  }
+
+  return result.data;
 }
 
 export function serializeProjectResponse(project: StoredProject): ProjectResponse {

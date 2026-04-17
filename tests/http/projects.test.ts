@@ -206,8 +206,8 @@ function buildProjectPayload() {
     displayName: "Fixture Demo Project",
     description: "Fixture project for tests.",
     ruleSet: {
-      reviewInstructions: ["Review the result."],
-      testInstructions: ["Run tests."]
+      reviewInstructions: ["Review the result.", "Check cross-component changes."],
+      testInstructions: ["Run tests.", "Record fixture output."]
     },
     components: [
       {
@@ -218,8 +218,27 @@ function buildProjectPayload() {
           localPath: "./fixtures/demo-target",
           defaultRef: "main"
         },
+        ruleOverride: {
+          reviewInstructions: ["Focus on app code paths."],
+          testInstructions: ["Run demo-target tests first."],
+          metadata: {
+            owner: "app-team"
+          }
+        },
         metadata: {
           source: "fixture"
+        }
+      },
+      {
+        componentKey: "demo-support",
+        displayName: "Demo Support",
+        kind: "git_repository" as const,
+        config: {
+          gitUrl: "https://example.com/demo-support.git",
+          defaultRef: "develop"
+        },
+        metadata: {
+          source: "supporting-fixture"
         }
       }
     ],
@@ -230,6 +249,13 @@ function buildProjectPayload() {
         metadata: {
           source: "test"
         }
+      },
+      {
+        name: "LOG_LEVEL",
+        value: "debug",
+        metadata: {
+          scope: "demo"
+        }
       }
     ],
     integrationBindings: [
@@ -239,11 +265,22 @@ function buildProjectPayload() {
         overrides: {
           repoOwner: "example"
         },
+        metadata: {
+          purpose: "source-control"
+        }
+      },
+      {
+        bindingKey: "slack-alerts",
+        tenantIntegrationId: "tenant-int-456",
+        overrides: {
+          channel: "#keystone-demo"
+        },
         metadata: {}
       }
     ],
     metadata: {
-      source: "tests"
+      source: "tests",
+      tier: "fixture"
     }
   };
 }
@@ -327,6 +364,7 @@ describe("project API", () => {
   });
 
   it("creates a validated tenant-scoped project", async () => {
+    const payload = buildProjectPayload();
     const response = await app.request(
       "http://example.com/v1/projects",
       {
@@ -336,7 +374,7 @@ describe("project API", () => {
           "Content-Type": "application/json",
           "X-Keystone-Tenant-Id": "tenant-create"
         },
-        body: JSON.stringify(buildProjectPayload())
+        body: JSON.stringify(payload)
       },
       env
     );
@@ -346,16 +384,29 @@ describe("project API", () => {
       project: {
         tenantId: "tenant-create",
         projectId: "project-created",
-        projectKey: "fixture-demo-project"
+        projectKey: "fixture-demo-project",
+        ruleSet: payload.ruleSet,
+        components: expect.arrayContaining([
+          expect.objectContaining({
+            componentKey: "demo-target",
+            ruleOverride: payload.components[0]?.ruleOverride,
+            metadata: payload.components[0]?.metadata
+          }),
+          expect.objectContaining({
+            componentKey: "demo-support",
+            config: payload.components[1]?.config
+          })
+        ]),
+        envVars: payload.envVars,
+        integrationBindings: payload.integrationBindings,
+        metadata: payload.metadata
       }
     });
     expect(mocked.createProject).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantId: "tenant-create",
-        config: expect.objectContaining({
-          projectKey: "fixture-demo-project"
-        })
+        config: payload
       })
     );
   });
@@ -383,7 +434,124 @@ describe("project API", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: "invalid_request",
-        message: "Request validation failed."
+        message: "Project request validation failed."
+      }
+    });
+    expect(mocked.createProject).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate component keys at the request-contract layer", async () => {
+    const payload = buildProjectPayload();
+    const duplicateComponent = payload.components[1]!;
+    payload.components[1] = {
+      ...duplicateComponent,
+      componentKey: "demo-target"
+    };
+
+    const response = await app.request(
+      "http://example.com/v1/projects",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-create"
+        },
+        body: JSON.stringify(payload)
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+        message: "Project request validation failed.",
+        details: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              path: ["components", 1, "componentKey"]
+            })
+          ])
+        }
+      }
+    });
+    expect(mocked.createProject).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate env var names at the request-contract layer", async () => {
+    const payload = buildProjectPayload();
+    const duplicateEnvVar = payload.envVars[1]!;
+    payload.envVars[1] = {
+      ...duplicateEnvVar,
+      name: "KEYSTONE_FIXTURE_PROJECT"
+    };
+
+    const response = await app.request(
+      "http://example.com/v1/projects",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-create"
+        },
+        body: JSON.stringify(payload)
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+        message: "Project request validation failed.",
+        details: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              path: ["envVars", 1, "name"]
+            })
+          ])
+        }
+      }
+    });
+    expect(mocked.createProject).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate integration binding keys at the request-contract layer", async () => {
+    const payload = buildProjectPayload();
+    const duplicateBinding = payload.integrationBindings[1]!;
+    payload.integrationBindings[1] = {
+      ...duplicateBinding,
+      bindingKey: "github-primary"
+    };
+
+    const response = await app.request(
+      "http://example.com/v1/projects",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-create"
+        },
+        body: JSON.stringify(payload)
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+        message: "Project request validation failed.",
+        details: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              path: ["integrationBindings", 1, "bindingKey"]
+            })
+          ])
+        }
       }
     });
     expect(mocked.createProject).not.toHaveBeenCalled();
@@ -412,6 +580,10 @@ describe("project API", () => {
   });
 
   it("updates an existing project", async () => {
+    const payload = {
+      ...buildProjectPayload(),
+      displayName: "Fixture Demo Project v2"
+    };
     const response = await app.request(
       "http://example.com/v1/projects/project-123",
       {
@@ -421,10 +593,7 @@ describe("project API", () => {
           "Content-Type": "application/json",
           "X-Keystone-Tenant-Id": "tenant-update"
         },
-        body: JSON.stringify({
-          ...buildProjectPayload(),
-          displayName: "Fixture Demo Project v2"
-        })
+        body: JSON.stringify(payload)
       },
       env
     );
@@ -434,7 +603,17 @@ describe("project API", () => {
       project: {
         tenantId: "tenant-update",
         projectId: "project-123",
-        displayName: "Fixture Demo Project v2"
+        displayName: "Fixture Demo Project v2",
+        ruleSet: payload.ruleSet,
+        components: expect.arrayContaining([
+          expect.objectContaining({
+            componentKey: "demo-target",
+            ruleOverride: payload.components[0]?.ruleOverride
+          })
+        ]),
+        envVars: payload.envVars,
+        integrationBindings: payload.integrationBindings,
+        metadata: payload.metadata
       }
     });
     expect(mocked.updateProject).toHaveBeenCalledWith(
@@ -442,9 +621,7 @@ describe("project API", () => {
       expect.objectContaining({
         tenantId: "tenant-update",
         projectId: "project-123",
-        config: expect.objectContaining({
-          displayName: "Fixture Demo Project v2"
-        })
+        config: payload
       })
     );
   });

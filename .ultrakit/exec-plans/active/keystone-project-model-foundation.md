@@ -127,6 +127,11 @@ The only constraints to preserve are architectural, not backward-compatibility d
   **Decision:** Expose project CRUD through tenant-scoped `/v1/projects` routes, use the existing project repository graph as the API source of truth, and add a deterministic `demo:ensure-project` helper that converges on the fixture project by key without changing `/v1/runs` yet.  
   **Rationale:** Later phases need a real HTTP-backed project object before run creation switches to `projectId`, and the fixture bootstrap path should be safely rerunnable per tenant while preserving the current repo-backed run flow until workspace and workflow seams are ready.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 2 Fix Pass  
+  **Decision:** Move request-validation error shaping back onto the project HTTP surface, add nested uniqueness checks in the project contract, and deepen the project/bootstrap tests to assert the full Phase 2 config graph.  
+  **Rationale:** The review findings showed the broad `app.onError` Zod handling changed non-project routes like `/v1/runs`, duplicate nested keys were still leaking to database unique constraints, and the existing tests were too shallow to catch regressions in rule sets, overrides, env vars, bindings, or metadata.
+
 ## Progress
 
 - [x] 2026-04-17 Discovery completed for the `Project` concept and core product decisions are resolved.
@@ -136,6 +141,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - [x] 2026-04-17 Phase 1 completed: added append-only project-domain migrations, Drizzle schema, typed project contracts, repository helpers, and repository-level tests for project/config graph persistence.
 - [x] 2026-04-17 Phase 1 fix pass completed: repository override loading now matches the normalized migration shape, and project repository tests are isolated and cover tenant scoping plus duplicate-key rejection.
 - [x] 2026-04-17 Phase 2 completed: added tenant-scoped project CRUD routes, typed project API contracts with request validation, and a deterministic fixture-project bootstrap helper plus route/script coverage.
+- [x] 2026-04-17 Phase 2 fix pass completed: project-only validation errors are now scoped to `/v1/projects`, duplicate nested keys are rejected at the contract layer, and the route/script tests assert the richer project config surface.
 - [ ] Phase 3: generalize workspace materialization from single-repo to multi-component project workspaces.
 - [ ] Phase 4: require `projectId` on runs and wire project-backed workspace execution through workflows, task sessions, and demo scripts.
 - [ ] Phase 5: update docs, notes, and demo/runbook guidance, then close out the plan.
@@ -152,6 +158,7 @@ The only constraints to preserve are architectural, not backward-compatibility d
 - `wrangler deploy --dry-run --outdir .wrangler/deploy` still needs to run outside the Codex sandbox boundary on this host because Wrangler logging and Docker buildx both write under non-writable home-directory paths during the build.
 - `project_component_rule_overrides` does not need its own `project_id` column because the owning project is derivable from `project_components`; the Phase 1 repository mismatch came from the runtime layer, not from the migration design.
 - Route-level tests that import `src/http/app.ts` need to stub unrelated run/dev handler modules when they only care about project routes; otherwise the full router import can walk into Cloudflare-only workflow entrypoints during Node test execution.
+- Project request validation has to stay route-scoped in Phase 2: handling raw `ZodError` globally in `src/http/app.ts` also changes invalid `/v1/runs` behavior before the run-contract migration is ready.
 
 ## Outcomes & Retrospective
 
@@ -173,9 +180,11 @@ Phase 1 outcome on 2026-04-17:
 Phase 2 outcome on 2026-04-17:
 
 - Keystone now exposes tenant-scoped `create`, `list`, `get`, and `update` project endpoints at `/v1/projects`, backed directly by the Phase 1 project repository graph.
-- Project API requests now return structured validation errors as HTTP 400 responses instead of generic 500s when Zod parsing fails.
+- Project API requests now return structured validation errors as HTTP 400 responses from the project route layer, while invalid `/v1/runs` requests remain on their pre-existing non-project error path until the later run phases.
+- The project request contract now rejects duplicate `components.componentKey`, `envVars.name`, and `integrationBindings.bindingKey` values before they can fall through to database unique-constraint errors.
 - The repo now includes `scripts/ensure-demo-project.ts` plus `npm run demo:ensure-project`, which safely creates or updates one deterministic `fixture-demo-project` per tenant without changing the still-repo-backed `/v1/runs` path.
-- Broad validation passed again for `lint`, `typecheck`, `test`, and `build` after the HTTP/project bootstrap layer landed; the build still requires running outside the Codex sandbox on this host for Wrangler/Docker filesystem access.
+- The route and script tests now assert the richer Phase 2 config surface, including rule sets, per-component rule overrides, env vars, integration bindings, and metadata.
+- Broad validation passed again for `lint`, `typecheck`, and `test` after the targeted fix pass; the earlier Phase 2 build remains the last broad build proof because this fix stayed inside project request handling and test coverage.
 
 ## Context and Orientation
 
@@ -570,10 +579,10 @@ No delete/archive behavior in `v1`. Keep projects stable setup objects. Non-code
 Completed on 2026-04-17.
 
 **Completion Notes**  
-Added `src/http/contracts/project-input.ts` and `src/http/handlers/projects.ts` to expose tenant-scoped project CRUD with typed request/response handling, wired the routes into `src/http/router.ts`, and updated `src/http/app.ts` so Zod request failures return `400 invalid_request` payloads. Added `scripts/ensure-demo-project.ts` plus the `demo:ensure-project` package script to create-or-update one deterministic `fixture-demo-project` per tenant by calling the new HTTP API, and covered the new behavior with `tests/http/projects.test.ts` and expanded `tests/scripts/demo-contracts.test.ts`. Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` (build run outside the Codex sandbox because Wrangler/Docker need writable home-directory state on this host).
+Added `src/http/contracts/project-input.ts` and `src/http/handlers/projects.ts` to expose tenant-scoped project CRUD with typed request/response handling, and wired the routes into `src/http/router.ts`. The targeted fix pass then moved structured Zod error shaping onto the project contract layer so `/v1/projects` returns `400 invalid_request` payloads without changing the still-repo-backed `/v1/runs` behavior, added nested uniqueness checks for component keys/env var names/integration binding keys in `src/keystone/projects/contracts.ts`, and expanded `tests/http/projects.test.ts`, `tests/http/app.test.ts`, and `tests/scripts/demo-contracts.test.ts` to assert the full Phase 2 config surface plus the preserved run-route behavior. Added `scripts/ensure-demo-project.ts` plus the `demo:ensure-project` package script to create-or-update one deterministic `fixture-demo-project` per tenant by calling the new HTTP API. Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, and the earlier Phase 2 `npm run build` remains the last broad build proof because the fix pass stayed inside project request handling and tests.
 
 **Next Starter Context**  
-Phase 3 can now assume projects are manageable through `/v1/projects` and that `fixture-demo-project` bootstrap is deterministic, but `/v1/runs` is still repo-backed and must stay that way until the workspace substrate is generalized. The next pass should focus on `src/lib/db/workspaces.ts`, `src/lib/workspace/init.ts`, `src/lib/workspace/worktree.ts`, and related task-session/workspace tests to introduce `/workspace/code/<component-key>` materialization without yet requiring `projectId` on runs.
+Phase 3 can now assume projects are manageable through `/v1/projects`, that duplicate nested project keys are rejected before persistence, and that `fixture-demo-project` bootstrap is deterministic with the full Phase 2 config graph asserted in tests. `/v1/runs` is still repo-backed and must stay that way until the workspace substrate is generalized. The next pass should focus on `src/lib/db/workspaces.ts`, `src/lib/workspace/init.ts`, `src/lib/workspace/worktree.ts`, and related task-session/workspace tests to introduce `/workspace/code/<component-key>` materialization without yet requiring `projectId` on runs.
 
 ### Phase 3: Generalize workspace materialization to multi-component project workspaces
 
