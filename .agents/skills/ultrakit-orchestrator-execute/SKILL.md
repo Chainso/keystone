@@ -9,7 +9,7 @@ description: >
 
 You are in the execution stage of the pipeline. The plan is written and approved. Now execute it phase by phase using the execute-review-fix loop.
 
-You are the execution-stage operator. You implement phase changes and apply fix passes in the current session, use review subagents for independent review, and keep the pipeline moving.
+You are the execution-stage orchestrator. You do not implement phase changes in this session. You delegate implementation and fix passes to spawned execution workers, use review subagents for independent review, and keep the pipeline moving.
 
 Read `.ultrakit/notes.md` before managing phase execution. Use it for durable project or user preferences, not phase state.
 
@@ -18,18 +18,22 @@ Read `.ultrakit/notes.md` before managing phase execution. Use it for durable pr
 For each phase in the plan:
 
 ```
-┌─ EXECUTE: implement the phase in the current session
+┌─ EXECUTE: spawn an implementation worker for the phase
+│   ↓
+├─ WAIT: stay in the orchestrator role and wait for the worker to finish
 │   ↓
 ├─ REVIEW: parallel review agents on gpt-5.4-mini
 │   ↓
-├─ FIX: apply review findings in the current session (if any)
+├─ FIX: spawn a fix worker if reviews find blocking issues
+│   ↓
+├─ WAIT: stay in the orchestrator role and wait for the fix worker to finish
 │   ↓
 └─ Loop REVIEW → FIX until reviews come back clean
 ```
 
 ### Step 1: Prepare the Handoff
 
-Before implementing the phase, verify:
+Before starting phase execution, verify:
 
 1. The phase's `Phase Handoff` subsection in the plan is complete and has all required fields from the plan contract.
 2. If this is not the first phase, the previous phase's `Completion Notes` and `Next Starter Context` are recorded.
@@ -37,11 +41,11 @@ Before implementing the phase, verify:
 
 If the handoff is missing fields, update the plan before continuing.
 
-### Step 2: Implement the Phase Locally
+### Step 2: Spawn the Implementation Worker
 
-Do the implementation work yourself in this session rather than spawning an implementation subagent.
+Spawn one execution worker for the phase and give it the `ultrakit:worker:implement` skill.
 
-Make sure your implementation pass covers:
+The worker brief is the required context packet. It should cover:
 
 1. **Work-so-far summary**: Previous phase commits, files landed, current plan state.
 2. **Plan path**: The execution plan file path and which phase's `Phase Handoff` subsection you are executing.
@@ -50,15 +54,28 @@ Make sure your implementation pass covers:
 5. **Scope constraints**: What is in scope and what is explicitly out.
 6. **Required outputs**: Code changes, tests, validation evidence, plan updates, commit hash.
 7. **Plan sections to update**: Progress, Execution Log, Surprises & Discoveries (if applicable), Outcomes & Retrospective (if phase closes).
-8. **Explicit instructions**:
+8. **Backward compatibility and known constraints**: Compatibility stance, baseline failures, and any guardrails the worker must preserve.
+9. **Explicit instructions**:
    - Stay within phase scope — do not make changes outside the boundary
    - Do not revert unrelated working tree changes
    - Complete the full phase implementation, validation, plan updates, and commit — do not stop after a read-only analysis pass unless blocked
    - If blocked, record exact evidence of the blocker in the plan and surface it to the user
 
-### Step 3: Verify Implementation
+The worker owns the code edits, local validation, plan updates, and commit creation for that pass.
 
-After your implementation pass, verify locally:
+### Step 3: Wait Patiently and Verify the Worker Result
+
+Once the worker is launched, stay in the orchestrator role and wait for it to finish. Do not re-implement the phase in the current session while it is running.
+
+Use the waiting period for orchestration-only work:
+
+1. Re-read the phase acceptance criteria and review dimensions
+2. Confirm the plan still matches the intended scope
+3. Prepare the review inputs you will need after the worker finishes
+
+Interrupt the worker only if the user changes direction, the phase scope changes materially, or you have clear evidence the worker is stuck on the wrong task.
+
+After the worker returns, verify:
 
 1. Commit exists and message matches phase intent
 2. Only expected files changed (`git diff --name-only`)
@@ -66,7 +83,7 @@ After your implementation pass, verify locally:
 4. The Phase Handoff subsection reflects the actual state
 
 If implementation hits a blocker, decide whether to:
-- Adjust the plan and retry in the current session
+- Adjust the plan and retry with a fresh execution worker
 - Split the phase into smaller pieces
 - Escalate to the user
 
@@ -104,20 +121,21 @@ Collect all review reports. Categorize findings:
 
 If all reviews come back clean (no critical or important findings), the phase is complete. Move to Step 7.
 
-### Step 6: Apply Fixes Locally
+### Step 6: Apply Fixes via Worker
 
-If there are critical or important findings, address those findings yourself in the current session.
+If there are critical or important findings, address them by spawning one execution worker with the `ultrakit:worker:implement` skill for a fix pass.
 
-Your fix pass should use:
+The fix-worker brief should use:
 
 1. The specific findings to address (critical and important only — minor findings are deferred)
 2. The phase scope boundary (fixes must stay within scope)
 3. The file paths affected
 4. Minimal targeted edits only — do not expand scope or refactor beyond what the finding requires
 5. The same validation commands from the phase handoff
-6. A separate fix commit when changes are required
+6. The same compatibility constraints and known baseline failures from the phase handoff
+7. A separate fix commit when changes are required
 
-After the fix pass completes, return to Step 4 (review again). The review-fix loop continues until reviews come back clean.
+Once the fix worker is launched, wait patiently for it to finish rather than taking over the fix locally. After the fix pass completes, return to Step 4 (review again). The review-fix loop continues until reviews come back clean.
 
 To prevent infinite loops: if the same finding persists after two fix attempts, escalate to the user.
 
@@ -132,7 +150,7 @@ When reviews are clean:
 
 ### Step 8: Final Documentation Phase(s)
 
-The last phase(s) in the plan should address documentation. These go through the same execute-review-fix loop. For documentation phases, the current session should:
+The last phase(s) in the plan should address documentation. These go through the same execute-review-fix loop. For documentation phases, the execution worker should:
 
 1. Evaluate whether developer documentation needs updating (architecture changes, contract changes, component boundary shifts, key design decisions)
 2. Evaluate whether user-facing documentation needs updating (behavior changes, new features, configuration changes)
@@ -164,13 +182,14 @@ If execution is interrupted mid-phase:
 1. Check `git status` and `git log` to see what was already done.
 2. Check if the plan was updated (Progress, Phase Handoff).
 3. If partial work was committed, update the Phase Handoff with what remains.
-4. Resume in the next session with the updated handoff and use the `ultrakit:worker:resume` skill to regather context before continuing.
+4. Resume by spawning an execution worker with the updated handoff and the `ultrakit:worker:resume` skill so the worker, not the orchestrator session, regathers context before continuing.
 
 ## Critical Principles
 
-1. **Do not delegate implementation or fixes to subagents.** Execution work stays in the current session.
-2. **Always review.** Every phase gets all five review dimensions. No exceptions.
-3. **Fix loops have a limit.** Two fix attempts per finding, then escalate.
-4. **The plan stays current.** If reality diverges from the plan, update the plan.
-5. **One phase at a time.** Unless the plan explicitly authorizes parallel execution with disjoint scope.
-6. **Finish the phase, not just the read-first pass.** A phase is not complete until implementation, validation, plan updates, and commit creation are done unless a concrete blocker stops progress.
+1. **Do not implement or fix in the orchestrator session.** Execution work belongs to spawned implementation workers.
+2. **Wait patiently for workers.** Once a worker owns a phase pass, do not duplicate its work locally.
+3. **Always review.** Every phase gets all five review dimensions, and every review agent uses `gpt-5.4-mini`.
+4. **Fix loops have a limit.** Two fix attempts per finding, then escalate.
+5. **The plan stays current.** If reality diverges from the plan, update the plan.
+6. **One phase at a time.** Unless the plan explicitly authorizes parallel execution with disjoint scope.
+7. **Finish the phase, not just the read-first pass.** A phase is not complete until implementation, validation, plan updates, review cleanup, and commit creation are done unless a concrete blocker stops progress.

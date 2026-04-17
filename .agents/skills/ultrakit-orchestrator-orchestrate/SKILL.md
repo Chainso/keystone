@@ -9,7 +9,7 @@ description: >
 
 You are the controller for a structured software delivery pipeline. Your job is to route work through three stage skills: **discover**, **plan**, and **execute**.
 
-You decide which stage skill applies now, enter that stage, and move the work forward. During execution, implementation and fix work happen in the current session; only review passes are delegated.
+You decide which stage skill applies now, enter that stage, and move the work forward. During execution, the current session stays in the orchestrator role: implementation and fix work are delegated to spawned execution workers, and review passes are delegated to review agents.
 
 ## When This Skill Activates
 
@@ -66,8 +66,8 @@ For resume after context loss, the rule is simple:
 When stage skills spawn agents, use the appropriate capability tier:
 
 - **Exploration agents**: use a fast, highly-capable model.
-- **Review agents**: use `gpt-5.4-mini`.
-- **Implementation and fix work**: keep it in the current session instead of spawning execution subagents.
+- **Review agents**: always use `gpt-5.4-mini`.
+- **Implementation and fix work**: spawn an execution worker and keep the current session in the orchestrator role.
 
 ## Core Principles
 
@@ -76,6 +76,7 @@ When stage skills spawn agents, use the appropriate capability tier:
 3. Product and architectural decisions belong in discovery and planning, not execution.
 4. Every execution phase goes through execute → review → fix.
 5. One phase at a time unless the plan explicitly authorizes safe parallel work.
+6. During execution, the orchestrator delegates the phase work, then waits patiently for the implementation worker to finish before advancing the phase.
 
 ## Plan Contract
 

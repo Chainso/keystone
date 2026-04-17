@@ -2,20 +2,20 @@
 name: ultrakit:worker:resume
 description: >
   Regather context and continue work after context loss (compaction, session restart,
-  or handoff from another session). Use this skill when you are the active
-  execution-stage agent resuming a phase that was started but not completed by a
-  previous session.
+  or handoff from another session). Use this skill when you are the spawned
+  implementation worker resuming a phase that was started but not completed by a
+  previous worker session.
 ---
 
 # Resume Phase
 
-You are the active execution-stage agent resuming a phase that was started but not completed. A previous session (or your prior session) was implementing this phase and lost context. Your job is to regather context from the plan and working tree, then continue where the previous work left off.
+You are the spawned implementation worker resuming a phase that was started but not completed. A previous worker session (or your prior session) was implementing this phase and lost context. Your job is to regather context from the plan and working tree, then continue where the previous work left off while the outer execution stage remains the orchestrator.
 
 ## When This Applies
 
 - Your session was compacted and you lost context mid-implementation
 - You are continuing a partially completed phase in a fresh session
-- The execution stage told you to resume using this skill
+- The execution-stage orchestrator told you to resume using this skill
 
 ## Resume Protocol
 
@@ -68,7 +68,7 @@ From steps 1-4, determine:
 
 ### 6. Continue Implementation
 
-Continue with the normal implementation workflow defined in `ultrakit:orchestrator:execute`. You now have enough context to pick up where the previous session left off.
+Continue with the normal implementation workflow defined in `ultrakit:worker:implement`. You now have enough context to pick up where the previous worker session left off.
 
 If the phase handoff is outdated (e.g., expected files have changed, validation commands are different), update it as part of your work.
 
@@ -77,5 +77,5 @@ If the phase handoff is outdated (e.g., expected files have changed, validation 
 1. Trust the plan over any chat memory. The plan is the source of truth.
 2. Trust `git log` and `git status` over assumptions about what was done.
 3. Do not redo work that is already committed and passing validation.
-4. If the previous session's partial work is broken or going in the wrong direction, report this to the outer execution loop rather than silently fixing it.
+4. If the previous session's partial work is broken or going in the wrong direction, report this to the outer execution-stage orchestrator rather than silently redefining scope.
 5. Update the plan's living sections with what you discover during resume.
