@@ -31,6 +31,7 @@ class FakeExecutionSession {
   }> = [];
 
   async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
+    this.applyCleanupCommand(command);
     this.execCalls.push({
       command,
       options
@@ -160,6 +161,30 @@ class FakeExecutionSession {
       count: files.length,
       timestamp: new Date().toISOString()
     };
+  }
+
+  private applyCleanupCommand(command: string) {
+    const deleteTargets = Array.from(command.matchAll(/find '([^']+)' -mindepth 1 -delete/g))
+      .map((match) => match[1])
+      .filter((targetPath): targetPath is string => Boolean(targetPath));
+
+    for (const deleteTarget of deleteTargets) {
+      this.deleteTree(deleteTarget);
+    }
+  }
+
+  private deleteTree(rootPath: string) {
+    for (const filePath of Array.from(this.files.keys())) {
+      if (filePath.startsWith(`${rootPath}/`)) {
+        this.files.delete(filePath);
+      }
+    }
+
+    for (const directoryPath of Array.from(this.directories)) {
+      if (directoryPath.startsWith(`${rootPath}/`)) {
+        this.directories.delete(directoryPath);
+      }
+    }
   }
 
   private ensureParentDirectory(filePath: string) {
@@ -355,5 +380,49 @@ describe("sandbox agent bridge", () => {
     );
     expect(result.resolvedCommand).toContain("/artifacts/in");
     expect(session.execCalls.at(-1)?.options?.timeout).toBe(5000);
+  });
+
+  it("clears stale staged outputs when the bridge is materialized again", async () => {
+    const session = new FakeExecutionSession();
+    const workspace = createWorkspace();
+    const firstBridge = await materializeSandboxAgentBridge(
+      session as unknown as ExecutionSession,
+      {
+        workspace,
+        tenantId: "tenant-a",
+        runId: "run-123",
+        sessionId: "session-123",
+        taskId: "task-1",
+        sandboxId: "sandbox-123",
+        artifacts: []
+      }
+    );
+
+    await writeSandboxAgentFile(
+      {
+        session: session as unknown as ExecutionSession,
+        bridge: firstBridge
+      },
+      "/artifacts/out/stale-output.md",
+      "stale\n"
+    );
+
+    await materializeSandboxAgentBridge(session as unknown as ExecutionSession, {
+      workspace,
+      tenantId: "tenant-a",
+      runId: "run-123",
+      sessionId: "session-123",
+      taskId: "task-1",
+      sandboxId: "sandbox-123",
+      artifacts: []
+    });
+
+    const stagedOutputs = await listSandboxAgentStagedOutputs({
+      session: session as unknown as ExecutionSession,
+      bridge: firstBridge
+    });
+
+    expect(stagedOutputs).toHaveLength(0);
+    expect(session.files.has("/artifacts/out/stale-output.md")).toBe(false);
   });
 });

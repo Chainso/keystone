@@ -92,12 +92,23 @@ Backward compatibility with an external shipped product is not required because 
   **Decision:** Project prior run artifacts into `/artifacts/in`, stage outputs only under `/artifacts/out`, and materialize bridge metadata as JSON control files under `/keystone`.  
   **Rationale:** This matches the relaxed design spec, keeps R2 and `artifact_refs` canonical, and gives later Think roles concrete control files and projected inputs without silently promoting staged outputs.
 
+- **Date:** 2026-04-17  
+  **Phase:** Phase 2 Fix Pass  
+  **Decision:** Clear `/artifacts/out` during bridge re-materialization and add a regression test for repeat materialization on the same sandbox session.  
+  **Rationale:** The review finding showed that stale staged outputs could remain visible across repeated `ensureWorkspace()` calls even though staged files are not meant to become durable automatically.
+
+- **Date:** 2026-04-17  
+  **Phase:** Phase 2 Fix Pass  
+  **Decision:** Reset `/artifacts/out` whenever the bridge is re-materialized for an existing sandbox session.  
+  **Rationale:** Repeated `ensureWorkspace()` calls must not leak stale staged outputs into the next turn’s view. Clearing the staging root preserves the explicit rule that promotion from `/artifacts/out` remains manual rather than implicit.
+
 ## Progress
 
 - [x] 2026-04-16 Successor plan created and registered while `keystone-m1-cloudflare-foundation` remained active.
 - [x] 2026-04-17 `keystone-m1-cloudflare-foundation` archived; Think plan is now unblocked and eligible to start.
 - [x] 2026-04-16 Phase 1 completed: Think dependencies, bindings, generated types, runtime contract scaffolding, and a base `KeystoneThinkAgent` landed cleanly.
 - [x] 2026-04-17 Phase 2 completed: `TaskSessionDO` now projects prior run artifacts into `/artifacts/in`, stages writable outputs under `/artifacts/out`, materializes `/keystone/*.json` control files, and exposes reusable filesystem/bash bridge helpers plus smoke coverage.
+- [x] 2026-04-17 Phase 2 fix pass completed: bridge re-materialization now clears `/artifacts/out`, and a repeat-materialization regression test covers stale staged-output leakage.
 - [ ] Phase 3: Build the Think-backed `ImplementerAgent` and event/artifact mapping.
 - [ ] Phase 4: Integrate the Think runtime into `TaskWorkflow` behind a runtime selector and prove one fixture-backed task.
 - [ ] Phase 5: Update developer docs, runbooks, and archive the plan when acceptance is met.
@@ -112,6 +123,7 @@ Backward compatibility with an external shipped product is not required because 
 - **2026-04-17:** The cleanest way to honor the `/workspace` contract without disturbing M1’s deterministic worktree layout is to treat `/workspace` as a virtual root in the bridge and resolve it onto the real task worktree path under `/workspace/runs/...`.
 - **2026-04-17:** Durable Object stub inference for `TaskSessionDO` still collapsed to `never` in some callers until the DO methods had explicit public RPC return types, so the Phase 2 validation needed those signatures tightened.
 - **2026-04-17:** A meaningful Phase 2 smoke path does not need live `wrangler dev`; an in-process contract smoke over the bridge helpers is enough to prove projection, staged outputs, and command path rewriting while avoiding host-only local Worker constraints.
+- **2026-04-17:** The repeat-materialization path is part of the Phase 2 contract too. Leaving `/artifacts/out` untouched made staged files appear durable across turns even though promotion is supposed to stay explicit.
 
 ## Outcomes & Retrospective
 
@@ -306,6 +318,7 @@ Phase 2 implementation notes:
 - `/keystone/session.json`, `/keystone/filesystem.json`, and `/keystone/artifacts.json` are now the durable control-file contract for later Think roles.
 - `src/keystone/agents/tools/filesystem.ts` and `src/keystone/agents/tools/bash.ts` provide the reusable bridge helpers for later Think-backed tools.
 - `scripts/sandbox-smoke.ts` now validates the bridge contract directly instead of depending on a live local Worker.
+- The Phase 2 fix pass now clears `/artifacts/out` during bridge re-materialization so stale staged outputs do not survive repeated `ensureWorkspace()` calls on the same sandbox session.
 
 ## Interfaces and Dependencies
 
@@ -485,6 +498,7 @@ Completed on 2026-04-17.
 - Added reusable filesystem and bash bridge helpers that resolve virtual agent paths onto the real sandbox targets and enforce read-only vs writable roots at the helper layer.
 - Added bridge-focused coverage in `tests/lib/sandbox-agent-bridge.test.ts` and replaced the old live-worker smoke with an in-process bridge smoke in `scripts/sandbox-smoke.ts`.
 - Validation passed with `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `npm run sandbox:smoke`.
+- The targeted Phase 2 fix pass now clears `/artifacts/out` on bridge re-materialization and covers the repeat-materialization regression in `tests/lib/sandbox-agent-bridge.test.ts`.
 
 **Next Starter Context**  
 Phase 3 should consume `MaterializedWorkspace.agentBridge` and the new filesystem/bash helpers instead of reaching straight into raw sandbox paths. Keep staged output promotion explicit: `/artifacts/out` remains a writable staging area until Phase 4 or a dedicated promotion helper turns those files into canonical R2 artifacts.

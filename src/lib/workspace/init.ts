@@ -152,8 +152,9 @@ async function prepareProjectionRoots(
   await execOrThrow(
     session,
     [
-      `chmod -R u+w ${quoteShellArgument(bridge.layout.artifactsInRoot)} ${quoteShellArgument(bridge.layout.keystoneRoot)} 2>/dev/null || true`,
+      `chmod -R u+w ${quoteShellArgument(bridge.layout.artifactsInRoot)} ${quoteShellArgument(bridge.layout.artifactsOutRoot)} ${quoteShellArgument(bridge.layout.keystoneRoot)} 2>/dev/null || true`,
       `find ${quoteShellArgument(bridge.layout.artifactsInRoot)} -mindepth 1 -delete`,
+      `find ${quoteShellArgument(bridge.layout.artifactsOutRoot)} -mindepth 1 -delete`,
       `find ${quoteShellArgument(bridge.layout.keystoneRoot)} -mindepth 1 -delete`
     ].join(" && ")
   );
