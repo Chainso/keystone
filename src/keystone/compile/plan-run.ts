@@ -49,6 +49,8 @@ export interface CompileRunPlanResult {
   taskHandoffArtifactRefs: Array<Awaited<ReturnType<typeof createArtifactRef>>>;
 }
 
+type CompileMode = "fixture" | "live";
+
 function requireArtifactRef<T>(artifactRef: T | undefined, kind: string): T {
   if (!artifactRef) {
     throw new Error(`Artifact ref creation returned no row for ${kind}.`);
@@ -212,6 +214,7 @@ async function writeJsonArtifact(
 
 export async function compileRunPlan(input: CompileRunPlanInput): Promise<CompileRunPlanResult> {
   const decisionPackage = decisionPackageSchema.parse(input.decisionPackage);
+  const compileMode: CompileMode = "live";
 
   await updateSessionStatus(input.client, {
     tenantId: input.tenantId,
@@ -220,7 +223,8 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
     metadata: {
       providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
       providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
-      decisionPackageId: decisionPackage.decisionPackageId
+      decisionPackageId: decisionPackage.decisionPackageId,
+      compileMode
     }
   });
 
@@ -232,7 +236,8 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
     payload: {
       providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
       providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
-      decisionPackageId: decisionPackage.decisionPackageId
+      decisionPackageId: decisionPackage.decisionPackageId,
+      compileMode
     },
     status: "provisioning"
   });
@@ -247,7 +252,8 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
     kind: "decision_package",
     value: decisionPackage,
     metadata: {
-      source: "compile_input"
+      source: "compile_input",
+      compileMode
     },
     status: "provisioning"
   });
@@ -260,7 +266,8 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
       providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
       providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
       decisionPackageId: decisionPackage.decisionPackageId,
-      decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId
+      decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
+      compileMode
     }
   });
 
@@ -273,7 +280,8 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
       providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
       decisionPackageId: decisionPackage.decisionPackageId,
       decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
-      runSessionId: input.runSessionId
+      runSessionId: input.runSessionId,
+      compileMode
     }
   });
 
@@ -297,208 +305,8 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
         decisionPackageId: decisionPackage.decisionPackageId,
         model: completion.model,
         completionId: completion.id,
-        finishReason: completion.finishReason ?? null
-      },
-      status: "active"
-    });
-
-    const taskHandoffArtifactRefs = [];
-
-    for (const task of plan.tasks) {
-      const handoffArtifactRef = await writeJsonArtifact({
-        env: input.env,
-        client: input.client,
-        tenantId: input.tenantId,
-        runId: input.runId,
-        sessionId: input.compileSessionId,
-        key: taskHandoffArtifactKey(input.tenantId, input.runId, task.taskId),
-        kind: "task_handoff",
-        value: {
-          runId: input.runId,
-          decisionPackageId: plan.decisionPackageId,
-          task
-        },
-        metadata: {
-          taskId: task.taskId,
-          title: task.title
-        },
-        status: "active"
-      });
-
-      taskHandoffArtifactRefs.push(handoffArtifactRef);
-    }
-
-    await appendAndPublishRunEvent(input.client, input.env, {
-      tenantId: input.tenantId,
-      runId: input.runId,
-      sessionId: input.compileSessionId,
-      eventType: "compile.completed",
-      artifactRefId: planArtifactRef.artifactRefId,
-      payload: {
-        decisionPackageId: plan.decisionPackageId,
-        taskCount: plan.tasks.length,
-        model: completion.model,
-        completionId: completion.id
-      },
-      status: "archived"
-    });
-
-    await updateSessionStatus(input.client, {
-      tenantId: input.tenantId,
-      sessionId: input.compileSessionId,
-      status: "archived",
-      metadata: {
-        providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
-        providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
-        decisionPackageId: decisionPackage.decisionPackageId,
-        decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
-        planArtifactRefId: planArtifactRef.artifactRefId,
-        taskCount: plan.tasks.length
-      }
-    });
-
-    return {
-      plan,
-      completion,
-      decisionPackageArtifactRef,
-      planArtifactRef,
-      taskHandoffArtifactRefs
-    };
-  } catch (error) {
-    const existingCompileSession = await getSessionRecord(
-      input.client,
-      input.tenantId,
-      input.compileSessionId
-    );
-
-    if (existingCompileSession && existingCompileSession.status !== "failed") {
-      await updateSessionStatus(input.client, {
-        tenantId: input.tenantId,
-        sessionId: input.compileSessionId,
-        status: "failed",
-        metadata: {
-          ...(existingCompileSession.metadata ?? {}),
-          errorMessage: error instanceof Error ? error.message : String(error)
-        }
-      });
-    }
-
-    await appendAndPublishRunEvent(input.client, input.env, {
-      tenantId: input.tenantId,
-      runId: input.runId,
-      sessionId: input.compileSessionId,
-      eventType: "compile.failed",
-      severity: "error",
-      payload: {
-        message: error instanceof Error ? error.message : String(error)
-      },
-      status: "failed"
-    });
-
-    throw error;
-  }
-}
-
-export async function compileDemoFixtureRunPlan(
-  input: CompileRunPlanInput
-): Promise<CompileRunPlanResult> {
-  const decisionPackage = decisionPackageSchema.parse(input.decisionPackage);
-  const plan = buildDemoFixtureCompiledPlan(decisionPackage);
-  const completion = {
-    id: `fixture-compile-${input.runId}`,
-    model: "fixture-compile",
-    content: JSON.stringify(plan),
-    finishReason: "stop",
-    usage: {
-      totalTokens: 0
-    },
-    rawText: JSON.stringify(plan)
-  };
-
-  await updateSessionStatus(input.client, {
-    tenantId: input.tenantId,
-    sessionId: input.compileSessionId,
-    status: "provisioning",
-    metadata: {
-      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
-      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
-      decisionPackageId: decisionPackage.decisionPackageId,
-      compileMode: "fixture"
-    }
-  });
-
-  await appendAndPublishRunEvent(input.client, input.env, {
-    tenantId: input.tenantId,
-    runId: input.runId,
-    sessionId: input.compileSessionId,
-    eventType: "compile.started",
-    payload: {
-      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
-      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
-      decisionPackageId: decisionPackage.decisionPackageId,
-      compileMode: "fixture"
-    },
-    status: "provisioning"
-  });
-
-  const decisionPackageArtifactRef = await writeJsonArtifact({
-    env: input.env,
-    client: input.client,
-    tenantId: input.tenantId,
-    runId: input.runId,
-    sessionId: input.compileSessionId,
-    key: decisionPackageArtifactKey(input.tenantId, input.runId, input.compileSessionId),
-    kind: "decision_package",
-    value: decisionPackage,
-    metadata: {
-      source: "compile_input"
-    },
-    status: "provisioning"
-  });
-
-  await updateSessionStatus(input.client, {
-    tenantId: input.tenantId,
-    sessionId: input.compileSessionId,
-    status: "ready",
-    metadata: {
-      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
-      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
-      decisionPackageId: decisionPackage.decisionPackageId,
-      decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
-      compileMode: "fixture"
-    }
-  });
-
-  await updateSessionStatus(input.client, {
-    tenantId: input.tenantId,
-    sessionId: input.compileSessionId,
-    status: "active",
-    metadata: {
-      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
-      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
-      decisionPackageId: decisionPackage.decisionPackageId,
-      decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
-      runSessionId: input.runSessionId,
-      compileMode: "fixture"
-    }
-  });
-
-  try {
-    const planArtifactRef = await writeJsonArtifact({
-      env: input.env,
-      client: input.client,
-      tenantId: input.tenantId,
-      runId: input.runId,
-      sessionId: input.compileSessionId,
-      key: runPlanArtifactKey(input.tenantId, input.runId),
-      kind: "run_plan",
-      value: plan,
-      metadata: {
-        decisionPackageId: decisionPackage.decisionPackageId,
-        model: completion.model,
-        completionId: completion.id,
         finishReason: completion.finishReason ?? null,
-        compileMode: "fixture"
+        compileMode
       },
       status: "active"
     });
@@ -521,7 +329,8 @@ export async function compileDemoFixtureRunPlan(
         },
         metadata: {
           taskId: task.taskId,
-          title: task.title
+          title: task.title,
+          compileMode
         },
         status: "active"
       });
@@ -540,7 +349,7 @@ export async function compileDemoFixtureRunPlan(
         taskCount: plan.tasks.length,
         model: completion.model,
         completionId: completion.id,
-        compileMode: "fixture"
+        compileMode
       },
       status: "archived"
     });
@@ -556,7 +365,7 @@ export async function compileDemoFixtureRunPlan(
         decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
         planArtifactRefId: planArtifactRef.artifactRefId,
         taskCount: plan.tasks.length,
-        compileMode: "fixture"
+        compileMode
       }
     });
 
@@ -594,7 +403,214 @@ export async function compileDemoFixtureRunPlan(
       severity: "error",
       payload: {
         message: error instanceof Error ? error.message : String(error),
-        compileMode: "fixture"
+        compileMode
+      },
+      status: "failed"
+    });
+
+    throw error;
+  }
+}
+
+export async function compileDemoFixtureRunPlan(
+  input: CompileRunPlanInput
+): Promise<CompileRunPlanResult> {
+  const decisionPackage = decisionPackageSchema.parse(input.decisionPackage);
+  const compileMode: CompileMode = "fixture";
+  const plan = buildDemoFixtureCompiledPlan(decisionPackage);
+  const completion = {
+    id: `fixture-compile-${input.runId}`,
+    model: "fixture-compile",
+    content: JSON.stringify(plan),
+    finishReason: "stop",
+    usage: {
+      totalTokens: 0
+    },
+    rawText: JSON.stringify(plan)
+  };
+
+  await updateSessionStatus(input.client, {
+    tenantId: input.tenantId,
+    sessionId: input.compileSessionId,
+    status: "provisioning",
+    metadata: {
+      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
+      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
+      decisionPackageId: decisionPackage.decisionPackageId,
+      compileMode
+    }
+  });
+
+  await appendAndPublishRunEvent(input.client, input.env, {
+    tenantId: input.tenantId,
+    runId: input.runId,
+    sessionId: input.compileSessionId,
+    eventType: "compile.started",
+    payload: {
+      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
+      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
+      decisionPackageId: decisionPackage.decisionPackageId,
+      compileMode
+    },
+    status: "provisioning"
+  });
+
+  const decisionPackageArtifactRef = await writeJsonArtifact({
+    env: input.env,
+    client: input.client,
+    tenantId: input.tenantId,
+    runId: input.runId,
+    sessionId: input.compileSessionId,
+    key: decisionPackageArtifactKey(input.tenantId, input.runId, input.compileSessionId),
+    kind: "decision_package",
+    value: decisionPackage,
+    metadata: {
+      source: "compile_input",
+      compileMode
+    },
+    status: "provisioning"
+  });
+
+  await updateSessionStatus(input.client, {
+    tenantId: input.tenantId,
+    sessionId: input.compileSessionId,
+    status: "ready",
+    metadata: {
+      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
+      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
+      decisionPackageId: decisionPackage.decisionPackageId,
+      decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
+      compileMode
+    }
+  });
+
+  await updateSessionStatus(input.client, {
+    tenantId: input.tenantId,
+    sessionId: input.compileSessionId,
+    status: "active",
+    metadata: {
+      providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
+      providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
+      decisionPackageId: decisionPackage.decisionPackageId,
+      decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
+      runSessionId: input.runSessionId,
+      compileMode
+    }
+  });
+
+  try {
+    const planArtifactRef = await writeJsonArtifact({
+      env: input.env,
+      client: input.client,
+      tenantId: input.tenantId,
+      runId: input.runId,
+      sessionId: input.compileSessionId,
+      key: runPlanArtifactKey(input.tenantId, input.runId),
+      kind: "run_plan",
+      value: plan,
+      metadata: {
+        decisionPackageId: decisionPackage.decisionPackageId,
+        model: completion.model,
+        completionId: completion.id,
+        finishReason: completion.finishReason ?? null,
+        compileMode
+      },
+      status: "active"
+    });
+
+    const taskHandoffArtifactRefs = [];
+
+    for (const task of plan.tasks) {
+      const handoffArtifactRef = await writeJsonArtifact({
+        env: input.env,
+        client: input.client,
+        tenantId: input.tenantId,
+        runId: input.runId,
+        sessionId: input.compileSessionId,
+        key: taskHandoffArtifactKey(input.tenantId, input.runId, task.taskId),
+        kind: "task_handoff",
+        value: {
+          runId: input.runId,
+          decisionPackageId: plan.decisionPackageId,
+          task
+        },
+        metadata: {
+          taskId: task.taskId,
+          title: task.title,
+          compileMode
+        },
+        status: "active"
+      });
+
+      taskHandoffArtifactRefs.push(handoffArtifactRef);
+    }
+
+    await appendAndPublishRunEvent(input.client, input.env, {
+      tenantId: input.tenantId,
+      runId: input.runId,
+      sessionId: input.compileSessionId,
+      eventType: "compile.completed",
+      artifactRefId: planArtifactRef.artifactRefId,
+      payload: {
+        decisionPackageId: plan.decisionPackageId,
+        taskCount: plan.tasks.length,
+        model: completion.model,
+        completionId: completion.id,
+        compileMode
+      },
+      status: "archived"
+    });
+
+    await updateSessionStatus(input.client, {
+      tenantId: input.tenantId,
+      sessionId: input.compileSessionId,
+      status: "archived",
+      metadata: {
+        providerBaseUrl: input.env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL,
+        providerModel: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
+        decisionPackageId: decisionPackage.decisionPackageId,
+        decisionPackageArtifactRefId: decisionPackageArtifactRef.artifactRefId,
+        planArtifactRefId: planArtifactRef.artifactRefId,
+        taskCount: plan.tasks.length,
+        compileMode
+      }
+    });
+
+    return {
+      plan,
+      completion,
+      decisionPackageArtifactRef,
+      planArtifactRef,
+      taskHandoffArtifactRefs
+    };
+  } catch (error) {
+    const existingCompileSession = await getSessionRecord(
+      input.client,
+      input.tenantId,
+      input.compileSessionId
+    );
+
+    if (existingCompileSession && existingCompileSession.status !== "failed") {
+      await updateSessionStatus(input.client, {
+        tenantId: input.tenantId,
+        sessionId: input.compileSessionId,
+        status: "failed",
+        metadata: {
+          ...(existingCompileSession.metadata ?? {}),
+          errorMessage: error instanceof Error ? error.message : String(error)
+        }
+      });
+    }
+
+    await appendAndPublishRunEvent(input.client, input.env, {
+      tenantId: input.tenantId,
+      runId: input.runId,
+      sessionId: input.compileSessionId,
+      eventType: "compile.failed",
+      severity: "error",
+      payload: {
+        message: error instanceof Error ? error.message : String(error),
+        compileMode
       },
       status: "failed"
     });

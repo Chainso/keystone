@@ -1,3 +1,4 @@
+import type { AgentRuntimeKind } from "../../maestro/contracts";
 import { z } from "zod";
 
 export const thinkDemoModeValues = ["mock", "live"] as const;
@@ -30,4 +31,18 @@ export function resolveRunExecutionOptions(
   }
 
   return parseRunExecutionOptions(requestedOptions);
+}
+
+export function isLiveThinkExecution(
+  runtime: AgentRuntimeKind,
+  options: RunExecutionOptions
+) {
+  return runtime === "think" && options.thinkMode === "live";
+}
+
+export function isMockThinkExecution(
+  runtime: AgentRuntimeKind,
+  options: RunExecutionOptions
+) {
+  return runtime === "think" && options.thinkMode === "mock";
 }

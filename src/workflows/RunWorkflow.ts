@@ -15,7 +15,11 @@ import { getSessionRecord, updateSessionStatus } from "../lib/db/runs";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
 import type { RunExecutionOptions } from "../lib/runs/options";
-import { resolveRunExecutionOptions } from "../lib/runs/options";
+import {
+  isLiveThinkExecution,
+  isMockThinkExecution,
+  resolveRunExecutionOptions
+} from "../lib/runs/options";
 import { evaluateRepoSourcePolicy } from "../lib/security/policy";
 import {
   buildRunWorkflowInstanceId,
@@ -118,15 +122,14 @@ function resolveDecisionPackage(
   );
 }
 
-function shouldUseDeterministicFixtureCompile(
+export function shouldUseFixtureCompileForRun(
   repo: CompileRepoSource,
   decisionPackage: DecisionPackage,
   runtime: AgentRuntimeKind,
   options: RunExecutionOptions
 ) {
   return (
-    runtime === "think" &&
-    options.thinkMode === "live" &&
+    isMockThinkExecution(runtime, options) &&
     repo.source === "localPath" &&
     repo.localPath.endsWith("fixtures/demo-target") &&
     decisionPackage.decisionPackageId === "demo-greeting-update"
@@ -369,7 +372,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           compileSessionId
         );
 
-        const compile = shouldUseDeterministicFixtureCompile(
+        const compile = shouldUseFixtureCompileForRun(
           repo,
           decisionPackage,
           runContext.runtime,
@@ -418,10 +421,9 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
     });
 
     let taskResults: TaskWorkflowOutput[] = [];
-    const maxTaskPollAttempts =
-      runContext.runtime === "think" && runContext.options.thinkMode === "live"
-        ? LIVE_THINK_MAX_TASK_POLL_ATTEMPTS
-        : DEFAULT_MAX_TASK_POLL_ATTEMPTS;
+    const maxTaskPollAttempts = isLiveThinkExecution(runContext.runtime, runContext.options)
+      ? LIVE_THINK_MAX_TASK_POLL_ATTEMPTS
+      : DEFAULT_MAX_TASK_POLL_ATTEMPTS;
 
     for (let attempt = 0; attempt < maxTaskPollAttempts; attempt += 1) {
       const pollSnapshot: TaskWorkflowStatusSnapshot[] = await step.do(
