@@ -12,6 +12,10 @@ function readJsonResponse(response: Response) {
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+function asObject(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
 export function resolveBaseUrl() {
   return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
 }
@@ -83,8 +87,11 @@ export async function ensureFixtureProject() {
   }
 
   const listed = await readJsonResponse(listResponse);
-  const existingProjects = Array.isArray(listed.projects)
-    ? listed.projects
+  const listedData = asObject(listed.data);
+  const existingProjects = Array.isArray(listedData?.items)
+    ? listedData.items
+    : Array.isArray(listed.projects)
+      ? listed.projects
     : [];
   const existingProject = existingProjects[0] as Record<string, unknown> | undefined;
 
@@ -105,12 +112,13 @@ export async function ensureFixtureProject() {
     }
 
     const updated = await readJsonResponse(updateResponse);
+    const updatedProject = asObject(updated.data) ?? asObject(updated.project);
 
     return {
       action: "updated" as const,
       tenantId,
       baseUrl,
-      project: updated.project
+      project: updatedProject
     };
   }
 
@@ -127,12 +135,13 @@ export async function ensureFixtureProject() {
   }
 
   const created = await readJsonResponse(createResponse);
+  const createdProject = asObject(created.data) ?? asObject(created.project);
 
   return {
     action: "created" as const,
     tenantId,
     baseUrl,
-    project: created.project
+    project: createdProject
   };
 }
 

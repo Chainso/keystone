@@ -123,6 +123,31 @@ Compatibility that **is** still required:
   **Decision:** Freeze the public `v1` contract in new resource-family modules under `src/http/api/v1/`, keep current live handler behavior only where it already exists, and express unfinished public routes through an explicit route matrix plus the shared `not_implemented` write contract.  
   **Rationale:** This makes the canonical UI-first surface durable in code without forcing Phase 2 projection logic into the contract-freeze pass or hiding which routes are implemented versus still frozen-on-paper.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 2  
+  **Decision:** Rewire the active API onto resource-family handlers and sanctioned projections instead of the old M1 summary shape, while keeping raw `/events` and `/ws` only as explicit legacy/debug seams.  
+  **Rationale:** The UI needed stable `Run`, `Task`, `WorkflowGraph`, `Artifact`, and `Approval` resources backed by current persisted state, not another layer of event-derived client logic.
+
+- **Date:** 2026-04-18  
+  **Phase:** Review / Fix Pass  
+  **Decision:** Address the single-review findings before closeout: add missing route coverage, fix the run-state DB-client leak, preserve `decisionPackageId` for inline runs, tag approval events with `taskId`, and stop the demo validator from depending on `/events` as a primary contract surface.  
+  **Rationale:** The review surfaced real contract and correctness gaps, not optional polish. Closing them was required to leave the repo in one coherent API language.
+
+- **Date:** 2026-04-18  
+  **Phase:** Phase 3  
+  **Decision:** Materialize `TaskConversation`, operator-steering scaffolds, and stub read surfaces as first-class routes while keeping the unsupported write path honest through the shared `not_implemented` envelope.  
+  **Rationale:** The UI now has the full route and type surface it needs, even though some resources remain projections or typed stubs.
+
+- **Date:** 2026-04-18  
+  **Phase:** Phase 4  
+  **Decision:** Migrate the demo helpers, contract tests, README guidance, and developer docs to the UI-first contract; extend `Run` detail with session/artifact counts so the demo no longer needs raw `/events` for validation.  
+  **Rationale:** The repo needed one canonical API story. The demo and docs could not keep teaching the deprecated M1 launcher/summary contract.
+
+- **Date:** 2026-04-18  
+  **Phase:** Closeout  
+  **Decision:** Re-run `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`, accepting the known Wrangler/Docker sandbox limitation for `build` and rerunning it outside the sandbox.  
+  **Rationale:** Final validation had to prove the new contract end to end and distinguish code regressions from the pre-existing host-environment constraint.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed across product docs, current public API, runtime/event model, persistence layer, and repo scripts/tests.
@@ -130,9 +155,10 @@ Compatibility that **is** still required:
 - [x] 2026-04-18 Active execution plan created and registered.
 - [x] 2026-04-18 User approved the execution plan and execution started.
 - [x] 2026-04-18 Phase 1 completed: canonical UI-first resource schemas, envelope/scaffold conventions, resource-family `v1` router composition, the route matrix, the canonical task-conversation message write contract, and the shared `not_implemented` write response now live in code.
-- [ ] Phase 2: Rework core read APIs around existing persisted state and sanctioned projections.
-- [ ] Phase 3: Add `TaskConversation` plus typed stub endpoints for resources that do not yet exist.
-- [ ] Phase 4: Update scripts, tests, docs, and developer notes to the new API surface and close out the plan.
+- [x] 2026-04-18 Phase 2 completed: the public router now serves projected `Run`, `Task`, `WorkflowGraph`, `Artifact`, and `Approval` resources through the resource-family `src/http/api/v1/*` modules.
+- [x] 2026-04-18 Phase 3 completed: `TaskConversation`, operator-steering scaffolds, the canonical `/stream` alias, and typed stub resource families are now mounted with stable contracts.
+- [x] 2026-04-18 Phase 4 completed: demo scripts, HTTP/demo contract tests, README guidance, developer docs, and `.ultrakit/notes.md` now describe and validate the UI-first API contract.
+- [x] 2026-04-18 Final validation completed: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` all pass on the final tree, with `build` still requiring execution outside the Codex sandbox because Wrangler/Docker write to home-directory paths.
 
 ## Surprises & Discoveries
 
@@ -141,9 +167,9 @@ Compatibility that **is** still required:
 - `DecisionPackage` is only embedded in `POST /v1/runs` today, then later written as an artifact during compile. There is no pre-run decision-package collection yet.
 - The runtime is still explicitly implementer-only. Multi-role review/test loops do not exist yet, so any richer task conversation model must be honest about being a projection/stub rather than a real multi-actor transcript.
 - `TaskWorkflow` currently reloads live project state during task execution. Any new API that implies a frozen immutable task-execution snapshot would be misleading unless it is clearly defined as projection or future work.
-- The current run validation path has an implementation artifact: invalid run payloads surface as generic `500` errors because run-input Zod errors collapse in the app error handler.
 - `npm run build` passes only when run outside the Codex sandbox because Wrangler/Docker write under `~/.config/.wrangler` and `~/.docker`. This is already consistent with `.ultrakit/notes.md`.
-- Freezing the route matrix honestly required a second status dimension beyond `reused | projected | stub`: some routes are live but still transitional, some are canonical but not mounted yet, and the legacy raw event/websocket seams still need to be called out explicitly until later phases retire or replace them.
+- The demo could not leave `/events` behind cleanly until `Run` detail exposed session/artifact counts. Adding those counts to the canonical run resource kept `/events` in the repo as an optional debug seam instead of a required validation dependency.
+- Approval request/resolution events need `taskId` copied from task-session metadata or task conversations silently lose their approval notices even though the approval rows themselves are correct.
 
 ## Outcomes & Retrospective
 
@@ -161,6 +187,14 @@ Phase 1 outcome on 2026-04-18:
 - The `v1` route matrix is now an explicit artifact in code, including route availability notes that distinguish implemented, scaffolded, contract-frozen, and legacy debug surfaces.
 - The canonical operator-steering path `POST /v1/runs/:runId/tasks/:taskId/conversation/messages` now exists with a stable request schema and honest `501 not_implemented` response while backend delivery remains deferred.
 - A canonical UI stream alias now exists at `GET /v1/runs/:runId/stream`, while `/v1/runs/:runId/events` and `/v1/runs/:runId/ws` remain explicit debug/legacy seams for the transition.
+
+Final execution outcome on 2026-04-18:
+
+- The public `v1` API is now organized by version and resource family under `src/http/api/v1/`, with canonical projected/stub envelopes instead of the earlier flat M1 transport surface.
+- `Project`, `Run`, `Task`, `WorkflowGraph`, `TaskConversation`, `Artifact`, `Approval`, `EvidenceBundle`, `IntegrationRecord`, `Release`, and `DecisionPackage` routes are all defined and mounted; read paths reuse or project current persisted state where possible, and unfinished write behavior fails through the shared structured `not_implemented` contract.
+- The canonical operator-steering endpoint `POST /v1/runs/:runId/tasks/:taskId/conversation/messages` is frozen for the UI even though backend persistence/delivery remains deferred.
+- The demo flow, helper scripts, HTTP/demo contract tests, README guidance, and developer docs now target the UI-first contract instead of the old `project CRUD + run summary + websocket` story.
+- Remaining gaps are explicit and intentional: project documents, first-class decision-package collections, durable operator-message delivery, evidence bundles, integration records, and release behavior are still typed scaffolds rather than real backend features.
 
 ## Context and Orientation
 
@@ -513,10 +547,9 @@ Completed on 2026-04-18.
 - Repointed project serialization onto the new canonical `Project` schemas so the old handler layer no longer owns the public resource shape definition.
 
 **Next Starter Context**  
-- Phase 2 should start from `src/http/api/v1/route-matrix.ts`, `src/http/api/v1/runs/contracts.ts`, `src/http/api/v1/projects/contracts.ts`, and the current `src/http/handlers/*.ts` modules.
-- The main implementation gap is route behavior, not naming: `POST /v1/runs` and `GET /v1/runs/:runId` are still transitional and must be rewritten to emit the frozen `Run` contract rather than the old M1 launcher/summary shapes.
-- The new `contract_frozen` routes are intentionally not mounted yet. Phase 2 should make the read surfaces real in the new module layout instead of adding compatibility shims in the old flat structure.
-- `/v1/runs/:runId/stream` is now the canonical UI path, while `/events` and `/ws` should be treated as legacy/debug seams until the new projections are stable enough to retire or clearly demote them.
+- Superseded by the completed later phases in this archived plan.
+- Phase 2 mounted the read surfaces in the new module layout, and Phase 4 aligned the demo/docs/tests to those routes.
+- `/v1/runs/:runId/stream` remains the canonical UI path, while `/events` and `/ws` remain legacy/debug seams only.
 
 **Known Constraints / Baseline Failures**  
 - Do not redesign persistence in this phase.
@@ -588,6 +621,19 @@ Update `Progress`, `Execution Log`, `Surprises & Discoveries`, `Artifacts and No
 - `WorkflowGraph` will be mostly flat because live compile still rejects dependency edges.
 - Raw run-event routes may need to remain available temporarily for debug/script compatibility during execution.
 
+**Status**  
+Completed on 2026-04-18.
+
+**Completion Notes**  
+- Added resource-family handlers under `src/http/api/v1/` for projects, runs, decision packages, and artifacts, and repointed the legacy `src/http/handlers/runs.ts` seam to the new run handlers.
+- Added `listProjectRunSessions(...)` and `listRunApprovalRecords(...)` DB helpers plus projection helpers for `Run`, `Task`, `WorkflowGraph`, `Artifact`, and `Approval`.
+- Mounted canonical read routes for project subcollections, run detail, workflow graph, tasks, task detail, task artifacts, approval list/detail, artifact detail, and artifact content.
+- Fixed read-path correctness issues found in review: missing-run DB-client cleanup, inline `decisionPackageId` projection, and approval-event `taskId` tagging.
+
+**Next Starter Context**  
+- Phase 3 should build on the now-mounted read surfaces instead of adding any new persistence.
+- `TaskConversation` and the remaining stub families can now assume the resource-family router structure is stable.
+
 ### Phase 3: Add `TaskConversation`, operator steering, and typed stub surfaces for non-real resources
 
 #### Phase Handoff
@@ -643,6 +689,18 @@ Update `Progress`, `Execution Log`, `Surprises & Discoveries`, `Artifacts and No
 - Current runtime is implementer-only and single-turn-per-task.
 - Approvals are run-scoped today, not task review/test scoped.
 - There is no first-class conversation store; the conversation is a projection over events.
+
+**Status**  
+Completed on 2026-04-18.
+
+**Completion Notes**  
+- Added `TaskConversation` projection logic that emits implementer messages plus curated workflow notices, including approval notices once task-scoped approval events are tagged.
+- Mounted the canonical operator-steering route `POST /v1/runs/:runId/tasks/:taskId/conversation/messages` with the frozen request schema and structured `501 not_implemented` response.
+- Mounted typed stub read surfaces for `DecisionPackage`, `EvidenceBundle`, `IntegrationRecord`, and `Release`, and kept `/v1/runs/:runId/stream` as the canonical UI stream alias while preserving `/events` and `/ws` as legacy/debug seams.
+
+**Next Starter Context**  
+- Phase 4 should treat `/events` as optional debug output only and align the demo/docs/tests to the canonical resource routes.
+- The remaining gaps after this phase are intentional backend stubs, not missing type definitions.
 
 ### Phase 4: Migrate the demo, tests, docs, and notes to the new contract
 
@@ -703,3 +761,15 @@ Update all living sections in the plan, especially `Progress`, `Execution Log`, 
 - The demo must be migrated, not left on the old route matrix.
 - `run-local` may still be retired or rewritten separately if it remains structurally stale against the new surface.
 - `build` baseline still requires the host-local Wrangler/Docker environment outside the sandbox.
+
+**Status**  
+Completed on 2026-04-18.
+
+**Completion Notes**  
+- Updated `scripts/demo-run.ts`, `scripts/demo-validate.ts`, `scripts/ensure-demo-project.ts`, and `scripts/run-local.ts` to speak the UI-first contract, including inline decision-package intake and run-detail based validation.
+- Expanded HTTP/demo contract coverage so the new read-model routes, stub families, operator-steering contract, and unsupported write behavior are asserted in tests.
+- Updated `README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` so the repo no longer teaches the old `localPath`/run-summary contract as canonical.
+- Final validation passed: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`, with `build` rerun outside the sandbox because Wrangler/Docker write to host home-directory state.
+
+**Next Starter Context**  
+Plan complete. Archive this plan and track the remaining intentionally stubbed backend features as follow-up work.

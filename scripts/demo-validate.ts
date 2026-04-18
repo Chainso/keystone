@@ -11,7 +11,25 @@ export type DemoContract = {
 };
 
 export type RunSummary = {
+  data?: {
+    status?: string;
+    execution?: {
+      runtime?: unknown;
+      thinkMode?: unknown;
+    };
+    artifacts?: {
+      total?: number;
+      byKind?: Record<string, number>;
+    };
+    sessions?: {
+      total?: number;
+    };
+  };
   status?: string;
+  execution?: {
+    runtime?: unknown;
+    thinkMode?: unknown;
+  };
   inputs?: {
     runtime?: unknown;
     options?: {
@@ -95,13 +113,17 @@ export function describeDemoContract(runtime: string, thinkMode: string): DemoCo
 }
 
 export function resolveActualRuntime(summary: RunSummary, fallback: string) {
-  return summary.inputs?.runtime === "think" || summary.inputs?.runtime === "scripted"
-    ? summary.inputs.runtime
+  const legacy = summary;
+
+  return summary.data?.execution?.runtime === "think" || summary.data?.execution?.runtime === "scripted"
+    ? summary.data.execution.runtime
+    : legacy.inputs?.runtime === "think" || legacy.inputs?.runtime === "scripted"
+      ? legacy.inputs.runtime
     : fallback;
 }
 
 export function resolveActualThinkMode(summary: RunSummary, fallback: string) {
-  const actualThinkMode = summary.inputs?.options?.thinkMode;
+  const actualThinkMode = summary.data?.execution?.thinkMode ?? summary.inputs?.options?.thinkMode;
 
   return actualThinkMode === "live" || actualThinkMode === "mock" ? actualThinkMode : fallback;
 }
@@ -118,6 +140,20 @@ export function resolveValidatedRunContract(
     runtime,
     thinkMode,
     demoContract: describeDemoContract(runtime, thinkMode)
+  };
+}
+
+export function summarizeRunDetail(summary: RunSummary) {
+  const detail = summary.data ?? summary;
+
+  return {
+    sessions: {
+      total: detail.sessions?.total ?? 0
+    },
+    artifacts: {
+      total: detail.artifacts?.total ?? 0,
+      byKind: detail.artifacts?.byKind ?? {}
+    }
   };
 }
 
@@ -154,33 +190,35 @@ export async function main() {
   }
 
   const summary = (await response.json()) as RunSummary;
+  const detail = summary.data ?? summary;
+  const derived = summarizeRunDetail(summary);
   const { runtime, thinkMode, demoContract } = resolveValidatedRunContract(
     summary,
     requestedRuntime,
     requestedThinkMode
   );
 
-  if (summary.status !== "archived") {
-    throw new Error(`Expected archived run, received ${summary.status ?? "unknown"}.`);
+  if (detail.status !== "archived") {
+    throw new Error(`Expected archived run, received ${detail.status ?? "unknown"}.`);
   }
 
-  if ((summary.sessions?.total ?? 0) < 3) {
-    throw new Error(`Expected at least 3 sessions, received ${summary.sessions?.total ?? 0}.`);
+  if ((derived.sessions.total ?? 0) < 3) {
+    throw new Error(`Expected at least 3 sessions, received ${derived.sessions.total ?? 0}.`);
   }
 
-  if ((summary.artifacts?.total ?? 0) < 5) {
-    throw new Error(`Expected at least 5 artifacts, received ${summary.artifacts?.total ?? 0}.`);
+  if ((derived.artifacts.total ?? 0) < 5) {
+    throw new Error(`Expected at least 5 artifacts, received ${derived.artifacts.total ?? 0}.`);
   }
 
-  if ((summary.artifacts?.byKind?.run_summary ?? 0) < 1) {
+  if ((derived.artifacts.byKind.run_summary ?? 0) < 1) {
     throw new Error("Expected a run_summary artifact.");
   }
 
-  if (runtime === "think" && (summary.artifacts?.byKind?.run_note ?? 0) < 1) {
+  if (runtime === "think" && (derived.artifacts.byKind.run_note ?? 0) < 1) {
     throw new Error("Expected at least one promoted run_note artifact for the Think runtime.");
   }
 
-  if (runtime === "scripted" && (summary.artifacts?.byKind?.task_log ?? 0) < 1) {
+  if (runtime === "scripted" && (derived.artifacts.byKind.task_log ?? 0) < 1) {
     throw new Error("Expected at least one task_log artifact for the scripted runtime.");
   }
 
@@ -193,9 +231,9 @@ export async function main() {
         runtime,
         thinkMode,
         demoContract,
-        status: summary.status,
-        sessions: summary.sessions?.total ?? 0,
-        artifacts: summary.artifacts ?? {}
+        status: detail.status,
+        sessions: derived.sessions.total,
+        artifacts: derived.artifacts
       },
       null,
       2

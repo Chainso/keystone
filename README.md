@@ -35,10 +35,33 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 The current backend contract is project-first:
 
-- `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:projectId`, and `PUT /v1/projects/:projectId` manage durable project config
-- `POST /v1/runs` now requires `projectId`; direct repo-backed run intake is no longer supported
+- `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:projectId`, and `PUT /v1/projects/:projectId` manage durable project config and now return canonical `data`/`meta` envelopes
+- `POST /v1/runs` now requires `projectId` plus a typed `decisionPackage` reference; direct repo-backed run intake is no longer supported
 - project components materialize under `/workspace/code/<component-key>`
 - project env vars are non-secret only in `v1`
+
+The current UI-first `v1` surface is centered on:
+
+- `GET /v1/projects/:projectId/documents`
+- `GET /v1/projects/:projectId/decision-packages`
+- `GET /v1/projects/:projectId/runs`
+- `POST /v1/runs`
+- `GET /v1/runs/:runId`
+- `GET /v1/runs/:runId/graph`
+- `GET /v1/runs/:runId/tasks`
+- `GET /v1/runs/:runId/tasks/:taskId`
+- `GET /v1/runs/:runId/tasks/:taskId/conversation`
+- `POST /v1/runs/:runId/tasks/:taskId/conversation/messages`
+- `GET /v1/runs/:runId/tasks/:taskId/artifacts`
+- `GET /v1/runs/:runId/approvals`
+- `GET /v1/runs/:runId/approvals/:approvalId`
+- `GET /v1/runs/:runId/evidence`
+- `GET /v1/runs/:runId/integration`
+- `GET /v1/runs/:runId/release`
+- `GET /v1/artifacts/:artifactId`
+- `GET /v1/artifacts/:artifactId/content`
+
+`GET /v1/runs/:runId/stream` is the canonical UI stream path. `GET /v1/runs/:runId/events` and `GET /v1/runs/:runId/ws` are still available as legacy/debug seams during the transition.
 
 For local validation, the fixture bootstrap helper converges on one deterministic fixture project per tenant:
 
@@ -74,7 +97,7 @@ These commands cover three distinct contracts today:
 - `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`: the deterministic mock-backed Think validation path on the current fixture-project workflow contract.
 - `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate`: the live full-workflow Think proof on the current fixture-project happy path.
 
-All three flows create project-backed runs through the stored `fixture-demo-project`.
+All three flows create project-backed runs through the stored `fixture-demo-project`. The demo helper now reads the committed fixture decision package locally and posts it as an inline `decisionPackage: { source: "inline", payload: ... }` reference to `/v1/runs`.
 
 For a zero-argument live rerun after you have exported the runtime once, use:
 
@@ -141,7 +164,32 @@ The current Think path is intentionally narrow:
 - the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
 - final run success is still anchored on a `run_summary` artifact and an archived run session
 
-For manual API validation outside the helper scripts, create or update a project first and then submit `/v1/runs` with `projectId` plus the decision package input.
+For manual API validation outside the helper scripts, create or update a project first and then submit `/v1/runs` with `projectId` plus a typed decision-package reference. The currently launchable path is inline payloads:
+
+```json
+{
+  "projectId": "<project-id>",
+  "decisionPackage": {
+    "source": "inline",
+    "payload": {
+      "decisionPackageId": "demo-greeting-update",
+      "summary": "Update the deterministic demo target.",
+      "objectives": ["Keep fixture tests passing."],
+      "tasks": [
+        {
+          "taskId": "task-greeting-tone",
+          "title": "Adjust the greeting implementation",
+          "acceptanceCriteria": ["Fixture tests remain green."]
+        }
+      ]
+    }
+  },
+  "options": {
+    "thinkMode": "mock",
+    "preserveSandbox": false
+  }
+}
+```
 
 ## Local Auth
 
@@ -156,5 +204,6 @@ Start from `.dev.vars.example` and keep local overrides in `.dev.vars`.
 
 - [M1 architecture](.ultrakit/developer-docs/m1-architecture.md)
 - [M1 local runbook](.ultrakit/developer-docs/m1-local-runbook.md)
+- The linked architecture and runbook documents now describe the current UI-first `v1` API, even though the filenames still carry the earlier M1 naming.
 - [Think runtime architecture](.ultrakit/developer-docs/think-runtime-architecture.md)
 - [Think runtime runbook](.ultrakit/developer-docs/think-runtime-runbook.md)

@@ -123,6 +123,37 @@ export async function getApprovalRecord(
   return normalizeApprovalRecord(rows[0]);
 }
 
+export async function listRunApprovalRecords(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    runId: string;
+  }
+) {
+  const rows = await client.sql<ApprovalRecordRow[]>`
+    select
+      tenant_id as "tenantId",
+      approval_id::text as "approvalId",
+      run_id as "runId",
+      session_id::text as "sessionId",
+      approval_type as "approvalType",
+      status,
+      requested_by as "requestedBy",
+      requested_at as "requestedAt",
+      resolved_at as "resolvedAt",
+      resolution,
+      wait_event_type as "waitEventType",
+      wait_event_key as "waitEventKey",
+      metadata
+    from approvals
+    where tenant_id = ${input.tenantId}
+      and run_id = ${input.runId}
+    order by requested_at asc, approval_id asc
+  `;
+
+  return rows.map((row) => normalizeApprovalRecord(row));
+}
+
 export async function resolveApprovalRecord(
   client: DatabaseClient,
   input: {

@@ -53,6 +53,33 @@ export async function listRunSessions(
   });
 }
 
+export async function listProjectRunSessions(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    projectId: string;
+  }
+) {
+  return client.db.query.sessions.findMany({
+    where: and(
+      eq(sessions.tenantId, input.tenantId),
+      eq(sessions.sessionType, "run")
+    ),
+    orderBy: [asc(sessions.createdAt)]
+  }).then((rows) =>
+    rows.filter((row) => {
+      const project = row.metadata?.project;
+
+      return (
+        typeof project === "object" &&
+        project !== null &&
+        "projectId" in project &&
+        project.projectId === input.projectId
+      );
+    })
+  );
+}
+
 export async function updateSessionStatus(
   client: DatabaseClient,
   input: {

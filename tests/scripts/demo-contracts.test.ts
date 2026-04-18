@@ -411,7 +411,10 @@ describe("demo scripts", () => {
         body: {
           projectId: "project-created",
           decisionPackage: {
-            localPath: "./fixtures/demo-decision-package/decision-package.json"
+            source: "inline",
+            payload: expect.objectContaining({
+              decisionPackageId: "demo-greeting-update"
+            })
           },
           options: {
             thinkMode: "mock",
@@ -630,7 +633,10 @@ describe("demo scripts", () => {
         body: {
           projectId: "project-created",
           decisionPackage: {
-            localPath: "./fixtures/demo-decision-package/decision-package.json"
+            source: "inline",
+            payload: expect.objectContaining({
+              decisionPackageId: "demo-greeting-update"
+            })
           },
           options: {
             thinkMode: "live",

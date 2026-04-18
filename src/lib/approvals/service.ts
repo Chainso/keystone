@@ -5,6 +5,16 @@ import { getSessionRecord, updateSessionStatus } from "../db/runs";
 import { appendAndPublishRunEvent } from "../events/publish";
 import { buildStableSessionId } from "../workflows/ids";
 
+function getSessionTaskId(metadata: unknown) {
+  if (!metadata || typeof metadata !== "object") {
+    return undefined;
+  }
+
+  const taskId = (metadata as Record<string, unknown>).taskId;
+
+  return typeof taskId === "string" && taskId.trim().length > 0 ? taskId : undefined;
+}
+
 export interface EnsureApprovalRequestInput {
   tenantId: string;
   runId: string;
@@ -65,6 +75,7 @@ export async function ensureApprovalRequest(
       tenantId: input.tenantId,
       runId: input.runId,
       sessionId: input.sessionId,
+      taskId: getSessionTaskId(session?.metadata),
       eventType: "approval.requested",
       payload: {
         approvalId,

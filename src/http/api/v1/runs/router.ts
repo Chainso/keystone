@@ -1,13 +1,26 @@
-import type { Context, Hono } from "hono";
+import type { Hono } from "hono";
 
 import type { AppEnv } from "../../../../env";
-import { resolveApprovalHandler } from "../../../handlers/approvals";
-import { createRunHandler, getRunEventsHandler, getRunHandler } from "../../../handlers/runs";
-import { runWebSocketHandler } from "../../../handlers/ws";
 import { requireDevAuth } from "../../../middleware/auth";
 import type { ApiRouteDefinition } from "../common/contracts";
-import { jsonNotImplementedResponse } from "../common/not-implemented";
-import { taskConversationMessageWriteInputSchema } from "./contracts";
+import { runWebSocketHandler } from "../../../handlers/ws";
+import {
+  createRunHandler,
+  getApprovalHandler,
+  getEvidenceHandler,
+  getIntegrationHandler,
+  getReleaseHandler,
+  getRunEventsHandler,
+  getRunHandler,
+  getRunWorkflowGraphHandler,
+  getTaskConversationHandler,
+  getTaskHandler,
+  listRunApprovalsHandler,
+  listRunTasksHandler,
+  listTaskArtifactsHandler,
+  postTaskConversationMessageHandler,
+  resolveApprovalHandler
+} from "./handlers";
 
 export const runRouteMatrix = [
   {
@@ -17,8 +30,8 @@ export const runRouteMatrix = [
     resourceType: "run",
     responseKind: "action",
     implementation: "projected",
-    availability: "scaffolded",
-    note: "Create-run behavior still uses the pre-freeze M1 launcher response until Phase 2."
+    availability: "implemented",
+    note: "The canonical action envelope is live; only inline decision-package payloads are currently launchable."
   },
   {
     method: "GET",
@@ -27,8 +40,8 @@ export const runRouteMatrix = [
     resourceType: "run",
     responseKind: "detail",
     implementation: "projected",
-    availability: "scaffolded",
-    note: "Run detail still uses the pre-freeze aggregate summary until Phase 2."
+    availability: "implemented",
+    note: "Projected from run sessions, events, artifacts, and the live coordinator snapshot."
   },
   {
     method: "GET",
@@ -37,7 +50,7 @@ export const runRouteMatrix = [
     resourceType: "workflow_graph",
     responseKind: "detail",
     implementation: "projected",
-    availability: "contract_frozen"
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -46,7 +59,7 @@ export const runRouteMatrix = [
     resourceType: "task",
     responseKind: "collection",
     implementation: "projected",
-    availability: "contract_frozen"
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -55,7 +68,7 @@ export const runRouteMatrix = [
     resourceType: "task",
     responseKind: "detail",
     implementation: "projected",
-    availability: "contract_frozen"
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -64,7 +77,8 @@ export const runRouteMatrix = [
     resourceType: "task_conversation",
     responseKind: "detail",
     implementation: "projected",
-    availability: "contract_frozen"
+    availability: "implemented",
+    note: "Projected from implementer message events plus task workflow notices."
   },
   {
     method: "POST",
@@ -83,7 +97,7 @@ export const runRouteMatrix = [
     resourceType: "artifact",
     responseKind: "collection",
     implementation: "reused",
-    availability: "contract_frozen"
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -92,7 +106,7 @@ export const runRouteMatrix = [
     resourceType: "approval",
     responseKind: "collection",
     implementation: "reused",
-    availability: "contract_frozen"
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -101,7 +115,7 @@ export const runRouteMatrix = [
     resourceType: "approval",
     responseKind: "detail",
     implementation: "reused",
-    availability: "contract_frozen"
+    availability: "implemented"
   },
   {
     method: "POST",
@@ -119,7 +133,8 @@ export const runRouteMatrix = [
     resourceType: "evidence_bundle",
     responseKind: "detail",
     implementation: "stub",
-    availability: "contract_frozen"
+    availability: "implemented",
+    note: "Returns a typed stub detail until evidence bundling is materialized."
   },
   {
     method: "GET",
@@ -128,7 +143,8 @@ export const runRouteMatrix = [
     resourceType: "integration_record",
     responseKind: "detail",
     implementation: "stub",
-    availability: "contract_frozen"
+    availability: "implemented",
+    note: "Returns a typed stub detail until integration records are materialized."
   },
   {
     method: "GET",
@@ -137,7 +153,8 @@ export const runRouteMatrix = [
     resourceType: "release",
     responseKind: "detail",
     implementation: "stub",
-    availability: "contract_frozen"
+    availability: "implemented",
+    note: "Returns a typed stub detail until release records are materialized."
   },
   {
     method: "GET",
@@ -171,27 +188,33 @@ export const runRouteMatrix = [
   }
 ] as const satisfies ApiRouteDefinition[];
 
-async function postTaskConversationMessageHandler(context: Context<AppEnv>) {
-  taskConversationMessageWriteInputSchema.parse(await context.req.json());
-
-  return jsonNotImplementedResponse({
-    resourceType: "task_conversation_message",
-    implementation: "projected",
-    operation: "POST",
-    route: "/v1/runs/:runId/tasks/:taskId/conversation/messages",
-    reason:
-      "Phase 1 freezes the canonical operator-steering contract without adding the backend message persistence or delivery path yet."
-  });
-}
-
 export function registerRunRoutes(router: Hono<AppEnv>) {
   router.post("/v1/runs", requireDevAuth, createRunHandler);
   router.get("/v1/runs/:runId", requireDevAuth, getRunHandler);
+  router.get("/v1/runs/:runId/graph", requireDevAuth, getRunWorkflowGraphHandler);
+  router.get("/v1/runs/:runId/tasks", requireDevAuth, listRunTasksHandler);
+  router.get("/v1/runs/:runId/tasks/:taskId", requireDevAuth, getTaskHandler);
+  router.get(
+    "/v1/runs/:runId/tasks/:taskId/conversation",
+    requireDevAuth,
+    getTaskConversationHandler
+  );
   router.get("/v1/runs/:runId/stream", requireDevAuth, runWebSocketHandler);
   router.post(
     "/v1/runs/:runId/tasks/:taskId/conversation/messages",
     requireDevAuth,
     postTaskConversationMessageHandler
+  );
+  router.get(
+    "/v1/runs/:runId/tasks/:taskId/artifacts",
+    requireDevAuth,
+    listTaskArtifactsHandler
+  );
+  router.get("/v1/runs/:runId/approvals", requireDevAuth, listRunApprovalsHandler);
+  router.get(
+    "/v1/runs/:runId/approvals/:approvalId",
+    requireDevAuth,
+    getApprovalHandler
   );
   router.get("/v1/runs/:runId/events", requireDevAuth, getRunEventsHandler);
   router.post(
@@ -199,5 +222,8 @@ export function registerRunRoutes(router: Hono<AppEnv>) {
     requireDevAuth,
     resolveApprovalHandler
   );
+  router.get("/v1/runs/:runId/evidence", requireDevAuth, getEvidenceHandler);
+  router.get("/v1/runs/:runId/integration", requireDevAuth, getIntegrationHandler);
+  router.get("/v1/runs/:runId/release", requireDevAuth, getReleaseHandler);
   router.get("/v1/runs/:runId/ws", requireDevAuth, runWebSocketHandler);
 }

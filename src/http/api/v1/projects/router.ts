@@ -4,9 +4,12 @@ import type { AppEnv } from "../../../../env";
 import {
   createProjectHandler,
   getProjectHandler,
+  listProjectDecisionPackagesHandler,
+  listProjectDocumentsHandler,
+  listProjectRunsHandler,
   listProjectsHandler,
   updateProjectHandler
-} from "../../../handlers/projects";
+} from "./handlers";
 import { requireDevAuth } from "../../../middleware/auth";
 import type { ApiRouteDefinition } from "../common/contracts";
 
@@ -54,7 +57,8 @@ export const projectRouteMatrix = [
     resourceType: "project_document",
     responseKind: "collection",
     implementation: "stub",
-    availability: "contract_frozen"
+    availability: "implemented",
+    note: "Returns an empty typed stub collection until project-backed document persistence lands."
   },
   {
     method: "GET",
@@ -63,7 +67,8 @@ export const projectRouteMatrix = [
     resourceType: "decision_package",
     responseKind: "collection",
     implementation: "stub",
-    availability: "contract_frozen"
+    availability: "implemented",
+    note: "Returns an empty typed stub collection until project-backed decision-package persistence lands."
   },
   {
     method: "GET",
@@ -72,7 +77,8 @@ export const projectRouteMatrix = [
     resourceType: "run",
     responseKind: "collection",
     implementation: "projected",
-    availability: "contract_frozen"
+    availability: "implemented",
+    note: "Projected from stored run sessions associated with the project."
   }
 ] as const satisfies ApiRouteDefinition[];
 
@@ -81,4 +87,11 @@ export function registerProjectRoutes(router: Hono<AppEnv>) {
   router.post("/v1/projects", requireDevAuth, createProjectHandler);
   router.get("/v1/projects/:projectId", requireDevAuth, getProjectHandler);
   router.put("/v1/projects/:projectId", requireDevAuth, updateProjectHandler);
+  router.get("/v1/projects/:projectId/documents", requireDevAuth, listProjectDocumentsHandler);
+  router.get(
+    "/v1/projects/:projectId/decision-packages",
+    requireDevAuth,
+    listProjectDecisionPackagesHandler
+  );
+  router.get("/v1/projects/:projectId/runs", requireDevAuth, listProjectRunsHandler);
 }

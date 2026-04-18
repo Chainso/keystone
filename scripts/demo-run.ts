@@ -1,6 +1,7 @@
 import { writeDemoState } from "./demo-state";
 import { ensureFixtureProject } from "./ensure-demo-project";
 
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,6 +42,10 @@ function readJsonResponse(response: Response) {
 
 function asObject(value: unknown) {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 export function resolveBaseUrl() {
@@ -119,18 +124,22 @@ export function resolveCreatedRunExecutionContract(
   requestedRuntime: string,
   requestedThinkMode: string
 ): DemoRunExecutionContract {
+  const actionData = asObject(createdRun.data);
+  const run = asObject(actionData?.run);
+  const execution = asObject(run?.execution);
   const runtime =
-    createdRun.runtime === "think" || createdRun.runtime === "scripted"
-      ? createdRun.runtime
+    execution?.runtime === "think" || execution?.runtime === "scripted"
+      ? execution.runtime
+      : createdRun.runtime === "think" || createdRun.runtime === "scripted"
+        ? createdRun.runtime
       : requestedRuntime;
-  const createdOptions = asObject(createdRun.options);
   const thinkMode =
-    createdOptions?.thinkMode === "live" || createdOptions?.thinkMode === "mock"
-      ? createdOptions.thinkMode
+    execution?.thinkMode === "live" || execution?.thinkMode === "mock"
+      ? execution.thinkMode
       : requestedThinkMode;
   const preserveSandbox =
-    typeof createdOptions?.preserveSandbox === "boolean"
-      ? createdOptions.preserveSandbox
+    typeof execution?.preserveSandbox === "boolean"
+      ? execution.preserveSandbox
       : resolvePreserveSandbox(runtime, thinkMode);
 
   return {
@@ -144,18 +153,43 @@ export function resolveCreatedRunExecutionContract(
 }
 
 function isRunComplete(summary: Record<string, unknown>) {
-  const status = String(summary.status ?? "unknown");
-  const artifacts = summary.artifacts as
-    | {
-        byKind?: Record<string, number>;
-      }
-    | undefined;
+  const detail = asObject(summary.data) ?? summary;
+  const status = String(detail.status ?? "unknown");
 
   if (status === "failed" || status === "cancelled") {
     return true;
   }
 
-  return status === "archived" && (artifacts?.byKind?.run_summary ?? 0) >= 1;
+  return status === "archived";
+}
+
+function summarizeRunDetail(runDetailResponse: Record<string, unknown>) {
+  const detail = asObject(runDetailResponse.data) ?? runDetailResponse;
+  const artifacts = asObject(detail.artifacts);
+  const sessions = asObject(detail.sessions);
+
+  return {
+    status: String(detail.status ?? "unknown"),
+    sessions: {
+      total: typeof sessions?.total === "number" ? sessions.total : 0
+    },
+    artifacts: {
+      total: typeof artifacts?.total === "number" ? artifacts.total : 0,
+      byKind:
+        artifacts?.byKind && typeof artifacts.byKind === "object"
+          ? (artifacts.byKind as Record<string, number>)
+          : {}
+    }
+  };
+}
+
+async function loadFixtureDecisionPackage() {
+  const fixturePath = resolve(
+    fileURLToPath(new URL(".", import.meta.url)),
+    "../fixtures/demo-decision-package/decision-package.json"
+  );
+
+  return JSON.parse(await readFile(fixturePath, "utf8")) as Record<string, unknown>;
 }
 
 async function createFixtureRun() {
@@ -166,6 +200,7 @@ async function createFixtureRun() {
   const ensuredProject = await ensureFixtureProject();
   const project = asObject(ensuredProject.project);
   const projectId = typeof project?.projectId === "string" ? project.projectId : null;
+  const decisionPackage = await loadFixtureDecisionPackage();
 
   if (!projectId) {
     throw new Error("Fixture project bootstrap did not return a projectId.");
@@ -182,7 +217,8 @@ async function createFixtureRun() {
     body: JSON.stringify({
       projectId,
       decisionPackage: {
-        localPath: "./fixtures/demo-decision-package/decision-package.json"
+        source: "inline",
+        payload: decisionPackage
       },
       options: {
         thinkMode,
@@ -234,6 +270,14 @@ async function fetchRunEvents(runId: string) {
   }
 
   return readJsonResponse(response);
+}
+
+async function tryFetchRunEvents(runId: string) {
+  try {
+    return await fetchRunEvents(runId);
+  } catch {
+    return null;
+  }
 }
 
 function formatEventPayload(payload: Record<string, unknown> | undefined) {
@@ -314,7 +358,9 @@ function emitNewEvents(
 
 export async function main() {
   const createdRun = await createFixtureRun();
-  const runId = String(createdRun.runId ?? "");
+  const actionData = asObject(createdRun.data);
+  const run = asObject(actionData?.run);
+  const runId = asString(run?.runId) ?? asString(createdRun.runId) ?? "";
   const baseUrl = resolveBaseUrl();
   const requestedRuntime = resolveRuntime();
   const requestedThinkMode = resolveThinkMode();
@@ -338,14 +384,20 @@ export async function main() {
 
   for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {
     if (streamEvents) {
-      const eventsResponse = await fetchRunEvents(runId);
-      emitNewEvents(eventsResponse, seenEventIds);
+      const latestEventsResponse = await tryFetchRunEvents(runId);
+
+      if (latestEventsResponse) {
+        emitNewEvents(latestEventsResponse, seenEventIds);
+      }
     }
 
-    const summary = await fetchRunSummary(runId);
-    const status = String(summary.status ?? "unknown");
+    const runDetailResponse = await fetchRunSummary(runId);
+    const detail = asObject(runDetailResponse.data) ?? runDetailResponse;
+    const status = String(detail.status ?? "unknown");
 
-    if (isRunComplete(summary)) {
+    if (isRunComplete(runDetailResponse)) {
+      const summary = summarizeRunDetail(runDetailResponse);
+
       if (status === "archived") {
         await writeDemoState({
           baseUrl,
@@ -366,6 +418,7 @@ export async function main() {
             preserveSandbox,
             status,
             summary,
+            run: detail,
             ...(preserveSandbox
               ? {
                   sandboxShellHint:

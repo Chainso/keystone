@@ -135,6 +135,31 @@ const mocked = vi.hoisted(() => {
         updatedAt: new Date("2026-04-17T09:30:00.000Z")
       }
     ]),
+    listProjectRunSessions: vi.fn(async (_client, input) => [
+      {
+        tenantId: input.tenantId,
+        sessionId: "run-session-123",
+        runId: "run-123",
+        sessionType: "run" as const,
+        status: "archived",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-17T10:30:00.000Z"),
+        updatedAt: new Date("2026-04-17T11:30:00.000Z"),
+        metadata: {
+          project: {
+            projectId: input.projectId,
+            projectKey: "fixture-demo-project",
+            displayName: "Fixture Demo Project"
+          },
+          decisionPackageId: "decision-package-ui-first-api",
+          runtime: "think",
+          options: {
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        }
+      }
+    ]),
     updateProject: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       projectId: input.projectId,
@@ -162,6 +187,10 @@ vi.mock("../../src/lib/db/projects", () => ({
   getProjectByKey: mocked.getProjectByKey,
   listProjects: mocked.listProjects,
   updateProject: mocked.updateProject
+}));
+
+vi.mock("../../src/lib/db/runs", () => ({
+  listProjectRunSessions: mocked.listProjectRunSessions
 }));
 
 vi.mock("../../src/http/handlers/runs", () => ({
@@ -309,18 +338,26 @@ describe("project API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      tenantId: "tenant-fixture",
-      total: 2,
-      projects: [
-        {
-          projectId: "project-123",
-          projectKey: "fixture-demo-project"
-        },
-        {
-          projectId: "project-456",
-          projectKey: "secondary-project"
-        }
-      ]
+      data: {
+        total: 2,
+        items: [
+          {
+            tenantId: "tenant-fixture",
+            projectId: "project-123",
+            projectKey: "fixture-demo-project"
+          },
+          {
+            tenantId: "tenant-fixture",
+            projectId: "project-456",
+            projectKey: "secondary-project"
+          }
+        ]
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "collection",
+        resourceType: "project"
+      }
     });
     expect(mocked.listProjects).toHaveBeenCalledWith(
       expect.anything(),
@@ -344,14 +381,21 @@ describe("project API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      tenantId: "tenant-filtered",
-      total: 1,
-      projects: [
-        {
-          projectId: "project-123",
-          projectKey: "fixture-demo-project"
-        }
-      ]
+      data: {
+        total: 1,
+        items: [
+          {
+            tenantId: "tenant-filtered",
+            projectId: "project-123",
+            projectKey: "fixture-demo-project"
+          }
+        ]
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "collection",
+        resourceType: "project"
+      }
     });
     expect(mocked.getProjectByKey).toHaveBeenCalledWith(
       expect.anything(),
@@ -381,7 +425,7 @@ describe("project API", () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      project: {
+      data: {
         tenantId: "tenant-create",
         projectId: "project-created",
         projectKey: "fixture-demo-project",
@@ -400,6 +444,11 @@ describe("project API", () => {
         envVars: payload.envVars,
         integrationBindings: payload.integrationBindings,
         metadata: payload.metadata
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "detail",
+        resourceType: "project"
       }
     });
     expect(mocked.createProject).toHaveBeenCalledWith(
@@ -571,10 +620,15 @@ describe("project API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      project: {
+      data: {
         tenantId: "tenant-read",
         projectId: "project-123",
         projectKey: "fixture-demo-project"
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "detail",
+        resourceType: "project"
       }
     });
   });
@@ -600,7 +654,7 @@ describe("project API", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      project: {
+      data: {
         tenantId: "tenant-update",
         projectId: "project-123",
         displayName: "Fixture Demo Project v2",
@@ -614,6 +668,11 @@ describe("project API", () => {
         envVars: payload.envVars,
         integrationBindings: payload.integrationBindings,
         metadata: payload.metadata
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "detail",
+        resourceType: "project"
       }
     });
     expect(mocked.updateProject).toHaveBeenCalledWith(
@@ -671,5 +730,90 @@ describe("project API", () => {
         code: "project_key_conflict"
       }
     });
+  });
+
+  it("returns stub project documents and decision-package collections", async () => {
+    const [documentsResponse, decisionPackagesResponse] = await Promise.all([
+      app.request(
+        "http://example.com/v1/projects/project-123/documents",
+        {
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-read"
+          }
+        },
+        env
+      ),
+      app.request(
+        "http://example.com/v1/projects/project-123/decision-packages",
+        {
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-read"
+          }
+        },
+        env
+      )
+    ]);
+
+    expect(documentsResponse.status).toBe(200);
+    await expect(documentsResponse.json()).resolves.toMatchObject({
+      data: {
+        total: 0,
+        items: []
+      },
+      meta: {
+        resourceType: "project_document"
+      }
+    });
+
+    expect(decisionPackagesResponse.status).toBe(200);
+    await expect(decisionPackagesResponse.json()).resolves.toMatchObject({
+      data: {
+        total: 0,
+        items: []
+      },
+      meta: {
+        resourceType: "decision_package"
+      }
+    });
+  });
+
+  it("lists projected runs for a project", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/runs",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        items: [
+          {
+            runId: "run-123",
+            projectId: "project-123",
+            decisionPackageId: "decision-package-ui-first-api",
+            status: "archived"
+          }
+        ]
+      },
+      meta: {
+        resourceType: "run"
+      }
+    });
+    expect(mocked.listProjectRunSessions).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        projectId: "project-123"
+      })
+    );
   });
 });

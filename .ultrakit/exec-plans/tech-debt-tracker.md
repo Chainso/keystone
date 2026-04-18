@@ -48,4 +48,14 @@ New entries should follow this format:
 6. **Owner:** `keystone-project-model-foundation`
 7. **Proposed Fix:** Either migrate `scripts/run-local.ts` to the stored-project contract or remove the helper in favor of `demo:ensure-project` plus documented manual `POST /v1/runs` examples.
 8. **Target Window:** `next local-dev cleanup cycle`
+9. **Status:** `closed (2026-04-18)`
+
+1. **ID:** `TD-2026-04-18-004`
+2. **Date Added:** `2026-04-18`
+3. **Area:** `UI-first API scaffold backends`
+4. **Description:** The UI-first contract now exposes `ProjectDocument`, first-class `DecisionPackage` detail/list surfaces, operator steering, `EvidenceBundle`, `IntegrationRecord`, and `Release`, but several of those routes are still typed stubs or structured `not_implemented` writes rather than real persisted behavior.
+5. **Impact:** The UI can wire against the stable routes and types today, but those flows cannot yet provide real document collections, durable operator messages, evidence bundling, integration records, or release orchestration.
+6. **Owner:** `keystone-ui-first-api-scaffold`
+7. **Proposed Fix:** Add the missing persistence/projection layers and delivery behavior behind the frozen routes, starting with durable operator-message delivery and first-class decision-package/document collections.
+8. **Target Window:** `next UI/backend feature implementation cycle`
 9. **Status:** `open`

@@ -31,6 +31,7 @@ const mocked = vi.hoisted(() => {
   }));
 
   return {
+    bucketGet: vi.fn(async () => null),
     createSessionRecord: vi.fn(async () => ({
       sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
       status: "configured"
@@ -80,7 +81,24 @@ const mocked = vi.hoisted(() => {
       }
     ]),
     listRunArtifacts: vi.fn(async () => []),
+    getArtifactRef: vi.fn(async (_client, _tenantId, artifactId) => ({
+      tenantId: "tenant-fixture",
+      artifactRefId: artifactId,
+      runId: "run-123",
+      taskId: "task-greeting-tone",
+      kind: "run_note",
+      contentType: "text/markdown; charset=utf-8",
+      sizeBytes: 128,
+      sha256: "abc123",
+      storageBackend: "r2",
+      storageUri: `runs/run-123/artifacts/${artifactId}.md`,
+      metadata: {
+        fileName: "implementer-summary.md"
+      },
+      createdAt: new Date("2026-04-14T00:00:05.000Z")
+    })),
     getApprovalRecord: vi.fn(async () => undefined),
+    listRunApprovalRecords: vi.fn(async () => []),
     resolveApprovalRecord: vi.fn(async () => ({
       status: "approved",
       resolvedAt: new Date("2026-04-14T00:00:02.000Z"),
@@ -166,6 +184,11 @@ const mocked = vi.hoisted(() => {
     })),
     getThinkAgentStub,
     getAgentByName: vi.fn(async () => getThinkAgentStub()),
+    getArtifactText: vi.fn(async (): Promise<string | null> => null),
+    getArtifactBytes: vi.fn(async () => ({
+      body: new TextEncoder().encode("# artifact"),
+      contentType: "text/markdown; charset=utf-8"
+    })),
     compileRunPlan: vi.fn(async () => ({
       plan: {
         decisionPackageId: "demo-greeting-update",
@@ -265,11 +288,13 @@ vi.mock("../../src/lib/db/events", () => ({
 }));
 
 vi.mock("../../src/lib/db/artifacts", () => ({
+  getArtifactRef: mocked.getArtifactRef,
   listRunArtifacts: mocked.listRunArtifacts
 }));
 
 vi.mock("../../src/lib/db/approvals", () => ({
   getApprovalRecord: mocked.getApprovalRecord,
+  listRunApprovalRecords: mocked.listRunApprovalRecords,
   resolveApprovalRecord: mocked.resolveApprovalRecord
 }));
 
@@ -286,10 +311,17 @@ vi.mock("agents", () => ({
   getAgentByName: mocked.getAgentByName
 }));
 
+vi.mock("../../src/lib/artifacts/r2", () => ({
+  getArtifactBytes: mocked.getArtifactBytes,
+  getArtifactText: mocked.getArtifactText
+}));
+
 const { app } = await import("../../src/http/app");
 
 const env = {
-  ARTIFACTS_BUCKET: {} as R2Bucket,
+  ARTIFACTS_BUCKET: {
+    get: mocked.bucketGet
+  } as unknown as R2Bucket,
   HYPERDRIVE: {
     connectionString: "postgres://test"
   } as Hyperdrive,
@@ -307,6 +339,41 @@ const env = {
   KEYSTONE_THINK_AGENT: {} as DurableObjectNamespace
 } as const;
 
+function buildInlineDecisionPackage() {
+  return {
+    source: "inline" as const,
+    payload: {
+      decisionPackageId: "decision-package-ui-first-api",
+      summary: "Freeze the UI-first API contract.",
+      objectives: ["Define stable UI resources.", "Keep backend and UI parallelizable."],
+      tasks: [
+        {
+          taskId: "task-ui-first-contract",
+          title: "Freeze the HTTP contract",
+          acceptanceCriteria: ["Routes and schemas are defined."]
+        }
+      ]
+    }
+  };
+}
+
+function buildCompiledRunPlan() {
+  return {
+    decisionPackageId: "decision-package-ui-first-api",
+    summary: "Freeze the UI-first API contract.",
+    tasks: [
+      {
+        taskId: "task-greeting-tone",
+        title: "Adjust the greeting implementation",
+        summary: "Change the greeting implementation in a reviewable way.",
+        instructions: ["Edit the greeting implementation.", "Run the fixture tests."],
+        acceptanceCriteria: ["Fixture tests stay green."],
+        dependsOn: []
+      }
+    ]
+  };
+}
+
 describe("app", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -314,6 +381,50 @@ describe("app", () => {
       close: vi.fn(async () => undefined),
       db: {},
       sql: {}
+    });
+    mocked.listRunSessions.mockResolvedValue([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: "run-123",
+        sessionType: "run",
+        status: "configured",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z"),
+        metadata: {
+          project: {
+            projectId: "project-fixture",
+            projectKey: "fixture-demo-project",
+            displayName: "Fixture Demo Project"
+          }
+        }
+      }
+    ] as never);
+    mocked.listRunEvents.mockResolvedValue([
+      {
+        eventId: crypto.randomUUID(),
+        tenantId: "tenant-fixture",
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: "run-123",
+        taskId: null,
+        seq: 1,
+        eventType: "session.started",
+        actor: "keystone",
+        severity: "info",
+        ts: new Date("2026-04-14T00:00:01.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {}
+      }
+    ] as never);
+    mocked.listRunArtifacts.mockResolvedValue([]);
+    mocked.getApprovalRecord.mockResolvedValue(undefined);
+    mocked.listRunApprovalRecords.mockResolvedValue([]);
+    mocked.getArtifactText.mockResolvedValue(null);
+    mocked.getArtifactBytes.mockResolvedValue({
+      body: new TextEncoder().encode("# artifact"),
+      contentType: "text/markdown; charset=utf-8"
     });
     mocked.runWorkflowCreate.mockResolvedValue({
       id: "run-workflow-instance"
@@ -366,9 +477,7 @@ describe("app", () => {
         },
         body: JSON.stringify({
           projectId: "project-fixture",
-          decisionPackage: {
-            localPath: "./fixtures/demo-decision-package/decision-package.json"
-          }
+          decisionPackage: buildInlineDecisionPackage()
         })
       },
       env
@@ -376,18 +485,25 @@ describe("app", () => {
 
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({
-      status: "accepted",
-      tenantId: "tenant-fixture",
-      runtime: "scripted",
-      project: {
-        projectId: "project-fixture",
-        projectKey: "fixture-demo-project"
+      data: {
+        status: "accepted",
+        workflowInstanceId: expect.any(String),
+        run: {
+          tenantId: "tenant-fixture",
+          projectId: "project-fixture",
+          status: "configured",
+          execution: {
+            runtime: "scripted",
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        }
       },
-      inputMode: {
-        project: "stored",
-        decisionPackage: "localPath"
-      },
-      workflowInstanceId: expect.any(String)
+      meta: {
+        apiVersion: "v1",
+        envelope: "action",
+        resourceType: "run"
+      }
     });
     expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -397,6 +513,52 @@ describe("app", () => {
         })
       })
     );
+  });
+
+  it.each([
+    {
+      label: "artifact-backed decision packages",
+      decisionPackage: {
+        source: "artifact" as const,
+        artifactId: "artifact-decision-package"
+      }
+    },
+    {
+      label: "project decision-package references",
+      decisionPackage: {
+        source: "project_collection" as const,
+        decisionPackageId: "decision-package-stored"
+      }
+    }
+  ])("returns not_implemented for $label", async ({ decisionPackage }) => {
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          projectId: "project-fixture",
+          decisionPackage
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(501);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "not_implemented",
+        details: {
+          apiVersion: "v1",
+          resourceType: "run"
+        }
+      }
+    });
+    expect(mocked.runWorkflowCreate).not.toHaveBeenCalled();
   });
 
   it("returns project_not_found when the requested project is missing", async () => {
@@ -413,9 +575,7 @@ describe("app", () => {
         },
         body: JSON.stringify({
           projectId: "project-missing",
-          decisionPackage: {
-            localPath: "./fixtures/demo-decision-package/decision-package.json"
-          }
+          decisionPackage: buildInlineDecisionPackage()
         })
       },
       env
@@ -443,19 +603,17 @@ describe("app", () => {
         },
         body: JSON.stringify({
           projectId: "",
-          decisionPackage: {
-            localPath: "./fixtures/demo-decision-package/decision-package.json"
-          }
+          decisionPackage: buildInlineDecisionPackage()
         })
       },
       env
     );
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: {
-        code: "internal_error",
-        message: "Unexpected application error."
+        code: "invalid_request",
+        message: "Run request validation failed."
       }
     });
   });
@@ -473,9 +631,7 @@ describe("app", () => {
         },
         body: JSON.stringify({
           projectId: "project-fixture",
-          decisionPackage: {
-            localPath: "./fixtures/demo-decision-package/decision-package.json"
-          }
+          decisionPackage: buildInlineDecisionPackage()
         })
       },
       env
@@ -483,11 +639,15 @@ describe("app", () => {
 
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({
-      status: "accepted",
-      runtime: "think",
-      options: {
-        thinkMode: "mock",
-        preserveSandbox: false
+      data: {
+        status: "accepted",
+        run: {
+          execution: {
+            runtime: "think",
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        }
       }
     });
     expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
@@ -517,9 +677,7 @@ describe("app", () => {
         },
         body: JSON.stringify({
           projectId: "project-fixture",
-          decisionPackage: {
-            localPath: "./fixtures/demo-decision-package/decision-package.json"
-          },
+          decisionPackage: buildInlineDecisionPackage(),
           options: {
             thinkMode: "live",
             preserveSandbox: true
@@ -531,11 +689,15 @@ describe("app", () => {
 
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({
-      status: "accepted",
-      runtime: "think",
-      options: {
-        thinkMode: "live",
-        preserveSandbox: true
+      data: {
+        status: "accepted",
+        run: {
+          execution: {
+            runtime: "think",
+            thinkMode: "live",
+            preserveSandbox: true
+          }
+        }
       }
     });
     expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
@@ -567,9 +729,445 @@ describe("app", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      runId: "run-123",
+      data: {
+        runId: "run-123",
+        tenantId: "tenant-fixture",
+        decisionPackageId: null,
+        status: "configured",
+        sessions: {
+          total: 1
+        },
+        artifacts: {
+          total: 0
+        }
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "detail",
+        resourceType: "run"
+      }
+    });
+  });
+
+  it("returns projected workflow graph, task, and conversation resources", async () => {
+    mocked.getArtifactText.mockResolvedValue(JSON.stringify(buildCompiledRunPlan()));
+    mocked.listRunEvents.mockResolvedValue([
+      {
+        eventId: "task-status-1",
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        taskId: "task-greeting-tone",
+        seq: 1,
+        eventType: "task.status_changed",
+        actor: "keystone",
+        severity: "info",
+        ts: new Date("2026-04-14T00:00:02.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {
+          status: "active",
+          summary: "Reviewing..."
+        }
+      },
+      {
+        eventId: "agent-message-1",
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        taskId: "task-greeting-tone",
+        seq: 2,
+        eventType: "agent.message",
+        actor: "keystone-think-implementer",
+        severity: "info",
+        ts: new Date("2026-04-14T00:00:03.000Z"),
+        idempotencyKey: null,
+        artifactRefId: "artifact-implementer-note",
+        payload: {
+          text: "Implemented the requested change."
+        }
+      },
+      {
+        eventId: "approval-requested-1",
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        taskId: "task-greeting-tone",
+        seq: 3,
+        eventType: "approval.requested",
+        actor: "keystone",
+        severity: "info",
+        ts: new Date("2026-04-14T00:00:04.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {
+          approvalId: "approval-1"
+        }
+      }
+    ] as never);
+    mocked.listRunArtifacts.mockResolvedValue([
+      {
+        tenantId: "tenant-fixture",
+        artifactRefId: "artifact-implementer-note",
+        runId: "run-123",
+        taskId: "task-greeting-tone",
+        kind: "run_note",
+        contentType: "text/markdown; charset=utf-8",
+        sizeBytes: 128,
+        sha256: "abc123",
+        storageBackend: "r2",
+        storageUri: "runs/run-123/artifacts/implementer-note.md",
+        metadata: {},
+        createdAt: new Date("2026-04-14T00:00:04.000Z")
+      }
+    ] as never);
+
+    const [graphResponse, tasksResponse, taskResponse, conversationResponse, artifactsResponse] =
+      await Promise.all([
+        app.request(
+          "http://example.com/v1/runs/run-123/graph",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        ),
+        app.request(
+          "http://example.com/v1/runs/run-123/tasks",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        ),
+        app.request(
+          "http://example.com/v1/runs/run-123/tasks/task-greeting-tone",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        ),
+        app.request(
+          "http://example.com/v1/runs/run-123/tasks/task-greeting-tone/conversation",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        ),
+        app.request(
+          "http://example.com/v1/runs/run-123/tasks/task-greeting-tone/artifacts",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        )
+      ]);
+
+    expect(graphResponse.status).toBe(200);
+    await expect(graphResponse.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        nodes: [
+          {
+            taskId: "task-greeting-tone",
+            status: "active"
+          }
+        ],
+        summary: {
+          totalTasks: 1,
+          activeTasks: 1
+        }
+      },
+      meta: {
+        resourceType: "workflow_graph"
+      }
+    });
+
+    expect(tasksResponse.status).toBe(200);
+    await expect(tasksResponse.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        items: [
+          {
+            taskId: "task-greeting-tone",
+            status: "active"
+          }
+        ]
+      },
+      meta: {
+        resourceType: "task"
+      }
+    });
+
+    expect(taskResponse.status).toBe(200);
+    await expect(taskResponse.json()).resolves.toMatchObject({
+      data: {
+        taskId: "task-greeting-tone",
+        title: "Adjust the greeting implementation"
+      }
+    });
+
+    expect(conversationResponse.status).toBe(200);
+    await expect(conversationResponse.json()).resolves.toMatchObject({
+      data: {
+        taskId: "task-greeting-tone",
+        messageCount: 3,
+        messages: [
+          expect.objectContaining({
+            messageType: "workflow_notice",
+            body: "Reviewing..."
+          }),
+          expect.objectContaining({
+            messageType: "implementer_message",
+            body: "Implemented the requested change."
+          }),
+          expect.objectContaining({
+            messageType: "workflow_notice",
+            body: "Waiting for approval."
+          })
+        ]
+      },
+      meta: {
+        resourceType: "task_conversation"
+      }
+    });
+
+    expect(artifactsResponse.status).toBe(200);
+    await expect(artifactsResponse.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        items: [
+          {
+            artifactId: "artifact-implementer-note",
+            taskId: "task-greeting-tone"
+          }
+        ]
+      },
+      meta: {
+        resourceType: "artifact"
+      }
+    });
+  });
+
+  it("returns the canonical operator-steering not_implemented contract", async () => {
+    mocked.getArtifactText.mockResolvedValueOnce(JSON.stringify(buildCompiledRunPlan()));
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/tasks/task-greeting-tone/conversation/messages",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          messageType: "operator_message",
+          body: "Please adjust the implementation."
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(501);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "not_implemented",
+        details: {
+          apiVersion: "v1",
+          resourceType: "task_conversation_message"
+        }
+      }
+    });
+  });
+
+  it("returns the stub release surfaces and decision-package detail", async () => {
+    const [decisionPackageResponse, evidenceResponse, integrationResponse, releaseResponse] =
+      await Promise.all([
+        app.request(
+          "http://example.com/v1/decision-packages/decision-package-ui-first-api",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        ),
+        app.request(
+          "http://example.com/v1/runs/run-123/evidence",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        ),
+        app.request(
+          "http://example.com/v1/runs/run-123/integration",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        ),
+        app.request(
+          "http://example.com/v1/runs/run-123/release",
+          {
+            headers: {
+              Authorization: "Bearer secret-dev-token",
+              "X-Keystone-Tenant-Id": "tenant-fixture"
+            }
+          },
+          env
+        )
+      ]);
+
+    await expect(decisionPackageResponse.json()).resolves.toMatchObject({
+      data: {
+        decisionPackageId: "decision-package-ui-first-api",
+        status: "stub"
+      },
+      meta: {
+        resourceType: "decision_package"
+      }
+    });
+    await expect(evidenceResponse.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        status: "stub"
+      },
+      meta: {
+        resourceType: "evidence_bundle"
+      }
+    });
+    await expect(integrationResponse.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        status: "stub"
+      },
+      meta: {
+        resourceType: "integration_record"
+      }
+    });
+    await expect(releaseResponse.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        status: "stub"
+      },
+      meta: {
+        resourceType: "release"
+      }
+    });
+  });
+
+  it("lists and reads run approvals through the canonical detail envelopes", async () => {
+    mocked.listRunSessions.mockResolvedValue([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        sessionType: "task",
+        status: "paused_for_approval",
+        parentSessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:04.000Z"),
+        metadata: {
+          taskId: "task-greeting-tone"
+        }
+      }
+    ] as never);
+    mocked.listRunApprovalRecords.mockResolvedValueOnce([
+      {
+        approvalId: "approval-1",
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        sessionId: "task-session-1",
+        approvalType: "outbound_network",
+        status: "pending",
+        requestedBy: "keystone",
+        requestedAt: new Date("2026-04-14T00:00:03.000Z"),
+        resolvedAt: null,
+        resolution: null,
+        metadata: {}
+      }
+    ] as never);
+    mocked.getApprovalRecord.mockResolvedValueOnce({
+      approvalId: "approval-1",
       tenantId: "tenant-fixture",
-      status: "configured"
+      runId: "run-123",
+      sessionId: "task-session-1",
+      approvalType: "outbound_network",
+      status: "pending",
+      requestedBy: "keystone",
+      requestedAt: new Date("2026-04-14T00:00:03.000Z"),
+      resolvedAt: null,
+      resolution: null,
+      metadata: {}
+    } as never);
+
+    const [approvalsResponse, approvalResponse] = await Promise.all([
+      app.request(
+        "http://example.com/v1/runs/run-123/approvals",
+        {
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-fixture"
+          }
+        },
+        env
+      ),
+      app.request(
+        "http://example.com/v1/runs/run-123/approvals/approval-1",
+        {
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-fixture"
+          }
+        },
+        env
+      )
+    ]);
+
+    await expect(approvalsResponse.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        items: [
+          {
+            approvalId: "approval-1",
+            taskId: "task-greeting-tone",
+            status: "pending"
+          }
+        ]
+      },
+      meta: {
+        resourceType: "approval"
+      }
+    });
+    await expect(approvalResponse.json()).resolves.toMatchObject({
+      data: {
+        approvalId: "approval-1",
+        taskId: "task-greeting-tone"
+      },
+      meta: {
+        resourceType: "approval"
+      }
     });
   });
 
@@ -677,11 +1275,33 @@ describe("app", () => {
   });
 
   it("resolves approvals and signals the workflow instance", async () => {
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        sessionType: "task",
+        status: "paused_for_approval",
+        parentSessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:04.000Z"),
+        metadata: {
+          taskId: "task-greeting-tone"
+        }
+      }
+    ] as never);
     mocked.getApprovalRecord.mockResolvedValueOnce({
       approvalId: "approval-1",
       tenantId: "tenant-fixture",
       runId: "run-123",
-      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+      sessionId: "task-session-1",
+      approvalType: "outbound_network",
+      status: "pending",
+      requestedBy: "keystone",
+      requestedAt: new Date("2026-04-14T00:00:01.000Z"),
+      resolvedAt: null,
+      resolution: null,
+      metadata: {},
       waitEventType: "approval.resolved.approval-1"
     } as never);
 
@@ -703,28 +1323,58 @@ describe("app", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      approvalId: "approval-1",
-      runId: "run-123",
-      status: "approved"
+      data: {
+        approvalId: "approval-1",
+        runId: "run-123",
+        status: "approved"
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "action",
+        resourceType: "approval"
+      }
     });
     expect(mocked.runWorkflowGet).toHaveBeenCalledTimes(1);
+    expect(mocked.appendSessionEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sessionId: "task-session-1",
+        taskId: "task-greeting-tone",
+        eventType: "approval.resolved"
+      })
+    );
   });
 
   it("proxies the websocket route to the coordinator stub", async () => {
-    const response = await app.request(
-      "http://example.com/v1/runs/run-123/ws",
-      {
-        method: "GET",
-        headers: {
-          Authorization: "Bearer secret-dev-token",
-          "X-Keystone-Tenant-Id": "tenant-fixture"
-        }
-      },
-      env
-    );
+    const [streamResponse, wsResponse] = await Promise.all([
+      app.request(
+        "http://example.com/v1/runs/run-123/stream",
+        {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-fixture"
+          }
+        },
+        env
+      ),
+      app.request(
+        "http://example.com/v1/runs/run-123/ws",
+        {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-fixture"
+          }
+        },
+        env
+      )
+    ]);
 
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("ws-ok");
+    expect(streamResponse.status).toBe(200);
+    await expect(streamResponse.text()).resolves.toBe("ws-ok");
+    expect(wsResponse.status).toBe(200);
+    await expect(wsResponse.text()).resolves.toBe("ws-ok");
   });
 
   it("executes the compile smoke route with dev auth", async () => {

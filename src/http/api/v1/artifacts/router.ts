@@ -1,4 +1,8 @@
 import type { ApiRouteDefinition } from "../common/contracts";
+import type { Hono } from "hono";
+import type { AppEnv } from "../../../../env";
+import { requireDevAuth } from "../../../middleware/auth";
+import { getArtifactContentHandler, getArtifactHandler } from "./handlers";
 
 export const artifactRouteMatrix = [
   {
@@ -8,7 +12,7 @@ export const artifactRouteMatrix = [
     resourceType: "artifact",
     responseKind: "detail",
     implementation: "reused",
-    availability: "contract_frozen"
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -17,7 +21,12 @@ export const artifactRouteMatrix = [
     resourceType: "artifact",
     responseKind: "detail",
     implementation: "reused",
-    availability: "contract_frozen",
-    note: "Binary artifact content remains a Phase 2 projection task."
+    availability: "implemented",
+    note: "Content is streamed directly from the current R2-backed artifact storage."
   }
 ] as const satisfies ApiRouteDefinition[];
+
+export function registerArtifactRoutes(router: Hono<AppEnv>) {
+  router.get("/v1/artifacts/:artifactId", requireDevAuth, getArtifactHandler);
+  router.get("/v1/artifacts/:artifactId/content", requireDevAuth, getArtifactContentHandler);
+}

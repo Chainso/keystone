@@ -1,10 +1,10 @@
-# Keystone M1 Architecture
+# Keystone UI-First V1 Architecture
 
 ## Runtime Shape
 
-Keystone M1 is one TypeScript Worker project with these runtime responsibilities:
+Keystone's current runtime is one TypeScript Worker project with these responsibilities:
 
-- `src/http/`: Hono API surface for project CRUD, run creation, summary fetch, approval resolution, websocket proxying, and dev smoke routes
+- `src/http/`: Hono API surface for the UI-first `v1` resource model: project CRUD plus `ProjectDocument`, `DecisionPackage`, `Run`, `Task`, `TaskConversation`, `Artifact`, `Approval`, `EvidenceBundle`, and `IntegrationRecord` routes
 - `src/durable-objects/RunCoordinatorDO.ts`: per-run live projection for websocket consumers
 - `src/durable-objects/TaskSessionDO.ts`: task-session sandbox and workspace lifecycle manager
 - `src/workflows/RunWorkflow.ts`: durable run orchestration from compile through finalization
@@ -26,13 +26,41 @@ The Worker keeps large workflow meaning outside workflow step output:
 
 The happy-path fixture run is:
 
-1. `POST /v1/projects` or `PUT /v1/projects/:projectId` creates the durable project config, and `POST /v1/runs` accepts only `projectId` plus the decision package input.
+1. `POST /v1/projects` or `PUT /v1/projects/:projectId` creates the durable project config, and `POST /v1/runs` accepts `projectId` plus a typed decision-package reference. The currently launchable path is `decisionPackage: { source: "inline", payload: ... }`.
 2. `POST /v1/runs` creates the root run session, initializes `RunCoordinatorDO`, and starts `RUN_WORKFLOW`.
 3. `RunWorkflow` reloads the project, freezes project execution metadata onto the run session, validates that compile routing has one explicit executable target, and compiles a run plan through the local chat-completions backend.
 4. The compiled plan is persisted to R2 and fanned out into one `TASK_WORKFLOW` instance per task.
 5. Each `TaskWorkflow` reloads the same project, asks `TaskSessionDO` to materialize all project components under `/workspace/code/<component-key>`, and then executes the task.
 6. The scripted path runs a sandboxed `npm test` process and persists `task_log`; the Think path uses the same project-backed workspace plus agent bridge to promote staged `run_note` artifacts.
 7. `RunWorkflow` polls task workflow statuses, finalizes the run, writes the run summary artifact, and archives the run session.
+
+## Public API Shape
+
+The canonical operator-facing surface is now:
+
+- `GET /v1/projects`
+- `GET /v1/projects/:projectId`
+- `GET /v1/projects/:projectId/documents`
+- `GET /v1/projects/:projectId/decision-packages`
+- `GET /v1/projects/:projectId/runs`
+- `POST /v1/runs`
+- `GET /v1/runs/:runId`
+- `GET /v1/runs/:runId/graph`
+- `GET /v1/runs/:runId/tasks`
+- `GET /v1/runs/:runId/tasks/:taskId`
+- `GET /v1/runs/:runId/tasks/:taskId/conversation`
+- `POST /v1/runs/:runId/tasks/:taskId/conversation/messages`
+- `GET /v1/runs/:runId/tasks/:taskId/artifacts`
+- `GET /v1/runs/:runId/approvals`
+- `GET /v1/runs/:runId/approvals/:approvalId`
+- `POST /v1/runs/:runId/approvals/:approvalId/resolve`
+- `GET /v1/runs/:runId/evidence`
+- `GET /v1/runs/:runId/integration`
+- `GET /v1/runs/:runId/release`
+- `GET /v1/artifacts/:artifactId`
+- `GET /v1/artifacts/:artifactId/content`
+
+`GET /v1/runs/:runId/stream` is the canonical UI stream path. `GET /v1/runs/:runId/events` and `GET /v1/runs/:runId/ws` remain available only as legacy/debug seams.
 
 ## Security and Approval Edge
 

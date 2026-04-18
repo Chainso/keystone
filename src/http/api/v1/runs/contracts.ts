@@ -22,6 +22,13 @@ export const runResourceSchema = buildResourceSchema("run", {
   currentTaskId: resourceIdSchema.nullable(),
   createdAt: isoTimestampSchema.nullable(),
   updatedAt: isoTimestampSchema.nullable(),
+  sessions: z.object({
+    total: z.number().int().nonnegative()
+  }),
+  artifacts: z.object({
+    total: z.number().int().nonnegative(),
+    byKind: z.record(z.string(), z.number().int().nonnegative()).default({})
+  }),
   execution: z
     .object({
       runtime: z.string().trim().min(1).nullable(),
@@ -116,6 +123,12 @@ export const taskConversationMessageAcceptedSchema = z.object({
   message: taskConversationMessageSchema.nullable()
 });
 
+export const runAcceptedActionSchema = z.object({
+  status: z.enum(["accepted"]),
+  workflowInstanceId: z.string().trim().min(1),
+  run: runResourceSchema
+});
+
 export const approvalResourceSchema = buildResourceSchema("approval", {
   tenantId: resourceIdSchema,
   approvalId: resourceIdSchema,
@@ -172,6 +185,7 @@ export const runCreateRequestSchema = z.object({
 
 export const runDetailEnvelopeSchema = buildDetailEnvelopeSchema("run", runResourceSchema);
 export const runCollectionEnvelopeSchema = buildCollectionEnvelopeSchema("run", runResourceSchema);
+export const runActionEnvelopeSchema = buildActionEnvelopeSchema("run", runAcceptedActionSchema);
 export const taskDetailEnvelopeSchema = buildDetailEnvelopeSchema("task", taskResourceSchema);
 export const taskCollectionEnvelopeSchema = buildCollectionEnvelopeSchema("task", taskResourceSchema);
 export const workflowGraphDetailEnvelopeSchema = buildDetailEnvelopeSchema(
@@ -183,6 +197,10 @@ export const taskConversationDetailEnvelopeSchema = buildDetailEnvelopeSchema(
   taskConversationResourceSchema
 );
 export const approvalDetailEnvelopeSchema = buildDetailEnvelopeSchema(
+  "approval",
+  approvalResourceSchema
+);
+export const approvalActionEnvelopeSchema = buildActionEnvelopeSchema(
   "approval",
   approvalResourceSchema
 );
@@ -212,6 +230,7 @@ export type TaskResource = z.infer<typeof taskResourceSchema>;
 export type WorkflowGraphResource = z.infer<typeof workflowGraphResourceSchema>;
 export type TaskConversationResource = z.infer<typeof taskConversationResourceSchema>;
 export type TaskConversationMessage = z.infer<typeof taskConversationMessageSchema>;
+export type RunAcceptedAction = z.infer<typeof runAcceptedActionSchema>;
 export type TaskConversationMessageWriteInput = z.infer<
   typeof taskConversationMessageWriteInputSchema
 >;

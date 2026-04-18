@@ -1,6 +1,8 @@
 import type { Hono } from "hono";
 
 import type { AppEnv } from "../../../env";
+import { registerArtifactRoutes } from "./artifacts/router";
+import { registerDecisionPackageRoutes } from "./decision-packages/router";
 import { registerProjectRoutes } from "./projects/router";
 import { registerRunRoutes } from "./runs/router";
 
@@ -13,5 +15,7 @@ export * from "./runs/contracts";
 
 export function registerV1Routes(router: Hono<AppEnv>) {
   registerProjectRoutes(router);
+  registerDecisionPackageRoutes(router);
   registerRunRoutes(router);
+  registerArtifactRoutes(router);
 }

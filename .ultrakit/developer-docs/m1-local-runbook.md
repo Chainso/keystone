@@ -56,7 +56,7 @@ npm run demo:validate
 Expected fixture proof:
 
 - run status reaches `archived`
-- at least three sessions exist (`run`, `compile`, `task`)
+- run detail reports at least three sessions (`run`, `compile`, `task`)
 - artifacts include `decision_package`, `run_plan`, `task_handoff`, `task_log`, and `run_summary`
 - the run summary reports stored project metadata for `fixture-demo-project`
 
@@ -90,7 +90,7 @@ KEYSTONE_AGENT_RUNTIME=think npm run demo:validate -- --run-id=<run-id>
 The current HTTP contract is project-backed. For manual API checks:
 
 1. Create or update a project through `/v1/projects` or `npm run demo:ensure-project`.
-2. Submit `/v1/runs` with `projectId` plus the decision package input.
+2. Submit `/v1/runs` with `projectId` plus a typed decision-package reference.
 
 Minimal local request shape:
 
@@ -98,10 +98,24 @@ Minimal local request shape:
 {
   "projectId": "<stored-project-id>",
   "decisionPackage": {
-    "localPath": "./fixtures/demo-decision-package/decision-package.json"
+    "source": "inline",
+    "payload": {
+      "decisionPackageId": "demo-greeting-update",
+      "summary": "Update the deterministic fixture target.",
+      "objectives": ["Keep fixture tests green."],
+      "tasks": [
+        {
+          "taskId": "task-greeting-tone",
+          "title": "Adjust the greeting implementation",
+          "acceptanceCriteria": ["Fixture tests remain green."]
+        }
+      ]
+    }
   }
 }
 ```
+
+For UI consumers, use `GET /v1/runs/:runId/stream` as the canonical live stream path. `/events` and `/ws` remain debug/legacy seams only.
 
 ## Approval Path
 

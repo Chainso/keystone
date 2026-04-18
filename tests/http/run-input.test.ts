@@ -7,8 +7,18 @@ describe("runInputSchema", () => {
     const parsed = parseRunInput({
       projectId: "project-fixture",
       decisionPackage: {
+        source: "inline",
         payload: {
-          summary: "Validate inline package support"
+          decisionPackageId: "decision-package-inline",
+          summary: "Validate inline package support",
+          objectives: ["Ship the UI-first API"],
+          tasks: [
+            {
+              taskId: "task-inline",
+              title: "Implement the contract",
+              acceptanceCriteria: ["Contract is defined"]
+            }
+          ]
         }
       },
       options: {
@@ -18,23 +28,24 @@ describe("runInputSchema", () => {
     });
 
     expect(parsed.projectId).toBe("project-fixture");
-    expect(parsed.decisionPackage.source).toBe("payload");
+    expect(parsed.decisionPackage.source).toBe("inline");
     expect(parsed.options).toEqual({
       thinkMode: "live",
       preserveSandbox: true
     });
   });
 
-  it("accepts a project-backed run with a decision-package file path", () => {
+  it("accepts a project-backed run with an artifact-backed decision package reference", () => {
     const parsed = parseRunInput({
       projectId: "project-fixture",
       decisionPackage: {
-        localPath: "./fixtures/demo-decision-package/decision-package.json"
+        source: "artifact",
+        artifactId: "artifact-decision-package"
       }
     });
 
     expect(parsed.projectId).toBe("project-fixture");
-    expect(parsed.decisionPackage.source).toBe("localPath");
+    expect(parsed.decisionPackage.source).toBe("artifact");
     expect(parsed.options).toEqual({
       thinkMode: "mock",
       preserveSandbox: false
@@ -46,9 +57,8 @@ describe("runInputSchema", () => {
       parseRunInput({
         projectId: "",
         decisionPackage: {
-          payload: {
-            summary: "bad input"
-          }
+          source: "artifact",
+          artifactId: "artifact-bad-input"
         }
       })
     ).toThrow(/Too small: expected string to have >=1 characters/);
@@ -59,9 +69,8 @@ describe("runInputSchema", () => {
       parseRunInput({
         projectId: "project-fixture",
         decisionPackage: {
-          payload: {
-            summary: "bad options"
-          }
+          source: "project_collection",
+          decisionPackageId: "decision-package-project-collection"
         },
         options: {
           thinkMode: "unknown"
