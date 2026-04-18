@@ -33,10 +33,10 @@ export function ShellSidebar() {
           </span>
         </div>
         <div className="project-actions">
-          {projectActions.map((action, index) => (
+          {projectActions.map((action) => (
             <NavLink key={action.path} to={action.path} className={getActionLinkClassName}>
               <span className="action-link-symbol" aria-hidden="true">
-                {index === 0 ? "+" : "="}
+                {action.glyph}
               </span>
               <span>{action.label}</span>
             </NavLink>

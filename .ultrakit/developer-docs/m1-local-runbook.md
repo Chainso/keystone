@@ -9,10 +9,25 @@
 
 ## Boot
 
+Start the local dependencies first:
+
 ```bash
 docker compose up -d postgres
 export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://postgres:postgres@127.0.0.1:5432/keystone"
 npm run db:migrate
+```
+
+For the standard scaffold-era UI workflow, then start the checked-in zellij helper from a normal host shell:
+
+```bash
+npm run dev:zellij
+```
+
+That opens vertically split panes for `npx localflare` and `npm run dev:ui`.
+
+If you need the manual path instead, use:
+
+```bash
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 

@@ -4,6 +4,10 @@ export interface ShellLinkDefinition {
   summary: string;
 }
 
+export interface ShellActionDefinition extends ShellLinkDefinition {
+  glyph: string;
+}
+
 export const primaryDestinations: ShellLinkDefinition[] = [
   {
     label: "Runs",
@@ -22,13 +26,15 @@ export const primaryDestinations: ShellLinkDefinition[] = [
   }
 ];
 
-export const projectActions: ShellLinkDefinition[] = [
+export const projectActions: ShellActionDefinition[] = [
   {
+    glyph: "+",
     label: "New project",
     path: "/projects/new",
     summary: "Create a new project scaffold."
   },
   {
+    glyph: "=",
     label: "Project settings",
     path: "/settings",
     summary: "Review project configuration placeholders."

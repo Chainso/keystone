@@ -1,6 +1,6 @@
 import "@radix-ui/themes/styles.css";
 
-import { StrictMode, startTransition } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
@@ -12,12 +12,8 @@ if (rootElement === null) {
   throw new Error("Missing #root element for the Keystone UI bootstrap.");
 }
 
-const root = createRoot(rootElement);
-
-startTransition(() => {
-  root.render(
-    <StrictMode>
-      <App />
-    </StrictMode>
-  );
-});
+createRoot(rootElement).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);

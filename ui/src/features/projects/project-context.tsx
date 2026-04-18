@@ -7,7 +7,7 @@ export interface CurrentProject {
   summary: string;
 }
 
-const scaffoldProject: CurrentProject = {
+export const scaffoldProject: CurrentProject = {
   projectId: "project-keystone-cloudflare",
   projectKey: "keystone-cloudflare",
   displayName: "Keystone Cloudflare",
@@ -18,11 +18,15 @@ const CurrentProjectContext = createContext<CurrentProject | null>(null);
 
 interface CurrentProjectProviderProps {
   children: ReactNode;
+  project?: CurrentProject;
 }
 
-export function CurrentProjectProvider({ children }: CurrentProjectProviderProps) {
+export function CurrentProjectProvider({
+  children,
+  project = scaffoldProject
+}: CurrentProjectProviderProps) {
   return (
-    <CurrentProjectContext.Provider value={scaffoldProject}>
+    <CurrentProjectContext.Provider value={project}>
       {children}
     </CurrentProjectContext.Provider>
   );

@@ -74,6 +74,11 @@ Compatibility that **is** required:
    **Rationale:** The plan is scaffolding empty implementations. The useful proof is that the shell renders, the route tree resolves, the Worker still builds, and placeholder boundaries are explicit.  
    **Alternatives considered:** No frontend tests in this phase; detailed interaction tests for components that are not implemented yet.
 
+10. **Date:** 2026-04-18  
+   **Decision:** Phase 1 includes a checked-in local development helper that launches `npx localflare` and the UI workflow together in vertically split zellij panes.  
+   **Rationale:** The user wants the scaffold phase to lock in contributor workflow as well as code structure. Standardizing the local dev entrypoint now prevents ad hoc commands from becoming the implicit convention later.  
+   **Alternatives considered:** Leave the workflow manual for now; add the helper in a later phase; use a different pane layout.
+
 ## Execution Log
 
 - **Date:** 2026-04-18  
@@ -101,6 +106,16 @@ Compatibility that **is** required:
   **Decision:** Split UI typechecking into a dedicated `tsconfig.ui.json` and keep the existing worker-oriented TypeScript config intact.  
   **Rationale:** The backend compiler settings target Worker globals, while the new React scaffold needs DOM and JSX support. Separate configs avoid reopening backend typing decisions.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 1  
+  **Decision:** Extend Phase 1 before closure to include a checked-in zellij helper that runs `npx localflare` and the UI workflow together in vertically split panes.  
+  **Rationale:** The user explicitly wants the local UI workflow standardized during the structure-first scaffold instead of deferred to a later cleanup pass.
+
+- **Date:** 2026-04-18  
+  **Phase:** Phase 1 fix pass  
+  **Decision:** Close the integration review finding by splitting ESLint globals by runtime and overriding `tsconfig.ui.json` to browser-only types before closing Phase 1.  
+  **Rationale:** The initial scaffold let browser globals lint cleanly in worker files and let UI typechecking inherit backend/test globals from the root config. The fix pass had to enforce the worker/UI boundary at the toolchain layer rather than just in folder naming.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, target references, current API surface, and Cloudflare-first frontend architecture options.
@@ -108,6 +123,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Active execution plan created and registered.
 - [x] 2026-04-18 User approval recorded for the structure-first UI scaffold plan and execution started.
 - [x] Phase 1 completed: UI tooling, route shell, providers, and global navigation scaffolded with placeholder screens.
+- [x] 2026-04-18 Phase 1 fix pass completed: browser globals are now scoped to UI files, `tsconfig.ui.json` uses browser-only global types, and the checked-in zellij helper runs `npx localflare` with the UI workflow in vertically split panes.
 - [ ] Phase 2 completed: `Runs` index and run-detail stepper routes scaffolded with shared planning layouts and execution route shells.
 - [ ] Phase 3 completed: `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations scaffolded with placeholder hooks and structural sublayouts.
 - [ ] Phase 4 completed: developer docs, README guidance, and validation coverage updated for the new UI scaffold.
@@ -121,6 +137,8 @@ Compatibility that **is** required:
 - `npm run build` is trustworthy only when run outside the Codex sandbox on this host because Wrangler and Docker require host-writable home-directory paths.
 - `wrangler types` successfully regenerates `worker-configuration.d.ts` in the sandbox after the assets binding change, but Wrangler still emits a non-fatal log-write warning because it cannot write under `~/.config/.wrangler`.
 - Importing the full `@radix-ui/themes` runtime pulled an unnecessary `react-remove-scroll` chain into the jsdom smoke test. Using the theme CSS without the runtime wrapper kept the Phase 1 shell aligned with scope and removed the test-only dependency issue.
+- Extending the root TypeScript config preserves its inherited `types`, so `tsconfig.ui.json` needed an explicit browser-only override to keep backend/test globals from leaking into the UI program.
+- The user wants the local frontend workflow codified early. Phase 1 was not fully closed until the zellij plus `npx localflare` helper was checked in and documented.
 
 ## Outcomes & Retrospective
 
@@ -136,7 +154,10 @@ Phase 1 outcome on 2026-04-18:
 - The repo now has a real `ui/` subtree with `app`, `routes`, `features`, `shared`, and `test` layers.
 - The same Worker deployable now serves the placeholder React shell and preserves existing API/runtime ownership for `v1`, `internal`, and health routes.
 - A route smoke test now proves the shared shell and every top-level placeholder destination render inside the global sidebar frame.
-- `npm run build` still fails in the default sandbox after the frontend bundle completes because Wrangler and Docker need host-writable home-directory paths, then passes when rerun outside the sandbox.
+- The fix pass tightened the toolchain boundary so browser globals lint only in `ui/`, while `tsconfig.ui.json` no longer inherits backend/node/vitest globals from the root TypeScript program.
+- The repo now ships a checked-in `npm run dev:zellij` helper that opens `npx localflare` and `npm run dev:ui` together in vertically split zellij panes.
+- `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` still fails in the default sandbox after the frontend bundle completes because Wrangler and Docker need host-writable home-directory paths, then passes when rerun outside the sandbox.
+- Phase 1 is now fully closed and Phase 2 can build on the shell, helper workflow, and worker/UI runtime boundary without reopening scaffold tooling.
 
 ## Context and Orientation
 
@@ -185,7 +206,7 @@ The most important current-state facts to keep in mind:
 
 ## Plan of Work
 
-First, establish a frontend runtime that fits the existing Worker rather than replacing it. That means adding the React/Vite scaffold, wiring it into the current Cloudflare deployment shape, and creating a top-level app shell with the persistent global sidebar and top-level destinations. This phase should also freeze the provider, route, layout, and feature-module conventions so later work has a stable home.
+First, establish a frontend runtime that fits the existing Worker rather than replacing it. That means adding the React/Vite scaffold, wiring it into the current Cloudflare deployment shape, creating a top-level app shell with the persistent global sidebar and top-level destinations, and codifying the local development workflow for running the Worker and UI together. This phase should also freeze the provider, route, layout, and feature-module conventions so later work has a stable home.
 
 Second, scaffold the `Runs` destination because it is the primary operator workflow. The run index, the run-detail stepper, the shared planning-phase split layout, and the execution graph-to-task-detail route transition should exist as empty but navigable structures. They should use placeholder feature hooks and placeholder view models rather than real backend data.
 
@@ -312,6 +333,7 @@ Out of scope: real destination content, live backend data loading, detailed comp
 - `ui/src/routes/*`
 - `ui/src/shared/*`
 - `ui/src/test/*`
+- local zellij/localflare helper script(s)
 - `README.md`
 
 ### Validation
@@ -321,7 +343,7 @@ Out of scope: real destination content, live backend data loading, detailed comp
 - `npm run test`
 - `npm run build`
 
-Success means the Worker still builds, the UI shell compiles, and at least one route/render smoke test proves the app shell and global destinations mount.
+Success means the Worker still builds, the UI shell compiles, at least one route/render smoke test proves the app shell and global destinations mount, and the repository contains the checked-in zellij helper for the standard local Worker-plus-UI workflow.
 
 ### Plan / Docs To Update
 
@@ -336,7 +358,8 @@ Success means the Worker still builds, the UI shell compiles, and at least one r
 - frontend tooling scaffold committed,
 - global sidebar and destination route skeletons committed,
 - placeholder destination screens for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`,
-- stable folder conventions for `app`, `routes`, `features`, and `shared`.
+- stable folder conventions for `app`, `routes`, `features`, and `shared`,
+- checked-in zellij helper for `npx localflare` plus the UI workflow in vertically split panes.
 
 ### Commit Expectation
 
@@ -347,22 +370,24 @@ Success means the Worker still builds, the UI shell compiles, and at least one r
 - `npm run build` must run outside the Codex sandbox on this host.
 - The repo has no frontend structure yet, so this phase must define it from scratch without destabilizing the Worker runtime.
 - The shell must follow `workspace-spec.md`, not the older generalized board mental model.
+- The local dev helper should standardize on `npx localflare` and the UI workflow in a vertical zellij split.
 
 ### Status
 
-Completed on 2026-04-18.
+Completed on 2026-04-18 after the targeted fix pass for the runtime-boundary review finding and the checked-in local dev helper.
 
 ### Completion Notes
 
 - Added the Vite/React scaffold under `ui/` with a stable `app`, `routes`, `features`, `shared`, and `test` structure.
 - Added the project-scoped shell, global sidebar, and placeholder routes for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`.
 - Wired Wrangler assets to serve the SPA while preserving Worker-first handling for `/v1/*`, `/internal/*`, and `/healthz`.
-- Updated scripts, frontend typechecking, worker type generation, and route smoke coverage.
+- Added a checked-in `npm run dev:zellij` helper plus zellij layout that starts `npx localflare` and `npm run dev:ui` together in vertically split panes.
+- Narrowed the toolchain boundary so browser globals are linted only for UI files and `tsconfig.ui.json` uses browser-only global types instead of inheriting backend/test globals from the root config.
 - Validation results: `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` fails in the sandbox at Wrangler/Docker home-directory writes after `vite build` succeeds, then passes outside the sandbox.
 
 ### Next Starter Context
 
-Phase 2 should extend the existing shell from `ui/src/routes/router.tsx` and `ui/src/shared/layout/` rather than creating a second app frame. The default `/runs` route already exists and should grow into nested run routes, using the same placeholder-screen honesty and the same project-scoped sidebar.
+Phase 2 should extend the existing shell from `ui/src/routes/router.tsx` and `ui/src/shared/layout/` rather than creating a second app frame. The default `/runs` route already exists and should grow into nested run routes, using the same placeholder-screen honesty and the same project-scoped sidebar. It can also assume the checked-in zellij helper and the worker/UI toolchain boundary are already in place.
 
 ## Phase 2
 

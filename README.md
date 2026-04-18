@@ -29,6 +29,7 @@ npm run test:workflows
 npm run build:ui
 npm run build
 npm run dev:ui
+npm run dev:zellij
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
@@ -36,9 +37,13 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 `npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the placeholder shell while Wrangler is already running.
 
+`npm run dev:zellij` is the checked-in Phase 1 helper for the standard UI scaffold workflow. After Postgres is up and `npm run db:migrate` has completed, it opens zellij with vertically split panes that run `npx localflare` and `npm run dev:ui` from repo root. Use it from a normal host shell, not inside the Codex sandbox, because local Worker startup on this machine still needs host execution.
+
 ## UI Scaffold
 
 Phase 1 adds a structure-only React SPA under `ui/` and serves the built assets through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
+
+For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manual path or do not use zellij, keep using `npm run dev` plus `npm run dev:ui` in separate terminals.
 
 Current UI scope:
 
