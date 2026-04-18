@@ -1,18 +1,10 @@
 import { Hono } from "hono";
 
 import type { AppEnv } from "../env";
-import { resolveApprovalHandler } from "./handlers/approvals";
 import { runCompileSmokeHandler } from "./handlers/dev-compile";
 import { runSandboxSmokeHandler } from "./handlers/dev-smoke";
 import { runThinkSmokeHandler } from "./handlers/dev-think";
-import {
-  createProjectHandler,
-  getProjectHandler,
-  listProjectsHandler,
-  updateProjectHandler
-} from "./handlers/projects";
-import { createRunHandler, getRunEventsHandler, getRunHandler } from "./handlers/runs";
-import { runWebSocketHandler } from "./handlers/ws";
+import { registerV1Routes } from "./api/v1";
 import { requireDevAuth } from "./middleware/auth";
 
 export const router = new Hono<AppEnv>();
@@ -42,19 +34,7 @@ router.get("/v1/health", (context) => {
   });
 });
 
-router.get("/v1/projects", requireDevAuth, listProjectsHandler);
-router.post("/v1/projects", requireDevAuth, createProjectHandler);
-router.get("/v1/projects/:projectId", requireDevAuth, getProjectHandler);
-router.put("/v1/projects/:projectId", requireDevAuth, updateProjectHandler);
-router.post("/v1/runs", requireDevAuth, createRunHandler);
-router.get("/v1/runs/:runId", requireDevAuth, getRunHandler);
-router.get("/v1/runs/:runId/events", requireDevAuth, getRunEventsHandler);
-router.post(
-  "/v1/runs/:runId/approvals/:approvalId/resolve",
-  requireDevAuth,
-  resolveApprovalHandler
-);
-router.get("/v1/runs/:runId/ws", requireDevAuth, runWebSocketHandler);
+registerV1Routes(router);
 router.post("/internal/dev/compile-smoke", requireDevAuth, runCompileSmokeHandler);
 router.post("/internal/dev/sandbox-smoke", requireDevAuth, runSandboxSmokeHandler);
 router.post("/internal/dev/think-smoke", requireDevAuth, runThinkSmokeHandler);
