@@ -53,6 +53,8 @@ Use these skills as decision support and current-platform guidance, especially w
 
 Ultrakit execution is subagent-driven. Keep the stage logic in `.agents/skills/ultrakit-orchestrator-*`, and keep the execution-role instructions in `.codex/agents/ultrakit_implementer.toml` and `.codex/agents/ultrakit_reviewer.toml`. If the ultrakit execution model changes, update both the orchestrator skills and these project-scoped subagent configs in the same change.
 
+Before making non-trivial changes, read the relevant docs in `.ultrakit/developer-docs/` for the subsystem you are touching. Treat them as the primary source for repo-specific architecture, runtime boundaries, contracts, and design rationale. If your change would make those docs materially inaccurate, update the relevant developer doc in the same change.
+
 ## Commit & Pull Request Guidelines
 
 Current history uses short imperative subjects such as `init`, `move`, and `remove`. Keep the imperative style, but make subjects more descriptive, for example `add Cloudflare worker scaffold`.
