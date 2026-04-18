@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 
 import { renderRoute } from "./render-route";
 
@@ -11,12 +11,15 @@ afterEach(() => {
 
 describe("App shell", () => {
   it("redirects the default route to the Runs index inside the global shell", async () => {
-    renderRoute("/");
+    const { router } = renderRoute("/");
 
     await screen.findByRole("heading", { name: "Runs" });
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs");
+    });
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Runs/i })).toHaveClass("is-active");
+    expect(screen.getByRole("link", { name: "Run-104" })).toHaveAttribute("href", "/runs/run-104");
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
   });
 

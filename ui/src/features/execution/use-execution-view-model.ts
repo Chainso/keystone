@@ -37,13 +37,13 @@ export function useRunExecutionViewModel(runId: string) {
 
 export function useTaskDetailViewModel(runId: string, taskId: string) {
   const run = getRunScaffold(runId);
-  const fallbackTask = run.execution.tasks[0];
+  const task = run.execution.tasks.find((candidate) => candidate.taskId === taskId);
 
-  if (!fallbackTask) {
-    throw new Error("Execution scaffold requires at least one task.");
+  if (!task) {
+    throw new Error(
+      `Task route "/runs/${runId}/execution/tasks/${taskId}" does not match any scaffolded execution task.`
+    );
   }
-
-  const task = run.execution.tasks.find((candidate) => candidate.taskId === taskId) ?? fallbackTask;
 
   return {
     runDisplayId: run.displayId,

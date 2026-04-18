@@ -126,6 +126,11 @@ Compatibility that **is** required:
   **Decision:** Implement the three planning phases through one shared split-layout scaffold and keep execution plus task detail as separate route shells under the same run frame.  
   **Rationale:** `Specification`, `Architecture`, and `Execution Plan` share the same chat-plus-document structure in the design docs, while `Execution` must stay distinct so the DAG-first state and task-detail state can evolve independently later.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 2 fix pass  
+  **Decision:** Tighten the route smoke tests around concrete redirect targets and link hrefs, and treat unknown execution task ids as route errors instead of silently falling back to the first scaffolded task.  
+  **Rationale:** The review pass found that CSS-class assertions were not proving the actual navigation affordances, and the fallback behavior made an invalid task URL look plausibly correct instead of surfacing the route problem honestly.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, target references, current API surface, and Cloudflare-first frontend architecture options.
@@ -135,6 +140,7 @@ Compatibility that **is** required:
 - [x] Phase 1 completed: UI tooling, route shell, providers, and global navigation scaffolded with placeholder screens.
 - [x] 2026-04-18 Phase 1 fix pass completed: browser globals are now scoped to UI files, `tsconfig.ui.json` uses browser-only global types, and the checked-in zellij helper runs `npx localflare` with the UI workflow in vertically split panes.
 - [x] 2026-04-18 Phase 2 completed: `Runs` index, nested run-detail stepper routes, execution DAG shell, and task-detail placeholder route now exist under the shared shell.
+- [x] 2026-04-18 Phase 2 fix pass completed: route tests now assert concrete `/runs` and execution-task targets, and invalid task ids surface the route error boundary instead of rendering the first scaffolded task.
 - [ ] Phase 3 completed: `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations scaffolded with placeholder hooks and structural sublayouts.
 - [ ] Phase 4 completed: developer docs, README guidance, and validation coverage updated for the new UI scaffold.
 
@@ -150,6 +156,7 @@ Compatibility that **is** required:
 - Extending the root TypeScript config preserves its inherited `types`, so `tsconfig.ui.json` needed an explicit browser-only override to keep backend/test globals from leaking into the UI program.
 - The user wants the local frontend workflow codified early. Phase 1 was not fully closed until the zellij plus `npx localflare` helper was checked in and documented.
 - The current run APIs are already specific enough to label each Phase 2 scaffold honestly: run detail, graph, task, task conversation, and artifact seams exist, while project documents plus evidence/integration/release remain the explicit stub-backed gaps.
+- The Phase 2 route tests became much more reliable once `renderRoute()` returned the memory router, because redirect assertions could pin actual pathnames instead of inferring state from active CSS classes or concatenated nav labels.
 
 ## Outcomes & Retrospective
 
@@ -176,6 +183,7 @@ Phase 2 outcome on 2026-04-18:
 - Run detail now lives under `/runs/:runId` with a stepper rail for `Specification`, `Architecture`, `Execution Plan`, and `Execution`, all inside the original project-scoped shell.
 - `Specification`, `Architecture`, and `Execution Plan` now share one split-layout scaffold, while `Execution` defaults to a DAG-style placeholder and drills into `/runs/:runId/execution/tasks/:taskId` for the task conversation plus review-sidebar shape.
 - Route smoke coverage now proves the `Runs` index, run-phase redirects, planning panes, execution DAG shell, and task-detail shell all render with context preserved.
+- The Phase 2 fix pass now proves the actual `Runs` table and execution task-card navigation targets, and invalid task-detail URLs fail through the route boundary instead of rendering misleading scaffold content.
 - `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` still fails in the sandbox only at Wrangler/Docker home-directory writes after `vite build` succeeds, then passes when rerun outside the sandbox.
 - README guidance now reflects that `Runs` is no longer only a top-level placeholder destination.
 
@@ -476,20 +484,21 @@ Success means route smoke coverage proves the `Runs` index, nested run phases, a
 
 ### Status
 
-Completed on 2026-04-18.
+Completed on 2026-04-18 after the targeted fix pass for route-boundary and route-test coverage findings.
 
 ### Completion Notes
 
 - Added a real `Runs` index route and nested `:runId` run-detail routes under the existing shell instead of introducing a second app frame.
 - Added shared planning-phase scaffolds for `Specification`, `Architecture`, and `Execution Plan`, with fixed placeholder view models that name the current backend seams and stubbed gaps explicitly.
 - Added execution and task-detail route shells that preserve run context while showing the intended DAG-first and chat-plus-review states.
-- Added route smoke coverage for `/runs`, `/runs/:runId`, the planning routes, the execution route, and the task-detail route.
+- Tightened route smoke coverage so it asserts the `/runs` row hrefs, the redirected run-phase pathname, the execution task-node hrefs, and the invalid-task route boundary.
+- Unknown `taskId` values under `/runs/:runId/execution/tasks/:taskId` now throw into the route boundary instead of silently rendering the first scaffolded task.
 - Updated README UI scope notes so the checked-in guidance matches the new run-route structure.
 - Validation results: `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` fails in the sandbox only because Wrangler/Docker cannot write to host home-directory paths after `vite build` succeeds, then passes when rerun outside the sandbox.
 
 ### Next Starter Context
 
-Phase 3 should leave the new `Runs` route family intact and apply the same composition patterns to `Documentation`, `Workstreams`, `New project`, and `Project settings`. The run scaffolds now live under `ui/src/routes/runs/`, `ui/src/features/runs/`, `ui/src/features/execution/`, and `ui/src/shared/layout/`; reuse those shared layout conventions rather than introducing destination-specific app frames.
+Phase 3 should leave the new `Runs` route family intact and apply the same composition patterns to `Documentation`, `Workstreams`, `New project`, and `Project settings`. The run scaffolds now live under `ui/src/routes/runs/`, `ui/src/features/runs/`, `ui/src/features/execution/`, and `ui/src/shared/layout/`; reuse those shared layout conventions rather than introducing destination-specific app frames. The Phase 2 tests now pin concrete route targets and invalid task-id behavior, so keep those route contracts stable while expanding the remaining destinations.
 
 ## Phase 3
 

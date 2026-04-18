@@ -65,7 +65,7 @@ export function ExecutionWorkspace({
 
         <div className="execution-flow">
           {tasks.map((task) => (
-            <Link key={task.taskId} to={`tasks/${task.taskId}`} className="task-node-card">
+            <Link key={task.taskId} to={task.detailPath} className="task-node-card">
               <div className="task-node-header">
                 <div>
                   <p className="task-node-id">{task.displayId}</p>

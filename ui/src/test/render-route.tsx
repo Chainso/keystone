@@ -11,9 +11,14 @@ export function renderRoute(initialEntry: string) {
     initialEntries: [initialEntry]
   });
 
-  return render(
+  const view = render(
     <AppProviders>
       <RouterProvider router={router} />
     </AppProviders>
   );
+
+  return {
+    ...view,
+    router
+  };
 }
