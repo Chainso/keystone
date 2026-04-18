@@ -9,15 +9,15 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Phase 1 app shell", () => {
-  it("redirects the default route to Runs inside the global shell", async () => {
+describe("App shell", () => {
+  it("redirects the default route to the Runs index inside the global shell", async () => {
     renderRoute("/");
 
     await screen.findByRole("heading", { name: "Runs" });
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Runs/i })).toHaveClass("is-active");
-    expect(screen.getByText("Phase 1 scaffold")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
   });
 
   it.each([

@@ -12,7 +12,7 @@ export const primaryDestinations: ShellLinkDefinition[] = [
   {
     label: "Runs",
     path: "/runs",
-    summary: "Open the operator run workspace and its future stepper flow."
+    summary: "Open the run index, nested stepper phases, and execution scaffold."
   },
   {
     label: "Documentation",

@@ -11,7 +11,7 @@ export const scaffoldProject: CurrentProject = {
   projectId: "project-keystone-cloudflare",
   projectKey: "keystone-cloudflare",
   displayName: "Keystone Cloudflare",
-  summary: "Phase 1 route shell placeholder"
+  summary: "Phase 2 runs scaffold placeholder"
 };
 
 const CurrentProjectContext = createContext<CurrentProject | null>(null);

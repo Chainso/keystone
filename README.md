@@ -10,7 +10,7 @@ Keystone is a single Cloudflare Worker project that currently proves:
 - sandboxed task execution with session sandboxes and task worktrees
 - provider-backed compile and Think live-model turns using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
 - a runtime selector that keeps `scripted` as the default path, preserves a deterministic `think/mock` validation mode, and enables a fixture-scoped live compile plus Think task demo through the same `/v1/runs` entrypoint
-- a structure-first React workspace shell served from the same Worker deployable with placeholder `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations
+- a structure-first React workspace shell served from the same Worker deployable, now including a scaffolded `Runs` index plus nested run-phase and execution routes alongside the placeholder `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations
 
 ## Core Commands
 
@@ -41,7 +41,7 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 ## UI Scaffold
 
-Phase 1 adds a structure-only React SPA under `ui/` and serves the built assets through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
+Phase 1 and Phase 2 add a structure-only React SPA under `ui/` and serve the built assets through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
 
 For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manual path or do not use zellij, keep using `npm run dev` plus `npm run dev:ui` in separate terminals.
 
@@ -49,14 +49,18 @@ Current UI scope:
 
 - the global project-scoped sidebar
 - top-level destination routes for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
-- placeholder screens that explicitly state they are scaffolds
+- a `Runs` index with a placeholder run table and a disabled `New run` control
+- nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
+- an execution default shell with placeholder workflow nodes and a task-detail route with chat-plus-review split
+- placeholder screens and view models that explicitly state current backend gaps
 
 Current UI non-goals:
 
 - live backend loading
-- real destination content or interactions
+- real run creation, project switching, or destination content loading
+- real task conversations, DAG layout, or review diff content
 - final visual polish
-- destination-specific sublayouts beyond the shell
+- destination-specific behavior beyond the current scaffold shells
 
 ## Project-Backed Backend
 

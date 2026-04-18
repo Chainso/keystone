@@ -116,6 +116,16 @@ Compatibility that **is** required:
   **Decision:** Close the integration review finding by splitting ESLint globals by runtime and overriding `tsconfig.ui.json` to browser-only types before closing Phase 1.  
   **Rationale:** The initial scaffold let browser globals lint cleanly in worker files and let UI typechecking inherit backend/test globals from the root config. The fix pass had to enforce the worker/UI boundary at the toolchain layer rather than just in folder naming.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 2  
+  **Decision:** Grow `Runs` into a nested route family under the existing shell: `/runs` for the index, `/runs/:runId` for the run-detail frame, and `/runs/:runId/execution/tasks/:taskId` for task drill-down.  
+  **Rationale:** This preserves the single project-scoped app frame from Phase 1 while matching the workspace spec's run index, stepper, and task-detail hierarchy.
+
+- **Date:** 2026-04-18  
+  **Phase:** Phase 2  
+  **Decision:** Implement the three planning phases through one shared split-layout scaffold and keep execution plus task detail as separate route shells under the same run frame.  
+  **Rationale:** `Specification`, `Architecture`, and `Execution Plan` share the same chat-plus-document structure in the design docs, while `Execution` must stay distinct so the DAG-first state and task-detail state can evolve independently later.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, target references, current API surface, and Cloudflare-first frontend architecture options.
@@ -124,7 +134,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 User approval recorded for the structure-first UI scaffold plan and execution started.
 - [x] Phase 1 completed: UI tooling, route shell, providers, and global navigation scaffolded with placeholder screens.
 - [x] 2026-04-18 Phase 1 fix pass completed: browser globals are now scoped to UI files, `tsconfig.ui.json` uses browser-only global types, and the checked-in zellij helper runs `npx localflare` with the UI workflow in vertically split panes.
-- [ ] Phase 2 completed: `Runs` index and run-detail stepper routes scaffolded with shared planning layouts and execution route shells.
+- [x] 2026-04-18 Phase 2 completed: `Runs` index, nested run-detail stepper routes, execution DAG shell, and task-detail placeholder route now exist under the shared shell.
 - [ ] Phase 3 completed: `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations scaffolded with placeholder hooks and structural sublayouts.
 - [ ] Phase 4 completed: developer docs, README guidance, and validation coverage updated for the new UI scaffold.
 
@@ -139,6 +149,7 @@ Compatibility that **is** required:
 - Importing the full `@radix-ui/themes` runtime pulled an unnecessary `react-remove-scroll` chain into the jsdom smoke test. Using the theme CSS without the runtime wrapper kept the Phase 1 shell aligned with scope and removed the test-only dependency issue.
 - Extending the root TypeScript config preserves its inherited `types`, so `tsconfig.ui.json` needed an explicit browser-only override to keep backend/test globals from leaking into the UI program.
 - The user wants the local frontend workflow codified early. Phase 1 was not fully closed until the zellij plus `npx localflare` helper was checked in and documented.
+- The current run APIs are already specific enough to label each Phase 2 scaffold honestly: run detail, graph, task, task conversation, and artifact seams exist, while project documents plus evidence/integration/release remain the explicit stub-backed gaps.
 
 ## Outcomes & Retrospective
 
@@ -158,6 +169,15 @@ Phase 1 outcome on 2026-04-18:
 - The repo now ships a checked-in `npm run dev:zellij` helper that opens `npx localflare` and `npm run dev:ui` together in vertically split zellij panes.
 - `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` still fails in the default sandbox after the frontend bundle completes because Wrangler and Docker need host-writable home-directory paths, then passes when rerun outside the sandbox.
 - Phase 1 is now fully closed and Phase 2 can build on the shell, helper workflow, and worker/UI runtime boundary without reopening scaffold tooling.
+
+Phase 2 outcome on 2026-04-18:
+
+- `Runs` now opens to a real index route instead of a single placeholder screen, with a scaffolded run table and a disabled `New run` control that stays honest about the current inline-only launcher contract.
+- Run detail now lives under `/runs/:runId` with a stepper rail for `Specification`, `Architecture`, `Execution Plan`, and `Execution`, all inside the original project-scoped shell.
+- `Specification`, `Architecture`, and `Execution Plan` now share one split-layout scaffold, while `Execution` defaults to a DAG-style placeholder and drills into `/runs/:runId/execution/tasks/:taskId` for the task conversation plus review-sidebar shape.
+- Route smoke coverage now proves the `Runs` index, run-phase redirects, planning panes, execution DAG shell, and task-detail shell all render with context preserved.
+- `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` still fails in the sandbox only at Wrangler/Docker home-directory writes after `vite build` succeeds, then passes when rerun outside the sandbox.
+- README guidance now reflects that `Runs` is no longer only a top-level placeholder destination.
 
 ## Context and Orientation
 
@@ -456,15 +476,20 @@ Success means route smoke coverage proves the `Runs` index, nested run phases, a
 
 ### Status
 
-Not started.
+Completed on 2026-04-18.
 
 ### Completion Notes
 
-None yet.
+- Added a real `Runs` index route and nested `:runId` run-detail routes under the existing shell instead of introducing a second app frame.
+- Added shared planning-phase scaffolds for `Specification`, `Architecture`, and `Execution Plan`, with fixed placeholder view models that name the current backend seams and stubbed gaps explicitly.
+- Added execution and task-detail route shells that preserve run context while showing the intended DAG-first and chat-plus-review states.
+- Added route smoke coverage for `/runs`, `/runs/:runId`, the planning routes, the execution route, and the task-detail route.
+- Updated README UI scope notes so the checked-in guidance matches the new run-route structure.
+- Validation results: `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` fails in the sandbox only because Wrangler/Docker cannot write to host home-directory paths after `vite build` succeeds, then passes when rerun outside the sandbox.
 
 ### Next Starter Context
 
-This phase depends on Phase 1 route and shell conventions. Reuse those patterns; do not introduce a second app-frame style.
+Phase 3 should leave the new `Runs` route family intact and apply the same composition patterns to `Documentation`, `Workstreams`, `New project`, and `Project settings`. The run scaffolds now live under `ui/src/routes/runs/`, `ui/src/features/runs/`, `ui/src/features/execution/`, and `ui/src/shared/layout/`; reuse those shared layout conventions rather than introducing destination-specific app frames.
 
 ## Phase 3
 
