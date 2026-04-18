@@ -830,6 +830,367 @@ a {
   white-space: pre-wrap;
 }
 
+.documentation-grid {
+  grid-template-columns: minmax(18rem, 0.9fr) minmax(0, 1.2fr);
+}
+
+.documentation-tree-panel {
+  gap: 1.1rem;
+}
+
+.documentation-tree-note {
+  margin: 0;
+}
+
+.documentation-tree {
+  display: grid;
+  gap: 1rem;
+}
+
+.documentation-tree-group {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.documentation-tree-group-header {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.documentation-tree-group-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.documentation-tree-group-summary {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.87rem;
+  line-height: 1.55;
+}
+
+.documentation-tree-items {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.documentation-tree-item {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.9rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.035);
+  color: inherit;
+  text-align: left;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 180ms ease;
+}
+
+.documentation-tree-item:hover,
+.documentation-tree-item:focus-visible {
+  border-color: var(--border-strong);
+  background: rgba(116, 98, 192, 0.12);
+}
+
+.documentation-tree-item.is-active {
+  border-color: var(--border-strong);
+  background:
+    linear-gradient(180deg, rgba(116, 98, 192, 0.18), rgba(56, 49, 102, 0.14)),
+    var(--surface-highlight);
+  transform: translateX(2px);
+}
+
+.documentation-tree-item-label {
+  font-weight: 600;
+}
+
+.documentation-tree-item-summary {
+  color: var(--text-tertiary);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.filter-chip-row,
+.project-config-section-actions,
+.source-mode-row,
+.environment-var-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.filter-chip-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.7rem 0.88rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.filter-chip:hover,
+.filter-chip:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.filter-chip.is-active {
+  border-color: var(--border-strong);
+  background: rgba(124, 112, 204, 0.18);
+  color: var(--text-primary);
+}
+
+.filter-chip-count {
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+}
+
+.table-detail-stack {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.table-row-note {
+  color: var(--text-tertiary);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.project-config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.15fr) minmax(18rem, 1fr);
+  gap: 1rem;
+}
+
+.project-config-sidebar {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-config-panel {
+  gap: 1.25rem;
+}
+
+.project-tab-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.project-tab-link {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, rgba(27, 28, 35, 0.92), rgba(18, 19, 24, 0.92)),
+    var(--surface-panel);
+  color: var(--text-secondary);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.project-tab-link:hover,
+.project-tab-link:focus-visible {
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.project-tab-link.is-active {
+  border-color: var(--border-strong);
+  background:
+    linear-gradient(180deg, rgba(116, 98, 192, 0.21), rgba(56, 49, 102, 0.18)),
+    var(--surface-highlight);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.project-tab-link-label {
+  font-weight: 600;
+}
+
+.project-tab-link-summary {
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.project-config-body,
+.project-config-section,
+.component-card-stack,
+.project-environment-stack,
+.type-picker-options,
+.project-form-grid,
+.project-rule-grid,
+.component-card-overrides {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-config-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.project-config-section-actions {
+  justify-content: flex-end;
+}
+
+.project-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.project-form-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.project-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.placeholder-field,
+.placeholder-list-field,
+.type-picker-panel,
+.empty-state-card,
+.component-card,
+.environment-var-card {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.placeholder-field-label {
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.placeholder-field-input,
+.placeholder-list-item,
+.environment-var-value {
+  display: block;
+  min-height: 2.75rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(18, 19, 24, 0.55);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.placeholder-field-textarea {
+  min-height: 6rem;
+}
+
+.placeholder-list-editor {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.placeholder-list-item {
+  list-style-position: inside;
+}
+
+.type-picker-header,
+.component-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.type-picker-option {
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    linear-gradient(180deg, rgba(41, 42, 52, 0.88), rgba(22, 23, 30, 0.88)),
+    var(--surface-panel-alt);
+  color: inherit;
+  text-align: left;
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease;
+}
+
+.type-picker-option:hover,
+.type-picker-option:focus-visible {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.type-picker-option-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.type-picker-option-copy {
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.source-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-tertiary);
+  font-size: 0.86rem;
+}
+
+.source-mode-pill.is-active {
+  border-color: var(--border-strong);
+  background: rgba(116, 98, 192, 0.16);
+  color: var(--text-primary);
+}
+
+.component-card-overrides,
+.project-rule-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.environment-var-value {
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.9rem;
+}
+
 @keyframes stage-enter {
   from {
     opacity: 0;
@@ -848,11 +1209,13 @@ a {
   }
 
   .runs-index-grid,
-  .execution-grid {
+  .execution-grid,
+  .project-config-grid {
     grid-template-columns: 1fr;
   }
 
-  .run-stepper {
+  .run-stepper,
+  .project-tab-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -877,21 +1240,33 @@ a {
 
   .workspace-split,
   .task-detail-split,
-  .execution-flow {
+  .execution-flow,
+  .project-form-grid,
+  .component-card-overrides,
+  .project-rule-grid {
     grid-template-columns: 1fr;
   }
 
   .workspace-panel-header,
   .task-node-header,
   .task-detail-heading,
-  .runs-table-header {
+  .runs-table-header,
+  .project-config-section-header,
+  .project-config-section-actions,
+  .type-picker-header,
+  .component-card-header {
     flex-direction: column;
   }
 
   .workspace-panel-summary,
-  .task-detail-heading {
+  .task-detail-heading,
+  .project-config-section-actions {
     text-align: left;
     align-items: flex-start;
+  }
+
+  .filter-chip-row {
+    justify-content: flex-start;
   }
 }
 
@@ -908,7 +1283,8 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .run-stepper {
+  .run-stepper,
+  .project-tab-strip {
     grid-template-columns: 1fr;
   }
 

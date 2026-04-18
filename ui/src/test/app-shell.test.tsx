@@ -26,11 +26,11 @@ describe("App shell", () => {
   it.each([
     {
       path: "/documentation",
-      heading: "Documentation"
+      heading: "Project documentation"
     },
     {
       path: "/workstreams",
-      heading: "Workstreams"
+      heading: "Active and queued project work"
     },
     {
       path: "/projects/new",
@@ -38,7 +38,7 @@ describe("App shell", () => {
     },
     {
       path: "/settings",
-      heading: "Project settings"
+      heading: "Project settings: Keystone Cloudflare"
     }
   ])("mounts the $heading scaffold route inside the shared shell", async ({ path, heading }) => {
     renderRoute(path);

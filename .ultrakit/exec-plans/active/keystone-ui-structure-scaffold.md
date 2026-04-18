@@ -131,6 +131,16 @@ Compatibility that **is** required:
   **Decision:** Tighten the route smoke tests around concrete redirect targets and link hrefs, and treat unknown execution task ids as route errors instead of silently falling back to the first scaffolded task.  
   **Rationale:** The review pass found that CSS-class assertions were not proving the actual navigation affordances, and the fallback behavior made an invalid task URL look plausibly correct instead of surfacing the route problem honestly.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 3  
+  **Decision:** Replace the remaining Phase 1 placeholder destination modules with dedicated route families for `Documentation`, `Workstreams`, and shared project configuration under `/projects/new/*` and `/settings/*`.  
+  **Rationale:** The workspace spec now needs structurally distinct shells and tab families, but they still have to live inside the same project-scoped app frame and preserve the existing `/runs` hierarchy unchanged.
+
+- **Date:** 2026-04-18  
+  **Phase:** Phase 3  
+  **Decision:** Keep the documentation tree selection, workstream filters, and component type picker as local placeholder state inside feature-owned hooks rather than wiring live APIs or hard-coding static JSX.  
+  **Rationale:** Phase 3 is still structure-first, but these surfaces need honest interactions that prove ownership boundaries and future adapter seams instead of freezing the UI into non-interactive mocks.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, target references, current API surface, and Cloudflare-first frontend architecture options.
@@ -141,7 +151,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 1 fix pass completed: browser globals are now scoped to UI files, `tsconfig.ui.json` uses browser-only global types, and the checked-in zellij helper runs `npx localflare` with the UI workflow in vertically split panes.
 - [x] 2026-04-18 Phase 2 completed: `Runs` index, nested run-detail stepper routes, execution DAG shell, and task-detail placeholder route now exist under the shared shell.
 - [x] 2026-04-18 Phase 2 fix pass completed: route tests now assert concrete `/runs` and execution-task targets, and invalid task ids surface the route error boundary instead of rendering the first scaffolded task.
-- [ ] Phase 3 completed: `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations scaffolded with placeholder hooks and structural sublayouts.
+- [x] 2026-04-18 Phase 3 completed: `Documentation`, `Workstreams`, `New project`, and `Project settings` now use dedicated route families, placeholder feature hooks, project tabs, and the Git-repository-only component picker flow.
 - [ ] Phase 4 completed: developer docs, README guidance, and validation coverage updated for the new UI scaffold.
 
 ## Surprises & Discoveries
@@ -157,6 +167,8 @@ Compatibility that **is** required:
 - The user wants the local frontend workflow codified early. Phase 1 was not fully closed until the zellij plus `npx localflare` helper was checked in and documented.
 - The current run APIs are already specific enough to label each Phase 2 scaffold honestly: run detail, graph, task, task conversation, and artifact seams exist, while project documents plus evidence/integration/release remain the explicit stub-backed gaps.
 - The Phase 2 route tests became much more reliable once `renderRoute()` returned the memory router, because redirect assertions could pin actual pathnames instead of inferring state from active CSS classes or concatenated nav labels.
+- Phase 3 confirmed that the old build caveat no longer reproduced on the current tree: `npm run build` completed inside the sandbox, including `wrangler deploy --dry-run` and the sandbox image build.
+- Removing the old `routes/screens/*` placeholder modules once the dedicated destination route families landed made the Phase 3 scaffold much easier to read; otherwise the repo still looked like it had two competing sources of truth for the same surfaces.
 
 ## Outcomes & Retrospective
 
@@ -186,6 +198,14 @@ Phase 2 outcome on 2026-04-18:
 - The Phase 2 fix pass now proves the actual `Runs` table and execution task-card navigation targets, and invalid task-detail URLs fail through the route boundary instead of rendering misleading scaffold content.
 - `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` still fails in the sandbox only at Wrangler/Docker home-directory writes after `vite build` succeeds, then passes when rerun outside the sandbox.
 - README guidance now reflects that `Runs` is no longer only a top-level placeholder destination.
+
+Phase 3 outcome on 2026-04-18:
+
+- `Documentation` now has a real two-pane project-doc shell with a placeholder tree, a viewer pane, and view-model-owned document selection instead of a single generic placeholder card.
+- `Workstreams` now has a real list shell with local filter chips, execution-task route targets, and sidebar notes that stay honest about the lack of live backend filtering.
+- `New project` and `Project settings` now share a tabbed configuration scaffold with nested tab routes, project-specific framing, list-shaped rule editors, non-secret environment placeholders, and a structural component type picker that still offers only `Git repository`.
+- The old Phase 1 placeholder destination files were removed so the Phase 3 route families are the only source of truth for these surfaces.
+- `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` all pass in the sandbox on the current tree; the earlier build caveat did not reproduce during this phase.
 
 ## Context and Orientation
 
@@ -566,15 +586,19 @@ Success means all top-level destinations from the workspace spec are navigable, 
 
 ### Status
 
-Not started.
+Completed on 2026-04-18.
 
 ### Completion Notes
 
-None yet.
+- Replaced the old placeholder destination modules with dedicated route families under `ui/src/routes/documentation/`, `ui/src/routes/workstreams/`, and `ui/src/routes/projects/`.
+- Added placeholder feature hooks for documentation selection, workstream filtering, shared project configuration tabs, and the component type picker flow.
+- Added shared form and layout primitives for project configuration while keeping the same shell and panel language established in Phases 1 and 2.
+- Removed the superseded `ui/src/routes/screens/*` and `ui/src/shared/layout/placeholder-screen.tsx` placeholder files so the new destination routes are the only scaffold source of truth.
+- Validation results: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` all pass in the sandbox on the current tree.
 
 ### Next Starter Context
 
-This phase should extend the same shell and composition patterns established earlier. Do not create one-off layouts that fight the workspace spec.
+Phase 4 should document the new destination route families and the shared project-configuration scaffold rather than reopening their structure. The relevant implementation now lives under `ui/src/routes/documentation/`, `ui/src/routes/workstreams/`, `ui/src/routes/projects/`, `ui/src/features/documentation/`, `ui/src/features/workstreams/`, `ui/src/features/projects/`, and `ui/src/shared/forms/`. `npm run build` now passes in the sandbox on the current tree, so the final documentation pass should record that updated validation reality if it still holds.
 
 ## Phase 4
 

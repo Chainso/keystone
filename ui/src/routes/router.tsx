@@ -1,5 +1,12 @@
 import { Navigate, Outlet, createBrowserRouter, type RouteObject } from "react-router-dom";
 
+import {
+  getProjectConfigurationDefaultTab,
+  projectConfigurationTabs
+} from "../features/projects/project-configuration-scaffold";
+import { DocumentationRoute } from "./documentation/documentation-route";
+import { ProjectConfigurationLayout } from "./projects/project-configuration-layout";
+import { ProjectConfigurationTabRoute } from "./projects/project-configuration-tab-route";
 import { ArchitectureRoute } from "./runs/architecture-route";
 import { ExecutionRoute } from "./runs/execution-route";
 import { ExecutionPlanRoute } from "./runs/execution-plan-route";
@@ -8,11 +15,8 @@ import { RunDetailLayout } from "./runs/run-detail-layout";
 import { RunsIndexRoute } from "./runs/runs-index-route";
 import { SpecificationRoute } from "./runs/specification-route";
 import { TaskDetailRoute } from "./runs/task-detail-route";
-import { DocumentationScreen } from "./screens/documentation-screen";
-import { NewProjectScreen } from "./screens/new-project-screen";
-import { ProjectSettingsScreen } from "./screens/project-settings-screen";
-import { WorkstreamsScreen } from "./screens/workstreams-screen";
 import { ShellLayout } from "./shell-layout";
+import { WorkstreamsRoute } from "./workstreams/workstreams-route";
 
 export const appRoutes: RouteObject[] = [
   {
@@ -71,19 +75,45 @@ export const appRoutes: RouteObject[] = [
       },
       {
         path: "documentation",
-        element: <DocumentationScreen />
+        element: <DocumentationRoute />
       },
       {
         path: "workstreams",
-        element: <WorkstreamsScreen />
+        element: <WorkstreamsRoute />
       },
       {
-        path: "projects/new",
-        element: <NewProjectScreen />
+        path: "projects",
+        element: <Outlet />,
+        children: [
+          {
+            path: "new",
+            element: <ProjectConfigurationLayout mode="new" />,
+            children: [
+              {
+                index: true,
+                element: <Navigate to={getProjectConfigurationDefaultTab("new")} replace />
+              },
+              ...projectConfigurationTabs.map((tab) => ({
+                path: tab.tabId,
+                element: <ProjectConfigurationTabRoute mode="new" tabId={tab.tabId} />
+              }))
+            ]
+          }
+        ]
       },
       {
         path: "settings",
-        element: <ProjectSettingsScreen />
+        element: <ProjectConfigurationLayout mode="settings" />,
+        children: [
+          {
+            index: true,
+            element: <Navigate to={getProjectConfigurationDefaultTab("settings")} replace />
+          },
+          ...projectConfigurationTabs.map((tab) => ({
+            path: tab.tabId,
+            element: <ProjectConfigurationTabRoute mode="settings" tabId={tab.tabId} />
+          }))
+        ]
       }
     ]
   }
