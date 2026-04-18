@@ -28,7 +28,14 @@ These are the images that should guide new UI work unless a newer target set rep
 
 ## 3. Design Rules
 
-`design-guidelines.md` is the translation layer between the source references and the Keystone target.
+There are now two written design references:
+
+- `workspace-spec.md`
+  The canonical product structure, navigation model, ASCII boards, and long-running design decisions.
+- `design-guidelines.md`
+  The visual and interaction rules that should stay stable across implementations.
+
+Use `workspace-spec.md` first when deciding what screens and flows exist. Use `design-guidelines.md` to decide how those screens should feel and behave.
 
 Use it for:
 
@@ -73,10 +80,11 @@ The committed target images in `target-reference/` are the adapted Keystone dire
 
 The current Keystone target is:
 
-- far-left rail for workspaces/projects and runs or sessions
-- second left rail for project artifacts and run artifacts in a file-tree model
-- center pane with a top switch between `Agent Chat` and `Workflow DAG`
-- right inspector for the currently selected artifact
-- clicking a DAG node should move the user into the task-scoped chat for that node
+- global left sidebar with project switcher plus `New project` and `Project settings`
+- `Runs` index first, then run detail with a stepper for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
+- `Specification`, `Architecture`, and `Execution Plan` use an agent-chat plus living-document layout
+- `Execution` defaults to the task workflow DAG, and clicking a task opens task conversation plus code review
+- `Documentation` is a project document tree for current product and architecture docs plus notes
+- `Workstreams` is a project-wide active and queued task list
 
-See `external-reference/README.md` for provenance and `design-guidelines.md` for the interaction and visual rules that should keep future design work consistent.
+See `external-reference/README.md` for provenance, `workspace-spec.md` for the canonical app structure, and `design-guidelines.md` for the visual and interaction rules that should keep future design work consistent.

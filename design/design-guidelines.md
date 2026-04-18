@@ -20,56 +20,76 @@ It should not feel:
 
 ## Core Shell
 
-The app should use one stable shell across intake, implementation, review, and release.
+The app should use one stable shell centered on a normal left sidebar.
 
-From left to right:
+The left sidebar should include:
 
-1. Global rail
-   Workspace, project, and session/run navigation.
-2. Artifact rail
-   A tree view of project artifacts and run-specific artifacts.
-3. Primary workspace
-   The center pane where the user works in either `Agent Chat` or `Workflow DAG`.
-4. Inspector
-   The right pane for the selected artifact or record.
+1. Project switcher
+   The currently selected project.
+2. Project actions
+   `New project` and `Project settings`.
+3. Global navigation
+   `Runs`, `Documentation`, and `Workstreams`.
 
-The shell should stay recognizable across all phases. We should not redesign the entire frame between planning, task execution, and release.
+The right side of the app is view-specific. Different destinations can introduce their own internal rails or sidebars, but the global sidebar should remain stable.
+
+The shell should stay recognizable across planning, task execution, and documentation work. We should not redesign the entire frame between related product states.
 
 ## Navigation Model
 
-The far-left rail should answer:
+The global sidebar should answer:
 
-- what workspace am I in?
 - what project am I in?
-- what run or session am I looking at?
+- what part of the product am I in?
+- how do I create or configure a project?
 
-The second left rail should answer:
+The `Runs` destination should answer:
 
-- what artifacts exist for this project?
-- which artifacts belong to this run?
-- what is selected right now?
+- what runs exist for this project?
+- which run is open right now?
+- which phase of that run am I looking at?
 
-The center pane should answer:
+The main workspace should answer:
 
 - what is the agent doing right now?
-- what task is currently in focus?
-- where am I in the workflow?
+- what document or task is in focus?
+- where am I in the run flow?
 
-The right pane should answer:
+The contextual right sidebar should answer:
 
-- what is the selected file, note, review, or output?
-- what details matter for the current selection?
+- what current document, diff, or detail record am I inspecting?
+- what matters for the current task or document?
 
-## Chat and DAG Relationship
+## Run Flow Structure
 
-`Agent Chat` and `Workflow DAG` are two modes of the same central workspace, not two unrelated screens.
+The run detail view should use a top rail with:
 
-Rules:
+- `Specification`
+- `Architecture`
+- `Execution Plan`
+- `Execution`
 
-- the mode switch belongs at the top of the center pane
-- `Agent Chat` is the default working mode
-- `Workflow DAG` is the structural overview mode
-- switching modes should preserve project, run, and task context
+This is a stepper-shaped flow, but it should allow free movement between phases.
+
+### Shared Planning Layout
+
+`Specification`, `Architecture`, and `Execution Plan` should all use the same structural layout:
+
+- agent chat on the left
+- living document on the right
+
+Only the document semantics change between the three phases.
+
+### Execution Relationship
+
+`Execution` is different from the first three phases.
+
+Default behavior:
+
+- show the workflow DAG first
+- clicking a task switches into the task-scoped execution surface
+- task-scoped execution shows task conversation on the left and code review on the right
+- the user should be able to return from task detail to the DAG without losing run context
 
 ### DAG Interaction
 
@@ -79,29 +99,29 @@ It should support:
 
 - selecting a node to inspect task status
 - showing blockers, state, and ownership inline
-- opening the relevant artifact in the inspector
-- moving the user into the task-scoped chat for that node
+- moving the user into the task-scoped conversation for that node
+- exposing the relevant code review output in the right sidebar
 
 Default behavior:
 
-- clicking a workflow node should switch the center pane from `Workflow DAG` to `Agent Chat`
-- the chat header should update to the selected task
-- the artifact tree and inspector should stay in the same run context
+- clicking a workflow node should switch from the DAG to task detail
+- the task conversation should update to the selected task
+- the review sidebar should update to that task's changed files and diffs
 
-## Artifact Model
+## Document and Review Model
 
-Artifacts should feel like real working documents, not abstract telemetry.
+Documents and task outputs should feel like real working material, not abstract telemetry.
 
-Good artifact groups:
+Good document and review groups:
 
-- decision package
-- ADRs
+- product specification
+- technical architecture
+- execution plan
 - review notes
 - diffs
 - logs
 - evidence
 - run summary
-- release notes
 
 Avoid vague or synthetic naming such as:
 
@@ -173,11 +193,12 @@ Rules:
 
 Every new mockup should keep these stable unless there is a deliberate design change:
 
-- same shell layout
-- same pane order
-- same mode switch location
-- same artifact tree behavior
-- same inspector role
+- same global sidebar structure
+- same run stepper structure
+- same planning-phase split layout
+- same execution graph-to-task-detail handoff
+- same project settings tab set
+- same right-sidebar role for document or review detail
 - same status vocabulary
 - same accent color family
 - same card radius and border treatment
