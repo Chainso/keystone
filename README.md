@@ -10,6 +10,7 @@ Keystone is a single Cloudflare Worker project that currently proves:
 - sandboxed task execution with session sandboxes and task worktrees
 - provider-backed compile and Think live-model turns using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
 - a runtime selector that keeps `scripted` as the default path, preserves a deterministic `think/mock` validation mode, and enables a fixture-scoped live compile plus Think task demo through the same `/v1/runs` entrypoint
+- a structure-first React workspace shell served from the same Worker deployable with placeholder `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations
 
 ## Core Commands
 
@@ -25,11 +26,32 @@ npm run typecheck
 npm run test
 npm run test:security
 npm run test:workflows
+npm run build:ui
 npm run build
+npm run dev:ui
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
 `npm run dev` no longer needs a host `CLOUDFLARE_API_TOKEN` just to satisfy the Think runtime. The Think-backed model path now uses `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` and `KEYSTONE_CHAT_COMPLETIONS_MODEL` directly.
+
+`npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the placeholder shell while Wrangler is already running.
+
+## UI Scaffold
+
+Phase 1 adds a structure-only React SPA under `ui/` and serves the built assets through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
+
+Current UI scope:
+
+- the global project-scoped sidebar
+- top-level destination routes for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
+- placeholder screens that explicitly state they are scaffolds
+
+Current UI non-goals:
+
+- live backend loading
+- real destination content or interactions
+- final visual polish
+- destination-specific sublayouts beyond the shell
 
 ## Project-Backed Backend
 

@@ -9,24 +9,26 @@ export default tseslint.config(
       ".localflare/**",
       ".wrangler/**",
       "dist/**",
+      "ui/dist/**",
       "worker-configuration.d.ts"
     ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["**/*.ts"],
+    files: ["**/*.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
       globals: {
         ...globals.node,
-        ...globals.serviceworker
+        ...globals.serviceworker,
+        ...globals.browser
       }
     }
   },
   {
-    files: ["tests/**/*.ts"],
+    files: ["tests/**/*.ts", "ui/src/test/**/*.{ts,tsx}"],
     languageOptions: {
       globals: {
         ...globals.node,

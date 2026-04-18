@@ -8,7 +8,7 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
-No active plans.
+| [keystone-ui-structure-scaffold](./keystone-ui-structure-scaffold.md) | In Progress | Codex | 2026-04-18 |
 
 Add active plans in priority order using this format:
 
