@@ -182,6 +182,11 @@ Compatibility that **is** required:
   **Decision:** Keep the current-project seam coherent by rewriting the override project description from the supplied project summary, resynchronizing settings component-local state when the project-scoped configuration seed changes, and adding `/settings` coverage for a non-default current project.  
   **Rationale:** The review surfaced a real mismatch between the provider seam and the settings view-model contract: the override dataset still leaked the default project description, and the components tab held stale local state after project changes because it seeded once and never reset.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 6  
+  **Decision:** Delete the now-unused destination-local scaffold modules, update the M1 docs to name `ui/src/features/resource-model/` as the single checked-in scaffold truth, and record both the sandbox `build` failure evidence plus the successful host-shell rerun in final validation.  
+  **Rationale:** Earlier phases fully cut every destination over to selector-backed view models, so keeping dead scaffold files would leave a misleading second source of truth. The build caveat also needed fresh evidence from the finished tree instead of relying on earlier baseline notes.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery and planning inputs gathered from the current repo docs, existing UI scaffold, and target-model decisions previously resolved in the Keystone modelling worktree.
@@ -195,7 +200,7 @@ Compatibility that **is** required:
 - [x] 2026-04-19 Phase 4 complete: reworked `Documentation` around target-model document/revision selectors, current-project state, structural selection coverage, and a targeted fix pass that removed the hard-coded grouping table smell while tightening ambiguous-selection and revision-payload tests.
 - [x] 2026-04-19 Phase 5 complete: reworked project configuration scaffolds around target-model project, component, rule, and environment contracts, while preserving explicit `new` and `settings` variants.
 - [x] 2026-04-19 Phase 5 targeted fix pass complete: aligned the override current-project description with project configuration overview data, resynchronized the settings components tab when the current project changes, and added selector plus `/settings` regression coverage for non-default current-project state.
-- [ ] 2026-04-19 Phase 6 pending: remove obsolete scaffold modules, update developer docs, and rerun final validation.
+- [x] 2026-04-19 Phase 6 complete: deleted obsolete destination-local scaffold modules, updated M1 architecture/runbook docs plus durable notes, and reran the full validation set including a host-shell `build` after reproducing the sandbox Wrangler/Docker write failure.
 
 ## Surprises & Discoveries
 
@@ -216,6 +221,8 @@ Compatibility that **is** required:
 - Documentation grouping also needs to derive from each document's own metadata and path, not from a central selector table, or the Phase 4 scaffold keeps one last hand-authored taxonomy seam hidden behind the normalized dataset.
 - Project override datasets also need to remap project-scoped configuration resources, not just runs/documents/tasks, or the settings surface silently falls back to the scaffold default project even when the provider seam is pointed at an override project.
 - The settings components tab keeps local draft state for add-component interactions, so the hook has to reset that local state when the underlying project-scoped configuration seed changes; otherwise switching the current project leaves stale component cards on screen.
+- By the closure pass, `run-scaffold.ts`, `documentation-scaffold.ts`, and `workstreams-scaffold.ts` were fully dead. Removing them cleanly confirmed that `ui/src/features/resource-model/` plus feature-local view-model hooks are now the only scaffold source-of-truth seam.
+- Final `build` validation still fails inside the sandbox for the same environment reasons as baseline, but the concrete blockers are stable: Wrangler cannot write logs under `~/.config/.wrangler` and Docker buildx cannot update activity files under `~/.docker`; the same command passes from a host-permitted shell.
 
 ## Outcomes & Retrospective
 
@@ -288,21 +295,24 @@ Phase 5 targeted fix pass outcome on 2026-04-19:
 - `ui/src/features/projects/use-project-configuration-view-model.ts` now resets the settings components tab's local draft state when the project-scoped configuration seed changes, which keeps the components board aligned with current-project switches without changing the explicit `new` versus `settings` split.
 - `ui/src/test/resource-model-selectors.test.tsx` now covers override-summary coherence plus provider-level settings-component resynchronization, and `ui/src/test/phase3-destinations.test.tsx` now proves `/settings/overview` reflects a non-default current project across the shell and tabs. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
+Phase 6 outcome on 2026-04-19:
+
+- Deleted `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`, removing the last dead destination-local scaffold sources left behind after the earlier cutovers.
+- Updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` so the repo docs now describe the shared target-model scaffold architecture truthfully and call out `ui/src/features/resource-model/` as the only checked-in UI scaffold source of truth.
+- Final validation passed with `rtk npm run lint`, `rtk npm run test`, `rtk npm run typecheck`, and `rtk npm run build` after rerunning `build` outside the sandbox. The sandbox attempt still failed first with the expected `EROFS` writes under `~/.config/.wrangler` and `~/.docker`, so the host-shell caveat remains accurate rather than hypothetical.
+
 ## Context and Orientation
 
 The current repo state relevant to this plan is:
 
 - `ui/src/routes/router.tsx` already defines the correct top-level shell and nested run routes: `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`.
-- `ui/src/features/runs/run-scaffold.ts` is the current fake source of truth for runs, planning phases, tasks, task detail, and redirect state. It is the main contract that needs to be retired.
-- `ui/src/features/runs/use-run-view-model.ts`, `ui/src/features/runs/use-runs-index-view-model.ts`, and `ui/src/routes/runs/run-default-phase-route.tsx` currently depend on that fake run scaffold.
-- `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/execution/components/execution-workspace.tsx`, and `ui/src/features/execution/components/task-detail-workspace.tsx` currently use scaffold task and review data rather than target-model task/workflow/artifact concepts.
-- `ui/src/features/documentation/documentation-scaffold.ts` and `ui/src/features/documentation/use-documentation-view-model.ts` currently hard-code documentation groups and static content.
-- `ui/src/features/workstreams/workstreams-scaffold.ts` and `ui/src/features/workstreams/use-workstreams-view-model.ts` currently maintain a separate hand-built row model rather than deriving from project tasks.
+- `ui/src/features/resource-model/` is now the shared scaffold dataset, selector, and provider seam for runs, documents, tasks, workflow graphs, artifacts, and project configuration state.
+- `ui/src/features/runs/use-run-view-model.ts`, `ui/src/features/runs/use-runs-index-view-model.ts`, and `ui/src/routes/runs/run-default-phase-route.tsx` now derive run shell and planning behavior from target-model selectors rather than a feature-local run scaffold.
+- `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/execution/components/execution-workspace.tsx`, and `ui/src/features/execution/components/task-detail-workspace.tsx` now project selector-backed task/workflow/artifact state instead of bespoke scaffold task detail contracts.
 - `ui/src/features/projects/project-context.tsx`, `ui/src/features/projects/project-configuration-scaffold.ts`, and `ui/src/features/projects/use-project-configuration-view-model.ts` provide the current project/settings scaffold state.
 - `ui/src/shared/navigation/run-phases.ts` owns run-phase path helpers and should remain the canonical route-path helper module while the default-phase logic changes.
 - `ui/src/test/app-shell.test.tsx`, `ui/src/test/runs-routes.test.tsx`, `ui/src/test/phase3-destinations.test.tsx`, and `ui/src/test/render-route.tsx` are the current UI smoke coverage surface.
-- `ui/src/test/phase3-destinations.test.tsx` currently asserts placeholder prose and tree glyphs in a few places; those assertions should be rewritten toward structural route/selection behavior instead of preserved.
-- `.ultrakit/developer-docs/m1-architecture.md` documents the current UI scaffold architecture and will need a final update once this plan lands.
+- `.ultrakit/developer-docs/m1-architecture.md` and `.ultrakit/developer-docs/m1-local-runbook.md` now describe the shared target-model scaffold architecture and the remaining host-only build caveat.
 - `design/workspace-spec.md`, `design/design-guidelines.md`, and `design/README.md` remain the local design source of truth for destination boundaries and shell behavior.
 
 The target-model constraints that execution must treat as fixed are:
@@ -505,7 +515,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 
 #### Phase Handoff
 
-- **Status:** Pending
+- **Status:** Complete
 - **Goal:** Remove replaced scaffold modules, update developer documentation to match the new architecture, and rerun final validation on the completed tree.
 - **Scope Boundary:** In scope: deleting obsolete scaffold modules, small import cleanup, developer doc updates, and final baseline validation. Out of scope: new features, styling polish, live API integration, or reopening the earlier phases' design decisions.
 - **Read First:**
@@ -527,8 +537,8 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** Clean scaffold source tree, updated developer docs, and final validation evidence recorded in the plan.
 - **Commit Expectation:** `Document target-model UI scaffold`
 - **Known Constraints / Baseline Failures:** `npm run build` may still require a host shell on this machine because Wrangler/Docker write outside the sandbox. Do not leave dead scaffold modules presenting a second source of truth.
-- **Completion Notes:** Not started.
-- **Next Starter Context:** This is the doc-and-truthfulness closure pass; use it to delete compatibility shims that earlier phases no longer need.
+- **Completion Notes:** Deleted the dead destination-local scaffold modules at `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`; updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` to describe the shared `ui/src/features/resource-model/` scaffold truthfully; and reran final validation. `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` passed in the sandbox. `rtk npm run build` first failed in the sandbox with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity`, then passed from a host-permitted shell as expected.
+- **Next Starter Context:** Phase execution is complete. The tree is ready for orchestrator review and final archival of the plan; preserve the pre-existing unstaged change in `.ultrakit/exec-plans/active/index.md` during that follow-up.
 
 ## Concrete Steps
 

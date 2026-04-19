@@ -66,24 +66,26 @@ The canonical operator-facing surface is now:
 
 ## Operator UI Scaffold
 
-The shipped frontend is a structure-first React SPA under `ui/` that now matches the minimal board layout from `design/workspace-spec.md`:
+The shipped frontend is a structure-first React SPA under `ui/` that now matches the minimal board layout from `design/workspace-spec.md` and shares one target-model-aligned scaffold dataset:
 
 - `ui/src/app/` owns app bootstrap, providers, and global styles.
 - `ui/src/routes/` owns the canonical route tree and nested layout boundaries from `design/workspace-spec.md`.
-- `ui/src/features/` owns destination-specific workspace components, local scaffold data, and view-model hooks for runs, execution, documentation, workstreams, and project configuration.
+- `ui/src/features/resource-model/` owns the normalized scaffold resources, selectors, run-phase metadata, and provider seam for `project`, `run`, `document`, `documentRevision`, `task`, `workflowGraph`, `artifact`, and project-configuration state.
+- `ui/src/features/` owns destination-specific workspace components and view-model hooks that compose from `resource-model` selectors instead of feature-local fake scaffold files.
 - `ui/src/shared/` owns reusable shell, navigation, and generic layout/form primitives only.
-- `ui/src/test/` owns route and shell smoke coverage for the scaffold contracts.
+- `ui/src/test/` owns route, selector, and shell smoke coverage for the scaffold contracts.
 
 Ownership boundary:
 
 - `Runs`, `Execution`, `Documentation`, and `Workstreams` render through feature-owned board components under `ui/src/features/**/components/`, while the route files stay as thin containers.
+- `ui/src/features/runs/use-run-view-model.ts`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/documentation/use-documentation-view-model.ts`, `ui/src/features/workstreams/use-workstreams-view-model.ts`, and `ui/src/features/projects/use-project-configuration-view-model.ts` are the only destination seams that assemble selector output into route-facing view models.
 - `ui/src/routes/projects/project-configuration-layout.tsx` owns the `new` vs `settings` shell split, and `ui/src/features/projects/components/project-configuration-tabs.tsx` owns the tab-specific board content.
 - `ui/src/shared/` should not regain destination-specific workspace components or decorative chrome that is outside the ASCII boards.
 
 Current UI boundary:
 
-- the route tree is real and stable, but the destination content still uses fixed scaffold data
-- the UI does not yet use live query/caching adapters
+- the route tree is real and stable, but the UI remains scaffold-only and does not yet use live query/caching adapters
+- the `resource-model` dataset is the single checked-in scaffold source of truth; destination-local fake scaffold modules have been removed
 - documentation collections, decision packages, evidence, integration, release, and project editing remain unwired behind the stable route tree
 
 ## Security and Approval Edge
@@ -106,3 +108,4 @@ Two environment-specific constraints matter in this repo:
 
 - `wrangler dev` with container bindings must be run outside the Codex sandbox boundary on this host.
 - The local chat-completions backend is plain HTTP at `http://localhost:10531`, not HTTPS.
+- `npm run build` still needs a normal host shell on this machine because Wrangler's dry-run deploy writes under `~/.config/.wrangler` and `~/.docker`.

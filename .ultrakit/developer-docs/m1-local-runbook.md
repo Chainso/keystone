@@ -26,7 +26,7 @@ npm run dev:zellij
 That opens vertically split panes for `npx localflare` and `npm run dev:ui`.
 By default it also opens the local UI in the system browser once `/v1/health` responds at `http://127.0.0.1:8787`.
 
-The UI served in that workflow is the same Worker-hosted SPA route tree shipped in the repo: minimal board-shaped `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces backed by fixed scaffold data.
+The UI served in that workflow is the same Worker-hosted SPA route tree shipped in the repo: minimal board-shaped `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces backed by the shared target-model scaffold in `ui/src/features/resource-model/`.
 
 If you need a different browser target or want to suppress the browser launch:
 
