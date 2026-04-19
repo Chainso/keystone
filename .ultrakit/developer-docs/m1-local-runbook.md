@@ -24,6 +24,16 @@ npm run dev:zellij
 ```
 
 That opens vertically split panes for `npx localflare` and `npm run dev:ui`.
+By default it also opens the local UI in the system browser once `/v1/health` responds at `http://127.0.0.1:8787`.
+
+If you need a different browser target or want to suppress the browser launch:
+
+```bash
+export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
+export KEYSTONE_BROWSER_URL="${KEYSTONE_BASE_URL}"
+# optional
+export KEYSTONE_OPEN_BROWSER=0
+```
 
 If you need the manual path instead, use:
 

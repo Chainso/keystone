@@ -37,7 +37,7 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 `npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the placeholder shell while Wrangler is already running.
 
-`npm run dev:zellij` is the checked-in Phase 1 helper for the standard UI scaffold workflow. After Postgres is up and `npm run db:migrate` has completed, it opens zellij with vertically split panes that run `npx localflare` and `npm run dev:ui` from repo root. Use it from a normal host shell, not inside the Codex sandbox, because local Worker startup on this machine still needs host execution.
+`npm run dev:zellij` is the checked-in Phase 1 helper for the standard UI scaffold workflow. After Postgres is up and `npm run db:migrate` has completed, it opens zellij with vertically split panes that run `npx localflare` and `npm run dev:ui` from repo root, then opens the local UI in the default browser once `/v1/health` responds at `http://127.0.0.1:8787`. Use it from a normal host shell, not inside the Codex sandbox, because local Worker startup on this machine still needs host execution. If you need a different browser target, export `KEYSTONE_BROWSER_URL` or `KEYSTONE_BASE_URL` first. If you want to suppress browser launch, export `KEYSTONE_OPEN_BROWSER=0`.
 
 ## UI Scaffold
 
