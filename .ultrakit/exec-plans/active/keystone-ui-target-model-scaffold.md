@@ -152,6 +152,11 @@ Compatibility that **is** required:
   **Decision:** Tighten the default-phase selector to consult explicit run-level compiled-task availability instead of treating any run task as proof that execution should be the default destination, and add route coverage for the `architecture` and `specification` fallback branches.  
   **Rationale:** The targeted review gap turned into a real regression once the missing fallback cases were tested: Phase 3 scaffold tasks still exist for some non-execution-default runs, so raw task presence was too broad for the approved redirect rule.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 3  
+  **Decision:** Rebuild execution, task detail, and workstreams from resource-model selectors, with execution rows derived from workflow-task dependencies, task detail reduced to locator plus artifact state, and workstreams projected from project tasks instead of a separate scaffold table.  
+  **Rationale:** This removes the last user-facing dependency on `run-scaffold.ts`/`workstreams-scaffold.ts` for Phase 3 surfaces without inventing transcript state or a separate workstream noun.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery and planning inputs gathered from the current repo docs, existing UI scaffold, and target-model decisions previously resolved in the Keystone modelling worktree.
@@ -160,7 +165,7 @@ Compatibility that **is** required:
 - [x] 2026-04-19 Phase 1 targeted fix pass complete: made the project override shim remap project-scoped scaffold resources coherently and expanded tests to exercise mutable provider state plus scaffold meta wiring.
 - [x] 2026-04-19 Phase 2 complete: reworked `Runs` and planning routes around resource-model selectors, derived `/runs/:runId` redirects from target-model data, and replaced fake planning transcripts with explicit document-plus-locator workspaces.
 - [x] 2026-04-19 Phase 2 targeted fix pass complete: added redirect coverage for the `architecture` and `specification` fallback branches, and corrected the selector so only runs marked with compiled tasks default to `execution`.
-- [ ] 2026-04-19 Phase 3 pending: rework `Execution`, task detail, and `Workstreams` around tasks, workflow graph, artifacts, and conversation locators.
+- [x] 2026-04-19 Phase 3 complete: reworked `Execution`, task detail, and `Workstreams` around tasks, workflow graph, artifacts, and conversation locators.
 - [ ] 2026-04-19 Phase 4 pending: rework `Documentation` around target-model document and revision contracts.
 - [ ] 2026-04-19 Phase 5 pending: rework project configuration scaffolds around target-model project and repository/component contracts.
 - [ ] 2026-04-19 Phase 6 pending: remove obsolete scaffold modules, update developer docs, and rerun final validation.
@@ -178,6 +183,7 @@ Compatibility that **is** required:
 - The first Phase 1 implementation also exposed that a project override shim has to remap project-scoped scaffold resources, not just the top-level `projects` list, or future project selectors silently fall back to empty states.
 - Adding real run summary metadata to the shared run-detail header made one existing Phase 3 smoke test ambiguous because the run summary text duplicated a task title. The durable fix was to scope that assertion to the task-detail section instead of asserting global text uniqueness.
 - The Phase 2 fallback redirect tests exposed that the scaffold needs an explicit `hasCompiledTasks` signal on runs. Phase 3 task/workflow placeholders can exist for direct execution-route coverage even when the approved default destination should still be a planning document.
+- Phase 3 confirmed that project-scoped workstreams and direct task routes both depend on the same selector truth: some runs legitimately expose execution tasks for drill-down even when they still default to planning routes.
 
 ## Outcomes & Retrospective
 
@@ -212,6 +218,13 @@ Phase 2 targeted fix pass outcome on 2026-04-19:
 - `ui/src/test/runs-routes.test.tsx` now covers the remaining default-phase fallback branches by proving `run-103` redirects to `architecture` and `run-101` redirects to `specification`.
 - `ui/src/features/resource-model/selectors.ts` now treats compiled-task availability as an explicit run-level scaffold property instead of inferring it from any task row, which restores the approved redirect rule without changing the route tree or reintroducing `currentPhase`.
 - Validation passed again with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+
+Phase 3 outcome on 2026-04-19:
+
+- `ui/src/features/execution/use-execution-view-model.ts` now derives execution rows from workflow graph plus task selectors and reduces task detail state to task metadata, conversation locators, dependency references, and artifact-backed review placeholders.
+- `ui/src/features/execution/components/{execution-workspace,task-detail-workspace}.tsx` now render selector-backed execution/task surfaces without fake transcript arrays, fake composer state, or bespoke review-file scaffolds.
+- `ui/src/features/workstreams/use-workstreams-view-model.ts` now projects project-scoped task rows from the shared dataset, keeps filter behavior in feature-local state, and preserves pagination as an explicit UI concept even with a finite scaffold dataset.
+- `ui/src/test/runs-routes.test.tsx` and `ui/src/test/phase3-destinations.test.tsx` now assert workflow-graph structure, locator/artifact task detail state, and task-derived workstream navigation. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
 ## Context and Orientation
 
@@ -329,7 +342,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 
 #### Phase Handoff
 
-- **Status:** Pending
+- **Status:** Complete
 - **Goal:** Rework execution, task detail, and workstreams so they compose from workflow graph, tasks, artifacts, and conversation locators instead of hand-authored execution/task/workstream rows.
 - **Scope Boundary:** In scope: execution board composition, task detail composition, project-scoped workstreams projection, and related route smoke tests. Out of scope: documentation, project configuration, live task chat transport, and backend API implementation.
 - **Read First:**
@@ -361,8 +374,8 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** Target-model-based execution/workstreams view models and updated destination tests that no longer rely on fake execution rows or fake transcript content.
 - **Commit Expectation:** `Rework execution and workstreams scaffold`
 - **Known Constraints / Baseline Failures:** Keep conversation as a locator only; do not fabricate full task transcript state. Keep workstreams project-scoped and paginated in concept even if the scaffold dataset is finite. Do not add a separate `workstream` source model.
-- **Completion Notes:** Not started.
-- **Next Starter Context:** Use artifact/review placeholders sparingly and derive them from task/artifact concepts, not bespoke review-file scaffolds.
+- **Completion Notes:** Reworked `ui/src/features/execution/use-execution-view-model.ts` to derive execution rows from workflow graphs and task selectors, replaced fake task transcript/review state in `task-detail-workspace.tsx` with conversation locator plus artifact/dependency projections, and rewired `ui/src/features/workstreams/use-workstreams-view-model.ts` to project project-scoped task rows with filter and pagination metadata from the shared resource model. Updated `ui/src/test/runs-routes.test.tsx` and `ui/src/test/phase3-destinations.test.tsx` to assert workflow-graph rendering, locator/artifact task detail state, and task-derived workstream links. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+- **Next Starter Context:** Phase 4 can now treat execution and workstreams as fully cut over to `ui/src/features/resource-model/`. The next pass should apply the same selector-first approach to Documentation, replacing hard-coded tree groups and placeholder copy with document/revision-derived selection behavior while leaving project configuration untouched.
 
 ### Phase 4: Documentation Cutover
 

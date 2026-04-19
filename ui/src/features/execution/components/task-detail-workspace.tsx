@@ -1,19 +1,48 @@
 import { Link } from "react-router-dom";
 
-import type {
-  ReviewFileScaffold,
-  TaskConversationEntryScaffold
-} from "../../runs/run-scaffold";
 import { StatusPill } from "../../../shared/layout/status-pill";
+import type {
+  TaskArtifactViewModel,
+  TaskDependencyViewModel,
+  TaskDetailViewModel
+} from "../use-execution-view-model";
 
-interface TaskDetailWorkspaceProps {
-  runDisplayId: string;
-  taskDisplayId: string;
-  title: string;
-  status: string;
-  composerText: string;
-  conversation: TaskConversationEntryScaffold[];
-  reviewFiles: ReviewFileScaffold[];
+function TaskDependencyList({
+  label,
+  tasks
+}: {
+  label: string;
+  tasks: TaskDependencyViewModel[];
+}) {
+  return (
+    <section className="document-card">
+      <p className="review-sidebar-label">{label}</p>
+      {tasks.length === 0 ? (
+        <p className="document-card-summary">None.</p>
+      ) : (
+        <ul className="message-stack" aria-label={label}>
+          {tasks.map((task) => (
+            <li key={task.taskId} className="message-card">
+              <p className="message-card-speaker">{task.displayId}</p>
+              <p className="message-card-body">{task.title}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel; open: boolean }) {
+  return (
+    <details className="review-file-card" open={open}>
+      <summary className="review-file-summary">
+        <span>{artifact.path}</span>
+        <span className="review-file-note">{artifact.summary}</span>
+      </summary>
+      <pre className="review-file-diff">{artifact.diff.join("\n")}</pre>
+    </details>
+  );
 }
 
 export function TaskDetailWorkspace({
@@ -21,10 +50,12 @@ export function TaskDetailWorkspace({
   taskDisplayId,
   title,
   status,
-  composerText,
-  conversation,
-  reviewFiles
-}: TaskDetailWorkspaceProps) {
+  backPath,
+  conversationLocator,
+  dependsOn,
+  blockedBy,
+  artifacts
+}: TaskDetailViewModel) {
   return (
     <div className="page-stage">
       <header className="run-detail-header">
@@ -44,26 +75,22 @@ export function TaskDetailWorkspace({
 
           <p className="task-detail-title">{title}</p>
 
-          <div className="message-stack">
-            {conversation.map((message) => (
-              <article
-                key={`${message.speaker}-${message.body}`}
-                className="message-card task-message-card"
-              >
-                <p className="message-card-speaker">{message.speaker}</p>
-                <p className="message-card-body">{message.body}</p>
-              </article>
-            ))}
-          </div>
+          <section className="document-card" aria-label="Conversation locator">
+            <p className="review-sidebar-label">Conversation locator</p>
+            {conversationLocator ? (
+              <>
+                <p className="message-card-speaker">{conversationLocator.agentName}</p>
+                <p className="document-card-summary">{conversationLocator.agentClass}</p>
+              </>
+            ) : (
+              <p className="document-card-summary">No conversation locator recorded for this task.</p>
+            )}
+          </section>
 
-          <textarea
-            aria-label="Steer this task"
-            className="composer-field"
-            readOnly
-            value={composerText}
-          />
+          <TaskDependencyList label="Depends on" tasks={dependsOn} />
+          <TaskDependencyList label="Blocked by" tasks={blockedBy} />
 
-          <Link to=".." relative="route" className="back-link">
+          <Link to={backPath} className="back-link">
             Back to DAG
           </Link>
         </section>
@@ -71,23 +98,21 @@ export function TaskDetailWorkspace({
         <section className="workspace-panel workspace-panel-review">
           <header className="workspace-panel-header">
             <div>
-              <h2 className="workspace-panel-title">Code review sidebar</h2>
+              <h2 className="workspace-panel-title">Artifacts and review</h2>
             </div>
           </header>
 
           <p className="review-sidebar-label">Changed files</p>
 
-          <div className="review-file-stack">
-            {reviewFiles.map((file, index) => (
-              <details key={file.path} className="review-file-card" open={index === 0}>
-                <summary className="review-file-summary">
-                  <span>{file.path}</span>
-                  <span className="review-file-note">{file.summary}</span>
-                </summary>
-                <pre className="review-file-diff">{file.diff.join("\n")}</pre>
-              </details>
-            ))}
-          </div>
+          {artifacts.length === 0 ? (
+            <p className="document-card-summary">No artifacts recorded for this task yet.</p>
+          ) : (
+            <div className="review-file-stack">
+              {artifacts.map((artifact, index) => (
+                <TaskArtifactCard key={artifact.artifactId} artifact={artifact} open={index === 0} />
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </div>

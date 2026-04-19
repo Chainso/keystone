@@ -131,7 +131,7 @@ describe("Phase 2 runs routes", () => {
     renderRoute("/runs/run-104/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Build execution drill-down/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Build shell/i })).toHaveAttribute(
       "href",
       "/runs/run-104/execution/tasks/task-032"
     );
@@ -140,7 +140,7 @@ describe("Phase 2 runs routes", () => {
       "/runs/run-104/execution/tasks/task-033"
     );
     expect(
-      screen.getByText(/running = highlighted\s+queued = dim\s+done = solid/i)
+      screen.getByText("Workflow rows are derived from task dependencies in the scaffold graph.")
     ).toBeInTheDocument();
     expect(
       screen.getByText("Click a task node to open that task inside Execution.")
@@ -152,8 +152,11 @@ describe("Phase 2 runs routes", () => {
     renderRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(screen.getByRole("heading", { name: "Run-104 / TASK-032" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Code review sidebar" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Conversation locator")).toHaveTextContent("UI shell builder");
+    expect(screen.getByRole("heading", { name: "Artifacts and review" })).toBeInTheDocument();
     expect(screen.getByText("Changed files")).toBeInTheDocument();
+    expect(screen.getByText("TASK-031")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Steer this task" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to DAG" })).toHaveAttribute(
       "href",
       "/runs/run-104/execution"
@@ -172,7 +175,7 @@ describe("Phase 2 runs routes", () => {
           'Task route "/runs/run-104/execution/tasks/task-999" does not match any known execution task.'
         )
       ).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "Code review sidebar" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Artifacts and review" })).not.toBeInTheDocument();
     } finally {
       consoleError.mockRestore();
     }

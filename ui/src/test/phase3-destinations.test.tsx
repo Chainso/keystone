@@ -138,6 +138,9 @@ describe("Phase 3 destination scaffolds", () => {
     expectWorkstreamLink("TASK-033", "/runs/run-104/execution/tasks/task-033");
     expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
     expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-4 of 4 tasks · Page 1 of 1"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Running" }));
     expectWorkstreamRows([
@@ -184,22 +187,16 @@ describe("Phase 3 destination scaffolds", () => {
     renderRoute("/runs/run-103/execution/tasks/task-021");
 
     expect(await screen.findByRole("heading", { name: "Run-103 / TASK-021" })).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("heading", { name: "Task conversation" }).closest("section")!).getByText(
-        "Docs refresh"
-      )
-    ).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Conversation locator")).getByText("Documentation refresh")).toBeInTheDocument();
+    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
 
     cleanup();
 
     renderRoute("/runs/run-101/execution/tasks/task-019");
 
     expect(await screen.findByRole("heading", { name: "Run-101 / TASK-019" })).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("heading", { name: "Task conversation" }).closest("section")!).getByText(
-        "Review fix"
-      )
-    ).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Conversation locator")).getByText("Review fixer")).toBeInTheDocument();
+    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
   });
 
   it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {

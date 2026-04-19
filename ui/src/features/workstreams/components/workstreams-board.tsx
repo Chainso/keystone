@@ -89,6 +89,9 @@ export function WorkstreamsBoard({ model }: WorkstreamsBoardProps) {
           </table>
         </div>
 
+        <p className="document-card-summary" aria-label="Workstreams pagination">
+          {model.pagination.rangeLabel} · Page {model.pagination.currentPage} of {model.pagination.pageCount}
+        </p>
         <p className="page-section-copy">Click row to open that task inside Runs &gt; Execution.</p>
       </section>
     </div>
