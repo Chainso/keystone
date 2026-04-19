@@ -1,10 +1,18 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { DatabaseClient } from "./client";
-import type { ArtifactRefRow, DocumentRow } from "./schema";
+import type {
+  ArtifactRefRow,
+  DocumentRevisionRow,
+  DocumentRow
+} from "./schema";
+import {
+  type DocumentKind,
+  type DocumentScopeType,
+  validateDocumentPath,
+  validateDocumentKindPath
+} from "../documents/model";
 import { artifactRefs, documentRevisions, documents, projects, runs } from "./schema";
-
-export type DocumentScopeType = "project" | "run";
 
 interface ProjectLookupInput {
   tenantId: string;
@@ -24,19 +32,24 @@ interface DocumentLookupInput {
 export interface CreateDocumentInput extends ProjectLookupInput {
   runId?: string | null | undefined;
   scopeType: DocumentScopeType;
-  kind: string;
+  kind: DocumentKind;
   path: string;
   conversationAgentClass?: string | null | undefined;
   conversationAgentName?: string | null | undefined;
 }
 
 export interface CreateDocumentRevisionInput extends DocumentLookupInput {
+  documentRevisionId?: string | undefined;
   artifactRefId: string;
   title: string;
   setAsCurrent?: boolean | undefined;
 }
 
 const DOCUMENT_REVISION_ARTIFACT_KIND = "document_revision";
+
+export interface DocumentWithCurrentRevision extends DocumentRow {
+  currentRevision: DocumentRevisionRow | null;
+}
 
 async function assertProjectOwnership(client: DatabaseClient, input: ProjectLookupInput) {
   const project = await client.db.query.projects.findFirst({
@@ -71,9 +84,7 @@ function assertDocumentScope(input: CreateDocumentInput) {
     throw new Error("Run-scoped documents require a run id.");
   }
 
-  if (input.scopeType !== "run" && input.kind === "execution_plan") {
-    throw new Error("Only run-scoped documents may use the execution_plan kind.");
-  }
+  validateDocumentKindPath(input.scopeType, input.kind, input.path);
 }
 
 function assertRevisionArtifactBoundary(document: DocumentRow, artifact: ArtifactRefRow) {
@@ -110,6 +121,7 @@ function assertRevisionArtifactBoundary(document: DocumentRow, artifact: Artifac
 
 export async function createDocument(client: DatabaseClient, input: CreateDocumentInput) {
   assertDocumentScope(input);
+  const normalizedPath = validateDocumentKindPath(input.scopeType, input.kind, input.path);
 
   await assertProjectOwnership(client, {
     tenantId: input.tenantId,
@@ -138,7 +150,7 @@ export async function createDocument(client: DatabaseClient, input: CreateDocume
       runId: input.runId ?? null,
       scopeType: input.scopeType,
       kind: input.kind,
-      path: input.path,
+      path: normalizedPath,
       conversationAgentClass: input.conversationAgentClass ?? null,
       conversationAgentName: input.conversationAgentName ?? null
     })
@@ -157,12 +169,14 @@ export async function getProjectDocumentByPath(
   client: DatabaseClient,
   input: ProjectLookupInput & { path: string }
 ) {
+  const normalizedPath = validateDocumentPath(input.path);
+
   return client.db.query.documents.findFirst({
     where: and(
       eq(documents.tenantId, input.tenantId),
       eq(documents.projectId, input.projectId),
       eq(documents.scopeType, "project"),
-      eq(documents.path, input.path)
+      eq(documents.path, normalizedPath)
     )
   });
 }
@@ -172,15 +186,48 @@ export async function getRunDocumentByPath(
   input: RunLookupInput & { path: string }
 ) {
   await assertRunOwnership(client, input);
+  const normalizedPath = validateDocumentPath(input.path);
 
   return client.db.query.documents.findFirst({
     where: and(
       eq(documents.tenantId, input.tenantId),
       eq(documents.runId, input.runId),
       eq(documents.scopeType, "run"),
-      eq(documents.path, input.path)
+      eq(documents.path, normalizedPath)
     )
   });
+}
+
+export async function getProjectDocument(
+  client: DatabaseClient,
+  input: ProjectLookupInput & { documentId: string }
+) {
+  const document = await getDocument(client, {
+    tenantId: input.tenantId,
+    documentId: input.documentId
+  });
+
+  if (!document || document.scopeType !== "project" || document.projectId !== input.projectId) {
+    return null;
+  }
+
+  return document;
+}
+
+export async function getRunDocument(
+  client: DatabaseClient,
+  input: RunLookupInput & { documentId: string }
+) {
+  const document = await getDocument(client, {
+    tenantId: input.tenantId,
+    documentId: input.documentId
+  });
+
+  if (!document || document.scopeType !== "run" || document.runId !== input.runId) {
+    return null;
+  }
+
+  return document;
 }
 
 export async function listProjectDocuments(client: DatabaseClient, input: ProjectLookupInput) {
@@ -254,7 +301,7 @@ export async function createDocumentRevision(
     const [inserted] = await transaction
       .insert(documentRevisions)
       .values({
-        documentRevisionId: crypto.randomUUID(),
+        documentRevisionId: input.documentRevisionId ?? crypto.randomUUID(),
         documentId: input.documentId,
         artifactRefId: input.artifactRefId,
         revisionNumber: nextRevision?.revisionNumber ?? 1,
@@ -305,4 +352,68 @@ export async function listDocumentRevisions(client: DatabaseClient, input: Docum
     where: eq(documentRevisions.documentId, input.documentId),
     orderBy: [asc(documentRevisions.revisionNumber)]
   });
+}
+
+export async function getDocumentWithCurrentRevision(
+  client: DatabaseClient,
+  input: DocumentLookupInput
+): Promise<DocumentWithCurrentRevision | null> {
+  const document = await getDocument(client, input);
+
+  if (!document) {
+    return null;
+  }
+
+  const currentRevision = document.currentRevisionId
+    ? await getDocumentRevision(client, {
+        tenantId: input.tenantId,
+        documentId: input.documentId,
+        documentRevisionId: document.currentRevisionId
+      })
+    : null;
+
+  return {
+    ...document,
+    currentRevision
+  };
+}
+
+export async function listProjectDocumentsWithCurrentRevision(
+  client: DatabaseClient,
+  input: ProjectLookupInput
+): Promise<DocumentWithCurrentRevision[]> {
+  const projectDocuments = await listProjectDocuments(client, input);
+
+  return Promise.all(
+    projectDocuments.map(async (document) => ({
+      ...document,
+      currentRevision: document.currentRevisionId
+        ? await getDocumentRevision(client, {
+            tenantId: input.tenantId,
+            documentId: document.documentId,
+            documentRevisionId: document.currentRevisionId
+          })
+        : null
+    }))
+  );
+}
+
+export async function listRunDocumentsWithCurrentRevision(
+  client: DatabaseClient,
+  input: RunLookupInput
+): Promise<DocumentWithCurrentRevision[]> {
+  const scopedRunDocuments = await listRunDocuments(client, input);
+
+  return Promise.all(
+    scopedRunDocuments.map(async (document) => ({
+      ...document,
+      currentRevision: document.currentRevisionId
+        ? await getDocumentRevision(client, {
+            tenantId: input.tenantId,
+            documentId: document.documentId,
+            documentRevisionId: document.currentRevisionId
+          })
+        : null
+    }))
+  );
 }

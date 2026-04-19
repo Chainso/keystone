@@ -2,10 +2,15 @@ import type { Hono } from "hono";
 
 import type { AppEnv } from "../../../../env";
 import {
+  createProjectDocumentHandler,
+  createProjectDocumentRevisionHandler,
+  getProjectDocumentHandler,
+  listProjectDocumentsHandler
+} from "../documents/handlers";
+import {
   createProjectHandler,
   getProjectHandler,
   listProjectDecisionPackagesHandler,
-  listProjectDocumentsHandler,
   listProjectRunsHandler,
   listProjectsHandler,
   updateProjectHandler
@@ -54,11 +59,37 @@ export const projectRouteMatrix = [
     method: "GET",
     path: "/v1/projects/:projectId/documents",
     family: "projects",
-    resourceType: "project_document",
+    resourceType: "document",
     responseKind: "collection",
-    implementation: "stub",
-    availability: "implemented",
-    note: "Returns an empty typed stub collection until project-backed document persistence lands."
+    implementation: "reused",
+    availability: "implemented"
+  },
+  {
+    method: "POST",
+    path: "/v1/projects/:projectId/documents",
+    family: "projects",
+    resourceType: "document",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented"
+  },
+  {
+    method: "GET",
+    path: "/v1/projects/:projectId/documents/:documentId",
+    family: "projects",
+    resourceType: "document",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented"
+  },
+  {
+    method: "POST",
+    path: "/v1/projects/:projectId/documents/:documentId/revisions",
+    family: "projects",
+    resourceType: "document_revision",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -88,6 +119,17 @@ export function registerProjectRoutes(router: Hono<AppEnv>) {
   router.get("/v1/projects/:projectId", requireDevAuth, getProjectHandler);
   router.put("/v1/projects/:projectId", requireDevAuth, updateProjectHandler);
   router.get("/v1/projects/:projectId/documents", requireDevAuth, listProjectDocumentsHandler);
+  router.post("/v1/projects/:projectId/documents", requireDevAuth, createProjectDocumentHandler);
+  router.get(
+    "/v1/projects/:projectId/documents/:documentId",
+    requireDevAuth,
+    getProjectDocumentHandler
+  );
+  router.post(
+    "/v1/projects/:projectId/documents/:documentId/revisions",
+    requireDevAuth,
+    createProjectDocumentRevisionHandler
+  );
   router.get(
     "/v1/projects/:projectId/decision-packages",
     requireDevAuth,

@@ -351,6 +351,16 @@ describeIfDatabase("database repositories", () => {
       conversationAgentClass: "PlanningDocumentAgent",
       conversationAgentName: "run-execution-plan"
     });
+    const projectArtifact = await createArtifactRef(client, {
+      tenantId,
+      projectId: project.projectId,
+      kind: "document_revision",
+      storageBackend: "r2",
+      storageUri: `r2://keystone-artifacts-dev/documents/project/${project.projectId}/${projectDocument?.documentId}.md`,
+      contentType: "text/markdown",
+      etag: "etag-project-spec-1",
+      sizeBytes: 96
+    });
     const artifact = await createArtifactRef(client, {
       tenantId,
       projectId: project.projectId,
@@ -361,6 +371,12 @@ describeIfDatabase("database repositories", () => {
       contentType: "text/markdown",
       etag: "etag-plan-1",
       sizeBytes: 128
+    });
+    const projectRevision = await createDocumentRevision(client, {
+      tenantId,
+      documentId: projectDocument?.documentId ?? "",
+      artifactRefId: projectArtifact?.artifactRefId ?? "",
+      title: "Project Specification v1"
     });
 
     const revision = await createDocumentRevision(client, {
@@ -445,10 +461,19 @@ describeIfDatabase("database repositories", () => {
       tenantId,
       documentId: runDocument?.documentId ?? ""
     });
+    const refreshedProjectDocument = await getDocument(client, {
+      tenantId,
+      documentId: projectDocument?.documentId ?? ""
+    });
 
     expect(projectDocument?.scopeType).toBe("project");
     expect(projectDocument?.runId).toBeNull();
     expect(runDocument?.scopeType).toBe("run");
+    expect(projectArtifact?.runId).toBe(`project:${project.projectId}`);
+    expect(projectArtifact?.objectKey).toContain(`/documents/project/${project.projectId}/`);
+    expect(projectArtifact?.etag).toBe("etag-project-spec-1");
+    expect(projectRevision?.revisionNumber).toBe(1);
+    expect(refreshedProjectDocument?.currentRevisionId).toBe(projectRevision?.documentRevisionId);
     expect(artifact?.artifactKind).toBe("document_revision");
     expect(artifact?.bucket).toBe("keystone-artifacts-dev");
     expect(artifact?.objectKey).toContain(`/documents/run/${runId}/`);
@@ -557,7 +582,7 @@ describeIfDatabase("database repositories", () => {
         projectId: project.projectId,
         runId,
         scopeType: "run",
-        kind: "execution_plan",
+        kind: "other",
         path: "notes/compile-issues"
       }),
       "Expected note document insert to return a row."
@@ -664,6 +689,45 @@ describeIfDatabase("database repositories", () => {
         compiledExecutionPlanRevisionId: otherRunRevision.documentRevisionId
       })
     ).rejects.toThrow(new RegExp(`does not belong to run ${runId}`, "i"));
+  });
+
+  it("enforces canonical document kind and path combinations", async () => {
+    const project = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig(`document-canonical-${crypto.randomUUID()}`)
+    });
+    const { runId } = await createTargetModelRun(project.projectId);
+
+    await expect(
+      createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        scopeType: "project",
+        kind: "specification",
+        path: "notes/specification"
+      })
+    ).rejects.toThrow(/must use the canonical path product\/specification/i);
+
+    await expect(
+      createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        scopeType: "run",
+        kind: "execution_plan",
+        path: "notes/execution-plan"
+      })
+    ).rejects.toThrow(/must use the canonical path execution-plan/i);
+
+    await expect(
+      createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        scopeType: "project",
+        kind: "other",
+        path: "product/specification"
+      })
+    ).rejects.toThrow(/cannot use reserved planning path product\/specification/i);
   });
 
   it("rejects self-dependencies in the run graph", async () => {

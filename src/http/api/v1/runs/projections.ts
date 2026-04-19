@@ -1,6 +1,7 @@
 import type { WorkerBindings } from "../../../../env";
 import { runPlanArtifactKey } from "../../../../lib/artifacts/keys";
 import { getArtifactText } from "../../../../lib/artifacts/r2";
+import { isProjectScopedArtifactRunId } from "../../../../lib/db/artifacts";
 import type { ArtifactRefRow, SessionEventRow, SessionRow } from "../../../../lib/db/schema";
 import type { RunCoordinatorSnapshot } from "../../../../lib/runs/summary";
 import { compiledRunPlanSchema } from "../../../../keystone/compile/contracts";
@@ -319,6 +320,8 @@ export function projectWorkflowGraphResource(input: {
 }
 
 export function projectArtifactResource(artifact: ArtifactRefRow): ArtifactResource {
+  const publicRunId = isProjectScopedArtifactRunId(artifact.runId) ? null : artifact.runId;
+
   return artifactResourceSchema.parse({
     resourceType: "artifact",
     scaffold: {
@@ -327,7 +330,8 @@ export function projectArtifactResource(artifact: ArtifactRefRow): ArtifactResou
     },
     tenantId: artifact.tenantId,
     artifactId: artifact.artifactRefId,
-    runId: artifact.runId,
+    projectId: artifact.projectId ?? null,
+    runId: publicRunId,
     taskId: artifact.taskId ?? null,
     kind: artifact.kind,
     contentType: artifact.contentType,

@@ -2,13 +2,61 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
+  const projectDocument = {
+    tenantId: "tenant-read",
+    projectId: "project-123",
+    documentId: "doc-project-spec",
+    runId: null,
+    scopeType: "project" as const,
+    kind: "specification" as const,
+    path: "product/specification",
+    currentRevisionId: "revision-project-spec-v1",
+    conversationAgentClass: "PlanningDocumentAgent",
+    conversationAgentName: "project-specification",
+    createdAt: new Date("2026-04-17T10:45:00.000Z"),
+    updatedAt: new Date("2026-04-17T11:15:00.000Z")
+  };
+  const projectDocumentRevision = {
+    documentRevisionId: "revision-project-spec-v1",
+    documentId: "doc-project-spec",
+    artifactRefId: "artifact-project-spec-v1",
+    revisionNumber: 1,
+    title: "Project Specification v1",
+    createdAt: new Date("2026-04-17T11:15:00.000Z")
+  };
 
   return {
     close,
+    bucketPut: vi.fn(async () => ({
+      httpEtag: "etag-project-spec-v2",
+      size: 27
+    })),
     createWorkerDatabaseClient: vi.fn(() => ({
       close,
       db: {},
       sql: {}
+    })),
+    createArtifactRef: vi.fn(async (_client, input) => ({
+      tenantId: input.tenantId,
+      artifactRefId: "artifact-project-spec-v2",
+      projectId: input.projectId ?? null,
+      runId: input.runId ?? `project:${input.projectId}`,
+      sessionId: null,
+      taskId: null,
+      runTaskId: null,
+      kind: input.kind,
+      artifactKind: input.artifactKind ?? input.kind,
+      storageBackend: input.storageBackend,
+      storageUri: input.storageUri,
+      bucket: input.bucket ?? "keystone-artifacts-dev",
+      objectKey: input.objectKey ?? "documents/project/project-123/doc-project-spec/revision-project-spec-v2",
+      objectVersion: null,
+      etag: input.etag ?? null,
+      contentType: input.contentType,
+      sha256: null,
+      sizeBytes: input.sizeBytes ?? null,
+      createdAt: new Date("2026-04-17T11:45:00.000Z"),
+      metadata: input.metadata ?? {}
     })),
     createProject: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
@@ -160,6 +208,73 @@ const mocked = vi.hoisted(() => {
         }
       }
     ]),
+    listProjectDocumentsWithCurrentRevision: vi.fn(async (_client, input) => [
+      {
+        ...projectDocument,
+        tenantId: input.tenantId,
+        currentRevision: projectDocumentRevision
+      }
+    ]),
+    getProjectDocument: vi.fn(async (_client, input) => {
+      if (input.projectId !== "project-123" || input.documentId !== "doc-project-spec") {
+        return undefined;
+      }
+
+      return {
+        ...projectDocument,
+        tenantId: input.tenantId
+      };
+    }),
+    getDocumentWithCurrentRevision: vi.fn(async (_client, input) => {
+      if (input.documentId !== "doc-project-spec") {
+        return undefined;
+      }
+
+      return {
+        ...projectDocument,
+        tenantId: input.tenantId,
+        currentRevision: projectDocumentRevision
+      };
+    }),
+    createDocument: vi.fn(async (_client, input) => ({
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      documentId: "doc-project-architecture",
+      runId: input.runId ?? null,
+      scopeType: input.scopeType,
+      kind: input.kind,
+      path: input.path,
+      currentRevisionId: null,
+      conversationAgentClass: input.conversationAgentClass ?? null,
+      conversationAgentName: input.conversationAgentName ?? null,
+      createdAt: new Date("2026-04-17T11:30:00.000Z"),
+      updatedAt: new Date("2026-04-17T11:30:00.000Z")
+    })),
+    createDocumentRevision: vi.fn(async (_client, input) => ({
+      documentRevisionId: input.documentRevisionId ?? "revision-project-spec-v2",
+      documentId: input.documentId,
+      artifactRefId: input.artifactRefId,
+      revisionNumber: 2,
+      title: input.title,
+      createdAt: new Date("2026-04-17T11:45:00.000Z")
+    })),
+    getRunRecord: vi.fn(async () => ({
+      tenantId: "tenant-read",
+      runId: "run-123",
+      projectId: "project-123",
+      workflowInstanceId: "workflow-run-123",
+      executionEngine: "think",
+      sandboxId: null,
+      status: "configured",
+      compiledSpecRevisionId: null,
+      compiledArchitectureRevisionId: null,
+      compiledExecutionPlanRevisionId: null,
+      compiledAt: null,
+      startedAt: null,
+      endedAt: null,
+      createdAt: new Date("2026-04-17T10:30:00.000Z"),
+      updatedAt: new Date("2026-04-17T10:30:00.000Z")
+    })),
     updateProject: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       projectId: input.projectId,
@@ -190,7 +305,22 @@ vi.mock("../../src/lib/db/projects", () => ({
 }));
 
 vi.mock("../../src/lib/db/runs", () => ({
+  getRunRecord: mocked.getRunRecord,
   listProjectRunSessions: mocked.listProjectRunSessions
+}));
+
+vi.mock("../../src/lib/db/documents", () => ({
+  createDocument: mocked.createDocument,
+  createDocumentRevision: mocked.createDocumentRevision,
+  getDocumentWithCurrentRevision: mocked.getDocumentWithCurrentRevision,
+  getProjectDocument: mocked.getProjectDocument,
+  getRunDocument: vi.fn(),
+  listProjectDocumentsWithCurrentRevision: mocked.listProjectDocumentsWithCurrentRevision,
+  listRunDocumentsWithCurrentRevision: vi.fn()
+}));
+
+vi.mock("../../src/lib/db/artifacts", () => ({
+  createArtifactRef: mocked.createArtifactRef
 }));
 
 vi.mock("../../src/http/handlers/runs", () => ({
@@ -222,6 +352,9 @@ vi.mock("../../src/http/handlers/dev-think", () => ({
 const { app } = await import("../../src/http/app");
 
 const env = {
+  ARTIFACTS_BUCKET: {
+    put: mocked.bucketPut
+  } as unknown as R2Bucket,
   HYPERDRIVE: {
     connectionString: "postgres://test"
   },
@@ -732,7 +865,7 @@ describe("project API", () => {
     });
   });
 
-  it("returns stub project documents and decision-package collections", async () => {
+  it("lists persisted project documents and keeps decision packages stubbed", async () => {
     const [documentsResponse, decisionPackagesResponse] = await Promise.all([
       app.request(
         "http://example.com/v1/projects/project-123/documents",
@@ -759,13 +892,39 @@ describe("project API", () => {
     expect(documentsResponse.status).toBe(200);
     await expect(documentsResponse.json()).resolves.toMatchObject({
       data: {
-        total: 0,
-        items: []
+        total: 1,
+        items: [
+          {
+            tenantId: "tenant-read",
+            projectId: "project-123",
+            documentId: "doc-project-spec",
+            scopeType: "project",
+            kind: "specification",
+            path: "product/specification",
+            currentRevisionId: "revision-project-spec-v1",
+            currentRevision: {
+              documentRevisionId: "revision-project-spec-v1",
+              revisionNumber: 1,
+              artifactId: "artifact-project-spec-v1"
+            },
+            conversation: {
+              agentClass: "PlanningDocumentAgent",
+              agentName: "project-specification"
+            }
+          }
+        ]
       },
       meta: {
-        resourceType: "project_document"
+        resourceType: "document"
       }
     });
+    expect(mocked.listProjectDocumentsWithCurrentRevision).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        projectId: "project-123"
+      })
+    );
 
     expect(decisionPackagesResponse.status).toBe(200);
     await expect(decisionPackagesResponse.json()).resolves.toMatchObject({
@@ -777,6 +936,173 @@ describe("project API", () => {
         resourceType: "decision_package"
       }
     });
+  });
+
+  it("creates a project document identity", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-write"
+        },
+        body: JSON.stringify({
+          kind: "architecture",
+          path: "technical/architecture",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "project-architecture"
+          }
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        tenantId: "tenant-write",
+        projectId: "project-123",
+        documentId: "doc-project-architecture",
+        scopeType: "project",
+        kind: "architecture",
+        path: "technical/architecture",
+        currentRevisionId: null,
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: "project-architecture"
+        }
+      },
+      meta: {
+        resourceType: "document"
+      }
+    });
+    expect(mocked.createDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-write",
+        projectId: "project-123",
+        scopeType: "project",
+        kind: "architecture",
+        path: "technical/architecture"
+      })
+    );
+  });
+
+  it("returns a project document detail", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents/doc-project-spec",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        tenantId: "tenant-read",
+        projectId: "project-123",
+        documentId: "doc-project-spec",
+        kind: "specification",
+        path: "product/specification",
+        currentRevision: {
+          documentRevisionId: "revision-project-spec-v1",
+          title: "Project Specification v1"
+        }
+      },
+      meta: {
+        resourceType: "document"
+      }
+    });
+  });
+
+  it("creates a project document revision backed by an artifact", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents/doc-project-spec/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        },
+        body: JSON.stringify({
+          title: "Project Specification v2",
+          body: "# Revised specification\n",
+          contentType: "text/markdown; charset=utf-8"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        tenantId: "tenant-read",
+        projectId: "project-123",
+        runId: null,
+        documentId: "doc-project-spec",
+        revisionNumber: 2,
+        title: "Project Specification v2",
+        artifactId: "artifact-project-spec-v2"
+      },
+      meta: {
+        resourceType: "document_revision"
+      }
+    });
+    expect(mocked.bucketPut).toHaveBeenCalled();
+    expect(mocked.createArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        projectId: "project-123",
+        runId: null,
+        kind: "document_revision"
+      })
+    );
+    expect(mocked.createDocumentRevision).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        documentId: "doc-project-spec",
+        title: "Project Specification v2"
+      })
+    );
+  });
+
+  it("rejects invalid canonical project document paths", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-write"
+        },
+        body: JSON.stringify({
+          kind: "specification",
+          path: "notes/specification"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+        message:
+          "project-scoped specification documents must use the canonical path product/specification."
+      }
+    });
+    expect(mocked.createDocument).not.toHaveBeenCalled();
   });
 
   it("lists projected runs for a project", async () => {

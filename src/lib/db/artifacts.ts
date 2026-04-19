@@ -5,9 +5,11 @@ import { parseR2Uri } from "../artifacts/r2";
 import type { DatabaseClient } from "./client";
 import { artifactRefs } from "./schema";
 
+const PROJECT_SCOPED_ARTIFACT_RUN_ID_PREFIX = "project:";
+
 export interface CreateArtifactRefInput {
   tenantId: string;
-  runId: string;
+  runId?: string | null | undefined;
   projectId?: string | null | undefined;
   sessionId?: string | null | undefined;
   taskId?: string | null | undefined;
@@ -24,6 +26,14 @@ export interface CreateArtifactRefInput {
   sha256?: string | null | undefined;
   sizeBytes?: number | null | undefined;
   metadata?: Record<string, unknown> | undefined;
+}
+
+export function buildProjectScopedArtifactRunId(projectId: string) {
+  return `${PROJECT_SCOPED_ARTIFACT_RUN_ID_PREFIX}${projectId}`;
+}
+
+export function isProjectScopedArtifactRunId(runId: string | null | undefined) {
+  return Boolean(runId?.startsWith(PROJECT_SCOPED_ARTIFACT_RUN_ID_PREFIX));
 }
 
 function resolvePhysicalObjectLocation(input: CreateArtifactRefInput) {
@@ -56,18 +66,31 @@ function resolvePhysicalObjectLocation(input: CreateArtifactRefInput) {
   }
 }
 
+function resolveArtifactOwnershipRunId(input: CreateArtifactRefInput) {
+  if (input.runId) {
+    return input.runId;
+  }
+
+  if (input.projectId) {
+    return buildProjectScopedArtifactRunId(input.projectId);
+  }
+
+  throw new Error("Artifact refs require either a runId or projectId.");
+}
+
 export async function createArtifactRef(
   client: DatabaseClient,
   input: CreateArtifactRefInput
 ) {
   const physicalLocation = resolvePhysicalObjectLocation(input);
+  const ownershipRunId = resolveArtifactOwnershipRunId(input);
   const [inserted] = await client.db
     .insert(artifactRefs)
     .values({
       tenantId: input.tenantId,
       artifactRefId: crypto.randomUUID(),
       projectId: input.projectId ?? null,
-      runId: input.runId,
+      runId: ownershipRunId,
       sessionId: input.sessionId ?? null,
       taskId: input.taskId ?? null,
       runTaskId: input.runTaskId ?? null,

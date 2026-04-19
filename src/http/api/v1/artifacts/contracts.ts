@@ -12,7 +12,8 @@ import {
 export const artifactResourceSchema = buildResourceSchema("artifact", {
   tenantId: resourceIdSchema,
   artifactId: resourceIdSchema,
-  runId: resourceIdSchema,
+  projectId: resourceIdSchema.nullable(),
+  runId: resourceIdSchema.nullable(),
   taskId: resourceIdSchema.nullable(),
   kind: z.string().trim().min(1),
   contentType: z.string().trim().min(1),

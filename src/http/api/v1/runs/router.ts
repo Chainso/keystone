@@ -1,6 +1,12 @@
 import type { Hono } from "hono";
 
 import type { AppEnv } from "../../../../env";
+import {
+  createRunDocumentHandler,
+  createRunDocumentRevisionHandler,
+  getRunDocumentHandler,
+  listRunDocumentsHandler
+} from "../documents/handlers";
 import { requireDevAuth } from "../../../middleware/auth";
 import type { ApiRouteDefinition } from "../common/contracts";
 import { runWebSocketHandler } from "../../../handlers/ws";
@@ -42,6 +48,42 @@ export const runRouteMatrix = [
     implementation: "projected",
     availability: "implemented",
     note: "Projected from run sessions, events, artifacts, and the live coordinator snapshot."
+  },
+  {
+    method: "GET",
+    path: "/v1/runs/:runId/documents",
+    family: "runs",
+    resourceType: "document",
+    responseKind: "collection",
+    implementation: "reused",
+    availability: "implemented"
+  },
+  {
+    method: "POST",
+    path: "/v1/runs/:runId/documents",
+    family: "runs",
+    resourceType: "document",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented"
+  },
+  {
+    method: "GET",
+    path: "/v1/runs/:runId/documents/:documentId",
+    family: "runs",
+    resourceType: "document",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented"
+  },
+  {
+    method: "POST",
+    path: "/v1/runs/:runId/documents/:documentId/revisions",
+    family: "runs",
+    resourceType: "document_revision",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented"
   },
   {
     method: "GET",
@@ -191,6 +233,14 @@ export const runRouteMatrix = [
 export function registerRunRoutes(router: Hono<AppEnv>) {
   router.post("/v1/runs", requireDevAuth, createRunHandler);
   router.get("/v1/runs/:runId", requireDevAuth, getRunHandler);
+  router.get("/v1/runs/:runId/documents", requireDevAuth, listRunDocumentsHandler);
+  router.post("/v1/runs/:runId/documents", requireDevAuth, createRunDocumentHandler);
+  router.get("/v1/runs/:runId/documents/:documentId", requireDevAuth, getRunDocumentHandler);
+  router.post(
+    "/v1/runs/:runId/documents/:documentId/revisions",
+    requireDevAuth,
+    createRunDocumentRevisionHandler
+  );
   router.get("/v1/runs/:runId/graph", requireDevAuth, getRunWorkflowGraphHandler);
   router.get("/v1/runs/:runId/tasks", requireDevAuth, listRunTasksHandler);
   router.get("/v1/runs/:runId/tasks/:taskId", requireDevAuth, getTaskHandler);

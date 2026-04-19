@@ -35,27 +35,6 @@ export const projectResourceSchema = buildResourceSchema("project", {
   updatedAt: isoTimestampSchema
 });
 
-export const projectDocumentKindValues = [
-  "product_spec",
-  "adr",
-  "task_contract",
-  "review_note",
-  "test_summary",
-  "release_note",
-  "other"
-] as const;
-
-export const projectDocumentResourceSchema = buildResourceSchema("project_document", {
-  tenantId: resourceIdSchema,
-  projectId: resourceIdSchema,
-  documentId: resourceIdSchema,
-  documentKind: z.enum(projectDocumentKindValues),
-  title: z.string().trim().min(1).nullable(),
-  path: z.string().trim().min(1).nullable(),
-  summary: z.string().trim().min(1).nullable(),
-  updatedAt: isoTimestampSchema.nullable()
-});
-
 export const projectDetailEnvelopeSchema = buildDetailEnvelopeSchema(
   "project",
   projectResourceSchema
@@ -64,14 +43,9 @@ export const projectCollectionEnvelopeSchema = buildCollectionEnvelopeSchema(
   "project",
   projectListItemSchema
 );
-export const projectDocumentCollectionEnvelopeSchema = buildCollectionEnvelopeSchema(
-  "project_document",
-  projectDocumentResourceSchema
-);
 
 export type ProjectListItem = z.infer<typeof projectListItemSchema>;
 export type ProjectResource = z.infer<typeof projectResourceSchema>;
-export type ProjectDocumentResource = z.infer<typeof projectDocumentResourceSchema>;
 
 export function serializeProjectListItem(project: {
   tenantId: string;

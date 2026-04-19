@@ -16,7 +16,6 @@ import { decisionPackageCollectionEnvelopeSchema } from "../decision-packages/co
 import {
   projectCollectionEnvelopeSchema,
   projectDetailEnvelopeSchema,
-  projectDocumentCollectionEnvelopeSchema,
   serializeProjectListItem,
   serializeProjectResource
 } from "./contracts";
@@ -30,20 +29,6 @@ function isUniqueViolation(error: unknown) {
     "code" in error &&
     error.code === "23505"
   );
-}
-
-function buildEmptyProjectDocumentsResponse() {
-  return projectDocumentCollectionEnvelopeSchema.parse({
-    data: {
-      items: [],
-      total: 0
-    },
-    meta: {
-      apiVersion: "v1",
-      envelope: "collection",
-      resourceType: "project_document"
-    }
-  });
 }
 
 function buildEmptyDecisionPackagesResponse() {
@@ -237,32 +222,6 @@ export async function updateProjectHandler(context: Context<AppEnv>) {
     }
 
     throw error;
-  } finally {
-    await client.close();
-  }
-}
-
-export async function listProjectDocumentsHandler(context: Context<AppEnv>) {
-  const projectId = context.req.param("projectId");
-
-  if (!projectId) {
-    throwJsonHttpError(400, "invalid_path", "Project ID is required.");
-  }
-
-  const client = createWorkerDatabaseClient(context.env);
-
-  try {
-    const project = await requireProject(context, client, projectId);
-
-    if (!project) {
-      return jsonErrorResponse(
-        "project_not_found",
-        `Project ${projectId} was not found.`,
-        404
-      );
-    }
-
-    return context.json(buildEmptyProjectDocumentsResponse());
   } finally {
     await client.close();
   }

@@ -10,6 +10,7 @@ export { v1RouteMatrix } from "./route-matrix";
 export * from "./artifacts/contracts";
 export * from "./common/contracts";
 export * from "./decision-packages/contracts";
+export * from "./documents/contracts";
 export * from "./projects/contracts";
 export * from "./runs/contracts";
 
