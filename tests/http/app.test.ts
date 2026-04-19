@@ -261,6 +261,7 @@ const mocked = vi.hoisted(() => {
     getRunCoordinatorStub: vi.fn(() => ({
       initialize: vi.fn(async () => undefined),
       publish: vi.fn(async () => undefined),
+      reset: vi.fn(async () => undefined),
       getSnapshot: vi.fn(async () => ({
         tenantId: "tenant-fixture",
         runId: "run-123",
@@ -949,6 +950,15 @@ describe("app", () => {
   });
 
   it("compensates the mirrored run rows when workflow launch fails", async () => {
+    const coordinator = {
+      initialize: vi.fn(async () => undefined),
+      publish: vi.fn(async () => undefined),
+      reset: vi.fn(async () => undefined),
+      getSnapshot: vi.fn(async () => null),
+      fetch: vi.fn(async () => new Response("ws-ok", { status: 200 }))
+    };
+
+    mocked.getRunCoordinatorStub.mockReturnValueOnce(coordinator as never);
     mocked.runWorkflowCreate.mockRejectedValueOnce(new Error("workflow launch failed"));
 
     const response = await app.request(
@@ -977,6 +987,96 @@ describe("app", () => {
         sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014"
       })
     );
+    expect(coordinator.reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("compensates the mirrored run rows when the initial session event append fails", async () => {
+    const coordinator = {
+      initialize: vi.fn(async () => undefined),
+      publish: vi.fn(async () => undefined),
+      reset: vi.fn(async () => undefined),
+      getSnapshot: vi.fn(async () => null),
+      fetch: vi.fn(async () => new Response("ws-ok", { status: 200 }))
+    };
+
+    mocked.getRunCoordinatorStub.mockReturnValueOnce(coordinator as never);
+    mocked.appendSessionEvent.mockRejectedValueOnce(new Error("session event failed"));
+
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          projectId: "project-fixture",
+          decisionPackage: buildInlineDecisionPackage()
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocked.deleteRunSessionMirror).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: expect.any(String),
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014"
+      })
+    );
+    expect(coordinator.initialize).not.toHaveBeenCalled();
+    expect(coordinator.publish).not.toHaveBeenCalled();
+    expect(coordinator.reset).toHaveBeenCalledTimes(1);
+    expect(mocked.runWorkflowCreate).not.toHaveBeenCalled();
+  });
+
+  it("compensates the mirrored run rows when coordinator publication fails before workflow launch", async () => {
+    const coordinator = {
+      initialize: vi.fn(async () => undefined),
+      publish: vi.fn(async () => {
+        throw new Error("coordinator publish failed");
+      }),
+      reset: vi.fn(async () => undefined),
+      getSnapshot: vi.fn(async () => null),
+      fetch: vi.fn(async () => new Response("ws-ok", { status: 200 }))
+    };
+
+    mocked.getRunCoordinatorStub.mockReturnValueOnce(coordinator as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          projectId: "project-fixture",
+          decisionPackage: buildInlineDecisionPackage()
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocked.deleteRunSessionMirror).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: expect.any(String),
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014"
+      })
+    );
+    expect(coordinator.initialize).toHaveBeenCalledTimes(1);
+    expect(coordinator.publish).toHaveBeenCalledTimes(1);
+    expect(coordinator.reset).toHaveBeenCalledTimes(1);
+    expect(mocked.runWorkflowCreate).not.toHaveBeenCalled();
   });
 
   it("returns a run summary for an existing run", async () => {
@@ -1351,6 +1451,57 @@ describe("app", () => {
       },
       meta: {
         resourceType: "document"
+      }
+    });
+  });
+
+  it("returns run_not_found for nested run-document routes when the run is missing", async () => {
+    mocked.getRunRecord.mockResolvedValueOnce(undefined);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-missing/documents/doc-run-plan",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "run_not_found",
+        message: "Run run-missing was not found."
+      }
+    });
+  });
+
+  it("returns document_not_found for nested run-document revision routes when the document is missing", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-missing/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          title: "Execution Plan v2",
+          body: "# Update\n",
+          contentType: "text/markdown; charset=utf-8"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "document_not_found",
+        message: "Document doc-missing was not found for run run-123."
       }
     });
   });

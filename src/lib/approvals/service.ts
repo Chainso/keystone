@@ -1,6 +1,6 @@
 import type { WorkerBindings } from "../../env";
 import type { DatabaseClient } from "../db/client";
-import { createApprovalRecord } from "../db/approvals";
+import { createApprovalRecord, getApprovalRecord } from "../db/approvals";
 import { getSessionRecord, updateSessionStatus } from "../db/runs";
 import { appendAndPublishRunEvent } from "../events/publish";
 import { buildStableSessionId } from "../workflows/ids";
@@ -38,7 +38,7 @@ export async function ensureApprovalRequest(
     input.sessionId
   );
   const waitEventType = `approval.resolved.${approvalId}`;
-  const approval = await createApprovalRecord(client, {
+  const createdApproval = await createApprovalRecord(client, {
     tenantId: input.tenantId,
     approvalId,
     runId: input.runId,
@@ -53,12 +53,21 @@ export async function ensureApprovalRequest(
       ...(input.metadata ?? {})
     }
   });
-  const created = Boolean(approval);
+  const approval =
+    createdApproval ??
+    (await getApprovalRecord(client, {
+      tenantId: input.tenantId,
+      approvalId
+    }));
 
-  const session = await getSessionRecord(client, input.tenantId, input.sessionId);
+  if (!approval) {
+    throw new Error(`Approval ${approvalId} could not be loaded after creation.`);
+  }
+
+  let session = await getSessionRecord(client, input.tenantId, input.sessionId);
 
   if (session && session.status === "active") {
-    await updateSessionStatus(client, {
+    session = await updateSessionStatus(client, {
       tenantId: input.tenantId,
       sessionId: input.sessionId,
       status: "paused_for_approval",
@@ -70,13 +79,14 @@ export async function ensureApprovalRequest(
     });
   }
 
-  if (created) {
+  if (approval.status === "pending") {
     await appendAndPublishRunEvent(client, env, {
       tenantId: input.tenantId,
       runId: input.runId,
       sessionId: input.sessionId,
       taskId: getSessionTaskId(session?.metadata),
       eventType: "approval.requested",
+      idempotencyKey: `approval.requested:${approvalId}`,
       payload: {
         approvalId,
         approvalType: input.approvalType,
@@ -90,6 +100,6 @@ export async function ensureApprovalRequest(
   return {
     approvalId,
     waitEventType,
-    status: approval?.status ?? "pending"
+    status: approval.status
   };
 }

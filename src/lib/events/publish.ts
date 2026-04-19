@@ -2,7 +2,11 @@ import type { WorkerBindings } from "../../env";
 import type { SessionStatus } from "../../maestro/contracts";
 import { getRunCoordinatorStub } from "../auth/tenant";
 import type { DatabaseClient } from "../db/client";
-import { appendSessionEvent, type AppendSessionEventInput } from "../db/events";
+import {
+  appendSessionEvent,
+  getSessionEventByIdempotencyKey,
+  type AppendSessionEventInput
+} from "../db/events";
 
 export async function appendAndPublishRunEvent(
   client: DatabaseClient,
@@ -11,7 +15,15 @@ export async function appendAndPublishRunEvent(
     status?: SessionStatus | undefined;
   }
 ) {
-  const event = await appendSessionEvent(client, input);
+  const event =
+    input.idempotencyKey == null
+      ? await appendSessionEvent(client, input)
+      : ((await getSessionEventByIdempotencyKey(client, {
+          tenantId: input.tenantId,
+          sessionId: input.sessionId,
+          idempotencyKey: input.idempotencyKey
+        })) ??
+        (await appendSessionEvent(client, input)));
 
   if (!event) {
     throw new Error(`Failed to append event ${input.eventType}.`);

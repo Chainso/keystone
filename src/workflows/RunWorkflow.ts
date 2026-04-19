@@ -136,24 +136,28 @@ async function persistTerminalRunStatus(
   try {
     const session = await getSessionRecord(client, input.tenantId, input.runSessionId);
 
-    if (!session || isTerminalSessionStatus(session.status)) {
+    if (!session) {
       return session;
     }
 
-    const metadata =
-      session.metadata && typeof session.metadata === "object"
-        ? (session.metadata as Record<string, unknown>)
-        : {};
-    const updated = await updateSessionStatus(client, {
-      tenantId: input.tenantId,
-      sessionId: input.runSessionId,
-      status: input.status,
-      metadata: {
-        ...metadata,
-        terminalPhase: input.phase,
-        terminalReason: getErrorMessage(input.error)
-      }
-    });
+    if (isTerminalSessionStatus(session.status) && session.status !== input.status) {
+      return session;
+    }
+
+    const terminalSession = isTerminalSessionStatus(session.status)
+      ? session
+      : await updateSessionStatus(client, {
+          tenantId: input.tenantId,
+          sessionId: input.runSessionId,
+          status: input.status,
+          metadata: {
+            ...(session.metadata && typeof session.metadata === "object"
+              ? (session.metadata as Record<string, unknown>)
+              : {}),
+            terminalPhase: input.phase,
+            terminalReason: getErrorMessage(input.error)
+          }
+        });
 
     await appendAndPublishRunEvent(client, env, {
       tenantId: input.tenantId,
@@ -161,15 +165,16 @@ async function persistTerminalRunStatus(
       sessionId: input.runSessionId,
       eventType: input.eventType,
       severity: input.severity,
+      idempotencyKey: `run.terminal:${input.runSessionId}:${input.eventType}:${input.phase}:${input.status}`,
       payload: {
-        status: input.status,
+        status: terminalSession.status,
         phase: input.phase,
         message: getErrorMessage(input.error)
       },
-      status: updated.status as SessionStatus
+      status: terminalSession.status as SessionStatus
     });
 
-    return updated;
+    return terminalSession;
   } finally {
     await client.close();
   }

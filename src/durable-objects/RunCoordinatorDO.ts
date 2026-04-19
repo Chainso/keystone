@@ -87,6 +87,21 @@ export class RunCoordinatorDO extends DurableObject<WorkerBindings> {
     return this.loadSnapshot();
   }
 
+  async reset() {
+    this.snapshot = null;
+    await this.ctx.storage.delete(SNAPSHOT_STORAGE_KEY);
+
+    for (const socket of this.sockets) {
+      try {
+        socket.close(1012, "run reset");
+      } catch (error) {
+        console.warn("Failed to close coordinator socket during reset", error);
+      }
+    }
+
+    this.sockets.clear();
+  }
+
   async fetch(request: Request) {
     const snapshot = await this.loadSnapshot();
 

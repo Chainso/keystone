@@ -87,6 +87,23 @@ export async function listSessionEvents(
   });
 }
 
+export async function getSessionEventByIdempotencyKey(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    sessionId: string;
+    idempotencyKey: string;
+  }
+) {
+  return client.db.query.sessionEvents.findFirst({
+    where: and(
+      eq(sessionEvents.tenantId, input.tenantId),
+      eq(sessionEvents.sessionId, input.sessionId),
+      eq(sessionEvents.idempotencyKey, input.idempotencyKey)
+    )
+  });
+}
+
 export async function listRunEvents(
   client: DatabaseClient,
   input: {

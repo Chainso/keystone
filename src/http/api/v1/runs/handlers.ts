@@ -184,6 +184,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
   const runId = crypto.randomUUID();
   const workflowInstanceId = buildRunWorkflowInstanceId(auth.tenantId, runId);
   const client = createWorkerDatabaseClient(context.env);
+  const coordinator = getRunCoordinatorStub(context.env, auth.tenantId, runId);
   let mirroredRunSessionId: string | null = null;
   let workflowCreated = false;
 
@@ -302,7 +303,6 @@ export async function createRunHandler(context: Context<AppEnv>) {
       }
     });
 
-    const coordinator = getRunCoordinatorStub(context.env, auth.tenantId, runId);
     await coordinator.initialize({
       tenantId: auth.tenantId,
       runId,
@@ -342,6 +342,12 @@ export async function createRunHandler(context: Context<AppEnv>) {
           runId,
           sessionId: mirroredRunSessionId
         });
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+
+      try {
+        await coordinator.reset();
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
       }

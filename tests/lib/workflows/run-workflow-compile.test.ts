@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { demoDecisionPackageFixture } from "../../../src/lib/fixtures/demo-decision-package";
-import { createMirrorClient } from "../run-session-mirror-fixture";
+import { buildRunRow, buildSessionRow, createMirrorClient } from "../run-session-mirror-fixture";
 
 const mocked = vi.hoisted(() => {
   const livePlan = {
@@ -59,7 +59,8 @@ const mocked = vi.hoisted(() => {
     state,
     getRunCoordinatorStub: vi.fn(() => ({
       initialize: vi.fn(async () => undefined),
-      publish: vi.fn(async () => undefined)
+      publish: vi.fn(async () => undefined),
+      reset: vi.fn(async () => undefined)
     })),
     createWorkerDatabaseClient: vi.fn(() => ({
       close,
@@ -508,6 +509,41 @@ describe("RunWorkflow compile routing", () => {
       createdAt: new Date("2026-04-17T00:00:00.000Z"),
       updatedAt: new Date("2026-04-17T00:00:00.000Z")
     }));
+    mocked.appendAndPublishRunEvent.mockImplementation(async () => ({
+      eventId: crypto.randomUUID(),
+      ts: new Date("2026-04-17T00:00:00.000Z")
+    }));
+    mocked.compileRunPlan.mockImplementation(async () => {
+      mocked.state.compiledPlan = mocked.persistedLivePlan;
+
+      return createLiveCompileResult();
+    });
+    mocked.compileDemoFixtureRunPlan.mockImplementation(async () => {
+      mocked.state.compiledPlan = mocked.fixturePlan;
+
+      return {
+        plan: mocked.fixturePlan,
+        completion: {
+          id: "chatcmpl-fixture",
+          model: "fixture-compile",
+          finishReason: "stop",
+          usage: {
+            totalTokens: 0
+          }
+        },
+        decisionPackageArtifactRef: {
+          artifactRefId: "decision-package-fixture"
+        },
+        planArtifactRef: {
+          artifactRefId: "run-plan-fixture"
+        },
+        taskHandoffArtifactRefs: [
+          {
+            artifactRefId: "task-handoff-fixture"
+          }
+        ]
+      };
+    });
   });
 
   it("uses the persisted compile artifact for think/live fanout", async () => {
@@ -725,6 +761,71 @@ describe("RunWorkflow compile routing", () => {
       /did not reach a terminal state within the polling window/
     );
 
+    expect(getState().session?.status).toBe("failed");
+    expect(getState().run?.status).toBe("failed");
+  });
+
+  it("retries terminal publication after the failed run row already exists", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const { client, getState } = createWorkflowMirrorClient({
+      session: buildSessionRow({
+        status: "failed",
+        metadata: {
+          project: {
+            projectId: "project-fixture",
+            projectKey: "fixture-demo-project",
+            displayName: "Fixture Demo Project"
+          },
+          workflowInstanceId: "run-run-123-tenant-fixtu",
+          executionEngine: "think",
+          runtime: "think",
+          options: {
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        },
+        updatedAt: new Date("2026-04-17T00:05:00.000Z")
+      }),
+      run: buildRunRow({
+        status: "failed",
+        endedAt: new Date("2026-04-17T00:05:00.000Z"),
+        updatedAt: new Date("2026-04-17T00:05:00.000Z")
+      })
+    });
+
+    useActualRunMirror(client);
+    mocked.compileDemoFixtureRunPlan.mockRejectedValue(new Error("compile step failed"));
+    mocked.appendAndPublishRunEvent.mockImplementation(async () => ({
+      eventId: crypto.randomUUID(),
+      ts: new Date("2026-04-17T00:00:00.000Z")
+    }));
+
+    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
+      /compile step failed/
+    );
+
+    const terminalPublicationInputs = (
+      mocked.appendAndPublishRunEvent.mock.calls as Array<unknown[]>
+    )
+      .map(
+        (call) =>
+          call[2] as
+            | { eventType?: string; idempotencyKey?: string; status?: string }
+            | undefined
+      )
+      .filter(
+        (input): input is { eventType: string; idempotencyKey?: string; status?: string } =>
+          input?.eventType === "session.error"
+      );
+
+    expect(terminalPublicationInputs).toHaveLength(1);
+    expect(terminalPublicationInputs[0]).toMatchObject({
+      eventType: "session.error",
+      idempotencyKey: "run.terminal:run-session-123:session.error:run-execution:failed",
+      status: "failed"
+    });
     expect(getState().session?.status).toBe("failed");
     expect(getState().run?.status).toBe("failed");
   });
