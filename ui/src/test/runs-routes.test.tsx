@@ -41,6 +41,36 @@ describe("Phase 2 runs routes", () => {
     expect(screen.getByRole("heading", { name: "Execution Plan conversation" })).toBeInTheDocument();
   });
 
+  it("redirects run-103 to architecture when execution-plan is unavailable", async () => {
+    const { router } = renderRoute("/runs/run-103");
+
+    expect(await screen.findByRole("heading", { name: "Run-103" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-103/architecture");
+    });
+    expect(
+      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
+        current: "page"
+      })
+    ).toHaveAttribute("href", "/runs/run-103/architecture");
+    expect(screen.getByRole("heading", { name: "Architecture conversation" })).toBeInTheDocument();
+  });
+
+  it("redirects run-101 to specification when only the specification doc exists", async () => {
+    const { router } = renderRoute("/runs/run-101");
+
+    expect(await screen.findByRole("heading", { name: "Run-101" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-101/specification");
+    });
+    expect(
+      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
+        current: "page"
+      })
+    ).toHaveAttribute("href", "/runs/run-101/specification");
+    expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+  });
+
   it("renders run index rows with run-detail navigation targets", async () => {
     const { router } = renderRoute("/runs");
 

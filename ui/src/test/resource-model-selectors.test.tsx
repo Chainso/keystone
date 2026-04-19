@@ -75,7 +75,8 @@ describe("resource-model selectors", () => {
           displayId: "Run-200",
           summary: "Execution plan only",
           status: "Draft",
-          updatedLabel: "now"
+          updatedLabel: "now",
+          hasCompiledTasks: false
         },
         {
           runId: "run-phase-architecture",
@@ -83,7 +84,8 @@ describe("resource-model selectors", () => {
           displayId: "Run-201",
           summary: "Architecture only",
           status: "Draft",
-          updatedLabel: "now"
+          updatedLabel: "now",
+          hasCompiledTasks: false
         },
         {
           runId: "run-phase-specification",
@@ -91,7 +93,8 @@ describe("resource-model selectors", () => {
           displayId: "Run-202",
           summary: "Specification only",
           status: "Draft",
-          updatedLabel: "now"
+          updatedLabel: "now",
+          hasCompiledTasks: false
         }
       ],
       documents: [
@@ -247,7 +250,8 @@ describe("resource-model selectors", () => {
           displayId: "Run-Alt-001",
           summary: "Alternate run",
           status: "Draft",
-          updatedLabel: "now"
+          updatedLabel: "now",
+          hasCompiledTasks: false
         }
       ]
     };

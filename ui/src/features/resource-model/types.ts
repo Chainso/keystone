@@ -29,6 +29,7 @@ export interface ResourceRun {
   summary: string;
   status: ResourceRunStatus;
   updatedLabel: string;
+  hasCompiledTasks: boolean;
 }
 
 export interface ResourceDocument {

@@ -207,7 +207,9 @@ export function getRunDefaultPhaseId(
   runId: string,
   dataset: ResourceModelDataset = uiScaffoldDataset
 ): RunPhaseId {
-  if (listRunTasks(runId, dataset).length > 0) {
+  const run = getRun(runId, dataset);
+
+  if (run?.hasCompiledTasks) {
     return "execution";
   }
 

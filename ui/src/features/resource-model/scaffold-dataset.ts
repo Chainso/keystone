@@ -25,7 +25,8 @@ const runs: ResourceRun[] = [
     displayId: "Run-104",
     summary: "UI workspace build",
     status: "In progress",
-    updatedLabel: "2m ago"
+    updatedLabel: "2m ago",
+    hasCompiledTasks: true
   },
   {
     runId: "run-103",
@@ -33,7 +34,8 @@ const runs: ResourceRun[] = [
     displayId: "Run-103",
     summary: "Docs refresh",
     status: "Complete",
-    updatedLabel: "1h ago"
+    updatedLabel: "1h ago",
+    hasCompiledTasks: false
   },
   {
     runId: "run-102",
@@ -41,7 +43,8 @@ const runs: ResourceRun[] = [
     displayId: "Run-102",
     summary: "Task steering work",
     status: "Blocked",
-    updatedLabel: "3h ago"
+    updatedLabel: "3h ago",
+    hasCompiledTasks: false
   },
   {
     runId: "run-101",
@@ -49,7 +52,8 @@ const runs: ResourceRun[] = [
     displayId: "Run-101",
     summary: "Initial operator UI",
     status: "Draft",
-    updatedLabel: "1d ago"
+    updatedLabel: "1d ago",
+    hasCompiledTasks: false
   }
 ];
 

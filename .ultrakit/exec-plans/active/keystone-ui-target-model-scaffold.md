@@ -147,6 +147,11 @@ Compatibility that **is** required:
   **Decision:** Rewire the runs index, run-detail shell, planning routes, and `/runs/:runId` redirect onto `resource-model` selectors, while replacing fake planning transcript/composer state with explicit planning workspaces backed by document revisions plus optional conversation locators.  
   **Rationale:** This removes the remaining Phase 2 dependency on `RunScaffold.currentPhase` and fake planning chat arrays without widening the change into execution/task detail or route-tree redesign.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 2 fix pass  
+  **Decision:** Tighten the default-phase selector to consult explicit run-level compiled-task availability instead of treating any run task as proof that execution should be the default destination, and add route coverage for the `architecture` and `specification` fallback branches.  
+  **Rationale:** The targeted review gap turned into a real regression once the missing fallback cases were tested: Phase 3 scaffold tasks still exist for some non-execution-default runs, so raw task presence was too broad for the approved redirect rule.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery and planning inputs gathered from the current repo docs, existing UI scaffold, and target-model decisions previously resolved in the Keystone modelling worktree.
@@ -154,6 +159,7 @@ Compatibility that **is** required:
 - [x] 2026-04-19 Phase 1 complete: added `ui/src/features/resource-model/` with target-model scaffold types, normalized dataset, selectors, canonical run-phase definitions, a lightweight provider seam, and focused selector/provider coverage while keeping the current route tree intact.
 - [x] 2026-04-19 Phase 1 targeted fix pass complete: made the project override shim remap project-scoped scaffold resources coherently and expanded tests to exercise mutable provider state plus scaffold meta wiring.
 - [x] 2026-04-19 Phase 2 complete: reworked `Runs` and planning routes around resource-model selectors, derived `/runs/:runId` redirects from target-model data, and replaced fake planning transcripts with explicit document-plus-locator workspaces.
+- [x] 2026-04-19 Phase 2 targeted fix pass complete: added redirect coverage for the `architecture` and `specification` fallback branches, and corrected the selector so only runs marked with compiled tasks default to `execution`.
 - [ ] 2026-04-19 Phase 3 pending: rework `Execution`, task detail, and `Workstreams` around tasks, workflow graph, artifacts, and conversation locators.
 - [ ] 2026-04-19 Phase 4 pending: rework `Documentation` around target-model document and revision contracts.
 - [ ] 2026-04-19 Phase 5 pending: rework project configuration scaffolds around target-model project and repository/component contracts.
@@ -171,6 +177,7 @@ Compatibility that **is** required:
 - Phase 1 exposed one compatibility seam immediately: existing run route scaffolds still import `runPhaseDefinitions` from `ui/src/shared/navigation/run-phases.ts`, so the new canonical phase metadata must be re-exported there until the later feature cutovers stop depending on the legacy modules.
 - The first Phase 1 implementation also exposed that a project override shim has to remap project-scoped scaffold resources, not just the top-level `projects` list, or future project selectors silently fall back to empty states.
 - Adding real run summary metadata to the shared run-detail header made one existing Phase 3 smoke test ambiguous because the run summary text duplicated a task title. The durable fix was to scope that assertion to the task-detail section instead of asserting global text uniqueness.
+- The Phase 2 fallback redirect tests exposed that the scaffold needs an explicit `hasCompiledTasks` signal on runs. Phase 3 task/workflow placeholders can exist for direct execution-route coverage even when the approved default destination should still be a planning document.
 
 ## Outcomes & Retrospective
 
@@ -199,6 +206,12 @@ Phase 2 outcome on 2026-04-19:
 - `ui/src/features/runs/use-runs-index-view-model.ts`, `use-run-view-model.ts`, and `ui/src/routes/runs/run-default-phase-route.tsx` now derive run stage labels, run header state, planning selections, and `/runs/:runId` redirects from the shared target-model dataset instead of `run-scaffold.ts`.
 - The planning routes now render explicit `SpecificationWorkspace`, `ArchitectureWorkspace`, and `ExecutionPlanWorkspace` variants over a shared planning frame that shows document revisions plus conversation locator metadata, removing fake transcript arrays and fake composer state from the Phase 2 contract.
 - `ui/src/test/runs-routes.test.tsx` now asserts derived redirect behavior and planning-route structure, while `ui/src/test/phase3-destinations.test.tsx` was tightened so the richer shared run header does not create brittle global text collisions.
+
+Phase 2 targeted fix pass outcome on 2026-04-19:
+
+- `ui/src/test/runs-routes.test.tsx` now covers the remaining default-phase fallback branches by proving `run-103` redirects to `architecture` and `run-101` redirects to `specification`.
+- `ui/src/features/resource-model/selectors.ts` now treats compiled-task availability as an explicit run-level scaffold property instead of inferring it from any task row, which restores the approved redirect rule without changing the route tree or reintroducing `currentPhase`.
+- Validation passed again with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
 ## Context and Orientation
 
@@ -275,7 +288,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 
 #### Phase Handoff
 
-- **Status:** Complete
+- **Status:** Complete (fixed after review)
 - **Goal:** Rework the `Runs` index, run detail shell, planning routes, and default-phase redirect to derive from the shared target-model scaffold resources.
 - **Scope Boundary:** In scope: runs index scaffolding, run header/stepper view models, planning workspace composition, and `/runs/:runId` redirect logic. Out of scope: execution/task detail, project-level workstreams, documentation, styling redesign, and live fetch wiring.
 - **Read First:**
@@ -309,8 +322,8 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** Target-model-based run/planning view models, explicit planning workspace composition or explicit planning route variants, and route tests updated away from fake run phase state and placeholder transcript assertions.
 - **Commit Expectation:** `Rework run scaffold around target model`
 - **Known Constraints / Baseline Failures:** Do not add `currentPhase` back into any scaffold contract. Avoid a single mode-switching planning workspace with boolean props. Keep tests focused on structural route behavior rather than transcript copy.
-- **Completion Notes:** Reworked the runs index and run-detail shell onto resource-model selectors, added selector-backed run header and phase-stepper view models, replaced the shared fake planning transcript workspace with explicit specification/architecture/execution-plan variants over a document-plus-conversation-locator frame, and changed `/runs/:runId` to redirect via `getRunSummary(...).defaultPhaseId` instead of `currentPhase`. Updated `ui/src/test/runs-routes.test.tsx` to assert derived redirect behavior and planning structure, and tightened one `ui/src/test/phase3-destinations.test.tsx` assertion so the richer run header does not create ambiguous text matches. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
-- **Next Starter Context:** Phase 3 can now treat the run shell and planning routes as fully cut over to `ui/src/features/resource-model/`. The remaining legacy run-scaffold dependency is execution/task detail, so the next pass should replace those execution/task contracts without reintroducing fake planner transcript state or `currentPhase`.
+- **Completion Notes:** Reworked the runs index and run-detail shell onto resource-model selectors, added selector-backed run header and phase-stepper view models, replaced the shared fake planning transcript workspace with explicit specification/architecture/execution-plan variants over a document-plus-conversation-locator frame, and changed `/runs/:runId` to redirect via `getRunSummary(...).defaultPhaseId` instead of `currentPhase`. The targeted fix pass then added route-level fallback coverage for `architecture` and `specification`, and tightened the selector so only runs with explicit compiled-task availability default to `execution`. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+- **Next Starter Context:** Phase 3 can now treat the run shell and planning routes as fully cut over to `ui/src/features/resource-model/`, with default-phase routing keyed off explicit `run.hasCompiledTasks` plus planning-document presence. The remaining legacy run-scaffold dependency is execution/task detail, so the next pass should replace those execution/task contracts without reintroducing fake planner transcript state or `currentPhase`.
 
 ### Phase 3: Execution And Workstreams Cutover
 
