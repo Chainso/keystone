@@ -43,6 +43,7 @@ const mocked = vi.hoisted(() => {
 
   return {
     close,
+    bucketGet: vi.fn(async () => null),
     bucketDelete: vi.fn(async () => undefined),
     bucketPut: vi.fn(async () => ({
       httpEtag: "etag-project-spec-v2",
@@ -52,6 +53,7 @@ const mocked = vi.hoisted(() => {
       createDocumentRepositoryClient(projectDocumentRepositoryFixture, close)
     ),
     deleteArtifactRef: vi.fn(async () => null),
+    getArtifactText: vi.fn(async (): Promise<string | null> => null),
     createArtifactRef: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       artifactRefId: "artifact-project-spec-v2",
@@ -346,6 +348,17 @@ vi.mock("../../src/lib/db/artifacts", async () => {
   };
 });
 
+vi.mock("../../src/lib/artifacts/r2", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/artifacts/r2")>(
+    "../../src/lib/artifacts/r2"
+  );
+
+  return {
+    ...actual,
+    getArtifactText: mocked.getArtifactText
+  };
+});
+
 vi.mock("../../src/http/handlers/runs", () => ({
   createRunHandler: vi.fn(),
   getRunEventsHandler: vi.fn(),
@@ -377,6 +390,7 @@ const { app } = await import("../../src/http/app");
 
 const env = {
   ARTIFACTS_BUCKET: {
+    get: mocked.bucketGet,
     delete: mocked.bucketDelete,
     put: mocked.bucketPut
   } as unknown as R2Bucket,
@@ -1240,6 +1254,73 @@ describe("project API", () => {
     );
   });
 
+  it("loads run-plan summaries for project run listing when session metadata no longer carries them", async () => {
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-read",
+        sessionId: "run-session-123",
+        runId: "run-123",
+        sessionType: "run" as const,
+        status: "archived",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-17T10:30:00.000Z"),
+        updatedAt: new Date("2026-04-17T11:30:00.000Z"),
+        metadata: {
+          project: {
+            projectId: "project-123",
+            projectKey: "fixture-demo-project",
+            displayName: "Fixture Demo Project"
+          },
+          decisionPackageId: "decision-package-ui-first-api",
+          runtime: "think",
+          options: {
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        }
+      }
+    ] as never);
+    mocked.getArtifactText.mockResolvedValueOnce(
+      JSON.stringify({
+        decisionPackageId: "decision-package-ui-first-api",
+        summary: "Compiled run-plan summary restored from the artifact.",
+        tasks: [
+          {
+            taskId: "task-greeting-tone",
+            title: "Adjust the greeting implementation",
+            summary: "Use the compiled artifact summary.",
+            instructions: ["Implement the approved change."],
+            acceptanceCriteria: ["Relevant checks pass."],
+            dependsOn: []
+          }
+        ]
+      })
+    );
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/runs",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        items: [
+          {
+            runId: "run-123",
+            summary: "Compiled run-plan summary restored from the artifact."
+          }
+        ]
+      }
+    });
+  });
+
   it("uses the run row as the authority when project-run listing sees legacy session drift", async () => {
     mocked.listProjectRuns.mockResolvedValueOnce([
       {
@@ -1284,7 +1365,7 @@ describe("project API", () => {
           }
         }
       }
-    ]);
+    ] as never);
 
     const response = await app.request(
       "http://example.com/v1/projects/project-123/runs",

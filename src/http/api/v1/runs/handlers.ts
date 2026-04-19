@@ -15,6 +15,7 @@ import { appendSessionEvent, listRunEvents } from "../../../../lib/db/events";
 import { getProject } from "../../../../lib/db/projects";
 import {
   createRunSessionMirror,
+  deleteRunSessionMirror,
   getRunRecord,
   listRunSessions
 } from "../../../../lib/db/runs";
@@ -183,6 +184,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
   const runId = crypto.randomUUID();
   const workflowInstanceId = buildRunWorkflowInstanceId(auth.tenantId, runId);
   const client = createWorkerDatabaseClient(context.env);
+  let mirroredRunSessionId: string | null = null;
+  let workflowCreated = false;
 
   try {
     const project = await getProject(client, {
@@ -211,6 +214,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
             displayName: project.displayName
           },
           decisionPackageId: input.decisionPackage.payload.decisionPackageId,
+          decisionPackageSummary: input.decisionPackage.payload.summary,
           decisionPackage: input.decisionPackage,
           executionEngine,
           runtime: executionEngine,
@@ -220,6 +224,68 @@ export async function createRunHandler(context: Context<AppEnv>) {
       projectId: project.projectId,
       workflowInstanceId,
       executionEngine
+    });
+    mirroredRunSessionId = session.sessionId;
+
+    const now = new Date();
+    const acceptedResponse = runActionEnvelopeSchema.parse({
+      data: {
+        status: "accepted",
+        workflowInstanceId,
+        run: projectRunResource({
+          tenantId: auth.tenantId,
+          runId,
+          runRecord,
+          sessions: [
+            {
+              tenantId: auth.tenantId,
+              sessionId: session.sessionId,
+              runId,
+              sessionType: "run",
+              status: session.status,
+              parentSessionId: null,
+              createdAt: session.createdAt instanceof Date ? session.createdAt : now,
+              updatedAt: session.updatedAt instanceof Date ? session.updatedAt : now,
+              metadata: {
+                ...(typeof session.metadata === "object" && session.metadata !== null
+                  ? session.metadata
+                  : {}),
+                project: {
+                  projectId: project.projectId,
+                  projectKey: project.projectKey,
+                  displayName: project.displayName
+                },
+                decisionPackageId: input.decisionPackage.payload.decisionPackageId,
+                decisionPackageSummary: input.decisionPackage.payload.summary,
+                decisionPackage: input.decisionPackage,
+                executionEngine,
+                runtime: executionEngine,
+                options
+              }
+            }
+          ],
+          events: [],
+          artifacts: [],
+          liveSnapshot: {
+            tenantId: auth.tenantId,
+            runId,
+            status: session.status,
+            updatedAt: (session.updatedAt instanceof Date ? session.updatedAt : now).toISOString(),
+            websocketCount: 0,
+            latestEvent: null,
+            eventCount: 1
+          },
+          runPlanSummary: {
+            decisionPackageId: input.decisionPackage.payload.decisionPackageId,
+            summary: input.decisionPackage.payload.summary
+          }
+        })
+      },
+      meta: {
+        apiVersion: "v1",
+        envelope: "action",
+        resourceType: "run"
+      }
     });
 
     await appendSessionEvent(client, {
@@ -263,69 +329,32 @@ export async function createRunHandler(context: Context<AppEnv>) {
         options
       }
     });
+    workflowCreated = true;
 
-    const now = new Date();
-    const run = projectRunResource({
-      tenantId: auth.tenantId,
-      runId,
-      runRecord,
-      sessions: [
-        {
+    return context.json(acceptedResponse, 202);
+  } catch (error) {
+    if (mirroredRunSessionId && !workflowCreated) {
+      const cleanupErrors: unknown[] = [];
+
+      try {
+        await deleteRunSessionMirror(client, {
           tenantId: auth.tenantId,
-          sessionId: session.sessionId,
           runId,
-          sessionType: "run",
-          status: session.status,
-          parentSessionId: null,
-          createdAt: session.createdAt instanceof Date ? session.createdAt : now,
-          updatedAt: session.updatedAt instanceof Date ? session.updatedAt : now,
-          metadata: {
-            ...(typeof session.metadata === "object" && session.metadata !== null ? session.metadata : {}),
-            project: {
-              projectId: project.projectId,
-              projectKey: project.projectKey,
-              displayName: project.displayName
-            },
-            decisionPackageId: input.decisionPackage.payload.decisionPackageId,
-            decisionPackage: input.decisionPackage,
-            executionEngine,
-            runtime: executionEngine,
-            options
-          }
-        }
-      ],
-      events: [],
-      artifacts: [],
-      liveSnapshot: {
-        tenantId: auth.tenantId,
-        runId,
-        status: session.status,
-        updatedAt: (session.updatedAt instanceof Date ? session.updatedAt : now).toISOString(),
-        websocketCount: 0,
-        latestEvent: null,
-        eventCount: 1
-      },
-      runPlanSummary: {
-        decisionPackageId: input.decisionPackage.payload.decisionPackageId,
-        summary: input.decisionPackage.payload.summary
+          sessionId: mirroredRunSessionId
+        });
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
       }
-    });
 
-    return context.json(
-      runActionEnvelopeSchema.parse({
-        data: {
-          status: "accepted",
-          workflowInstanceId,
-          run
-        },
-        meta: {
-          apiVersion: "v1",
-          envelope: "action",
-          resourceType: "run"
-        }
-      }),
-      202
-    );
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          "Run creation failed and mirror cleanup did not complete."
+        );
+      }
+    }
+
+    throw error;
   } finally {
     await client.close();
   }

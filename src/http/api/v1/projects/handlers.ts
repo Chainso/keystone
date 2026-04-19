@@ -20,7 +20,7 @@ import {
   serializeProjectResource
 } from "./contracts";
 import { runCollectionEnvelopeSchema } from "../runs/contracts";
-import { projectRunResource } from "../runs/projections";
+import { loadRunPlanSummary, projectRunResource } from "../runs/projections";
 
 function isUniqueViolation(error: unknown) {
   return (
@@ -278,9 +278,10 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
       tenantId: auth.tenantId,
       projectId
     });
-    const runSessions = await Promise.all(
-      runs.map((run) => listRunSessions(client, auth.tenantId, run.runId))
-    );
+    const [runSessions, runPlanSummaries] = await Promise.all([
+      Promise.all(runs.map((run) => listRunSessions(client, auth.tenantId, run.runId))),
+      Promise.all(runs.map((run) => loadRunPlanSummary(context.env, auth.tenantId, run.runId)))
+    ]);
     const items = runs.map((run, index) =>
       projectRunResource({
         tenantId: auth.tenantId,
@@ -290,7 +291,7 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
         events: [],
         artifacts: [],
         liveSnapshot: null,
-        runPlanSummary: null
+        runPlanSummary: runPlanSummaries[index] ?? null
       })
     );
 

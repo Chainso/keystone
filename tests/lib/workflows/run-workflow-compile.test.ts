@@ -516,7 +516,7 @@ describe("RunWorkflow compile routing", () => {
       },
       createdAt: new Date("2026-04-17T00:00:00.000Z"),
       updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    });
+    } as never);
 
     const result = await workflow.run(
       {

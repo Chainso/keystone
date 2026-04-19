@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   foreignKey,
   index,
@@ -11,6 +12,8 @@ import {
   uniqueIndex,
   uuid
 } from "drizzle-orm/pg-core";
+
+import type { DocumentKind, DocumentScopeType } from "../documents/model";
 
 const jsonbDefault = sql`'{}'::jsonb`;
 
@@ -314,15 +317,15 @@ export const runs = pgTable(
     sandboxId: text("sandbox_id"),
     status: text("status").notNull(),
     compiledSpecRevisionId: uuid("compiled_spec_revision_id").references(
-      () => documentRevisions.documentRevisionId,
+      (): AnyPgColumn => documentRevisions.documentRevisionId,
       { onDelete: "set null" }
     ),
     compiledArchitectureRevisionId: uuid("compiled_architecture_revision_id").references(
-      () => documentRevisions.documentRevisionId,
+      (): AnyPgColumn => documentRevisions.documentRevisionId,
       { onDelete: "set null" }
     ),
     compiledExecutionPlanRevisionId: uuid("compiled_execution_plan_revision_id").references(
-      () => documentRevisions.documentRevisionId,
+      (): AnyPgColumn => documentRevisions.documentRevisionId,
       { onDelete: "set null" }
     ),
     compiledAt: timestamp("compiled_at", { withTimezone: true }),
@@ -345,12 +348,12 @@ export const documents = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.projectId, { onDelete: "cascade" }),
-    runId: text("run_id").references(() => runs.runId, { onDelete: "cascade" }),
-    scopeType: text("scope_type").notNull(),
-    kind: text("kind").notNull(),
+    runId: text("run_id").references((): AnyPgColumn => runs.runId, { onDelete: "cascade" }),
+    scopeType: text("scope_type").$type<DocumentScopeType>().notNull(),
+    kind: text("kind").$type<DocumentKind>().notNull(),
     path: text("path").notNull(),
     currentRevisionId: uuid("current_revision_id").references(
-      () => documentRevisions.documentRevisionId,
+      (): AnyPgColumn => documentRevisions.documentRevisionId,
       { onDelete: "set null" }
     ),
     conversationAgentClass: text("conversation_agent_class"),
@@ -376,7 +379,7 @@ export const documentRevisions = pgTable(
     documentRevisionId: uuid("document_revision_id").primaryKey(),
     documentId: uuid("document_id")
       .notNull()
-      .references(() => documents.documentId, { onDelete: "cascade" }),
+      .references((): AnyPgColumn => documents.documentId, { onDelete: "cascade" }),
     artifactRefId: uuid("artifact_ref_id")
       .notNull()
       .references(() => artifactRefs.artifactRefId),

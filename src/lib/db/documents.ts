@@ -48,6 +48,14 @@ export interface CreateDocumentRevisionInput extends DocumentLookupInput {
 
 const DOCUMENT_REVISION_ARTIFACT_KIND = "document_revision";
 
+function requireInsertedRow<T>(row: T | undefined, message: string): T {
+  if (!row) {
+    throw new Error(message);
+  }
+
+  return row;
+}
+
 export interface DocumentWithCurrentRevision extends DocumentRow {
   currentRevision: DocumentRevisionRow | null;
 }
@@ -165,7 +173,10 @@ export async function createDocument(client: DatabaseClient, input: CreateDocume
     })
     .returning();
 
-  return inserted;
+  return requireInsertedRow(
+    inserted,
+    `Document insert returned no row for ${input.scopeType} document ${normalizedPath}.`
+  );
 }
 
 export async function getDocument(client: DatabaseClient, input: DocumentLookupInput) {
@@ -307,7 +318,7 @@ export async function createDocumentRevision(
       .from(documentRevisions)
       .where(eq(documentRevisions.documentId, input.documentId));
 
-    const [inserted] = await transaction
+    const [insertedRow] = await transaction
       .insert(documentRevisions)
       .values({
         documentRevisionId: input.documentRevisionId ?? crypto.randomUUID(),
@@ -317,12 +328,16 @@ export async function createDocumentRevision(
         title: input.title
       })
       .returning();
+    const inserted = requireInsertedRow(
+      insertedRow,
+      `Document revision insert returned no row for document ${input.documentId}.`
+    );
 
     if (input.setAsCurrent ?? true) {
       await transaction
         .update(documents)
         .set({
-          currentRevisionId: inserted?.documentRevisionId ?? null,
+          currentRevisionId: inserted.documentRevisionId,
           updatedAt: new Date()
         })
         .where(eq(documents.documentId, input.documentId));
@@ -383,7 +398,7 @@ export async function getDocumentWithCurrentRevision(
 
   return {
     ...document,
-    currentRevision
+    currentRevision: currentRevision ?? null
   };
 }
 
@@ -394,16 +409,20 @@ export async function listProjectDocumentsWithCurrentRevision(
   const projectDocuments = await listProjectDocuments(client, input);
 
   return Promise.all(
-    projectDocuments.map(async (document) => ({
-      ...document,
-      currentRevision: document.currentRevisionId
+    projectDocuments.map(async (document) => {
+      const currentRevision = document.currentRevisionId
         ? await getDocumentRevision(client, {
             tenantId: input.tenantId,
             documentId: document.documentId,
             documentRevisionId: document.currentRevisionId
           })
-        : null
-    }))
+        : null;
+
+      return {
+        ...document,
+        currentRevision: currentRevision ?? null
+      };
+    })
   );
 }
 
@@ -414,15 +433,19 @@ export async function listRunDocumentsWithCurrentRevision(
   const scopedRunDocuments = await listRunDocuments(client, input);
 
   return Promise.all(
-    scopedRunDocuments.map(async (document) => ({
-      ...document,
-      currentRevision: document.currentRevisionId
+    scopedRunDocuments.map(async (document) => {
+      const currentRevision = document.currentRevisionId
         ? await getDocumentRevision(client, {
             tenantId: input.tenantId,
             documentId: document.documentId,
             documentRevisionId: document.currentRevisionId
           })
-        : null
-    }))
+        : null;
+
+      return {
+        ...document,
+        currentRevision: currentRevision ?? null
+      };
+    })
   );
 }

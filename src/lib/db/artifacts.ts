@@ -7,6 +7,14 @@ import { artifactRefs } from "./schema";
 
 const PROJECT_SCOPED_ARTIFACT_RUN_ID_PREFIX = "project:";
 
+function requireInsertedRow<T>(row: T | undefined, message: string): T {
+  if (!row) {
+    throw new Error(message);
+  }
+
+  return row;
+}
+
 export interface CreateArtifactRefInput {
   tenantId: string;
   runId?: string | null | undefined;
@@ -109,7 +117,7 @@ export async function createArtifactRef(
     })
     .returning();
 
-  return inserted;
+  return requireInsertedRow(inserted, `Artifact ref insert returned no row for ${input.kind}.`);
 }
 
 export async function deleteArtifactRef(

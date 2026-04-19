@@ -29,10 +29,26 @@ const documentPathPattern = /^[a-z0-9]+(?:[a-z0-9/_-]*[a-z0-9])?$/;
 
 export function getCanonicalDocumentPath(scopeType: DocumentScopeType, kind: DocumentKind) {
   if (scopeType === "project") {
-    return projectScopedCanonicalPaths[kind];
+    switch (kind) {
+      case "specification":
+        return projectScopedCanonicalPaths.specification;
+      case "architecture":
+        return projectScopedCanonicalPaths.architecture;
+      default:
+        return undefined;
+    }
   }
 
-  return runScopedCanonicalPaths[kind];
+  switch (kind) {
+    case "specification":
+      return runScopedCanonicalPaths.specification;
+    case "architecture":
+      return runScopedCanonicalPaths.architecture;
+    case "execution_plan":
+      return runScopedCanonicalPaths.execution_plan;
+    default:
+      return undefined;
+  }
 }
 
 export function normalizeDocumentPath(path: string) {
@@ -66,7 +82,7 @@ export function validateDocumentKindPath(
 
   const normalizedPath = validateDocumentPath(path);
   const canonicalPath = getCanonicalDocumentPath(scopeType, kind);
-  const reservedPaths = new Set(
+  const reservedPaths = new Set<string>(
     Object.values(scopeType === "project" ? projectScopedCanonicalPaths : runScopedCanonicalPaths)
   );
 

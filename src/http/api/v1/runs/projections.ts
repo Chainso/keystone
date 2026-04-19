@@ -137,6 +137,13 @@ function getRunSummaryText(
   }
 
   const metadata = asRecord(runSession?.metadata);
+
+  const persistedSummary = asString(metadata?.decisionPackageSummary);
+
+  if (persistedSummary) {
+    return persistedSummary;
+  }
+
   const decisionPackage = asRecord(metadata?.decisionPackage);
   const payload = asRecord(decisionPackage?.payload);
 

@@ -12,6 +12,7 @@ import {
   runTaskDependencies,
   runTasks,
   runs,
+  sessionEvents,
   sessions,
   type RunRow,
   type SessionRow
@@ -111,6 +112,14 @@ type CompileProvenanceInput = Pick<
     | "compiledArchitectureRevisionId"
     | "compiledExecutionPlanRevisionId"
   >;
+
+function requireReturnedRow<T>(row: T | undefined, message: string): T {
+  if (!row) {
+    throw new Error(message);
+  }
+
+  return row;
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
@@ -299,7 +308,7 @@ async function insertRunRecord(db: RunDbExecutor, input: CreateRunRecordInput) {
     })
     .returning();
 
-  return inserted;
+  return requireReturnedRow(inserted, `Run insert returned no row for ${input.runId}.`);
 }
 
 async function updateRunRecordRow(
@@ -334,7 +343,7 @@ async function updateRunRecordRow(
     .where(and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId)))
     .returning();
 
-  return updated;
+  return requireReturnedRow(updated, `Run update returned no row for ${input.runId}.`);
 }
 
 async function findSessionRecord(
@@ -363,7 +372,7 @@ async function insertSessionRecordRow(db: RunDbExecutor, session: ReturnType<typ
     })
     .returning();
 
-  return inserted;
+  return requireReturnedRow(inserted, `Session insert returned no row for ${session.sessionId}.`);
 }
 
 function deriveRunSeedFromSession(
@@ -500,7 +509,10 @@ export async function createRunTask(client: DatabaseClient, input: CreateRunTask
     })
     .returning();
 
-  return inserted;
+  return requireReturnedRow(
+    inserted,
+    `Run task insert returned no row for ${input.runTaskId ?? "generated task"}.`
+  );
 }
 
 export async function getRunTask(
@@ -553,7 +565,7 @@ export async function updateRunTask(client: DatabaseClient, input: UpdateRunTask
     .where(and(eq(runTasks.runId, input.runId), eq(runTasks.runTaskId, input.runTaskId)))
     .returning();
 
-  return updated;
+  return requireReturnedRow(updated, `Run task update returned no row for ${input.runTaskId}.`);
 }
 
 export async function createRunTaskDependency(
@@ -576,7 +588,10 @@ export async function createRunTaskDependency(
     })
     .returning();
 
-  return inserted;
+  return requireReturnedRow(
+    inserted,
+    `Run task dependency insert returned no row for ${input.parentRunTaskId} -> ${input.childRunTaskId}.`
+  );
 }
 
 export async function listRunTaskDependencies(client: DatabaseClient, input: RunLookupInput) {
@@ -653,6 +668,46 @@ export async function createRunSessionMirror(
   });
 }
 
+export async function deleteRunSessionMirror(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    runId: string;
+    sessionId: string;
+  }
+) {
+  return client.db.transaction(async (transaction) => {
+    const deletedEvents = await transaction
+      .delete(sessionEvents)
+      .where(
+        and(
+          eq(sessionEvents.tenantId, input.tenantId),
+          eq(sessionEvents.runId, input.runId),
+          eq(sessionEvents.sessionId, input.sessionId)
+        )
+      )
+      .returning();
+
+    const deletedSessions = await transaction
+      .delete(sessions)
+      .where(
+        and(eq(sessions.tenantId, input.tenantId), eq(sessions.sessionId, input.sessionId))
+      )
+      .returning();
+
+    const deletedRuns = await transaction
+      .delete(runs)
+      .where(and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId)))
+      .returning();
+
+    return {
+      deletedEvents,
+      deletedSessions,
+      deletedRuns
+    };
+  });
+}
+
 export async function listRunSessions(
   client: DatabaseClient,
   tenantId: string,
@@ -707,7 +762,7 @@ export async function updateSessionStatus(
     assertSessionStatusTransition(existing.status as SessionStatus, input.status);
 
     const nextMetadata = input.metadata ?? existing.metadata;
-    const [updated] = await transaction
+    const [updatedRow] = await transaction
       .update(sessions)
       .set({
         status: input.status,
@@ -716,6 +771,10 @@ export async function updateSessionStatus(
       })
       .where(and(eq(sessions.tenantId, input.tenantId), eq(sessions.sessionId, input.sessionId)))
       .returning();
+    const updated = requireReturnedRow(
+      updatedRow,
+      `Session update returned no row for ${input.sessionId}.`
+    );
 
     if (existing.sessionType === "run") {
       const run = await findRunRecord(transaction, {

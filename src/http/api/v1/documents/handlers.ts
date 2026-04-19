@@ -4,6 +4,7 @@ import type { AppEnv } from "../../../../env";
 import {
   decodeArtifactBody,
   deleteArtifactObject,
+  InvalidArtifactBodyError,
   putArtifactBytes
 } from "../../../../lib/artifacts/r2";
 import { createArtifactRef, deleteArtifactRef } from "../../../../lib/db/artifacts";
@@ -37,19 +38,19 @@ import {
 
 const ARTIFACTS_BUCKET_NAME = "keystone-artifacts-dev";
 
-type ScopedDocumentParent =
-  | {
-      scopeType: "project";
-      tenantId: string;
-      projectId: string;
-      runId: null;
-    }
-  | {
-      scopeType: "run";
-      tenantId: string;
-      projectId: string;
-      runId: string;
-    };
+type ProjectDocumentParent = {
+  scopeType: "project";
+  tenantId: string;
+  projectId: string;
+  runId: null;
+};
+
+type RunDocumentParent = {
+  scopeType: "run";
+  tenantId: string;
+  projectId: string;
+  runId: string;
+};
 
 function parseDocumentCreateInput(value: unknown) {
   const result = documentCreateRequestSchema.safeParse(value);
@@ -84,6 +85,10 @@ function parseDocumentRevisionCreateInput(value: unknown) {
 }
 
 function resolveDocumentError(error: unknown) {
+  if (error instanceof InvalidArtifactBodyError) {
+    return jsonErrorResponse("invalid_request", error.message, 400);
+  }
+
   if (
     typeof error === "object" &&
     error !== null &&
@@ -171,7 +176,10 @@ function buildDocumentArtifactKey(input: {
   return `documents/run/${encodeURIComponent(input.runId)}/${encodeURIComponent(input.documentId)}/${encodeURIComponent(input.documentRevisionId)}`;
 }
 
-async function requireProjectParent(context: Context<AppEnv>, projectId: string): Promise<ScopedDocumentParent | null> {
+async function requireProjectParent(
+  context: Context<AppEnv>,
+  projectId: string
+): Promise<ProjectDocumentParent | null> {
   const auth = context.get("auth");
   const client = createWorkerDatabaseClient(context.env);
 
@@ -196,7 +204,10 @@ async function requireProjectParent(context: Context<AppEnv>, projectId: string)
   }
 }
 
-async function requireRunParent(context: Context<AppEnv>, runId: string): Promise<ScopedDocumentParent | null> {
+async function requireRunParent(
+  context: Context<AppEnv>,
+  runId: string
+): Promise<RunDocumentParent | null> {
   const auth = context.get("auth");
   const client = createWorkerDatabaseClient(context.env);
 
@@ -335,7 +346,7 @@ async function loadProjectDocument(
       return null;
     }
 
-    return getDocumentWithCurrentRevision(client, {
+    return await getDocumentWithCurrentRevision(client, {
       tenantId: auth.tenantId,
       documentId: document.documentId
     });
@@ -363,7 +374,7 @@ async function loadRunDocument(
       return null;
     }
 
-    return getDocumentWithCurrentRevision(client, {
+    return await getDocumentWithCurrentRevision(client, {
       tenantId: auth.tenantId,
       documentId: document.documentId
     });

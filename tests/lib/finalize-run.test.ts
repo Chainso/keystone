@@ -1,17 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runs, sessions } from "../../src/lib/db/schema";
+import type { SessionStatus } from "../../src/maestro/contracts";
 
 const mocked = vi.hoisted(() => {
   const state = {
+    artifactRefs: [] as Array<Record<string, unknown>>,
     artifactRefInputs: [] as Array<Record<string, unknown>>,
+    deletedObjects: [] as string[],
     events: [] as Array<Record<string, unknown>>,
     jsonWrites: [] as Array<{ key: string; value: unknown }>,
     statusUpdates: [] as Array<Record<string, unknown>>
   };
 
   function reset() {
+    state.artifactRefs.length = 0;
     state.artifactRefInputs.length = 0;
+    state.deletedObjects.length = 0;
     state.events.length = 0;
     state.jsonWrites.length = 0;
     state.statusUpdates.length = 0;
@@ -22,8 +27,7 @@ const mocked = vi.hoisted(() => {
     reset,
     createArtifactRef: vi.fn(async (_client, input) => {
       state.artifactRefInputs.push(input as Record<string, unknown>);
-
-      return {
+      const artifactRef = {
         artifactRefId: "run-summary-artifact",
         tenantId: input.tenantId,
         runId: input.runId,
@@ -38,6 +42,38 @@ const mocked = vi.hoisted(() => {
         createdAt: new Date("2026-04-17T00:00:00.000Z"),
         updatedAt: new Date("2026-04-17T00:00:00.000Z")
       };
+
+      state.artifactRefs.push(artifactRef as Record<string, unknown>);
+
+      return artifactRef;
+    }),
+    deleteArtifactRef: vi.fn(async (_client, input) => {
+      const index = state.artifactRefs.findIndex(
+        (artifactRef) => artifactRef.artifactRefId === input.artifactRefId
+      );
+
+      if (index === -1) {
+        return null;
+      }
+
+      const [deleted] = state.artifactRefs.splice(index, 1);
+      return deleted ?? null;
+    }),
+    getArtifactRef: vi.fn(async (_client, _tenantId, artifactRefId) => {
+      return (
+        state.artifactRefs.find((artifactRef) => artifactRef.artifactRefId === artifactRefId) ?? null
+      );
+    }),
+    findArtifactRefByStorageUri: vi.fn(async (_client, input) => {
+      return (
+        state.artifactRefs.find(
+          (artifactRef) =>
+            artifactRef.storageUri === input.storageUri &&
+            artifactRef.runId === input.runId &&
+            artifactRef.sessionId === input.sessionId &&
+            artifactRef.kind === input.kind
+        ) ?? null
+      );
     }),
     putArtifactJson: vi.fn(async (_bucket, _namespace, key, value) => {
       state.jsonWrites.push({
@@ -52,6 +88,9 @@ const mocked = vi.hoisted(() => {
         etag: "etag-run-summary",
         sizeBytes: JSON.stringify(value).length
       };
+    }),
+    deleteArtifactObject: vi.fn(async (_bucket, key) => {
+      state.deletedObjects.push(key);
     }),
     appendAndPublishRunEvent: vi.fn(async (_client, _env, input) => {
       state.events.push(input as Record<string, unknown>);
@@ -102,10 +141,14 @@ const mocked = vi.hoisted(() => {
 });
 
 vi.mock("../../src/lib/db/artifacts", () => ({
-  createArtifactRef: mocked.createArtifactRef
+  createArtifactRef: mocked.createArtifactRef,
+  deleteArtifactRef: mocked.deleteArtifactRef,
+  findArtifactRefByStorageUri: mocked.findArtifactRefByStorageUri,
+  getArtifactRef: mocked.getArtifactRef
 }));
 
 vi.mock("../../src/lib/artifacts/r2", () => ({
+  deleteArtifactObject: mocked.deleteArtifactObject,
   putArtifactJson: mocked.putArtifactJson
 }));
 
@@ -121,6 +164,7 @@ vi.mock("../../src/lib/db/runs", () => ({
 const { finalizeRun } = await import("../../src/keystone/integration/finalize-run");
 const {
   createRunSessionMirror: actualCreateRunSessionMirror,
+  getSessionRecord: actualGetSessionRecord,
   updateSessionStatus: actualUpdateSessionStatus
 } = await vi.importActual<typeof import("../../src/lib/db/runs")>("../../src/lib/db/runs");
 
@@ -203,6 +247,46 @@ function buildRunRow(
   };
 }
 
+type MirrorState = {
+  session: ReturnType<typeof buildSessionRow> | null;
+  run: ReturnType<typeof buildRunRow> | null;
+  project: {
+    tenantId: string;
+    projectId: string;
+  } | null;
+};
+
+type MirrorDb = {
+  query: {
+    projects: {
+      findFirst: (...args: unknown[]) => Promise<MirrorState["project"]>;
+    };
+    sessions: {
+      findFirst: (...args: unknown[]) => Promise<MirrorState["session"]>;
+    };
+    runs: {
+      findFirst: (...args: unknown[]) => Promise<MirrorState["run"]>;
+    };
+  };
+  insert: (
+    table: unknown
+  ) => {
+    values: (value: Record<string, unknown>) => {
+      returning: () => Promise<unknown[]>;
+    };
+  };
+  update: (
+    table: unknown
+  ) => {
+    set: (value: Record<string, unknown>) => {
+      where: () => {
+        returning: () => Promise<unknown[]>;
+      };
+    };
+  };
+  transaction: <T>(callback: (transaction: MirrorDb) => Promise<T>) => Promise<T>;
+};
+
 function createMirrorClient(
   options: {
     session?: ReturnType<typeof buildSessionRow> | null | undefined;
@@ -212,7 +296,7 @@ function createMirrorClient(
     projectExists?: boolean | undefined;
   } = {}
 ) {
-  let state = {
+  let state: MirrorState = {
     session: options.session === undefined ? null : structuredClone(options.session),
     run: options.run === undefined ? null : structuredClone(options.run),
     project:
@@ -228,7 +312,7 @@ function createMirrorClient(
     return structuredClone(state);
   }
 
-  function createDb(target: typeof state) {
+  function createDb(target: MirrorState): MirrorDb {
     return {
       query: {
         projects: {
@@ -291,7 +375,7 @@ function createMirrorClient(
           })
         })
       }),
-      transaction: async <T>(callback: (transaction: ReturnType<typeof createDb>) => Promise<T>) => {
+      transaction: async <T>(callback: (transaction: MirrorDb) => Promise<T>) => {
         const draft = cloneState();
         const result = await callback(createDb(draft));
         state = draft;
@@ -368,6 +452,152 @@ describe("finalizeRun", () => {
         })
       ])
     );
+  });
+
+  it("reuses an existing deterministic run-summary artifact ref on retry", async () => {
+    mocked.state.artifactRefs.push({
+      artifactRefId: "run-summary-artifact-existing",
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      sessionId: "run-session-123",
+      taskId: null,
+      runTaskId: null,
+      kind: "run_summary",
+      storageBackend: "r2",
+      storageUri:
+        "r2://keystone-artifacts-dev/tenants/tenant-fixture/runs/run-123/release/run-summary.json",
+      contentType: "application/json; charset=utf-8",
+      sizeBytes: 128,
+      metadata: {
+        key: "tenants/tenant-fixture/runs/run-123/release/run-summary.json"
+      },
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    });
+    mocked.putArtifactJson.mockResolvedValueOnce({
+      storageBackend: "r2",
+      storageUri:
+        "r2://keystone-artifacts-dev/tenants/tenant-fixture/runs/run-123/release/run-summary.json",
+      key: "tenants/tenant-fixture/runs/run-123/release/run-summary.json",
+      etag: "etag-run-summary-retry",
+      sizeBytes: 64
+    });
+
+    const result = await finalizeRun(
+      {
+        ARTIFACTS_BUCKET: {} as R2Bucket
+      } as never,
+      {} as never,
+      {
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        runSessionId: "run-session-123",
+        taskResults: [
+          {
+            taskId: "task-greeting-tone",
+            workflowStatus: "complete",
+            processStatus: "completed",
+            exitCode: 0,
+            logArtifactRefId: null
+          }
+        ]
+      }
+    );
+
+    expect(result.artifactRef.artifactRefId).toBe("run-summary-artifact-existing");
+    expect(mocked.createArtifactRef).not.toHaveBeenCalled();
+  });
+
+  it("cleans up a new summary artifact when final status persistence fails", async () => {
+    mocked.updateSessionStatus.mockRejectedValueOnce(new Error("status update failed"));
+
+    await expect(
+      finalizeRun(
+        {
+          ARTIFACTS_BUCKET: {} as R2Bucket
+        } as never,
+        {} as never,
+        {
+          tenantId: "tenant-fixture",
+          runId: "run-123",
+          runSessionId: "run-session-123",
+          taskResults: [
+            {
+              taskId: "task-greeting-tone",
+              workflowStatus: "complete",
+              processStatus: "completed",
+              exitCode: 0,
+              logArtifactRefId: null
+            }
+          ]
+        }
+      )
+    ).rejects.toThrow(/status update failed/);
+
+    expect(mocked.deleteArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        artifactRefId: "run-summary-artifact"
+      })
+    );
+    expect(mocked.deleteArtifactObject).toHaveBeenCalledWith(
+      expect.anything(),
+      "tenants/tenant-fixture/runs/run-123/release/run-summary.json"
+    );
+  });
+
+  it("mirrors finalization status into the authoritative run row", async () => {
+    const { client, getState } = createMirrorClient({
+      session: buildSessionRow(),
+      run: buildRunRow()
+    });
+
+    mocked.getSessionRecord.mockImplementationOnce(
+      ((dbClient: unknown, tenantId: string, sessionId: string) =>
+        actualGetSessionRecord(dbClient as never, tenantId, sessionId)) as never
+    );
+    mocked.updateSessionStatus.mockImplementationOnce(
+      ((dbClient: unknown, input: { tenantId: string; sessionId: string; status: SessionStatus; metadata?: Record<string, unknown> | undefined }) =>
+        actualUpdateSessionStatus(dbClient as never, input)) as never
+    );
+
+    const result = await finalizeRun(
+      {
+        ARTIFACTS_BUCKET: {} as R2Bucket
+      } as never,
+      client as never,
+      {
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        runSessionId: "run-session-123",
+        taskResults: [
+          {
+            taskId: "task-greeting-tone",
+            workflowStatus: "complete",
+            processStatus: "completed",
+            exitCode: 0,
+            logArtifactRefId: null
+          }
+        ]
+      }
+    );
+
+    const state = getState();
+
+    expect(result.finalStatus).toBe("archived");
+    expect(state.session?.status).toBe("archived");
+    expect(state.session?.metadata).toMatchObject({
+      runSummaryArtifactRefId: "run-summary-artifact",
+      successfulTasks: 1,
+      failedTasks: 0
+    });
+    expect(state.run).toMatchObject({
+      runId: "run-123",
+      executionEngine: "think",
+      status: "archived"
+    });
+    expect(state.run?.endedAt).toBeInstanceOf(Date);
   });
 });
 

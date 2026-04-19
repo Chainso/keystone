@@ -191,6 +191,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
                 displayName: project.displayName
               },
               decisionPackageId: decisionPackage.decisionPackageId,
+              decisionPackageSummary: decisionPackage.summary,
               workflowInstanceId
             }
           },
@@ -219,6 +220,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
             componentRuleOverrides: projectExecution.componentRuleOverrides
           },
           decisionPackageId: decisionPackage.decisionPackageId,
+          decisionPackageSummary: decisionPackage.summary,
           workflowInstanceId,
           executionEngine,
           runtime: executionEngine,

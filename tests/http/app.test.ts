@@ -70,6 +70,7 @@ const mocked = vi.hoisted(() => {
   }));
 
   return {
+    close,
     bucketGet: vi.fn(async () => null),
     bucketDelete: vi.fn(async () => undefined),
     bucketPut: vi.fn(async () => ({
@@ -105,6 +106,11 @@ const mocked = vi.hoisted(() => {
         createdAt: new Date("2026-04-14T00:00:00.000Z"),
         updatedAt: new Date("2026-04-14T00:00:00.000Z")
       }
+    })),
+    deleteRunSessionMirror: vi.fn(async () => ({
+      deletedEvents: [],
+      deletedSessions: [],
+      deletedRuns: []
     })),
     createSessionRecord: vi.fn(async (_client, spec) => ({
       tenantId: spec.tenantId,
@@ -443,6 +449,7 @@ vi.mock("../../src/lib/db/client", () => ({
 vi.mock("../../src/lib/db/runs", () => ({
   createRunSessionMirror: mocked.createRunSessionMirror,
   createSessionRecord: mocked.createSessionRecord,
+  deleteRunSessionMirror: mocked.deleteRunSessionMirror,
   getRunRecord: mocked.getRunRecord,
   listProjectRuns: mocked.listProjectRuns,
   listRunSessions: mocked.listRunSessions
@@ -939,6 +946,37 @@ describe("app", () => {
     );
   });
 
+  it("compensates the mirrored run rows when workflow launch fails", async () => {
+    mocked.runWorkflowCreate.mockRejectedValueOnce(new Error("workflow launch failed"));
+
+    const response = await app.request(
+      "http://example.com/v1/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          projectId: "project-fixture",
+          decisionPackage: buildInlineDecisionPackage()
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocked.deleteRunSessionMirror).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: expect.any(String),
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014"
+      })
+    );
+  });
+
   it("returns a run summary for an existing run", async () => {
     const response = await app.request(
       "http://example.com/v1/runs/run-123",
@@ -970,6 +1008,56 @@ describe("app", () => {
         apiVersion: "v1",
         envelope: "detail",
         resourceType: "run"
+      }
+    });
+  });
+
+  it("preserves run summary text after workflow metadata rewrites drop the nested decision package", async () => {
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: "run-123",
+        sessionType: "run",
+        status: "configured",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z"),
+        metadata: {
+          project: {
+            projectId: "project-fixture",
+            projectKey: "fixture-demo-project",
+            displayName: "Fixture Demo Project"
+          },
+          decisionPackageId: "decision-package-ui-first-api",
+          decisionPackageSummary: "Persisted summary from workflow metadata.",
+          executionEngine: "think",
+          runtime: "think",
+          options: {
+            thinkMode: "live",
+            preserveSandbox: true
+          }
+        }
+      }
+    ] as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        summary: "Persisted summary from workflow metadata."
       }
     });
   });
@@ -1016,7 +1104,7 @@ describe("app", () => {
           }
         }
       }
-    ]);
+    ] as never);
 
     const response = await app.request(
       "http://example.com/v1/runs/run-123",
@@ -1295,6 +1383,64 @@ describe("app", () => {
     expect(mocked.bucketDelete).toHaveBeenCalledWith(
       expect.stringMatching(/^documents\/run\/run-123\/doc-run-plan\//)
     );
+  });
+
+  it("deletes uploaded run revision blobs even when artifact-ref persistence fails before a ref exists", async () => {
+    mocked.createArtifactRef.mockRejectedValueOnce(new Error("artifact ref insert failed"));
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          title: "Execution Plan v2",
+          body: "# Update\n",
+          contentType: "text/markdown; charset=utf-8"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocked.deleteArtifactRef).not.toHaveBeenCalled();
+    expect(mocked.bucketDelete).toHaveBeenCalledWith(
+      expect.stringMatching(/^documents\/run\/run-123\/doc-run-plan\//)
+    );
+  });
+
+  it("rejects malformed base64 run document revisions as client validation errors", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          title: "Execution Plan v2",
+          body: "%%%not-base64%%%",
+          encoding: "base64",
+          contentType: "application/octet-stream"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+        message: 'Document body must be valid base64 when encoding is "base64".'
+      }
+    });
+    expect(mocked.bucketPut).not.toHaveBeenCalled();
   });
 
   it("rejects invalid canonical run document paths", async () => {

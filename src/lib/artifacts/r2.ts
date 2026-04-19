@@ -18,6 +18,13 @@ export interface R2ArtifactGetResult {
 
 export type ArtifactBodyEncoding = "utf-8" | "base64" | undefined;
 
+export class InvalidArtifactBodyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidArtifactBodyError";
+  }
+}
+
 export function toR2Uri(bucketName: string, key: string) {
   return `r2://${bucketName}/${key}`;
 }
@@ -108,7 +115,28 @@ export async function getArtifactBytes(
 
 export function decodeArtifactBody(content: string, encoding?: ArtifactBodyEncoding) {
   if (encoding === "base64") {
-    const binary = atob(content);
+    const normalized = content.replace(/\s+/g, "");
+
+    if (
+      normalized.length === 0 ||
+      normalized.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)
+    ) {
+      throw new InvalidArtifactBodyError(
+        'Document body must be valid base64 when encoding is "base64".'
+      );
+    }
+
+    let binary: string;
+
+    try {
+      binary = atob(normalized);
+    } catch {
+      throw new InvalidArtifactBodyError(
+        'Document body must be valid base64 when encoding is "base64".'
+      );
+    }
+
     const bytes = new Uint8Array(binary.length);
 
     for (let index = 0; index < binary.length; index += 1) {
