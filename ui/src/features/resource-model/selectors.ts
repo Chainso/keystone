@@ -14,7 +14,6 @@ import type {
   ResourceDocument,
   ResourceDocumentRevision,
   ResourceModelDataset,
-  ResourceDocumentKind,
   ResourceProject
 } from "./types";
 import { buildRunPath, buildRunTaskPath } from "../../shared/navigation/run-phases";
@@ -89,8 +88,62 @@ function getRevisionForDocument(
   return revision;
 }
 
-function compareDocumentsByLabel(left: ResourceDocument, right: ResourceDocument) {
-  return left.label.localeCompare(right.label);
+function compareDocumentationTreeDocuments(
+  left: DocumentationTreeDocument,
+  right: DocumentationTreeDocument
+) {
+  const labelOrder = left.label.localeCompare(right.label);
+
+  if (labelOrder !== 0) {
+    return labelOrder;
+  }
+
+  return left.path.localeCompare(right.path);
+}
+
+function getDocumentationPathSegments(path: string) {
+  return path.split("/").filter(Boolean);
+}
+
+function formatDocumentationGroupLabel(segment: string) {
+  return segment
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getDocumentationGroupDefinition(document: ResourceDocument) {
+  const pathSegments = getDocumentationPathSegments(document.path);
+  const groupSegments = pathSegments.slice(0, -1);
+  const primaryGroupSegment =
+    groupSegments[1] ?? groupSegments[0] ?? document.kind;
+
+  if (primaryGroupSegment === "product") {
+    return {
+      groupId: `${document.scopeType}:docs/product`,
+      label: "Product Specifications"
+    };
+  }
+
+  if (primaryGroupSegment === "architecture") {
+    return {
+      groupId: `${document.scopeType}:docs/architecture`,
+      label: "Technical Architecture"
+    };
+  }
+
+  if (primaryGroupSegment === "notes") {
+    return {
+      groupId: `${document.scopeType}:docs/notes`,
+      label: "Miscellaneous Notes"
+    };
+  }
+
+  return {
+    groupId: `${document.scopeType}:${groupSegments.join("/") || document.kind}`,
+    label: formatDocumentationGroupLabel(primaryGroupSegment)
+  };
 }
 
 export function listProjects(dataset: ResourceModelDataset = uiScaffoldDataset) {
@@ -287,49 +340,40 @@ export function listProjectWorkstreamTasks(
   });
 }
 
-const documentationGroupDefinitions = [
-  {
-    groupId: "product-specifications",
-    label: "Product Specifications",
-    kinds: ["product-specification"] as ResourceDocumentKind[]
-  },
-  {
-    groupId: "technical-architecture",
-    label: "Technical Architecture",
-    kinds: ["technical-architecture"] as ResourceDocumentKind[]
-  },
-  {
-    groupId: "miscellaneous-notes",
-    label: "Miscellaneous Notes",
-    kinds: ["miscellaneous-note"] as ResourceDocumentKind[]
-  }
-];
-
 export function listProjectDocumentationGroups(
   projectId: string,
   dataset: ResourceModelDataset = uiScaffoldDataset
 ): DocumentationTreeGroup[] {
   const indexes = getIndexes(dataset);
   const projectDocuments = indexes.projectDocumentsByProjectId.get(projectId) ?? [];
+  const groups = new Map<string, DocumentationTreeGroup>();
 
-  return documentationGroupDefinitions.map((group) => ({
-    groupId: group.groupId,
-    label: group.label,
-    documents: projectDocuments
-      .filter((document) => group.kinds.includes(document.kind))
-      .sort(compareDocumentsByLabel)
-      .map((document) => {
-        const revision = getRevisionForDocument(document, indexes);
+  for (const document of projectDocuments) {
+    const revision = getRevisionForDocument(document, indexes);
+    const groupDefinition = getDocumentationGroupDefinition(document);
+    const group =
+      groups.get(groupDefinition.groupId) ??
+      ({
+        groupId: groupDefinition.groupId,
+        label: groupDefinition.label,
+        documents: []
+      } satisfies DocumentationTreeGroup);
 
-        return {
-          documentId: document.documentId,
-          label: document.label,
-          title: document.title,
-          path: document.path,
-          viewerTitle: revision.viewerTitle,
-          contentLines: revision.contentLines
-        };
-      })
+    group.documents.push({
+      documentId: document.documentId,
+      label: document.label,
+      title: document.title,
+      path: document.path,
+      viewerTitle: revision.viewerTitle,
+      contentLines: revision.contentLines
+    });
+
+    groups.set(group.groupId, group);
+  }
+
+  return [...groups.values()].map((group) => ({
+    ...group,
+    documents: [...group.documents].sort(compareDocumentationTreeDocuments)
   }));
 }
 

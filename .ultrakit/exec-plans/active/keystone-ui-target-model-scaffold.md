@@ -167,6 +167,11 @@ Compatibility that **is** required:
   **Decision:** Rebuild Documentation around resource-model selectors, with project-scoped document grouping and selected-viewer fallback derived from current revisions, and expose document paths in the tree/viewer so structurally similar labels remain unambiguous.  
   **Rationale:** The old documentation scaffold duplicated project-document data locally and the tree used repeated labels like `Current`, which made selector-driven tests and accessible selection state brittle once the placeholder glyph contract was removed.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 4 fix pass  
+  **Decision:** Replace the fixed documentation grouping table with per-document grouping derived from document path metadata, and add focused coverage for duplicate-label selection plus revision-backed viewer payload.  
+  **Rationale:** The review correctly flagged that a central grouping table still smuggled hand-authored taxonomy into the selector layer, and the existing tests did not prove that the architecture `Current` entry or the selected revision payload actually drove the viewer.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery and planning inputs gathered from the current repo docs, existing UI scaffold, and target-model decisions previously resolved in the Keystone modelling worktree.
@@ -177,7 +182,7 @@ Compatibility that **is** required:
 - [x] 2026-04-19 Phase 2 targeted fix pass complete: added redirect coverage for the `architecture` and `specification` fallback branches, and corrected the selector so only runs marked with compiled tasks default to `execution`.
 - [x] 2026-04-19 Phase 3 complete: reworked `Execution`, task detail, and `Workstreams` around tasks, workflow graph, artifacts, and conversation locators.
 - [x] 2026-04-19 Phase 3 targeted fix pass complete: removed false sibling ordering cues from the execution board, switched execution-node tone to an explicit task-status mapping, and updated execution-route coverage to assert the clarified scaffold contract.
-- [x] 2026-04-19 Phase 4 complete: reworked `Documentation` around target-model document/revision selectors, current-project state, and structural selection coverage.
+- [x] 2026-04-19 Phase 4 complete: reworked `Documentation` around target-model document/revision selectors, current-project state, structural selection coverage, and a targeted fix pass that removed the hard-coded grouping table smell while tightening ambiguous-selection and revision-payload tests.
 - [ ] 2026-04-19 Phase 5 pending: rework project configuration scaffolds around target-model project and repository/component contracts.
 - [ ] 2026-04-19 Phase 6 pending: remove obsolete scaffold modules, update developer docs, and rerun final validation.
 
@@ -197,6 +202,7 @@ Compatibility that **is** required:
 - Phase 3 confirmed that project-scoped workstreams and direct task routes both depend on the same selector truth: some runs legitimately expose execution tasks for drill-down even when they still default to planning routes.
 - Phase 3's execution board can stay scaffold-only and depth-based, but it has to state that sibling nodes in the same row are parallel branches rather than implying a left-to-right sequence.
 - Documentation tree items need a second stable identifier beyond `label`. The project dataset legitimately contains multiple `Current` documents, so exposing `path` in the selector/view model keeps selection state and accessibility assertions unambiguous without reviving fake tree glyph contracts.
+- Documentation grouping also needs to derive from each document's own metadata and path, not from a central selector table, or the Phase 4 scaffold keeps one last hand-authored taxonomy seam hidden behind the normalized dataset.
 
 ## Outcomes & Retrospective
 
@@ -250,6 +256,12 @@ Phase 4 outcome on 2026-04-19:
 - `ui/src/features/documentation/use-documentation-view-model.ts` now reads the current project and documentation selection state from the shared resource-model provider instead of `documentation-scaffold.ts`, while `ui/src/features/resource-model/selectors.ts` now exposes a derived project-document selection contract with explicit fallback behavior.
 - `ui/src/features/documentation/components/documentation-workspace.tsx` now renders project document paths in the tree and viewer so the scaffold reflects document identity without relying on ASCII branch markers or duplicate `Current` labels.
 - `ui/src/test/resource-model-selectors.test.tsx` and `ui/src/test/phase3-destinations.test.tsx` now assert selector fallback and structural documentation selection behavior instead of placeholder tree glyphs or hard-coded body copy. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+
+Phase 4 targeted fix pass outcome on 2026-04-19:
+
+- `ui/src/features/resource-model/selectors.ts` now derives documentation group ids and labels per document from project-document path metadata instead of routing all grouping through a fixed `documentationGroupDefinitions` table, while still preserving the current scaffold labels for the existing project docs.
+- `ui/src/test/phase3-destinations.test.tsx` now clicks the architecture `Current` entry explicitly and proves that the viewer swaps to the architecture revision rather than just relying on same-label buttons being addressable by path.
+- `ui/src/test/resource-model-selectors.test.tsx` now verifies both document-derived grouping for a new path bucket and that `viewerTitle` plus `contentLines` come from the selected revision payload. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
 ## Context and Orientation
 
@@ -406,7 +418,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 
 #### Phase Handoff
 
-- **Status:** Complete
+- **Status:** Complete (fixed after review)
 - **Goal:** Rework Documentation so it derives from target-model documents and revisions while preserving the existing route and shell behavior.
 - **Scope Boundary:** In scope: documentation tree/viewer derivation, document selection state, and structural documentation tests. Out of scope: project configuration, styling redesign, document persistence, and route changes.
 - **Read First:**
@@ -428,7 +440,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** Documentation scaffold aligned with target-model document and revision nouns, with tests updated away from placeholder tree glyph/copy assertions.
 - **Commit Expectation:** `Align documentation scaffold with target model`
 - **Known Constraints / Baseline Failures:** Do not introduce real save behavior or network calls in this phase. Keep the route tree unchanged.
-- **Completion Notes:** Reworked `ui/src/features/documentation/use-documentation-view-model.ts` to derive groups and selected viewer state from `ui/src/features/resource-model/selectors.ts` plus the shared current-project provider seam, and updated `documentation-workspace.tsx` to render document paths as stable identities in the tree and viewer. Expanded `ui/src/test/resource-model-selectors.test.tsx` with documentation-selection fallback coverage and rewrote the documentation assertions in `ui/src/test/phase3-destinations.test.tsx` around structural selection state rather than branch glyphs or placeholder copy. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+- **Completion Notes:** Reworked `ui/src/features/documentation/use-documentation-view-model.ts` to derive groups and selected viewer state from `ui/src/features/resource-model/selectors.ts` plus the shared current-project provider seam, and updated `documentation-workspace.tsx` to render document paths as stable identities in the tree and viewer. Expanded `ui/src/test/resource-model-selectors.test.tsx` with documentation-selection fallback coverage and rewrote the documentation assertions in `ui/src/test/phase3-destinations.test.tsx` around structural selection state rather than branch glyphs or placeholder copy. The targeted fix pass then replaced the fixed documentation grouping table with per-document path-derived grouping and added focused coverage for the duplicate `Current` architecture selection plus revision-backed viewer payload. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 - **Next Starter Context:** Phase 5 can treat Documentation as fully cut over to `ui/src/features/resource-model/`. The next pass should leave the route tree alone and apply the same contract-first approach to `New project` and `Project settings`, aligning their view models with project, component, rule, and environment data without turning them into a shared mode-heavy workspace.
 
 ### Phase 5: Project Configuration Cutover

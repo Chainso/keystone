@@ -189,6 +189,49 @@ describe("resource-model selectors", () => {
     expect(workstreamTasks[3]?.detailPath).toBe("/runs/run-104/execution/tasks/task-032");
   });
 
+  it("derives documentation groups from document path metadata instead of a fixed group table", () => {
+    const dataset: ResourceModelDataset = {
+      ...uiScaffoldDataset,
+      documents: [
+        ...uiScaffoldDataset.documents,
+        {
+          documentId: "project-decision-log",
+          projectId: "project-keystone-cloudflare",
+          scopeType: "project",
+          kind: "miscellaneous-note",
+          label: "Decision log",
+          title: "Decision log",
+          path: "docs/decision-log/current.md",
+          currentRevisionId: "project-decision-log-rev-1"
+        }
+      ],
+      documentRevisions: [
+        ...uiScaffoldDataset.documentRevisions,
+        {
+          revisionId: "project-decision-log-rev-1",
+          documentId: "project-decision-log",
+          viewerTitle: "decision log",
+          contentLines: ["Document-derived grouping should surface new buckets automatically."]
+        }
+      ]
+    };
+
+    expect(listProjectDocumentationGroups("project-keystone-cloudflare", dataset)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          groupId: "project:docs/decision-log",
+          label: "Decision Log",
+          documents: [
+            expect.objectContaining({
+              documentId: "project-decision-log",
+              path: "docs/decision-log/current.md"
+            })
+          ]
+        })
+      ])
+    );
+  });
+
   it("falls back to the first project document when the current selection is missing", () => {
     const defaultSelection = getProjectDocumentationSelection(
       "project-keystone-cloudflare",
@@ -207,6 +250,22 @@ describe("resource-model selectors", () => {
     expect(missingSelection?.selectedDocument.documentId).toBe("project-spec-current");
     expect(explicitSelection?.selectedDocument.documentId).toBe("project-open-questions");
     expect(explicitSelection?.selectedDocument.path).toBe("docs/notes/open-questions.md");
+  });
+
+  it("returns viewer payload from the selected document revision", () => {
+    const selection = getProjectDocumentationSelection(
+      "project-keystone-cloudflare",
+      "project-architecture-current"
+    );
+
+    expect(selection?.selectedDocument.documentId).toBe("project-architecture-current");
+    expect(selection?.selectedDocument.title).toBe("Current technical architecture");
+    expect(selection?.selectedDocument.viewerTitle).toBe("current living architecture + decisions");
+    expect(selection?.selectedDocument.contentLines).toEqual([
+      "The product runs as a Cloudflare-served SPA with route-owned destinations and feature-owned rendering surfaces.",
+      "Run detail owns planning and execution views, while Documentation and Workstreams stay project-level destinations.",
+      "The shared shell provides navigation and layout primitives without turning every destination into one large route module."
+    ]);
   });
 
   it("keeps project context available through the resource-model provider seam", () => {

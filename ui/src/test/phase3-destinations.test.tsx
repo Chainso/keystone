@@ -96,6 +96,9 @@ describe("Phase 3 destination scaffolds", () => {
     const currentSpecButton = within(documentationTree).getByRole("button", {
       name: "Current docs/product/current.md"
     });
+    const currentArchitectureButton = within(documentationTree).getByRole("button", {
+      name: "Current docs/architecture/current.md"
+    });
     const openQuestionsButton = within(documentationTree).getByRole("button", {
       name: "Open questions docs/notes/open-questions.md"
     });
@@ -104,8 +107,26 @@ describe("Phase 3 destination scaffolds", () => {
     expect(documentViewer).not.toBeNull();
 
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "true");
+    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
     expect(within(documentViewer as HTMLElement).getByText("docs/product/current.md")).toBeInTheDocument();
+
+    fireEvent.click(currentArchitectureButton);
+
+    expect(
+      await screen.findByRole("heading", { name: "current living architecture + decisions" })
+    ).toBeInTheDocument();
+    expect(
+      within(documentViewer as HTMLElement).getByText("docs/architecture/current.md")
+    ).toBeInTheDocument();
+    expect(
+      within(documentViewer as HTMLElement).getByText(
+        "The product runs as a Cloudflare-served SPA with route-owned destinations and feature-owned rendering surfaces."
+      )
+    ).toBeInTheDocument();
+    expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
+    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "true");
+    expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
 
     fireEvent.click(openQuestionsButton);
 
@@ -114,6 +135,7 @@ describe("Phase 3 destination scaffolds", () => {
       within(documentViewer as HTMLElement).getByText("docs/notes/open-questions.md")
     ).toBeInTheDocument();
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
+    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "true");
     expect(
       within(documentationTree)
