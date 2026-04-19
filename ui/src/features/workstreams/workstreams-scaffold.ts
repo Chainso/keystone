@@ -38,7 +38,7 @@ export const workstreamRows: WorkstreamRowScaffold[] = [
     runDisplayId: "Run-103",
     status: "Running",
     updatedLabel: "9m ago",
-    detailPath: buildRunTaskPath("run-103", "task-032")
+    detailPath: buildRunTaskPath("run-103", "task-021")
   },
   {
     rowId: "run-101-task-019",
@@ -47,7 +47,7 @@ export const workstreamRows: WorkstreamRowScaffold[] = [
     runDisplayId: "Run-101",
     status: "Blocked",
     updatedLabel: "1h ago",
-    detailPath: buildRunTaskPath("run-101", "task-033")
+    detailPath: buildRunTaskPath("run-101", "task-019")
   }
 ];
 

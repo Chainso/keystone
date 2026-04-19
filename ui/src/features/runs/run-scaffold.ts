@@ -179,7 +179,14 @@ const planningCopy = {
 } as const satisfies Record<RunPlanningPhaseId, Omit<PlanningPhaseScaffold, "phaseId">>;
 
 function createExecutionTasks(runId: string): ExecutionTaskScaffold[] {
-  return [
+  const taskIdRemap =
+    runId === "run-103"
+      ? { "task-032": "task-021" }
+      : runId === "run-101"
+        ? { "task-033": "task-019" }
+        : {};
+
+  const tasks = [
     {
       taskId: "task-029",
       displayId: "TASK-029",
@@ -241,6 +248,44 @@ function createExecutionTasks(runId: string): ExecutionTaskScaffold[] {
       detailPath: buildRunTaskPath(runId, "task-034")
     }
   ];
+
+  return tasks
+    .map((task) => {
+      const taskId = taskIdRemap[task.taskId as keyof typeof taskIdRemap] ?? task.taskId;
+
+      return {
+        ...task,
+        taskId,
+        dependsOn: task.dependsOn.map((dependency) => {
+          return taskIdRemap[dependency as keyof typeof taskIdRemap] ?? dependency;
+        }),
+        blockedBy: task.blockedBy.map((dependency) => {
+          return taskIdRemap[dependency as keyof typeof taskIdRemap] ?? dependency;
+        }),
+        detailPath: buildRunTaskPath(runId, taskId)
+      };
+    })
+    .map((task) => {
+      if (task.taskId === "task-021") {
+        return {
+          ...task,
+          displayId: "TASK-021",
+          graphLabel: "Docs",
+          title: "Docs refresh"
+        };
+      }
+
+      if (task.taskId === "task-019") {
+        return {
+          ...task,
+          displayId: "TASK-019",
+          graphLabel: "Review",
+          title: "Review fix"
+        };
+      }
+
+      return task;
+    });
 }
 
 function createPlanningPhases(): Record<RunPlanningPhaseId, PlanningPhaseScaffold> {

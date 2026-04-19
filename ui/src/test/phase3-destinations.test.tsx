@@ -51,6 +51,10 @@ function expectWorkstreamRows(expectedRows: string[][]) {
   });
 }
 
+function expectWorkstreamLink(taskDisplayId: string, href: string) {
+  expect(screen.getByRole("link", { name: taskDisplayId })).toHaveAttribute("href", href);
+}
+
 describe("Phase 3 destination scaffolds", () => {
   it("renders the documentation tree shape and switches selection without the removed scaffold chrome", async () => {
     renderRoute("/documentation");
@@ -118,18 +122,24 @@ describe("Phase 3 destination scaffolds", () => {
       ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"],
       ["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]
     ]);
+    expectWorkstreamLink("TASK-032", "/runs/run-104/execution/tasks/task-032");
+    expectWorkstreamLink("TASK-033", "/runs/run-104/execution/tasks/task-033");
+    expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
+    expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
 
     fireEvent.click(screen.getByRole("button", { name: "Running" }));
     expectWorkstreamRows([
       ["TASK-032", "Build shell", "Run-104", "Running", "2m ago"],
       ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"]
     ]);
+    expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
 
     fireEvent.click(screen.getByRole("button", { name: "Queued" }));
     expectWorkstreamRows([["TASK-033", "DAG wiring", "Run-104", "Queued", "4m ago"]]);
 
     fireEvent.click(screen.getByRole("button", { name: "Blocked" }));
     expectWorkstreamRows([["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]]);
+    expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expectWorkstreamRows([
@@ -138,6 +148,20 @@ describe("Phase 3 destination scaffolds", () => {
       ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"],
       ["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]
     ]);
+  });
+
+  it("opens canonical workstream task routes without falling back to placeholder task ids", async () => {
+    renderRoute("/runs/run-103/execution/tasks/task-021");
+
+    expect(await screen.findByRole("heading", { name: "Run-103 / TASK-021" })).toBeInTheDocument();
+    expect(screen.getByText("Docs refresh")).toBeInTheDocument();
+
+    cleanup();
+
+    renderRoute("/runs/run-101/execution/tasks/task-019");
+
+    expect(await screen.findByRole("heading", { name: "Run-101 / TASK-019" })).toBeInTheDocument();
+    expect(screen.getByText("Review fix")).toBeInTheDocument();
   });
 
   it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {
