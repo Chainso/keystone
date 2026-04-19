@@ -201,6 +201,7 @@ Compatibility that **is** required:
 - [x] 2026-04-19 Phase 5 complete: reworked project configuration scaffolds around target-model project, component, rule, and environment contracts, while preserving explicit `new` and `settings` variants.
 - [x] 2026-04-19 Phase 5 targeted fix pass complete: aligned the override current-project description with project configuration overview data, resynchronized the settings components tab when the current project changes, and added selector plus `/settings` regression coverage for non-default current-project state.
 - [x] 2026-04-19 Phase 6 complete: deleted obsolete destination-local scaffold modules, updated M1 architecture/runbook docs plus durable notes, and reran the full validation set including a host-shell `build` after reproducing the sandbox Wrangler/Docker write failure.
+- [x] 2026-04-19 Final targeted fix pass complete: aligned the run phase stepper with renderable execution DAG data, carried selected component `kindId` through the project-configuration draft helper honestly, and reran `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
 ## Surprises & Discoveries
 
@@ -222,6 +223,7 @@ Compatibility that **is** required:
 - Project override datasets also need to remap project-scoped configuration resources, not just runs/documents/tasks, or the settings surface silently falls back to the scaffold default project even when the provider seam is pointed at an override project.
 - The settings components tab keeps local draft state for add-component interactions, so the hook has to reset that local state when the underlying project-scoped configuration seed changes; otherwise switching the current project leaves stale component cards on screen.
 - By the closure pass, `run-scaffold.ts`, `documentation-scaffold.ts`, and `workstreams-scaffold.ts` were fully dead. Removing them cleanly confirmed that `ui/src/features/resource-model/` plus feature-local view-model hooks are now the only scaffold source-of-truth seam.
+- The final review also exposed that execution phase availability cannot simply mirror redirect eligibility or document presence; the run stepper has to hide the `execution` link unless a workflow graph exists for that run, because some scaffold runs still expose planning docs without a renderable DAG.
 - Final `build` validation still fails inside the sandbox for the same environment reasons as baseline, but the concrete blockers are stable: Wrangler cannot write logs under `~/.config/.wrangler` and Docker buildx cannot update activity files under `~/.docker`; the same command passes from a host-permitted shell.
 
 ## Outcomes & Retrospective
@@ -300,6 +302,12 @@ Phase 6 outcome on 2026-04-19:
 - Deleted `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`, removing the last dead destination-local scaffold sources left behind after the earlier cutovers.
 - Updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` so the repo docs now describe the shared target-model scaffold architecture truthfully and call out `ui/src/features/resource-model/` as the only checked-in UI scaffold source of truth.
 - Final validation passed with `rtk npm run lint`, `rtk npm run test`, `rtk npm run typecheck`, and `rtk npm run build` after rerunning `build` outside the sandbox. The sandbox attempt still failed first with the expected `EROFS` writes under `~/.config/.wrangler` and `~/.docker`, so the host-shell caveat remains accurate rather than hypothetical.
+
+Final targeted fix pass outcome on 2026-04-19:
+
+- `ui/src/features/runs/use-run-view-model.ts` now advertises the `execution` phase only when the selected run has a renderable workflow graph, so runs like `run-102` stay routed by the approved planning fallback rule without exposing an execution link that would dead-end.
+- `ui/src/features/execution/use-execution-view-model.ts` now centralizes workflow-graph task resolution in one helper, and `ui/src/features/projects/{project-configuration-scaffold,use-project-configuration-view-model}.ts` now carry the selected component `kindId` through the draft-creation path instead of ignoring the callback argument.
+- `ui/src/test/runs-routes.test.tsx` and `ui/src/test/resource-model-selectors.test.tsx` now cover the hidden execution step for non-renderable runs, preserved execution availability for runs that do have a DAG, and the honest component-draft helper contract. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
 ## Context and Orientation
 
@@ -537,8 +545,8 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** Clean scaffold source tree, updated developer docs, and final validation evidence recorded in the plan.
 - **Commit Expectation:** `Document target-model UI scaffold`
 - **Known Constraints / Baseline Failures:** `npm run build` may still require a host shell on this machine because Wrangler/Docker write outside the sandbox. Do not leave dead scaffold modules presenting a second source of truth.
-- **Completion Notes:** Deleted the dead destination-local scaffold modules at `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`; updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` to describe the shared `ui/src/features/resource-model/` scaffold truthfully; and reran final validation. `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` passed in the sandbox. `rtk npm run build` first failed in the sandbox with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity`, then passed from a host-permitted shell as expected.
-- **Next Starter Context:** Phase execution is complete. The tree is ready for orchestrator review and final archival of the plan; preserve the pre-existing unstaged change in `.ultrakit/exec-plans/active/index.md` during that follow-up.
+- **Completion Notes:** Deleted the dead destination-local scaffold modules at `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`; updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` to describe the shared `ui/src/features/resource-model/` scaffold truthfully; reran final validation; and then completed a final targeted fix pass that hides the `execution` step when no workflow graph can render and makes the project-configuration draft helper consume the selected `kindId` honestly. `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` passed again in the sandbox. `rtk npm run build` first failed in the sandbox with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity`, then passed from a host-permitted shell as expected.
+- **Next Starter Context:** Phase execution is complete, including the final targeted fix pass. The tree is ready for orchestrator review and archival of the plan; preserve the pre-existing unstaged change in `.ultrakit/exec-plans/active/index.md` during that follow-up.
 
 ## Concrete Steps
 

@@ -2,6 +2,7 @@ import { useResourceModel } from "../resource-model/context";
 import {
   getRunPlanningDocument,
   getRunSummary,
+  getRunWorkflowGraph,
   listRunPlanningDocuments
 } from "../resource-model/selectors";
 import {
@@ -66,13 +67,17 @@ export function useRunPhaseStepperViewModel(runId: string) {
   const availablePlanningPhases = new Set(
     listRunPlanningDocuments(runId, dataset).map((selection) => selection.phaseId)
   );
+  const hasRenderableExecution = getRunWorkflowGraph(runId, dataset) !== null;
 
   return {
     steps: runPhaseDefinitions.map((phase) => ({
       phaseId: phase.id,
       label: phase.label,
       href: buildRunPhasePath(runId, phase.id),
-      isAvailable: phase.id === "execution" || availablePlanningPhases.has(phase.id)
+      isAvailable:
+        phase.id === "execution"
+          ? hasRenderableExecution
+          : availablePlanningPhases.has(phase.id)
     }))
   };
 }

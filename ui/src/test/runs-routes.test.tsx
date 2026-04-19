@@ -38,6 +38,12 @@ describe("Phase 2 runs routes", () => {
         current: "page"
       })
     ).toHaveAttribute("href", "/runs/run-102/execution-plan");
+    const navigation = screen.getByRole("navigation", { name: "Run phases" });
+    expect(within(navigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
+    expect(within(navigation).getByText("Execution").closest(".run-step-link")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
     expect(screen.getByRole("heading", { name: "Execution Plan conversation" })).toBeInTheDocument();
   });
 
@@ -53,6 +59,11 @@ describe("Phase 2 runs routes", () => {
         current: "page"
       })
     ).toHaveAttribute("href", "/runs/run-103/architecture");
+    expect(
+      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
+        name: "Execution"
+      })
+    ).toHaveAttribute("href", "/runs/run-103/execution");
     expect(screen.getByRole("heading", { name: "Architecture conversation" })).toBeInTheDocument();
   });
 

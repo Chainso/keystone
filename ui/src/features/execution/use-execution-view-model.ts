@@ -56,6 +56,24 @@ export interface TaskDetailViewModel {
   artifacts: TaskArtifactViewModel[];
 }
 
+function getRunExecutionTasks(runId: string, dataset: Parameters<typeof getRunWorkflowGraph>[1]) {
+  const workflowGraph = getRunWorkflowGraph(runId, dataset);
+
+  if (!workflowGraph) {
+    throw new Error(`Run "${runId}" has no workflow graph in the scaffold dataset.`);
+  }
+
+  return workflowGraph.nodes.map((node) => {
+    const task = getTask(node.taskId, dataset);
+
+    if (!task || task.runId !== runId) {
+      throw new Error(`Workflow graph for run "${runId}" references missing task "${node.taskId}".`);
+    }
+
+    return task;
+  });
+}
+
 function groupTaskIdsByDepth(tasks: ResourceTask[]) {
   const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
   const depthByTaskId = new Map<string, number>();
@@ -133,22 +151,7 @@ function selectTaskDependency(
 
 export function useRunExecutionViewModel(runId: string): RunExecutionViewModel {
   const { state } = useResourceModel();
-  const workflowGraph = getRunWorkflowGraph(runId, state.dataset);
-
-  if (!workflowGraph) {
-    throw new Error(`Run "${runId}" has no workflow graph in the scaffold dataset.`);
-  }
-
-  const tasks = workflowGraph.nodes.map((node) => {
-    const task = getTask(node.taskId, state.dataset);
-
-    if (!task || task.runId !== runId) {
-      throw new Error(`Workflow graph for run "${runId}" references missing task "${node.taskId}".`);
-    }
-
-    return task;
-  });
-
+  const tasks = getRunExecutionTasks(runId, state.dataset);
   const rowsByDepth = groupTaskIdsByDepth(tasks);
 
   return {

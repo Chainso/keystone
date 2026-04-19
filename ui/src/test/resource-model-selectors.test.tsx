@@ -10,6 +10,7 @@ import {
   useCurrentProject,
   type CurrentProject
 } from "../features/projects/project-context";
+import { buildProjectConfigurationComponentDraft } from "../features/projects/project-configuration-scaffold";
 import { useProjectSettingsComponentsViewModel } from "../features/projects/use-project-configuration-view-model";
 import {
   ResourceModelProvider,
@@ -322,6 +323,21 @@ describe("resource-model selectors", () => {
         localPath: "./services/api"
       })
     ]);
+  });
+
+  it("builds project component drafts from the selected kind id", () => {
+    expect(buildProjectConfigurationComponentDraft("new", 0, "git_repository")).toEqual(
+      expect.objectContaining({
+        componentId: "new-component-1",
+        kind: "git_repository"
+      })
+    );
+    expect(buildProjectConfigurationComponentDraft("settings", 0, "git_repository")).toEqual(
+      expect.objectContaining({
+        componentId: "component-worker-app",
+        kind: "git_repository"
+      })
+    );
   });
 
   it("keeps project context available through the resource-model provider seam", () => {

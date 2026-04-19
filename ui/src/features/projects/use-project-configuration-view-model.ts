@@ -123,10 +123,10 @@ function useProjectComponentsModel(mode: ProjectConfigurationMode): ProjectCompo
         : "No project components configured yet.",
     footerActions: mode === "new" ? ["Cancel", "Save Draft", "Next"] : ["Discard", "Save"],
     heading: "Components",
-    pickComponentType() {
+    pickComponentType(kindId) {
       setComponents((currentComponents) => [
         ...currentComponents,
-        buildProjectConfigurationComponentDraft(mode, currentComponents.length)
+        buildProjectConfigurationComponentDraft(mode, currentComponents.length, kindId)
       ]);
       setTypePickerOpen(false);
     },

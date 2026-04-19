@@ -63,7 +63,8 @@ export function getProjectComponentKindLabel(kind: ProjectComponentKindId) {
 
 export function buildProjectConfigurationComponentDraft(
   mode: ProjectConfigurationMode,
-  index: number
+  index: number,
+  kindId: ProjectComponentKindId
 ): ProjectComponentScaffold {
   if (mode === "settings" && index === 0) {
     return {
@@ -71,7 +72,7 @@ export function buildProjectConfigurationComponentDraft(
       heading: "Component 1",
       displayName: "API",
       componentKey: "api",
-      kind: "git_repository",
+      kind: kindId,
       sourceMode: "localPath",
       localPath: "./services/api",
       gitUrl: "",
@@ -89,7 +90,7 @@ export function buildProjectConfigurationComponentDraft(
     displayName: mode === "new" ? `Repository ${componentNumber}` : `Background worker ${componentNumber}`,
     componentKey:
       mode === "new" ? `repository-${componentNumber}` : `background-worker-${componentNumber}`,
-    kind: "git_repository",
+    kind: kindId,
     sourceMode: "gitUrl",
     localPath: "",
     gitUrl:
