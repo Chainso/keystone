@@ -66,7 +66,7 @@ function expectWorkstreamLink(taskDisplayId: string, href: string) {
 }
 
 describe("Phase 3 destination scaffolds", () => {
-  it("renders the documentation tree shape and switches selection without the removed scaffold chrome", async () => {
+  it("renders derived documentation groups and switches selection structurally", async () => {
     renderRoute("/documentation");
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
@@ -80,35 +80,38 @@ describe("Phase 3 destination scaffolds", () => {
     expect(screen.queryByText("Deferred work")).not.toBeInTheDocument();
 
     const documentationTree = screen.getByLabelText("Documentation tree");
-    expect(within(documentationTree).getByText("▾ Product Specifications")).toBeInTheDocument();
-    expect(within(documentationTree).getByText("▾ Technical Architecture")).toBeInTheDocument();
-    expect(within(documentationTree).getByText("▾ Miscellaneous Notes")).toBeInTheDocument();
-    expect(within(documentationTree).getAllByText("└─")).toHaveLength(3);
-    expect(within(documentationTree).getAllByText("├─")).toHaveLength(1);
+    expect(within(documentationTree).getByRole("heading", { name: "Product Specifications" })).toBeInTheDocument();
+    expect(within(documentationTree).getByRole("heading", { name: "Technical Architecture" })).toBeInTheDocument();
+    expect(within(documentationTree).getByRole("heading", { name: "Miscellaneous Notes" })).toBeInTheDocument();
     expect(within(documentationTree).getAllByRole("button")).toHaveLength(4);
-    expect(within(documentationTree).getAllByRole("button", { name: "Current" })).toHaveLength(2);
+    expect(
+      within(documentationTree).getByRole("button", { name: "Current docs/product/current.md" })
+    ).toBeInTheDocument();
+    expect(
+      within(documentationTree).getByRole("button", {
+        name: "Current docs/architecture/current.md"
+      })
+    ).toBeInTheDocument();
 
-    const productGroup = screen.getByText("▾ Product Specifications").closest("section");
-    const notesGroup = screen.getByText("▾ Miscellaneous Notes").closest("section");
-
-    expect(productGroup).not.toBeNull();
-    expect(notesGroup).not.toBeNull();
-
-    const currentSpecButton = within(productGroup as HTMLElement).getByRole("button", {
-      name: "Current"
+    const currentSpecButton = within(documentationTree).getByRole("button", {
+      name: "Current docs/product/current.md"
     });
-    const openQuestionsButton = within(notesGroup as HTMLElement).getByRole("button", {
-      name: "Open questions"
+    const openQuestionsButton = within(documentationTree).getByRole("button", {
+      name: "Open questions docs/notes/open-questions.md"
     });
+    const documentViewer = screen.getByRole("heading", { name: "Document viewer" }).closest("section");
+
+    expect(documentViewer).not.toBeNull();
 
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "true");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
+    expect(within(documentViewer as HTMLElement).getByText("docs/product/current.md")).toBeInTheDocument();
 
     fireEvent.click(openQuestionsButton);
 
     expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
     expect(
-      screen.getByText(/How should current project documents evolve once editing and persistence are added\?/i)
+      within(documentViewer as HTMLElement).getByText("docs/notes/open-questions.md")
     ).toBeInTheDocument();
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "true");

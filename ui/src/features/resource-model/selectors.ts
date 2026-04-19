@@ -44,6 +44,8 @@ export interface PlanningDocumentSelection {
 export interface DocumentationTreeDocument {
   documentId: string;
   label: string;
+  title: string;
+  path: string;
   viewerTitle: string;
   contentLines: string[];
 }
@@ -52,6 +54,11 @@ export interface DocumentationTreeGroup {
   groupId: string;
   label: string;
   documents: DocumentationTreeDocument[];
+}
+
+export interface ProjectDocumentationSelection {
+  groups: DocumentationTreeGroup[];
+  selectedDocument: DocumentationTreeDocument;
 }
 
 export interface WorkstreamTaskSummary {
@@ -317,6 +324,8 @@ export function listProjectDocumentationGroups(
         return {
           documentId: document.documentId,
           label: document.label,
+          title: document.title,
+          path: document.path,
           viewerTitle: revision.viewerTitle,
           contentLines: revision.contentLines
         };
@@ -364,6 +373,27 @@ export function getProjectDocumentationDocument(
     documentId: selection.document.documentId,
     viewerTitle: selection.revision.viewerTitle,
     contentLines: selection.revision.contentLines
+  };
+}
+
+export function getProjectDocumentationSelection(
+  projectId: string,
+  documentId: string | null | undefined,
+  dataset: ResourceModelDataset = uiScaffoldDataset
+): ProjectDocumentationSelection | null {
+  const groups = listProjectDocumentationGroups(projectId, dataset);
+  const documents = groups.flatMap((group) => group.documents);
+
+  if (documents.length === 0) {
+    return null;
+  }
+
+  const selectedDocument =
+    documents.find((candidate) => candidate.documentId === documentId) ?? documents[0]!;
+
+  return {
+    groups,
+    selectedDocument
   };
 }
 

@@ -21,32 +21,26 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
             <div className="documentation-tree" aria-label="Documentation tree">
               {model.groups.map((group) => (
                 <section key={group.groupId} className="documentation-tree-group">
-                  <p className="documentation-tree-group-title">▾ {group.label}</p>
+                  <h3 className="documentation-tree-group-title">{group.label}</h3>
 
                   <div className="documentation-tree-items">
-                    {group.documents.map((document, index) => {
-                      const branchMarker =
-                        index === group.documents.length - 1 ? "\u2514\u2500" : "\u251c\u2500";
-
-                      return (
-                        <button
-                          key={document.documentId}
-                          type="button"
-                          className={
-                            document.isSelected
-                              ? "documentation-tree-item is-active"
-                              : "documentation-tree-item"
-                          }
-                          aria-pressed={document.isSelected}
-                          onClick={() => model.selectDocument(document.documentId)}
-                        >
-                          <span className="documentation-tree-item-branch" aria-hidden="true">
-                            {branchMarker}
-                          </span>
-                          <span className="documentation-tree-item-label">{document.label}</span>
-                        </button>
-                      );
-                    })}
+                    {group.documents.map((document) => (
+                      <button
+                        key={document.documentId}
+                        type="button"
+                        className={
+                          document.isSelected
+                            ? "documentation-tree-item is-active"
+                            : "documentation-tree-item"
+                        }
+                        aria-label={`${document.label} ${document.path}`}
+                        aria-pressed={document.isSelected}
+                        onClick={() => model.selectDocument(document.documentId)}
+                      >
+                        <span className="documentation-tree-item-label">{document.label}</span>
+                        <span className="documentation-tree-item-path">{document.path}</span>
+                      </button>
+                    ))}
                   </div>
                 </section>
               ))}
@@ -62,6 +56,7 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
 
             <div className="document-card">
               <h3 className="document-viewer-title">{model.selectedDocument.viewerTitle}</h3>
+              <p className="document-viewer-path">{model.selectedDocument.path}</p>
               <div className="document-rule" aria-hidden="true" />
 
               <div className="document-copy">

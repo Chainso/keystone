@@ -17,6 +17,7 @@ import {
 import { uiScaffoldDataset } from "../features/resource-model/scaffold-dataset";
 import {
   createProjectOverrideDataset,
+  getProjectDocumentationSelection,
   getRunDefaultPhaseId,
   listRunSummaries,
   listProjectDocumentationGroups,
@@ -174,6 +175,7 @@ describe("resource-model selectors", () => {
     expect(documentationGroups[0]?.documents[0]?.viewerTitle).toBe(
       "current living product specification"
     );
+    expect(documentationGroups[0]?.documents[0]?.path).toBe("docs/product/current.md");
     expect(workstreamTasks.map((task) => task.taskDisplayId)).toEqual([
       "TASK-029",
       "TASK-030",
@@ -185,6 +187,26 @@ describe("resource-model selectors", () => {
       "TASK-019"
     ]);
     expect(workstreamTasks[3]?.detailPath).toBe("/runs/run-104/execution/tasks/task-032");
+  });
+
+  it("falls back to the first project document when the current selection is missing", () => {
+    const defaultSelection = getProjectDocumentationSelection(
+      "project-keystone-cloudflare",
+      null
+    );
+    const missingSelection = getProjectDocumentationSelection(
+      "project-keystone-cloudflare",
+      "missing-document-id"
+    );
+    const explicitSelection = getProjectDocumentationSelection(
+      "project-keystone-cloudflare",
+      "project-open-questions"
+    );
+
+    expect(defaultSelection?.selectedDocument.documentId).toBe("project-spec-current");
+    expect(missingSelection?.selectedDocument.documentId).toBe("project-spec-current");
+    expect(explicitSelection?.selectedDocument.documentId).toBe("project-open-questions");
+    expect(explicitSelection?.selectedDocument.path).toBe("docs/notes/open-questions.md");
   });
 
   it("keeps project context available through the resource-model provider seam", () => {
