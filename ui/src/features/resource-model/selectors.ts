@@ -506,13 +506,12 @@ export function createProjectOverrideDataset(
   dataset: ResourceModelDataset = uiScaffoldDataset
 ) {
   const sourceProjectId = dataset.meta.defaultProjectId;
-  const existingProject = dataset.projects.find((candidate) => candidate.projectId === sourceProjectId);
 
   const overrideProject: ResourceProject = {
     projectId: project.projectId,
     projectKey: project.projectKey,
     displayName: project.displayName,
-    description: existingProject?.description ?? `${project.displayName} project scaffold.`
+    description: project.description
   };
 
   const remainingProjects = dataset.projects.filter(

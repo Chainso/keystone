@@ -421,4 +421,36 @@ describe("Phase 3 destination scaffolds", () => {
     expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
+
+  it("reflects a non-default current project across the settings shell and configuration tabs", async () => {
+    const customProject = {
+      projectId: "project-custom",
+      projectKey: "custom-project",
+      displayName: "Custom Project",
+      description: "Custom project settings scaffold."
+    };
+
+    renderRoute("/settings/overview", { project: customProject });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Custom Project" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Custom Project");
+    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("custom-project");
+    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
+      "Custom project settings scaffold."
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Components" }));
+
+    const currentComponentCard = await screen.findByRole("heading", { name: "Component 1" });
+    const componentCard = currentComponentCard.closest("article");
+
+    expect(componentCard).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Project settings: Custom Project" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Description" })).not.toBeInTheDocument();
+    expect(within(componentCard as HTMLElement).getByRole("textbox", { name: "Name" })).toHaveValue(
+      "API"
+    );
+  });
 });

@@ -177,6 +177,11 @@ Compatibility that **is** required:
   **Decision:** Model `New project` and `Project settings` through shared `projectConfigurations` resources in `ui/src/features/resource-model/`, then keep the route/tab split explicit with variant-specific hooks instead of reviving a mode-heavy destination component.  
   **Rationale:** This keeps project configuration aligned with the same source-of-truth dataset as the rest of the scaffold while preserving the repo's preference for explicit route-facing variants.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 5 targeted fix pass  
+  **Decision:** Keep the current-project seam coherent by rewriting the override project description from the supplied project summary, resynchronizing settings component-local state when the project-scoped configuration seed changes, and adding `/settings` coverage for a non-default current project.  
+  **Rationale:** The review surfaced a real mismatch between the provider seam and the settings view-model contract: the override dataset still leaked the default project description, and the components tab held stale local state after project changes because it seeded once and never reset.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery and planning inputs gathered from the current repo docs, existing UI scaffold, and target-model decisions previously resolved in the Keystone modelling worktree.
@@ -189,6 +194,7 @@ Compatibility that **is** required:
 - [x] 2026-04-19 Phase 3 targeted fix pass complete: removed false sibling ordering cues from the execution board, switched execution-node tone to an explicit task-status mapping, and updated execution-route coverage to assert the clarified scaffold contract.
 - [x] 2026-04-19 Phase 4 complete: reworked `Documentation` around target-model document/revision selectors, current-project state, structural selection coverage, and a targeted fix pass that removed the hard-coded grouping table smell while tightening ambiguous-selection and revision-payload tests.
 - [x] 2026-04-19 Phase 5 complete: reworked project configuration scaffolds around target-model project, component, rule, and environment contracts, while preserving explicit `new` and `settings` variants.
+- [x] 2026-04-19 Phase 5 targeted fix pass complete: aligned the override current-project description with project configuration overview data, resynchronized the settings components tab when the current project changes, and added selector plus `/settings` regression coverage for non-default current-project state.
 - [ ] 2026-04-19 Phase 6 pending: remove obsolete scaffold modules, update developer docs, and rerun final validation.
 
 ## Surprises & Discoveries
@@ -209,6 +215,7 @@ Compatibility that **is** required:
 - Documentation tree items need a second stable identifier beyond `label`. The project dataset legitimately contains multiple `Current` documents, so exposing `path` in the selector/view model keeps selection state and accessibility assertions unambiguous without reviving fake tree glyph contracts.
 - Documentation grouping also needs to derive from each document's own metadata and path, not from a central selector table, or the Phase 4 scaffold keeps one last hand-authored taxonomy seam hidden behind the normalized dataset.
 - Project override datasets also need to remap project-scoped configuration resources, not just runs/documents/tasks, or the settings surface silently falls back to the scaffold default project even when the provider seam is pointed at an override project.
+- The settings components tab keeps local draft state for add-component interactions, so the hook has to reset that local state when the underlying project-scoped configuration seed changes; otherwise switching the current project leaves stale component cards on screen.
 
 ## Outcomes & Retrospective
 
@@ -274,6 +281,12 @@ Phase 5 outcome on 2026-04-19:
 - `ui/src/features/resource-model/{types,scaffold-dataset,selectors}.ts` now carries a shared `projectConfigurations` scaffold contract for project overview, components, rules, and environment variables, with explicit selectors for the new-project template and current-project settings.
 - `ui/src/features/projects/use-project-configuration-view-model.ts` now derives both `new` and `settings` tab state from the shared resource-model selectors while keeping explicit variant hooks and route-owned shell titles instead of collapsing the feature into one mode-heavy board API.
 - `ui/src/test/resource-model-selectors.test.tsx` and `ui/src/test/phase3-destinations.test.tsx` now assert selector-backed project-configuration data, override-project remapping, and the updated empty-components scaffold copy. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+
+Phase 5 targeted fix pass outcome on 2026-04-19:
+
+- `ui/src/features/resource-model/selectors.ts` now rewrites the override project record description from the supplied current-project summary, so `useCurrentProject()` and `getProjectConfiguration(...).overview` stay coherent under the provider seam.
+- `ui/src/features/projects/use-project-configuration-view-model.ts` now resets the settings components tab's local draft state when the project-scoped configuration seed changes, which keeps the components board aligned with current-project switches without changing the explicit `new` versus `settings` split.
+- `ui/src/test/resource-model-selectors.test.tsx` now covers override-summary coherence plus provider-level settings-component resynchronization, and `ui/src/test/phase3-destinations.test.tsx` now proves `/settings/overview` reflects a non-default current project across the shell and tabs. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
 ## Context and Orientation
 
@@ -459,7 +472,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 
 #### Phase Handoff
 
-- **Status:** Complete
+- **Status:** Complete (fixed after review)
 - **Goal:** Rework project creation and settings scaffolds so they align with target-model project and repository/component contracts while preserving the current route structure.
 - **Scope Boundary:** In scope: current-project framing, project configuration view models, explicit `new` versus `settings` variants, and route tests for those surfaces. Out of scope: persistence, styling polish, live mutation flows, and route redesign.
 - **Read First:**
@@ -485,8 +498,8 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** Project configuration scaffolds aligned with the target-model project and repository/component contract, with explicit `new` and `settings` variants instead of a mode-heavy catch-all.
 - **Commit Expectation:** `Align project configuration scaffold`
 - **Known Constraints / Baseline Failures:** Keep settings current-project-scoped. Do not introduce real save behavior, network calls, or a single component API dominated by mode booleans.
-- **Completion Notes:** Added shared `projectConfigurations` resources plus selectors in `ui/src/features/resource-model/`, rewired the project-configuration view-model hooks to derive overview/components/rules/environment state from that shared contract, and kept `new` versus `settings` composition explicit in the tab components rather than reviving a mode-heavy workspace API. Expanded selector coverage for configuration derivation and override-project remapping, and updated the project-configuration destination assertions in `ui/src/test/phase3-destinations.test.tsx`. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
-- **Next Starter Context:** Phase 6 can treat project configuration as fully cut over to `ui/src/features/resource-model/`. The remaining work is the closure pass: remove any obsolete scaffold modules or compatibility seams that no longer have consumers, update `.ultrakit/developer-docs/m1-architecture.md` to describe the shared target-model scaffold truthfully, and rerun the final validation set without touching the route tree.
+- **Completion Notes:** Added shared `projectConfigurations` resources plus selectors in `ui/src/features/resource-model/`, rewired the project-configuration view-model hooks to derive overview/components/rules/environment state from that shared contract, and kept `new` versus `settings` composition explicit in the tab components rather than reviving a mode-heavy workspace API. Expanded selector coverage for configuration derivation and override-project remapping, and updated the project-configuration destination assertions in `ui/src/test/phase3-destinations.test.tsx`. The targeted fix pass then aligned the override current-project description with the supplied project summary, resynchronized the settings components tab when the current project changes, and added provider-level plus `/settings` coverage for non-default current-project state. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+- **Next Starter Context:** Phase 6 can treat project configuration as fully cut over to `ui/src/features/resource-model/`, including the current-project provider seam for settings. The remaining work is the closure pass: remove any obsolete scaffold modules or compatibility seams that no longer have consumers, update `.ultrakit/developer-docs/m1-architecture.md` to describe the shared target-model scaffold truthfully, and rerun the final validation set without touching the route tree.
 
 ### Phase 6: Cleanup, Docs, And Final Validation
 

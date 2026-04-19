@@ -10,6 +10,7 @@ import {
   useCurrentProject,
   type CurrentProject
 } from "../features/projects/project-context";
+import { useProjectSettingsComponentsViewModel } from "../features/projects/use-project-configuration-view-model";
 import {
   ResourceModelProvider,
   useResourceModel
@@ -23,7 +24,8 @@ import {
   getRunDefaultPhaseId,
   listRunSummaries,
   listProjectDocumentationGroups,
-  listProjectWorkstreamTasks
+  listProjectWorkstreamTasks,
+  selectCurrentProjectSummary
 } from "../features/resource-model/selectors";
 import type { ResourceModelDataset } from "../features/resource-model/types";
 
@@ -61,6 +63,22 @@ function ResourceModelProbe() {
         }}
       >
         Switch project
+      </button>
+    </>
+  );
+}
+
+function ProjectSettingsComponentsProbe() {
+  const { actions } = useResourceModel();
+  const viewModel = useProjectSettingsComponentsViewModel();
+
+  return (
+    <>
+      <span data-testid="components-heading">
+        {viewModel.components.map((component) => component.displayName).join(",")}
+      </span>
+      <button type="button" onClick={() => actions.setCurrentProjectId("project-alt")}>
+        Switch settings project
       </button>
     </>
   );
@@ -353,6 +371,12 @@ describe("resource-model selectors", () => {
       projectKey: "custom-project",
       description: "Custom project scaffold."
     });
+    expect(selectCurrentProjectSummary(dataset, dataset.meta.defaultProjectId)).toEqual({
+      projectId: "project-custom",
+      projectKey: "custom-project",
+      displayName: "Custom Project",
+      description: "Custom project scaffold."
+    });
     expect(listRunSummaries(uiScaffoldDataset.meta.defaultProjectId, dataset)).toHaveLength(0);
   });
 
@@ -399,5 +423,65 @@ describe("resource-model selectors", () => {
     expect(screen.getByTestId("project-id")).toHaveTextContent("project-alt");
     expect(screen.getByTestId("source")).toHaveTextContent("scaffold");
     expect(screen.getByTestId("run-count")).toHaveTextContent("1");
+  });
+
+  it("resynchronizes settings components when the current project changes", () => {
+    const dataset: ResourceModelDataset = {
+      ...uiScaffoldDataset,
+      projects: [
+        ...uiScaffoldDataset.projects,
+        {
+          projectId: "project-alt",
+          projectKey: "alt-project",
+          displayName: "Alt Project",
+          description: "Alternate project"
+        }
+      ],
+      projectConfigurations: [
+        ...uiScaffoldDataset.projectConfigurations,
+        {
+          configurationId: "project-alt-settings",
+          kind: "project",
+          projectId: "project-alt",
+          overview: {
+            displayName: "Alt Project",
+            projectKey: "alt-project",
+            description: "Alternate project"
+          },
+          components: [
+            {
+              componentId: "component-alt-worker",
+              heading: "Component 1",
+              displayName: "Alt Worker",
+              componentKey: "alt-worker",
+              kind: "git_repository",
+              sourceMode: "gitUrl",
+              localPath: "",
+              gitUrl: "https://github.com/keystone/alt-worker.git",
+              defaultRef: "main",
+              reviewInstructions: ["Focus on worker changes"],
+              testInstructions: ["Run worker tests"]
+            }
+          ],
+          rules: {
+            reviewInstructions: ["Keep route ownership explicit."],
+            testInstructions: ["Run lint, typecheck, and test before handoff."]
+          },
+          environmentVariables: []
+        }
+      ]
+    };
+
+    render(
+      <ResourceModelProvider dataset={dataset}>
+        <ProjectSettingsComponentsProbe />
+      </ResourceModelProvider>
+    );
+
+    expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch settings project" }));
+
+    expect(screen.getByTestId("components-heading")).toHaveTextContent("Alt Worker");
   });
 });

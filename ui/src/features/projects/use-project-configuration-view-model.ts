@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   getNewProjectConfiguration,
@@ -87,7 +87,10 @@ function useProjectConfigurationSeed(mode: ProjectConfigurationMode) {
       throw new Error("New project configuration scaffold is missing.");
     }
 
-    return configuration;
+    return {
+      configuration,
+      selectionKey: configuration.configurationId
+    };
   }
 
   const configuration = getProjectConfiguration(project.projectId, state.dataset);
@@ -96,13 +99,21 @@ function useProjectConfigurationSeed(mode: ProjectConfigurationMode) {
     throw new Error(`Project configuration scaffold is missing for "${project.projectId}".`);
   }
 
-  return configuration;
+  return {
+    configuration,
+    selectionKey: `${project.projectId}:${configuration.configurationId}`
+  };
 }
 
 function useProjectComponentsModel(mode: ProjectConfigurationMode): ProjectComponentsViewModel {
-  const configuration = useProjectConfigurationSeed(mode);
+  const { configuration, selectionKey } = useProjectConfigurationSeed(mode);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [components, setComponents] = useState(configuration.components);
+
+  useEffect(() => {
+    setComponents(configuration.components);
+    setTypePickerOpen(false);
+  }, [selectionKey]);
 
   return {
     components,
@@ -129,7 +140,7 @@ function useProjectComponentsModel(mode: ProjectConfigurationMode): ProjectCompo
 }
 
 function useProjectOverviewModel(mode: ProjectConfigurationMode): ProjectOverviewViewModel {
-  const configuration = useProjectConfigurationSeed(mode);
+  const { configuration } = useProjectConfigurationSeed(mode);
 
   return {
     heading: "Overview",
@@ -150,7 +161,7 @@ function useProjectOverviewModel(mode: ProjectConfigurationMode): ProjectOvervie
 }
 
 function useProjectRulesModel(mode: ProjectConfigurationMode): ProjectRulesViewModel {
-  const configuration = useProjectConfigurationSeed(mode);
+  const { configuration } = useProjectConfigurationSeed(mode);
 
   return {
     heading: "Rules",
@@ -160,7 +171,7 @@ function useProjectRulesModel(mode: ProjectConfigurationMode): ProjectRulesViewM
 }
 
 function useProjectEnvironmentModel(mode: ProjectConfigurationMode): ProjectEnvironmentViewModel {
-  const configuration = useProjectConfigurationSeed(mode);
+  const { configuration } = useProjectConfigurationSeed(mode);
 
   return {
     envVars: configuration.environmentVariables,
