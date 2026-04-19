@@ -3,16 +3,22 @@
 import "@testing-library/jest-dom/vitest";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import {
   CurrentProjectProvider,
   useCurrentProject,
   type CurrentProject
 } from "../features/projects/project-context";
+import {
+  ResourceModelProvider,
+  useResourceModel
+} from "../features/resource-model/context";
 import { uiScaffoldDataset } from "../features/resource-model/scaffold-dataset";
 import {
+  createProjectOverrideDataset,
   getRunDefaultPhaseId,
+  listRunSummaries,
   listProjectDocumentationGroups,
   listProjectWorkstreamTasks
 } from "../features/resource-model/selectors";
@@ -26,6 +32,35 @@ function CurrentProjectProbe() {
   const project = useCurrentProject();
 
   return <span>{project.displayName}</span>;
+}
+
+function ResourceModelProbe() {
+  const { state, actions, meta } = useResourceModel();
+  const project = useCurrentProject();
+  const alternateProjectId = state.dataset.projects.find(
+    (candidate) => candidate.projectId !== state.currentProjectId
+  )?.projectId;
+
+  return (
+    <>
+      <span data-testid="project-name">{project.displayName}</span>
+      <span data-testid="project-id">{state.currentProjectId}</span>
+      <span data-testid="source">{meta.source}</span>
+      <span data-testid="run-count">
+        {listRunSummaries(state.currentProjectId, state.dataset).length}
+      </span>
+      <button
+        type="button"
+        onClick={() => {
+          if (alternateProjectId) {
+            actions.setCurrentProjectId(alternateProjectId);
+          }
+        }}
+      >
+        Switch project
+      </button>
+    </>
+  );
 }
 
 describe("resource-model selectors", () => {
@@ -173,5 +208,66 @@ describe("resource-model selectors", () => {
     );
 
     expect(screen.getByText("Custom Project")).toBeInTheDocument();
+  });
+
+  it("remaps project-scoped resources when overriding the current project scaffold", () => {
+    const project: CurrentProject = {
+      projectId: "project-custom",
+      projectKey: "custom-project",
+      displayName: "Custom Project"
+    };
+    const dataset = createProjectOverrideDataset(project);
+
+    expect(listRunSummaries(project.projectId, dataset)).toHaveLength(uiScaffoldDataset.runs.length);
+    expect(listProjectWorkstreamTasks(project.projectId, dataset)).toHaveLength(
+      uiScaffoldDataset.tasks.length
+    );
+    expect(listProjectDocumentationGroups(project.projectId, dataset))
+      .toEqual(listProjectDocumentationGroups(uiScaffoldDataset.meta.defaultProjectId));
+    expect(listRunSummaries(uiScaffoldDataset.meta.defaultProjectId, dataset)).toHaveLength(0);
+  });
+
+  it("exposes mutable project selection and scaffold meta through the provider contract", () => {
+    const dataset: ResourceModelDataset = {
+      ...uiScaffoldDataset,
+      projects: [
+        ...uiScaffoldDataset.projects,
+        {
+          projectId: "project-alt",
+          projectKey: "alt-project",
+          displayName: "Alt Project",
+          description: "Alternate project"
+        }
+      ],
+      runs: [
+        ...uiScaffoldDataset.runs,
+        {
+          runId: "run-alt-001",
+          projectId: "project-alt",
+          displayId: "Run-Alt-001",
+          summary: "Alternate run",
+          status: "Draft",
+          updatedLabel: "now"
+        }
+      ]
+    };
+
+    render(
+      <ResourceModelProvider dataset={dataset}>
+        <ResourceModelProbe />
+      </ResourceModelProvider>
+    );
+
+    expect(screen.getByTestId("project-name")).toHaveTextContent("Keystone Cloudflare");
+    expect(screen.getByTestId("project-id")).toHaveTextContent("project-keystone-cloudflare");
+    expect(screen.getByTestId("source")).toHaveTextContent("scaffold");
+    expect(screen.getByTestId("run-count")).toHaveTextContent(String(uiScaffoldDataset.runs.length));
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
+
+    expect(screen.getByTestId("project-name")).toHaveTextContent("Alt Project");
+    expect(screen.getByTestId("project-id")).toHaveTextContent("project-alt");
+    expect(screen.getByTestId("source")).toHaveTextContent("scaffold");
+    expect(screen.getByTestId("run-count")).toHaveTextContent("1");
   });
 });

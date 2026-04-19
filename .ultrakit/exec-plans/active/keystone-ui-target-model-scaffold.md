@@ -137,11 +137,17 @@ Compatibility that **is** required:
   **Decision:** Land the target-model scaffold foundation as a new `ui/src/features/resource-model/` module with checked-in normalized resources, indexed selectors, canonical run-phase helpers, and a thin provider seam, while leaving the destination-local scaffold consumers in place for later phases.  
   **Rationale:** This creates one honest source of truth for later cutovers without widening Phase 1 into route rewrites or destabilizing the existing UI smoke coverage.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 1 fix pass  
+  **Decision:** Keep the project override compatibility shim shallow but coherent by remapping every scaffold resource keyed by the default project id onto the override project id, and add provider-seam coverage that exercises mutable `currentProjectId` state directly.  
+  **Rationale:** The initial Phase 1 shim only rewrote `projects` plus `meta.defaultProjectId`, which would have left later project-scoped selectors reading empty runs, tasks, and project documents for override projects.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery and planning inputs gathered from the current repo docs, existing UI scaffold, and target-model decisions previously resolved in the Keystone modelling worktree.
 - [x] 2026-04-19 Baseline run recorded: `npm run lint`, `npm run test`, and `npm run typecheck` pass in the sandbox; `npm run build` passes when rerun outside the sandbox after Wrangler/Docker home-directory write failures.
 - [x] 2026-04-19 Phase 1 complete: added `ui/src/features/resource-model/` with target-model scaffold types, normalized dataset, selectors, canonical run-phase definitions, a lightweight provider seam, and focused selector/provider coverage while keeping the current route tree intact.
+- [x] 2026-04-19 Phase 1 targeted fix pass complete: made the project override shim remap project-scoped scaffold resources coherently and expanded tests to exercise mutable provider state plus scaffold meta wiring.
 - [ ] 2026-04-19 Phase 2 pending: rework `Runs` and planning phases around the new resource layer and default-phase rule.
 - [ ] 2026-04-19 Phase 3 pending: rework `Execution`, task detail, and `Workstreams` around tasks, workflow graph, artifacts, and conversation locators.
 - [ ] 2026-04-19 Phase 4 pending: rework `Documentation` around target-model document and revision contracts.
@@ -158,6 +164,7 @@ Compatibility that **is** required:
 - The repo baseline is healthy. `npm run lint`, `npm run test`, and `npm run typecheck` pass in the sandbox, and `npm run build` passes outside the sandbox after the expected Wrangler/Docker home-directory write issue.
 - The target-model handoff and migration work were done in an existing Codex worktree rather than inside this repo checkout. The plan therefore restates the relevant target-model UI constraints here so execution is not blocked on external chat context.
 - Phase 1 exposed one compatibility seam immediately: existing run route scaffolds still import `runPhaseDefinitions` from `ui/src/shared/navigation/run-phases.ts`, so the new canonical phase metadata must be re-exported there until the later feature cutovers stop depending on the legacy modules.
+- The first Phase 1 implementation also exposed that a project override shim has to remap project-scoped scaffold resources, not just the top-level `projects` list, or future project selectors silently fall back to empty states.
 
 ## Outcomes & Retrospective
 
@@ -175,6 +182,11 @@ Phase 1 outcome on 2026-04-19:
 - The checked-in scaffold dataset now supports shared selectors for current project, run summaries, derived default-phase selection, planning documents, documentation grouping, workstreams, workflow graphs, and task artifacts without introducing live fetching or a global store.
 - `ui/src/features/projects/project-context.tsx` is now a compatibility layer over the shared provider seam, which preserves the existing shell contract while giving later phases a stable place to plug in target-model selectors.
 - Validation stayed green after re-exporting canonical run-phase definitions through `ui/src/shared/navigation/run-phases.ts`, confirming the foundation can coexist with the current route-local scaffold consumers until later cutover phases.
+
+Phase 1 targeted fix pass outcome on 2026-04-19:
+
+- `createProjectOverrideDataset()` now remaps runs, documents, and tasks that belong to the scaffold default project so the compatibility layer stays coherent for project-scoped selectors without introducing new route behavior.
+- `ui/src/test/resource-model-selectors.test.tsx` now verifies both the override-dataset behavior and the `ResourceModelProvider` contract for `currentProjectId`, `setCurrentProjectId`, and `meta.source`, closing the main coverage gap surfaced in review.
 
 ## Context and Orientation
 
@@ -219,7 +231,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 
 #### Phase Handoff
 
-- **Status:** Complete
+- **Status:** Complete (fixed after review)
 - **Goal:** Create the shared target-model scaffold resource layer and selectors that will replace the current destination-local fake scaffold modules.
 - **Scope Boundary:** In scope: normalized UI scaffold types, checked-in scaffold dataset, selectors/helpers, and any small compatibility shims needed so later phases can cut over cleanly. Out of scope: destination rewrites, route behavior changes, styling work, and live data fetching.
 - **Read First:**
@@ -244,8 +256,8 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** A normalized scaffold resource module with target-model-aligned types, selectors, and a lightweight context/provider interface, plus enough compatibility wiring that later phases can stop importing destination-local fake data.
 - **Commit Expectation:** `Create target-model UI scaffold resources`
 - **Known Constraints / Baseline Failures:** Do not introduce a live data client. Keep `shared/` free of app-domain scaffold state. Preserve the existing route tree. Do not add new barrel files in `resource-model/`.
-- **Completion Notes:** Added `ui/src/features/resource-model/{types,scaffold-dataset,selectors,run-phase,context}.ts*`, rewired `ui/src/features/projects/project-context.tsx` to use the shared provider seam, re-exported canonical phase definitions through `ui/src/shared/navigation/run-phases.ts`, and added focused selector/provider coverage in `ui/src/test/resource-model-selectors.test.tsx`. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
-- **Next Starter Context:** Phase 2 should treat `ui/src/features/resource-model/` as the only new source of truth. Rewire runs/planning routes and view models onto those selectors, keep the route tree intact, and then delete legacy fake-run assumptions such as `currentPhase` only when the run routes no longer import them.
+- **Completion Notes:** Added `ui/src/features/resource-model/{types,scaffold-dataset,selectors,run-phase,context}.ts*`, rewired `ui/src/features/projects/project-context.tsx` to use the shared provider seam, re-exported canonical phase definitions through `ui/src/shared/navigation/run-phases.ts`, and added focused selector/provider coverage in `ui/src/test/resource-model-selectors.test.tsx`. The targeted fix pass then updated `createProjectOverrideDataset()` to remap project-scoped scaffold resources coherently and expanded test coverage to exercise mutable provider state plus `meta.source`. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+- **Next Starter Context:** Phase 2 should treat `ui/src/features/resource-model/` as the only new source of truth. The Phase 1 compatibility seam now keeps override projects coherent for runs, tasks, and project documents, so later cutovers can consume project-scoped selectors directly without special-case shim logic.
 
 ### Phase 2: Runs And Planning Cutover
 

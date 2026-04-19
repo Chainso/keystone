@@ -369,9 +369,8 @@ export function createProjectOverrideDataset(
   project: CurrentProjectSummary,
   dataset: ResourceModelDataset = uiScaffoldDataset
 ) {
-  const existingProject = dataset.projects.find(
-    (candidate) => candidate.projectId === dataset.meta.defaultProjectId
-  );
+  const sourceProjectId = dataset.meta.defaultProjectId;
+  const existingProject = dataset.projects.find((candidate) => candidate.projectId === sourceProjectId);
 
   const overrideProject: ResourceProject = {
     projectId: project.projectId,
@@ -381,7 +380,7 @@ export function createProjectOverrideDataset(
   };
 
   const remainingProjects = dataset.projects.filter(
-    (candidate) => candidate.projectId !== dataset.meta.defaultProjectId
+    (candidate) => candidate.projectId !== sourceProjectId
   );
 
   return {
@@ -390,6 +389,17 @@ export function createProjectOverrideDataset(
       ...dataset.meta,
       defaultProjectId: overrideProject.projectId
     },
-    projects: [overrideProject, ...remainingProjects]
+    projects: [overrideProject, ...remainingProjects],
+    runs: dataset.runs.map((run) =>
+      run.projectId === sourceProjectId ? { ...run, projectId: overrideProject.projectId } : run
+    ),
+    documents: dataset.documents.map((document) =>
+      document.projectId === sourceProjectId
+        ? { ...document, projectId: overrideProject.projectId }
+        : document
+    ),
+    tasks: dataset.tasks.map((task) =>
+      task.projectId === sourceProjectId ? { ...task, projectId: overrideProject.projectId } : task
+    )
   };
 }
