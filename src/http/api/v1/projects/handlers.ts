@@ -1,7 +1,9 @@
 import type { Context } from "hono";
 
 import type { AppEnv } from "../../../../env";
+import { listRunArtifacts } from "../../../../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../../../../lib/db/client";
+import { listRunEvents } from "../../../../lib/db/events";
 import {
   createProject,
   getProject,
@@ -278,8 +280,10 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
       tenantId: auth.tenantId,
       projectId
     });
-    const [runSessions, runPlanSummaries] = await Promise.all([
+    const [runSessions, runEvents, runArtifacts, runPlanSummaries] = await Promise.all([
       Promise.all(runs.map((run) => listRunSessions(client, auth.tenantId, run.runId))),
+      Promise.all(runs.map((run) => listRunEvents(client, { tenantId: auth.tenantId, runId: run.runId }))),
+      Promise.all(runs.map((run) => listRunArtifacts(client, auth.tenantId, run.runId))),
       Promise.all(runs.map((run) => loadRunPlanSummary(context.env, auth.tenantId, run.runId)))
     ]);
     const items = runs.map((run, index) =>
@@ -288,8 +292,8 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
         runId: run.runId,
         runRecord: run,
         sessions: runSessions[index] ?? [],
-        events: [],
-        artifacts: [],
+        events: runEvents[index] ?? [],
+        artifacts: runArtifacts[index] ?? [],
         liveSnapshot: null,
         runPlanSummary: runPlanSummaries[index] ?? null
       })

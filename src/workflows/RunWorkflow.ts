@@ -11,7 +11,7 @@ import { getRunCoordinatorStub } from "../lib/auth/tenant";
 import { ensureApprovalRequest } from "../lib/approvals/service";
 import { createWorkerDatabaseClient } from "../lib/db/client";
 import { getProject } from "../lib/db/projects";
-import type { AgentRuntimeKind } from "../maestro/contracts";
+import type { AgentRuntimeKind, SessionStatus } from "../maestro/contracts";
 import { ensureRunRecord, getSessionRecord, updateSessionStatus } from "../lib/db/runs";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
@@ -108,6 +108,71 @@ interface RunContextSnapshot {
   projectExecution: ProjectExecutionSnapshot;
   executionEngine: AgentRuntimeKind;
   options: RunExecutionOptions;
+}
+
+function isTerminalSessionStatus(status: string | null | undefined) {
+  return status === "archived" || status === "failed" || status === "cancelled";
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function persistTerminalRunStatus(
+  env: WorkerBindings,
+  input: {
+    tenantId: string;
+    runId: string;
+    runSessionId: string;
+    status: Extract<SessionStatus, "failed" | "cancelled">;
+    eventType: "session.error" | "session.status_changed";
+    severity: "error" | "warning";
+    phase: string;
+    error: unknown;
+  }
+) {
+  const client = createWorkerDatabaseClient(env);
+
+  try {
+    const session = await getSessionRecord(client, input.tenantId, input.runSessionId);
+
+    if (!session || isTerminalSessionStatus(session.status)) {
+      return session;
+    }
+
+    const metadata =
+      session.metadata && typeof session.metadata === "object"
+        ? (session.metadata as Record<string, unknown>)
+        : {};
+    const updated = await updateSessionStatus(client, {
+      tenantId: input.tenantId,
+      sessionId: input.runSessionId,
+      status: input.status,
+      metadata: {
+        ...metadata,
+        terminalPhase: input.phase,
+        terminalReason: getErrorMessage(input.error)
+      }
+    });
+
+    await appendAndPublishRunEvent(client, env, {
+      tenantId: input.tenantId,
+      runId: input.runId,
+      sessionId: input.runSessionId,
+      eventType: input.eventType,
+      severity: input.severity,
+      payload: {
+        status: input.status,
+        phase: input.phase,
+        message: getErrorMessage(input.error)
+      },
+      status: updated.status as SessionStatus
+    });
+
+    return updated;
+  } finally {
+    await client.close();
+  }
 }
 
 function resolveDecisionPackage(
@@ -306,6 +371,22 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
     const repoPolicyDecision = evaluateRepoSourcePolicy(runContext.compileRepo);
 
     if (repoPolicyDecision.result === "deny") {
+      await step.do("cancel denied run", async () => {
+        const updated = await persistTerminalRunStatus(this.env, {
+          tenantId: event.payload.tenantId,
+          runId: event.payload.runId,
+          runSessionId,
+          status: "cancelled",
+          eventType: "session.status_changed",
+          severity: "warning",
+          phase: "repo-policy",
+          error: repoPolicyDecision.reason
+        });
+
+        return {
+          status: updated?.status ?? null
+        };
+      });
       throw new NonRetryableError(repoPolicyDecision.reason);
     }
 
@@ -400,177 +481,205 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
       });
     }
 
-    const compileSummary = await step.do("compile plan", async () => {
-      const existingPlan = await loadExistingRunPlan(this.env, event.payload.tenantId, event.payload.runId);
+    let compileSummary!: {
+      taskCount: number;
+      decisionPackageId: string;
+    };
+    let taskInstanceIds!: string[];
+    let taskResults: TaskWorkflowOutput[] = [];
+    let finalizedRun!: FinalizeRunSnapshot;
 
-      if (existingPlan) {
-        return {
-          taskCount: existingPlan.tasks.length,
-          decisionPackageId: existingPlan.decisionPackageId
-        };
-      }
+    try {
+      compileSummary = await step.do("compile plan", async () => {
+        const existingPlan = await loadExistingRunPlan(this.env, event.payload.tenantId, event.payload.runId);
 
-      const client = createWorkerDatabaseClient(this.env);
-      const compileSessionId = await buildStableSessionId(
-        "compile-session",
-        event.payload.tenantId,
-        event.payload.runId
-      );
+        if (existingPlan) {
+          return {
+            taskCount: existingPlan.tasks.length,
+            decisionPackageId: existingPlan.decisionPackageId
+          };
+        }
 
-      try {
-        await ensureSessionRecord(
-          client,
-          {
+        const client = createWorkerDatabaseClient(this.env);
+        const compileSessionId = await buildStableSessionId(
+          "compile-session",
+          event.payload.tenantId,
+          event.payload.runId
+        );
+
+        try {
+          await ensureSessionRecord(
+            client,
+            {
+              tenantId: event.payload.tenantId,
+              runId: event.payload.runId,
+              sessionType: "compile",
+              parentSessionId: runSessionId,
+              metadata: {
+                workflowInstanceId
+              }
+            },
+            compileSessionId
+          );
+
+          const compile = shouldUseFixtureCompileForRun(
+            runContext.compileRepo,
+            decisionPackage,
+            runContext.executionEngine,
+            runContext.options
+          )
+            ? compileDemoFixtureRunPlan
+            : compileRunPlan;
+          const result = await compile({
+            env: this.env,
+            client,
             tenantId: event.payload.tenantId,
             runId: event.payload.runId,
-            sessionType: "compile",
-            parentSessionId: runSessionId,
-            metadata: {
-              workflowInstanceId
-            }
-          },
-          compileSessionId
-        );
+            runSessionId,
+            compileSessionId,
+            repo: runContext.compileRepo,
+            decisionPackage
+          });
 
-        const compile = shouldUseFixtureCompileForRun(
-          runContext.compileRepo,
-          decisionPackage,
-          runContext.executionEngine,
-          runContext.options
-        )
-          ? compileDemoFixtureRunPlan
-          : compileRunPlan;
-        const result = await compile({
-          env: this.env,
-          client,
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          runSessionId,
-          compileSessionId,
-          repo: runContext.compileRepo,
-          decisionPackage
-        });
-
-        return {
-          taskCount: result.plan.tasks.length,
-          decisionPackageId: result.plan.decisionPackageId
-        };
-      } finally {
-        await client.close();
-      }
-    });
-
-    const taskInstanceIds = await step.do("fanout tasks", async () => {
-      const plan = await loadCompiledRunPlanArtifact(this.env, event.payload.tenantId, event.payload.runId);
-
-      if (isLiveThinkExecution(runContext.executionEngine, runContext.options)) {
-        try {
-          assertFixtureScopedCompiledPlan(
-            plan,
-            decisionPackage,
-            "Persisted live Think plan"
-          );
-        } catch (error) {
-          throw new NonRetryableError(
-            error instanceof Error ? error.message : String(error)
-          );
+          return {
+            taskCount: result.plan.tasks.length,
+            decisionPackageId: result.plan.decisionPackageId
+          };
+        } finally {
+          await client.close();
         }
-      }
+      });
 
-      const batch = plan.tasks.map((task) => ({
-        id: buildTaskWorkflowInstanceId(event.payload.tenantId, event.payload.runId, task.taskId),
-        params: {
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          runSessionId,
-          taskId: task.taskId,
-          project: {
-            projectId: runContext.projectExecution.projectId,
-            projectKey: runContext.projectExecution.projectKey,
-            displayName: runContext.projectExecution.displayName
-          },
-          runtime: runContext.executionEngine,
-          options: runContext.options
+      taskInstanceIds = await step.do("fanout tasks", async () => {
+        const plan = await loadCompiledRunPlanArtifact(this.env, event.payload.tenantId, event.payload.runId);
+
+        if (isLiveThinkExecution(runContext.executionEngine, runContext.options)) {
+          try {
+            assertFixtureScopedCompiledPlan(
+              plan,
+              decisionPackage,
+              "Persisted live Think plan"
+            );
+          } catch (error) {
+            throw new NonRetryableError(
+              error instanceof Error ? error.message : String(error)
+            );
+          }
         }
-      }));
 
-      await Promise.all(batch.map((entry) => this.env.TASK_WORKFLOW.create(entry)));
+        const batch = plan.tasks.map((task) => ({
+          id: buildTaskWorkflowInstanceId(event.payload.tenantId, event.payload.runId, task.taskId),
+          params: {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId,
+            runSessionId,
+            taskId: task.taskId,
+            project: {
+              projectId: runContext.projectExecution.projectId,
+              projectKey: runContext.projectExecution.projectKey,
+              displayName: runContext.projectExecution.displayName
+            },
+            runtime: runContext.executionEngine,
+            options: runContext.options
+          }
+        }));
 
-      return batch.map((entry) => entry.id as string);
-    });
+        await Promise.all(batch.map((entry) => this.env.TASK_WORKFLOW.create(entry)));
 
-    let taskResults: TaskWorkflowOutput[] = [];
-    const maxTaskPollAttempts = isLiveThinkExecution(
-      runContext.executionEngine,
-      runContext.options
-    )
-      ? LIVE_THINK_MAX_TASK_POLL_ATTEMPTS
-      : DEFAULT_MAX_TASK_POLL_ATTEMPTS;
+        return batch.map((entry) => entry.id as string);
+      });
 
-    for (let attempt = 0; attempt < maxTaskPollAttempts; attempt += 1) {
-      const pollSnapshot: TaskWorkflowStatusSnapshot[] = await step.do(
-        `poll task workflows ${attempt}`,
-        async () => {
-        const statuses = await Promise.all(
-          taskInstanceIds.map(async (taskInstanceId) => {
-            const instance = await this.env.TASK_WORKFLOW.get(taskInstanceId);
-            const status = await instance.status();
+      const maxTaskPollAttempts = isLiveThinkExecution(
+        runContext.executionEngine,
+        runContext.options
+      )
+        ? LIVE_THINK_MAX_TASK_POLL_ATTEMPTS
+        : DEFAULT_MAX_TASK_POLL_ATTEMPTS;
 
-            return {
-              taskInstanceId,
-              status: status.status,
-              errorMessage: status.error?.message ?? null,
-              output: parseTaskWorkflowOutput(status.output)
-            };
-          })
-        );
+      for (let attempt = 0; attempt < maxTaskPollAttempts; attempt += 1) {
+        const pollSnapshot: TaskWorkflowStatusSnapshot[] = await step.do(
+          `poll task workflows ${attempt}`,
+          async () => {
+            const statuses = await Promise.all(
+              taskInstanceIds.map(async (taskInstanceId) => {
+                const instance = await this.env.TASK_WORKFLOW.get(taskInstanceId);
+                const status = await instance.status();
 
-        return statuses;
-        }
-      );
+                return {
+                  taskInstanceId,
+                  status: status.status,
+                  errorMessage: status.error?.message ?? null,
+                  output: parseTaskWorkflowOutput(status.output)
+                };
+              })
+            );
 
-      if (pollSnapshot.every((status) => isTerminalWorkflowInstanceStatus(status.status))) {
-        taskResults = pollSnapshot.map((status) =>
-          status.output ?? {
-            taskId: status.taskInstanceId,
-            taskSessionId: "",
-            processStatus: status.status,
-            exitCode: null,
-            logArtifactRefId: null,
-            workflowStatus: status.status
+            return statuses;
           }
         );
-        break;
+
+        if (pollSnapshot.every((status) => isTerminalWorkflowInstanceStatus(status.status))) {
+          taskResults = pollSnapshot.map((status) =>
+            status.output ?? {
+              taskId: status.taskInstanceId,
+              taskSessionId: "",
+              processStatus: status.status,
+              exitCode: null,
+              logArtifactRefId: null,
+              workflowStatus: status.status
+            }
+          );
+          break;
+        }
+
+        await step.sleep(`wait for task workflows ${attempt}`, "1 second");
       }
 
-      await step.sleep(`wait for task workflows ${attempt}`, "1 second");
-    }
+      if (taskResults.length === 0) {
+        throw new NonRetryableError("Task workflows did not reach a terminal state within the polling window.");
+      }
 
-    if (taskResults.length === 0) {
-      throw new NonRetryableError("Task workflows did not reach a terminal state within the polling window.");
-    }
+      finalizedRun = await step.do("finalize run", async () => {
+        const client = createWorkerDatabaseClient(this.env);
 
-    const finalizedRun: FinalizeRunSnapshot = await step.do("finalize run", async () => {
-      const client = createWorkerDatabaseClient(this.env);
+        try {
+          const result = await finalizeRun(this.env, client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId,
+            runSessionId,
+            taskResults
+          });
 
-      try {
-        const result = await finalizeRun(this.env, client, {
+          return {
+            finalStatus: result.finalStatus,
+            runSummaryArtifactRefId: result.artifactRef.artifactRefId,
+            successfulTasks: result.summary.successfulTasks,
+            failedTasks: result.summary.failedTasks
+          };
+        } finally {
+          await client.close();
+        }
+      });
+    } catch (error) {
+      await step.do("fail run after compile or execution error", async () => {
+        const updated = await persistTerminalRunStatus(this.env, {
           tenantId: event.payload.tenantId,
           runId: event.payload.runId,
           runSessionId,
-          taskResults
+          status: "failed",
+          eventType: "session.error",
+          severity: "error",
+          phase: "run-execution",
+          error
         });
 
         return {
-          finalStatus: result.finalStatus,
-          runSummaryArtifactRefId: result.artifactRef.artifactRefId,
-          successfulTasks: result.summary.successfulTasks,
-          failedTasks: result.summary.failedTasks
+          status: updated?.status ?? null
         };
-      } finally {
-        await client.close();
-      }
-    });
+      });
+
+      throw error;
+    }
 
     return {
       runId: event.payload.runId,

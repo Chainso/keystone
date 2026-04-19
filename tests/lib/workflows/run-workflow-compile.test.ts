@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { demoDecisionPackageFixture } from "../../../src/lib/fixtures/demo-decision-package";
+import { createMirrorClient } from "../run-session-mirror-fixture";
 
 const mocked = vi.hoisted(() => {
   const livePlan = {
@@ -294,6 +295,18 @@ vi.mock("../../../src/keystone/integration/finalize-run", () => ({
 }));
 
 const { RunWorkflow } = await import("../../../src/workflows/RunWorkflow");
+const {
+  createSessionRecord: actualCreateSessionRecord,
+  ensureRunRecord: actualEnsureRunRecord,
+  getSessionRecord: actualGetSessionRecord,
+  updateSessionStatus: actualUpdateSessionStatus
+} = await vi.importActual<typeof import("../../../src/lib/db/runs")>(
+  "../../../src/lib/db/runs"
+);
+
+type ActualCreateSessionRecordInput = Parameters<typeof actualCreateSessionRecord>[1];
+type ActualEnsureRunRecordInput = Parameters<typeof actualEnsureRunRecord>[1];
+type ActualUpdateSessionStatusInput = Parameters<typeof actualUpdateSessionStatus>[1];
 
 function createStep() {
   return {
@@ -372,6 +385,51 @@ function createWorkflowEvent(thinkMode: "live" | "mock") {
   };
 }
 
+function createWorkflowMirrorClient(options: Parameters<typeof createMirrorClient>[0] = {}) {
+  const mirror = createMirrorClient(options);
+
+  return {
+    client: {
+      ...mirror.client,
+      close: mocked.close
+    },
+    getState: mirror.getState
+  };
+}
+
+function useActualRunMirror(client: unknown) {
+  mocked.createWorkerDatabaseClient.mockImplementation(() => client as never);
+  mocked.ensureSessionRecord.mockImplementation(
+    (async (
+      dbClient: unknown,
+      spec: ActualCreateSessionRecordInput,
+      sessionId: string
+    ) => {
+      const existing = await actualGetSessionRecord(dbClient as never, spec.tenantId, sessionId);
+
+      if (existing) {
+        return existing;
+      }
+
+      return actualCreateSessionRecord(dbClient as never, spec, {
+        sessionId
+      });
+    }) as never
+  );
+  mocked.ensureRunRecord.mockImplementation(
+    ((dbClient: unknown, input: ActualEnsureRunRecordInput) =>
+      actualEnsureRunRecord(dbClient as never, input)) as never
+  );
+  mocked.getSessionRecord.mockImplementation(
+    ((dbClient: unknown, tenantId: string, sessionId: string) =>
+      actualGetSessionRecord(dbClient as never, tenantId, sessionId)) as never
+  );
+  mocked.updateSessionStatus.mockImplementation(
+    ((dbClient: unknown, input: ActualUpdateSessionStatusInput) =>
+      actualUpdateSessionStatus(dbClient as never, input)) as never
+  );
+}
+
 function createLiveCompileResult() {
   return {
     plan: mocked.livePlan,
@@ -405,6 +463,51 @@ describe("RunWorkflow compile routing", () => {
     mocked.evaluateRepoSourcePolicy.mockReturnValue({
       result: "allow"
     });
+    mocked.createWorkerDatabaseClient.mockImplementation(() => ({
+      close: mocked.close,
+      db: {},
+      sql: {}
+    }));
+    mocked.getSessionRecord.mockImplementation(async () => undefined);
+    mocked.ensureRunRecord.mockImplementation(async (_client, input) => ({
+      tenantId: input.tenantId,
+      runId: input.runId,
+      projectId: input.projectId,
+      workflowInstanceId: input.workflowInstanceId,
+      executionEngine: input.executionEngine,
+      sandboxId: input.sandboxId ?? null,
+      status: input.status,
+      compiledSpecRevisionId: null,
+      compiledArchitectureRevisionId: null,
+      compiledExecutionPlanRevisionId: null,
+      compiledAt: null,
+      startedAt: null,
+      endedAt: null,
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    }));
+    mocked.updateSessionStatus.mockImplementation(async (_client, input) => ({
+      tenantId: input.tenantId,
+      sessionId: input.sessionId,
+      runId: "run-123",
+      sessionType: "run",
+      status: input.status,
+      parentSessionId: null,
+      metadata: input.metadata ?? null,
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    }));
+    mocked.ensureSessionRecord.mockImplementation(async (_client, spec, sessionId) => ({
+      tenantId: spec.tenantId,
+      sessionId,
+      runId: spec.runId,
+      sessionType: spec.sessionType,
+      status: "configured",
+      parentSessionId: spec.parentSessionId ?? null,
+      metadata: null,
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    }));
   });
 
   it("uses the persisted compile artifact for think/live fanout", async () => {
@@ -559,6 +662,71 @@ describe("RunWorkflow compile routing", () => {
       runId: "run-123",
       finalStatus: "archived"
     });
+  });
+
+  it("cancels the authoritative run row when repo policy denies execution", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const { client, getState } = createWorkflowMirrorClient();
+
+    useActualRunMirror(client);
+    mocked.evaluateRepoSourcePolicy.mockReturnValueOnce({
+      result: "deny",
+      reason: "Repo access is denied for this source."
+    } as never);
+
+    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
+      /Repo access is denied for this source/
+    );
+
+    expect(getState().session?.status).toBe("cancelled");
+    expect(getState().run?.status).toBe("cancelled");
+    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
+  });
+
+  it("fails the authoritative run row when compile throws before finalization", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const { client, getState } = createWorkflowMirrorClient();
+
+    useActualRunMirror(client);
+    mocked.compileDemoFixtureRunPlan.mockRejectedValueOnce(new Error("compile step failed"));
+
+    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
+      /compile step failed/
+    );
+
+    expect(getState().session?.status).toBe("failed");
+    expect(getState().run?.status).toBe("failed");
+  });
+
+  it("fails the authoritative run row when task polling times out", async () => {
+    const env = {
+      ARTIFACTS_BUCKET: {} as R2Bucket,
+      TASK_WORKFLOW: {
+        create: vi.fn(async (entry: { id: string }) => ({ id: entry.id })),
+        get: vi.fn(async () => ({
+          status: vi.fn(async () => ({
+            status: "running",
+            output: null
+          }))
+        }))
+      }
+    };
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const { client, getState } = createWorkflowMirrorClient();
+
+    useActualRunMirror(client);
+
+    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
+      /did not reach a terminal state within the polling window/
+    );
+
+    expect(getState().session?.status).toBe("failed");
+    expect(getState().run?.status).toBe("failed");
   });
 
   it("fails clearly when multiple executable project components leave compile target selection ambiguous", async () => {

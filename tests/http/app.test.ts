@@ -254,7 +254,9 @@ const mocked = vi.hoisted(() => {
     resolveApprovalRecord: vi.fn(async () => ({
       status: "approved",
       resolvedAt: new Date("2026-04-14T00:00:02.000Z"),
-      waitEventType: "approval.resolved.approval-1"
+      waitEventType: "approval.resolved.approval-1",
+      resolutionApplied: true,
+      resolutionMatchesRequest: true
     })),
     getRunCoordinatorStub: vi.fn(() => ({
       initialize: vi.fn(async () => undefined),
@@ -1128,6 +1130,60 @@ describe("app", () => {
           thinkMode: "live",
           preserveSandbox: true
         }
+      }
+    });
+  });
+
+  it("prefers the authoritative run status over a stale live coordinator snapshot", async () => {
+    mocked.getRunRecord.mockResolvedValueOnce({
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      projectId: "project-fixture",
+      workflowInstanceId: "run-workflow-instance",
+      executionEngine: "think",
+      sandboxId: null,
+      status: "failed",
+      compiledSpecRevisionId: null,
+      compiledArchitectureRevisionId: null,
+      compiledExecutionPlanRevisionId: null,
+      compiledAt: null,
+      startedAt: new Date("2026-04-14T00:00:00.000Z"),
+      endedAt: new Date("2026-04-14T00:05:00.000Z"),
+      createdAt: new Date("2026-04-14T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-14T00:05:00.000Z")
+    } as never);
+    mocked.getRunCoordinatorStub.mockReturnValueOnce({
+      initialize: vi.fn(async () => undefined),
+      publish: vi.fn(async () => undefined),
+      getSnapshot: vi.fn(async () => ({
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        status: "active",
+        updatedAt: "2026-04-14T00:04:00.000Z",
+        websocketCount: 0,
+        latestEvent: null,
+        eventCount: 3
+      })),
+      fetch: vi.fn(async () => new Response("ws-ok", { status: 200 }))
+    } as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        status: "failed"
       }
     });
   });
@@ -2065,6 +2121,146 @@ describe("app", () => {
         eventType: "approval.resolved"
       })
     );
+  });
+
+  it("treats repeated approval resolution as idempotent while re-signaling a still-paused workflow", async () => {
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        sessionType: "task",
+        status: "paused_for_approval",
+        parentSessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:04.000Z"),
+        metadata: {
+          taskId: "task-greeting-tone"
+        }
+      }
+    ] as never);
+    mocked.getApprovalRecord.mockResolvedValueOnce({
+      approvalId: "approval-1",
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      sessionId: "task-session-1",
+      approvalType: "outbound_network",
+      status: "approved",
+      requestedBy: "keystone",
+      requestedAt: new Date("2026-04-14T00:00:01.000Z"),
+      resolvedAt: new Date("2026-04-14T00:00:02.000Z"),
+      resolution: {},
+      metadata: {},
+      waitEventType: "approval.resolved.approval-1"
+    } as never);
+    mocked.resolveApprovalRecord.mockResolvedValueOnce({
+      approvalId: "approval-1",
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      sessionId: "task-session-1",
+      approvalType: "outbound_network",
+      status: "approved",
+      requestedBy: "keystone",
+      requestedAt: new Date("2026-04-14T00:00:01.000Z"),
+      resolvedAt: new Date("2026-04-14T00:00:02.000Z"),
+      resolution: {},
+      metadata: {},
+      waitEventType: "approval.resolved.approval-1",
+      resolutionApplied: false,
+      resolutionMatchesRequest: true
+    } as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/approvals/approval-1/resolve",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          resolution: "approved"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocked.appendSessionEvent).not.toHaveBeenCalled();
+    expect(mocked.runWorkflowGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects conflicting approval retries after a different terminal resolution already landed", async () => {
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "task-session-1",
+        runId: "run-123",
+        sessionType: "task",
+        status: "cancelled",
+        parentSessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:04.000Z"),
+        metadata: {
+          taskId: "task-greeting-tone"
+        }
+      }
+    ] as never);
+    mocked.getApprovalRecord.mockResolvedValueOnce({
+      approvalId: "approval-1",
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      sessionId: "task-session-1",
+      approvalType: "outbound_network",
+      status: "rejected",
+      requestedBy: "keystone",
+      requestedAt: new Date("2026-04-14T00:00:01.000Z"),
+      resolvedAt: new Date("2026-04-14T00:00:02.000Z"),
+      resolution: {},
+      metadata: {},
+      waitEventType: "approval.resolved.approval-1"
+    } as never);
+    mocked.resolveApprovalRecord.mockResolvedValueOnce({
+      approvalId: "approval-1",
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      sessionId: "task-session-1",
+      approvalType: "outbound_network",
+      status: "rejected",
+      requestedBy: "keystone",
+      requestedAt: new Date("2026-04-14T00:00:01.000Z"),
+      resolvedAt: new Date("2026-04-14T00:00:02.000Z"),
+      resolution: {},
+      metadata: {},
+      waitEventType: "approval.resolved.approval-1",
+      resolutionApplied: false,
+      resolutionMatchesRequest: false
+    } as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/approvals/approval-1/resolve",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          resolution: "approved"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "approval_already_resolved"
+      }
+    });
+    expect(mocked.appendSessionEvent).not.toHaveBeenCalled();
   });
 
   it("proxies the websocket route to the coordinator stub", async () => {

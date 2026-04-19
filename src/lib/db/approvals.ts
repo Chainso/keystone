@@ -33,6 +33,11 @@ function normalizeApprovalRecord<T extends ApprovalRecordRow | undefined>(row: T
   };
 }
 
+export interface ResolveApprovalRecordResult extends ApprovalRecordRow {
+  resolutionApplied: boolean;
+  resolutionMatchesRequest: boolean;
+}
+
 export async function createApprovalRecord(
   client: DatabaseClient,
   input: {
@@ -171,6 +176,7 @@ export async function resolveApprovalRecord(
       resolved_at = now()
     where tenant_id = ${input.tenantId}
       and approval_id = ${input.approvalId}::uuid
+      and status = 'pending'
     returning
       tenant_id as "tenantId",
       approval_id::text as "approvalId",
@@ -187,5 +193,28 @@ export async function resolveApprovalRecord(
       metadata
   `;
 
-  return normalizeApprovalRecord(updated[0]);
+  const applied = normalizeApprovalRecord(updated[0]);
+
+  if (applied) {
+    return {
+      ...applied,
+      resolutionApplied: true,
+      resolutionMatchesRequest: true
+    } satisfies ResolveApprovalRecordResult;
+  }
+
+  const existing = await getApprovalRecord(client, {
+    tenantId: input.tenantId,
+    approvalId: input.approvalId
+  });
+
+  if (!existing) {
+    return undefined;
+  }
+
+  return {
+    ...existing,
+    resolutionApplied: false,
+    resolutionMatchesRequest: existing.status === input.status
+  } satisfies ResolveApprovalRecordResult;
 }

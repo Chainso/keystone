@@ -224,10 +224,15 @@ The migration strategy in this plan is therefore:
   **Decision:** Make the Phase 3 run/session mirror atomic on create and status transitions, and let run-session metadata reconstruct a missing `runs` row during terminal status updates.
   **Rationale:** The blocking review finding was about divergence risk inside the temporary dual-write bridge. A transaction-backed mirror plus metadata-driven backfill closes that gap without expanding Phase 3 into broader API or task-model work.
 
-- **Date:** 2026-04-19
+- **Date:** 2026-04-19  
   **Phase:** Post-Phase-3 audit fix pass
   **Decision:** Close the cumulative migration-range audit findings inside the current transitional bridge instead of forcing an early Phase 4 or Phase 5 cutover.
   **Rationale:** The remaining blockers were bridge-local correctness gaps: type safety regressions, document-load lifetime races, run-create and finalization compensation holes, summary fallback loss after workflow metadata rewrites, invalid base64 classification, and missing non-gated proof around authoritative `runs` rows.
+
+- **Date:** 2026-04-19  
+  **Phase:** Post-Phase-3 audit fix pass 2
+  **Decision:** Keep the second cumulative audit pass narrowly on transitional-bridge correctness and proof gaps rather than pulling forward Phase 4 task/DAG work.
+  **Rationale:** The remaining blockers were still localized to the run/session bridge and its projections: missing happy-path mirror proof, non-terminal abort paths, stale live-status precedence, list/detail summary drift, and approval retry safety.
 
 ## Progress
 
@@ -246,6 +251,7 @@ The migration strategy in this plan is therefore:
 - [x] 2026-04-19 Phase 3 complete: real `runs` rows and `execution_engine` plumbing now exist alongside the legacy run/session path temporarily, without auto-seeding planning documents.
 - [x] 2026-04-19 Phase 3 targeted fix pass complete: run/session dual-write creation and status transitions are now transactional, missing mirrored `runs` rows can be reconstructed from root run-session metadata during status updates, and HTTP/workflow tests now prove `runs` authority over conflicting legacy session metadata.
 - [x] 2026-04-19 Post-Phase-3 audit fix pass complete: `rtk npm run typecheck` is green again, document hydration now finishes before client teardown, failed `POST /v1/runs` requests compensate mirrored authoritative rows, finalization safely reuses or cleans up deterministic summary artifacts, run summary fallback survives workflow metadata rewrites, malformed base64 document bodies now return `400 invalid_request`, and non-gated tests now prove positive `runs`-row persistence more credibly.
+- [x] 2026-04-19 Post-Phase-3 audit fix pass 2 complete: the run/session bridge now has real happy-path create and cleanup proof, `RunWorkflow` terminalizes authoritative `runs` rows on deny/compile-timeout aborts, run detail prefers authoritative run status over stale coordinator state, project run listing hydrates task/artifact summaries coherently, and approval resolution is retry-safe enough to avoid duplicate side effects while re-signaling still-paused workflows.
 - [ ] Phase 4 complete: compile and task execution write `run_tasks` and dependency edges, while legacy projections still function.
 - [ ] Phase 5 complete: public run/task/document APIs and scripts cut over to the target model, and old public contract shapes are removed rather than shimmed.
 - [ ] Phase 6 complete: UI reads the new document/run-task model under the existing route structure.
@@ -319,6 +325,14 @@ Phase 3 fix-pass outcome on 2026-04-19:
 - `src/lib/db/runs.ts` now wraps run-session creation and run-session status transitions in DB transactions, so failed `runs` writes roll back the mirrored `sessions` change instead of leaving Phase 3 drift behind.
 - Missing `runs` rows during run-session status transitions are now reconstructed from persisted root-session metadata, which keeps approval cancellation and finalization paths aligned even if a prior partial write stranded only the session row.
 - `tests/lib/workflows/run-workflow-compile.test.ts`, `tests/lib/finalize-run.test.ts`, `tests/http/app.test.ts`, and `tests/http/projects.test.ts` now prove persisted execution metadata precedence, `runs`-row authority over conflicting legacy session metadata, and mirrored terminal-status persistence rather than only helper invocation.
+
+Post-Phase-3 audit fix pass 2 outcome on 2026-04-19:
+
+- `tests/lib/finalize-run.test.ts` now exercises the real run/session mirror happy path for both mirror creation and cleanup, rather than only failure rollback.
+- `src/workflows/RunWorkflow.ts` now terminalizes the authoritative run/session mirror on repo-policy deny, compile failure, and task-poll timeout paths, and `tests/lib/workflows/run-workflow-compile.test.ts` proves those run rows land in terminal `cancelled` or `failed` states.
+- `src/http/api/v1/runs/projections.ts` now prefers authoritative `runs.status` over stale coordinator snapshot status, and `tests/http/app.test.ts` covers the stale-live-snapshot case directly.
+- `src/http/api/v1/projects/handlers.ts` now hydrates run-list events and artifacts so `currentTaskId` and artifact counts stay coherent with run detail in the current transitional API, and `tests/http/projects.test.ts` covers that summary path.
+- Approval resolution now distinguishes first-write vs retry paths so repeated resolves do not append duplicate `approval.resolved` events, conflicting retries return `409 approval_already_resolved`, and same-resolution retries can still re-signal a paused workflow.
 
 Phase 1 fix-pass outcome on 2026-04-19:
 

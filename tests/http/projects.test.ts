@@ -245,6 +245,24 @@ const mocked = vi.hoisted(() => {
         }
       }
     ]),
+    listRunEvents: vi.fn(async (_client, input) => [
+      {
+        eventId: crypto.randomUUID(),
+        tenantId: input.tenantId,
+        sessionId: "run-session-123",
+        runId: input.runId,
+        taskId: null,
+        seq: 1,
+        eventType: "session.started",
+        actor: "keystone",
+        severity: "info",
+        ts: new Date("2026-04-17T10:30:01.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {}
+      }
+    ]),
+    listRunArtifacts: vi.fn(async () => []),
     createDocument: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       projectId: input.projectId,
@@ -319,6 +337,23 @@ vi.mock("../../src/lib/db/runs", () => ({
   listRunSessions: mocked.listRunSessions
 }));
 
+vi.mock("../../src/lib/db/events", () => ({
+  listRunEvents: mocked.listRunEvents
+}));
+
+vi.mock("../../src/lib/db/artifacts", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/db/artifacts")>(
+    "../../src/lib/db/artifacts"
+  );
+
+  return {
+    ...actual,
+    createArtifactRef: mocked.createArtifactRef,
+    deleteArtifactRef: mocked.deleteArtifactRef,
+    listRunArtifacts: mocked.listRunArtifacts
+  };
+});
+
 vi.mock("../../src/lib/db/documents", async () => {
   const actual = await vi.importActual<typeof import("../../src/lib/db/documents")>(
     "../../src/lib/db/documents"
@@ -333,18 +368,6 @@ vi.mock("../../src/lib/db/documents", async () => {
     getDocumentWithCurrentRevision: vi.fn(actual.getDocumentWithCurrentRevision),
     listProjectDocumentsWithCurrentRevision: vi.fn(actual.listProjectDocumentsWithCurrentRevision),
     listRunDocumentsWithCurrentRevision: vi.fn(actual.listRunDocumentsWithCurrentRevision)
-  };
-});
-
-vi.mock("../../src/lib/db/artifacts", async () => {
-  const actual = await vi.importActual<typeof import("../../src/lib/db/artifacts")>(
-    "../../src/lib/db/artifacts"
-  );
-
-  return {
-    ...actual,
-    createArtifactRef: mocked.createArtifactRef,
-    deleteArtifactRef: mocked.deleteArtifactRef
   };
 });
 
@@ -1315,6 +1338,78 @@ describe("project API", () => {
           {
             runId: "run-123",
             summary: "Compiled run-plan summary restored from the artifact."
+          }
+        ]
+      }
+    });
+  });
+
+  it("hydrates task and artifact summaries for project run listing from the available transitional data", async () => {
+    mocked.listRunEvents.mockResolvedValueOnce([
+      {
+        eventId: crypto.randomUUID(),
+        tenantId: "tenant-read",
+        sessionId: "run-session-123",
+        runId: "run-123",
+        taskId: "task-greeting-tone",
+        seq: 2,
+        eventType: "task.status_changed",
+        actor: "keystone",
+        severity: "info",
+        ts: new Date("2026-04-17T10:45:00.000Z"),
+        idempotencyKey: null,
+        artifactRefId: null,
+        payload: {
+          status: "active"
+        }
+      }
+    ] as never);
+    mocked.listRunArtifacts.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-read",
+        artifactRefId: "artifact-run-summary",
+        projectId: "project-123",
+        runId: "run-123",
+        sessionId: "run-session-123",
+        taskId: null,
+        runTaskId: null,
+        kind: "run_summary",
+        artifactKind: "run_summary",
+        storageBackend: "r2",
+        storageUri: "r2://keystone-artifacts-dev/tenants/tenant-read/runs/run-123/release/run-summary.json",
+        bucket: "keystone-artifacts-dev",
+        objectKey: "tenants/tenant-read/runs/run-123/release/run-summary.json",
+        objectVersion: null,
+        etag: "etag-run-summary",
+        contentType: "application/json; charset=utf-8",
+        sha256: null,
+        sizeBytes: 128,
+        createdAt: new Date("2026-04-17T11:30:00.000Z"),
+        metadata: {}
+      }
+    ] as never);
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/runs",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        items: [
+          {
+            runId: "run-123",
+            currentTaskId: "task-greeting-tone",
+            artifacts: {
+              total: 1
+            }
           }
         ]
       }

@@ -176,6 +176,14 @@ function getRunExecution(runRecord: RunRow | null | undefined, runSession: Sessi
   };
 }
 
+function getRunStatus(
+  runRecord: RunRow | null | undefined,
+  runSession: SessionRow | null,
+  liveSnapshot?: RunCoordinatorSnapshot | null | undefined
+) {
+  return runRecord?.status ?? liveSnapshot?.status ?? runSession?.status ?? "unknown";
+}
+
 function buildTaskStatusIndex(events: SessionEventRow[]) {
   const statuses = new Map<string, TaskStatusSnapshot>();
 
@@ -246,7 +254,7 @@ export function projectRunResource(input: {
     projectId: getRunProjectId(input.runRecord, runSession, input.events),
     decisionPackageId: getDecisionPackageId(runSession, input.runPlanSummary ?? null),
     summary: getRunSummaryText(runSession, input.runPlanSummary ?? null),
-    status: input.liveSnapshot?.status ?? input.runRecord?.status ?? runSession?.status ?? "unknown",
+    status: getRunStatus(input.runRecord, runSession, input.liveSnapshot),
     currentTaskId: currentTask?.[0] ?? null,
     createdAt: toIso(input.runRecord?.createdAt ?? runSession?.createdAt),
     updatedAt:

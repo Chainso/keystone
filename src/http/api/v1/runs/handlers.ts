@@ -723,6 +723,14 @@ export async function resolveApprovalHandler(context: Context<AppEnv>) {
       throwJsonHttpError(500, "approval_update_failed", "Approval update returned no row.");
     }
 
+    if (!updated.resolutionMatchesRequest) {
+      return jsonErrorResponse(
+        "approval_already_resolved",
+        `Approval ${approvalId} was already resolved as ${updated.status}.`,
+        409
+      );
+    }
+
     const approvalSession = sessions.find((session) => session.sessionId === approval.sessionId);
     const taskId =
       approvalSession?.metadata &&
@@ -733,26 +741,28 @@ export async function resolveApprovalHandler(context: Context<AppEnv>) {
         ? approvalSession.metadata.taskId
         : undefined;
 
-    await appendSessionEvent(client, {
-      tenantId: auth.tenantId,
-      runId,
-      sessionId: approval.sessionId,
-      taskId,
-      eventType: "approval.resolved",
-      actor: `user:${auth.tenantId}`,
-      payload: {
-        approvalId,
-        resolution: body.resolution
-      }
-    });
+    if (updated.resolutionApplied) {
+      await appendSessionEvent(client, {
+        tenantId: auth.tenantId,
+        runId,
+        sessionId: approval.sessionId,
+        taskId,
+        eventType: "approval.resolved",
+        actor: `user:${auth.tenantId}`,
+        payload: {
+          approvalId,
+          resolution: body.resolution
+        }
+      });
 
-    const coordinator = getRunCoordinatorStub(context.env, auth.tenantId, runId);
-    await coordinator.publish({
-      eventType: "approval.resolved",
-      severity: "info"
-    });
+      const coordinator = getRunCoordinatorStub(context.env, auth.tenantId, runId);
+      await coordinator.publish({
+        eventType: "approval.resolved",
+        severity: "info"
+      });
+    }
 
-    if (updated.waitEventType) {
+    if (updated.waitEventType && (updated.resolutionApplied || approvalSession?.status === "paused_for_approval")) {
       const workflow = await context.env.RUN_WORKFLOW.get(
         buildRunWorkflowInstanceId(auth.tenantId, runId)
       );
