@@ -62,6 +62,24 @@ Current UI non-goals:
 - final visual polish
 - destination-specific behavior beyond the current scaffold shells
 
+## UI Architecture
+
+The frontend scaffold is intentionally split by ownership so future feature work can fill in the existing slots instead of reopening structure decisions:
+
+- `ui/src/app/`: React entrypoint, provider stack, and shared stylesheet
+- `ui/src/routes/`: route containers and nested layouts that mirror `design/workspace-spec.md`
+- `ui/src/features/`: placeholder view-model hooks and scaffold data for runs, execution, documentation, workstreams, and project configuration
+- `ui/src/shared/`: reusable layout, navigation, and placeholder-form primitives
+- `ui/src/test/`: route and shell smoke coverage for the scaffold contracts
+
+`ui/src/routes/router.tsx` is the canonical route tree. Route files own URL structure and layout composition, feature hooks own placeholder state and backend-gap messaging, and shared components stay presentational.
+
+Current UI boundary:
+
+- the scaffold is served from the same Worker deployable as the `v1` API
+- the UI still uses fixed placeholder view models instead of live backend adapters
+- project documents, decision packages, evidence, integration, release, and operator steering remain explicit backend gaps in the rendered copy
+
 ## Project-Backed Backend
 
 The current backend contract is project-first:

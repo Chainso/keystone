@@ -43,6 +43,8 @@ If Wrangler binds a different port because `8787` is already in use, export the 
 export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 ```
 
+If you are validating the full repo after UI changes, `npm run build` still needs a normal host shell on this machine. `vite build` completes in the sandbox, but Wrangler's dry-run deploy then needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`.
+
 ## Sanity Checks
 
 ```bash
@@ -148,3 +150,4 @@ The approval-gated path is a project whose compile target resolves to `gitUrl`. 
 - `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted sandbox boundary on this host.
 - empty or stalled compile output: confirm the backend is reachable at `http://localhost:10531/v1/chat/completions`.
 - `defines multiple executable components`: the project materializes multiple code components but still lacks an explicit compile-target selector for Phase 4/5 runtime proof.
+- `EROFS` under `~/.config/.wrangler` or `~/.docker/buildx/activity` during `npm run build`: rerun the dry-run deploy from a host shell outside the Codex sandbox.

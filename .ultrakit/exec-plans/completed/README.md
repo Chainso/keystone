@@ -12,6 +12,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 | [keystone-think-agent-runtime](./keystone-think-agent-runtime.md) | 2026-04-17 | Delivered the Think-backed implementer runtime, filesystem bridge, durable docs, and local validation proof. |
 | [keystone-m1-cloudflare-foundation](./keystone-m1-cloudflare-foundation.md) | 2026-04-17 | Delivered the full Keystone M1 demo, docs, and archive proof. |
 | [keystone-ui-first-api-scaffold](./keystone-ui-first-api-scaffold.md) | 2026-04-18 | Reworked the public API around the UI-first resource model, migrated the demo/tests/docs, and left the remaining backend gaps as explicit typed stubs. |
+| [keystone-ui-structure-scaffold](./keystone-ui-structure-scaffold.md) | 2026-04-18 | Delivered the Worker-served React workspace scaffold, route/module boundaries, durable docs, and final validation proof. |
 
 Add completed plans using this format:
 

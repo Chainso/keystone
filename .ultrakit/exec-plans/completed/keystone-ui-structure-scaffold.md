@@ -146,6 +146,11 @@ Compatibility that **is** required:
   **Decision:** Tighten the project-configuration smoke tests around concrete `/projects/new/*` and `/settings/*` tab targets, and model `git_repository` components as either `localPath` or `gitUrl` sources instead of a hardcoded local-path placeholder.  
   **Rationale:** The review pass found that Phase 3 was only proving the default tab redirects and that the component scaffold did not structurally match the backend contract's one-of source shape.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 4  
+  **Decision:** Close the scaffold plan by documenting the final `ui/` ownership boundaries in README plus the M1 architecture/runbook docs, and revalidate the repo with a host rerun for `npm run build`.  
+  **Rationale:** The structure-first scaffold is only durable if future contributors can see where route containers, feature hooks, shared primitives, and host-only validation constraints now live without rereading all four phase handoffs.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, target references, current API surface, and Cloudflare-first frontend architecture options.
@@ -158,7 +163,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 2 fix pass completed: route tests now assert concrete `/runs` and execution-task targets, and invalid task ids surface the route error boundary instead of rendering the first scaffolded task.
 - [x] 2026-04-18 Phase 3 completed: `Documentation`, `Workstreams`, `New project`, and `Project settings` now use dedicated route families, placeholder feature hooks, project tabs, and the Git-repository-only component picker flow.
 - [x] 2026-04-18 Phase 3 fix pass completed: route tests now assert concrete `/projects/new/*` and `/settings/*` tab targets, and the `git_repository` scaffold models both `localPath` and `gitUrl` source modes.
-- [ ] Phase 4 completed: developer docs, README guidance, and validation coverage updated for the new UI scaffold.
+- [x] 2026-04-18 Phase 4 completed: README, developer docs, and durable notes now describe the scaffold architecture and the host-only `npm run build` caveat with final validation evidence recorded.
 
 ## Surprises & Discoveries
 
@@ -174,6 +179,7 @@ Compatibility that **is** required:
 - The current run APIs are already specific enough to label each Phase 2 scaffold honestly: run detail, graph, task, task conversation, and artifact seams exist, while project documents plus evidence/integration/release remain the explicit stub-backed gaps.
 - The Phase 2 route tests became much more reliable once `renderRoute()` returned the memory router, because redirect assertions could pin actual pathnames instead of inferring state from active CSS classes or concatenated nav labels.
 - The old build caveat is still host-sensitive enough to verify each pass: the original Phase 3 implementation saw sandbox `npm run build` succeed, but the fix pass again hit Wrangler and Docker home-directory writes and required a host rerun.
+- The final Phase 4 validation pinned the exact sandbox-only build failure paths again: `vite build` succeeds, then Wrangler and Docker fail on read-only writes under `~/.config/.wrangler/logs/` and `~/.docker/buildx/activity/` until the command is rerun from a host shell.
 - Removing the old `routes/screens/*` placeholder modules once the dedicated destination route families landed made the Phase 3 scaffold much easier to read; otherwise the repo still looked like it had two competing sources of truth for the same surfaces.
 - The project-configuration tab links expose accessible names that concatenate the tab label and summary text, so route smoke tests are more stable when they pin the concrete `href` inside the tab nav instead of using fuzzy role-name matching.
 
@@ -214,6 +220,14 @@ Phase 3 outcome on 2026-04-18:
 - The Phase 3 fix pass now proves the actual `/projects/new/*` and `/settings/*` tab href/path contracts, and the component scaffold shows both `localPath` and `gitUrl` variants of the `git_repository` source contract instead of leaving one mode empty.
 - The old Phase 1 placeholder destination files were removed so the Phase 3 route families are the only source of truth for these surfaces.
 - `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` still fails in the sandbox when Wrangler and Docker try to write under the host home directory, then passes when rerun outside the sandbox.
+
+Phase 4 outcome on 2026-04-18:
+
+- README now documents the `ui/src/app`, `ui/src/routes`, `ui/src/features`, `ui/src/shared`, and `ui/src/test` ownership boundaries so contributors can extend the scaffold without reopening the route/layout split.
+- The M1 architecture doc now records that the same Worker deployable serves the SPA while Hono remains authoritative for `v1`, internal, and runtime endpoints, and it explains the placeholder-only UI boundary explicitly.
+- The M1 local runbook and `.ultrakit/notes.md` now preserve the current host-only `npm run build` behavior, including the read-only Wrangler and Docker home-directory paths hit in the sandbox.
+- Final validation on the Phase 4 tree passed: `npm run lint`, `npm run typecheck`, and `npm run test` succeeded in the sandbox, and `npm run build` succeeded after an escalated host rerun once the expected home-directory write restriction was bypassed.
+- The plan acceptance criteria are met, so the scaffold plan is ready to archive with no additional implementation work inside this phase.
 
 ## Context and Orientation
 
@@ -670,12 +684,19 @@ Success means the documentation explains how to run and extend the scaffold, and
 
 ### Status
 
-Not started.
+Completed on 2026-04-18.
 
 ### Completion Notes
 
-None yet.
+- Updated README with the canonical `ui/` ownership split and the placeholder-only boundary for the shipped scaffold.
+- Updated `.ultrakit/developer-docs/m1-architecture.md` and `.ultrakit/developer-docs/m1-local-runbook.md` so the Worker-plus-SPA runtime shape and host-only build caveat are documented in the durable developer docs.
+- Updated `.ultrakit/notes.md` with the exact host-shell requirement for `npm run build` on this machine.
+- Validation results:
+  - `npm run lint`: passed in the sandbox
+  - `npm run typecheck`: passed in the sandbox
+  - `npm run test`: passed in the sandbox
+  - `npm run build`: failed in the sandbox only because Wrangler/Docker hit read-only writes under `~/.config/.wrangler/logs/` and `~/.docker/buildx/activity/`, then passed outside the sandbox
 
 ### Next Starter Context
 
-This is the closeout phase after the structural scaffold lands. Reuse the final repo state; do not reopen frontend architecture decisions here.
+Plan complete and ready for archive. The next UI-facing plan should build real adapters or behavior on top of the existing `ui/src/routes/`, `ui/src/features/`, and `ui/src/shared/` boundaries rather than revisiting the scaffold shape itself.

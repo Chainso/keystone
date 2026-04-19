@@ -15,6 +15,7 @@ These notes help future agents work effectively without rediscovering project-sp
 
 - Local Worker dev on this host must run outside the Codex sandbox boundary; otherwise `wrangler dev` fails before serving traffic with `uv_interface_addresses returned Unknown system error 1`.
 - Local Wrangler startup on this host still has to run outside the Codex sandbox boundary, but it no longer needs a host `CLOUDFLARE_API_TOKEN` just for Think model access because the Worker no longer binds Cloudflare `AI` for local validation.
+- `npm run build` can finish `vite build` inside the sandbox, but the Wrangler dry-run deploy still has to run from a host shell on this machine because it writes under `~/.config/.wrangler` and `~/.docker/buildx/activity`.
 - The local chat-completions backend is plain HTTP at `http://localhost:10531`, streams SSE chunks by default, and is the shared backend for M1 compile plus the live Think model path.
 - The fixture happy path depends on `npm test` inside the sandboxed task worktree; task workflows assume the target repo can run that command.
 - The operator-facing demo shortcut lives in `.keystone/demo-last-run.json`: `demo:run` only updates it after a successful archived run, and `demo:validate` ignores it whenever `--run-id` or `KEYSTONE_RUN_ID` is supplied.

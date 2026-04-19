@@ -14,6 +14,8 @@ Keystone's current runtime is one TypeScript Worker project with these responsib
 - `src/lib/artifacts/`: deterministic R2 keying and artifact storage helpers
 - `src/lib/security/`: explicit outbound and repo-source policy decisions
 
+The same deployable also serves the current operator UI scaffold from Wrangler's `ASSETS` binding. Hono remains authoritative for `/v1/*`, `/internal/*`, and health/runtime endpoints while the SPA owns the workspace shell routes.
+
 ## Durable Model
 
 The Worker keeps large workflow meaning outside workflow step output:
@@ -61,6 +63,22 @@ The canonical operator-facing surface is now:
 - `GET /v1/artifacts/:artifactId/content`
 
 `GET /v1/runs/:runId/stream` is the canonical UI stream path. `GET /v1/runs/:runId/events` and `GET /v1/runs/:runId/ws` remain available only as legacy/debug seams.
+
+## Operator UI Scaffold
+
+The shipped frontend is a structure-first React SPA under `ui/`:
+
+- `ui/src/app/` owns app bootstrap, providers, and global styles.
+- `ui/src/routes/` owns the canonical route tree and nested layout boundaries from `design/workspace-spec.md`.
+- `ui/src/features/` owns placeholder view-model hooks and fixed scaffold data for runs, execution, documentation, workstreams, and project configuration.
+- `ui/src/shared/` owns reusable layout, navigation, and placeholder-form primitives.
+- `ui/src/test/` owns route and shell smoke coverage for the scaffold contracts.
+
+Current boundary:
+
+- the route tree is real and stable, but the destination content is still scaffold-only
+- the UI uses local placeholder models, not live query/caching adapters
+- project documents, decision packages, evidence, integration, release, and operator steering are still backend gaps and are called out explicitly in the UI copy
 
 ## Security and Approval Edge
 
