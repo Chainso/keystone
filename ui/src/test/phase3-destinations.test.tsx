@@ -184,14 +184,22 @@ describe("Phase 3 destination scaffolds", () => {
     renderRoute("/runs/run-103/execution/tasks/task-021");
 
     expect(await screen.findByRole("heading", { name: "Run-103 / TASK-021" })).toBeInTheDocument();
-    expect(screen.getByText("Docs refresh")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("heading", { name: "Task conversation" }).closest("section")!).getByText(
+        "Docs refresh"
+      )
+    ).toBeInTheDocument();
 
     cleanup();
 
     renderRoute("/runs/run-101/execution/tasks/task-019");
 
     expect(await screen.findByRole("heading", { name: "Run-101 / TASK-019" })).toBeInTheDocument();
-    expect(screen.getByText("Review fix")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("heading", { name: "Task conversation" }).closest("section")!).getByText(
+        "Review fix"
+      )
+    ).toBeInTheDocument();
   });
 
   it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {

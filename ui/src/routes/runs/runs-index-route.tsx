@@ -60,7 +60,7 @@ export function RunsIndexRoute() {
                     </Link>
                   </td>
                   <td>{run.summary}</td>
-                  <td>{run.currentPhaseLabel}</td>
+                  <td>{run.stageLabel}</td>
                   <td>
                     <StatusPill label={run.status} />
                   </td>

@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe("Phase 2 runs routes", () => {
-  it("redirects /runs/:runId to the run's current phase", async () => {
+  it("redirects /runs/:runId to the derived default phase", async () => {
     const { router } = renderRoute("/runs/run-104");
 
     expect(await screen.findByRole("heading", { name: "Run-104" })).toBeInTheDocument();
@@ -23,21 +23,22 @@ describe("Phase 2 runs routes", () => {
       })
     ).toHaveAttribute("href", "/runs/run-104/execution");
     expect(screen.getByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.queryByText("Current backend coverage")).not.toBeInTheDocument();
+    expect(screen.getByText("UI workspace build")).toBeInTheDocument();
   });
 
-  it("redirects run-102 to execution from the run shell", async () => {
+  it("redirects run-102 to execution-plan when no compiled tasks exist", async () => {
     const { router } = renderRoute("/runs/run-102");
 
     expect(await screen.findByRole("heading", { name: "Run-102" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-102/execution");
+      expect(router.state.location.pathname).toBe("/runs/run-102/execution-plan");
     });
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
         current: "page"
       })
-    ).toHaveAttribute("href", "/runs/run-102/execution");
+    ).toHaveAttribute("href", "/runs/run-102/execution-plan");
+    expect(screen.getByRole("heading", { name: "Execution Plan conversation" })).toBeInTheDocument();
   });
 
   it("renders run index rows with run-detail navigation targets", async () => {
@@ -46,7 +47,7 @@ describe("Phase 2 runs routes", () => {
     expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Run-104" })).toHaveAttribute("href", "/runs/run-104");
     expect(screen.getByRole("link", { name: "Run-103" })).toHaveAttribute("href", "/runs/run-103");
-    expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
+    expect(screen.getByText("Execution Plan")).toBeInTheDocument();
 
     const row = screen.getByRole("link", { name: "Run-104" }).closest("tr");
 
@@ -62,33 +63,39 @@ describe("Phase 2 runs routes", () => {
   it.each([
     {
       path: "/runs/run-104/specification",
-      title: "Specification agent chat",
-      document: "Living product spec"
+      title: "Specification conversation",
+      document: "Living product spec",
+      agentName: "Specification agent",
+      documentPath: "runs/run-104/specification/product-spec.md"
     },
     {
       path: "/runs/run-104/architecture",
-      title: "Architecture agent chat",
-      document: "Living architecture doc"
+      title: "Architecture conversation",
+      document: "Living architecture doc",
+      agentName: "Architecture agent",
+      documentPath: "runs/run-104/architecture/architecture.md"
     },
     {
       path: "/runs/run-104/execution-plan",
-      title: "Execution plan agent chat",
-      document: "Execution plan doc"
+      title: "Execution Plan conversation",
+      document: "Execution plan doc",
+      agentName: "Execution plan agent",
+      documentPath: "runs/run-104/execution-plan/execution-plan.md"
     }
-  ])("renders the shared planning workspace for $path", async ({ path, title, document }) => {
-    renderRoute(path);
+  ])(
+    "renders the planning workspace from document and conversation locator data for $path",
+    async ({ path, title, document, agentName, documentPath }) => {
+      renderRoute(path);
 
-    expect(await screen.findByRole("heading", { name: "Run-104" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: document })).toBeInTheDocument();
-    if (path === "/runs/run-104/execution-plan") {
-      expect(screen.getByText("include scaffold spike")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Run-104" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: document })).toBeInTheDocument();
+      expect(screen.getByLabelText("Conversation locator")).toHaveTextContent(agentName);
+      expect(screen.getByText(documentPath)).toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: "Message composer" })).not.toBeInTheDocument();
+      expect(screen.getByRole("navigation", { name: "Run phases" })).toBeInTheDocument();
     }
-    expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveValue(
-      "message composer......................"
-    );
-    expect(screen.getByRole("navigation", { name: "Run phases" })).toBeInTheDocument();
-  });
+  );
 
   it("renders the execution DAG shell", async () => {
     renderRoute("/runs/run-104/execution");
