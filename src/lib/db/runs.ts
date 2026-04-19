@@ -1,9 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { assertSessionStatusTransition, buildConfiguredSession } from "../../maestro/session";
 import type { SessionSpec, SessionStatus } from "../../maestro/contracts";
 import type { DatabaseClient } from "./client";
-import { projects, runTaskDependencies, runTasks, runs, sessions } from "./schema";
+import { documentRevisions, documents, projects, runTaskDependencies, runTasks, runs, sessions } from "./schema";
 
 interface RunLookupInput {
   tenantId: string;
@@ -67,6 +67,36 @@ export interface CreateRunTaskDependencyInput extends RunLookupInput {
   childRunTaskId: string;
 }
 
+const compileProvenanceRequirements = {
+  compiledSpecRevisionId: {
+    kind: "specification",
+    path: "specification"
+  },
+  compiledArchitectureRevisionId: {
+    kind: "architecture",
+    path: "architecture"
+  },
+  compiledExecutionPlanRevisionId: {
+    kind: "execution_plan",
+    path: "execution-plan"
+  }
+} as const;
+
+type CompileProvenanceField = keyof typeof compileProvenanceRequirements;
+
+type CompileProvenanceInput = Pick<
+  CreateRunRecordInput,
+  | "compiledSpecRevisionId"
+  | "compiledArchitectureRevisionId"
+  | "compiledExecutionPlanRevisionId"
+> &
+  Pick<
+    UpdateRunRecordInput,
+    | "compiledSpecRevisionId"
+    | "compiledArchitectureRevisionId"
+    | "compiledExecutionPlanRevisionId"
+  >;
+
 async function assertProjectOwnership(
   client: DatabaseClient,
   input: {
@@ -97,11 +127,107 @@ async function assertRunOwnership(client: DatabaseClient, input: RunLookupInput)
   return run;
 }
 
+async function assertCompileProvenanceRevisions(
+  client: DatabaseClient,
+  context: {
+    tenantId: string;
+    projectId: string;
+    runId: string;
+  },
+  input: CompileProvenanceInput
+) {
+  const requestedRevisions = (
+    Object.entries(compileProvenanceRequirements) as Array<
+      [CompileProvenanceField, (typeof compileProvenanceRequirements)[CompileProvenanceField]]
+    >
+  )
+    .map(([field, requirement]) => {
+      const revisionId = input[field];
+
+      if (!revisionId) {
+        return null;
+      }
+
+      return {
+        field,
+        revisionId,
+        requirement
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  if (requestedRevisions.length === 0) {
+    return;
+  }
+
+  const revisions = await client.db
+    .select({
+      documentRevisionId: documentRevisions.documentRevisionId,
+      documentId: documentRevisions.documentId,
+      documentProjectId: documents.projectId,
+      documentRunId: documents.runId,
+      documentScopeType: documents.scopeType,
+      documentKind: documents.kind,
+      documentPath: documents.path
+    })
+    .from(documentRevisions)
+    .innerJoin(documents, eq(documents.documentId, documentRevisions.documentId))
+    .where(
+      and(
+        eq(documents.tenantId, context.tenantId),
+        inArray(
+          documentRevisions.documentRevisionId,
+          requestedRevisions.map((entry) => entry.revisionId)
+        )
+      )
+    );
+
+  const revisionsById = new Map(revisions.map((revision) => [revision.documentRevisionId, revision]));
+
+  for (const { field, revisionId, requirement } of requestedRevisions) {
+    const revision = revisionsById.get(revisionId);
+
+    if (!revision) {
+      throw new Error(
+        `${field} ${revisionId} was not found for run ${context.runId} in tenant ${context.tenantId}.`
+      );
+    }
+
+    if (revision.documentProjectId !== context.projectId) {
+      throw new Error(
+        `${field} ${revisionId} does not belong to project ${context.projectId} for run ${context.runId}.`
+      );
+    }
+
+    if (revision.documentScopeType !== "run" || revision.documentRunId !== context.runId) {
+      throw new Error(
+        `${field} ${revisionId} does not belong to run ${context.runId} for tenant ${context.tenantId}.`
+      );
+    }
+
+    if (revision.documentKind !== requirement.kind || revision.documentPath !== requirement.path) {
+      throw new Error(
+        `${field} ${revisionId} must reference the run ${requirement.path} planning document.`
+      );
+    }
+  }
+}
+
 export async function createRunRecord(client: DatabaseClient, input: CreateRunRecordInput) {
   await assertProjectOwnership(client, {
     tenantId: input.tenantId,
     projectId: input.projectId
   });
+
+  await assertCompileProvenanceRevisions(
+    client,
+    {
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      runId: input.runId
+    },
+    input
+  );
 
   const [inserted] = await client.db
     .insert(runs)
@@ -148,6 +274,16 @@ export async function listProjectRuns(
 
 export async function updateRunRecord(client: DatabaseClient, input: UpdateRunRecordInput) {
   const existing = await assertRunOwnership(client, input);
+
+  await assertCompileProvenanceRevisions(
+    client,
+    {
+      tenantId: existing.tenantId,
+      projectId: existing.projectId,
+      runId: existing.runId
+    },
+    input
+  );
 
   const [updated] = await client.db
     .update(runs)

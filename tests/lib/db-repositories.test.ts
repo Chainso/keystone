@@ -83,6 +83,31 @@ describeIfDatabase("database repositories", () => {
     };
   }
 
+  function expectRow<T>(value: T | undefined, message: string) {
+    if (!value) {
+      throw new Error(message);
+    }
+
+    return value;
+  }
+
+  async function createTargetModelRun(projectId: string) {
+    const runId = `run-${crypto.randomUUID()}`;
+    const run = await createRunRecord(client, {
+      tenantId,
+      runId,
+      projectId,
+      workflowInstanceId: `workflow-${crypto.randomUUID()}`,
+      executionEngine: "think",
+      status: "pending"
+    });
+
+    return {
+      run: expectRow(run, "Expected run insert to return a row."),
+      runId
+    };
+  }
+
   beforeAll(async () => {
     const resolvedConnectionString = resolveDatabaseConnectionString({
       connectionString
@@ -178,6 +203,9 @@ describeIfDatabase("database repositories", () => {
     }
     expect(event.seq).toBe(1);
     expect(event.artifactRefId).toBe(artifact.artifactRefId);
+    expect(artifact.artifactKind).toBe("plan");
+    expect(artifact.bucket).toBe("keystone-artifacts-dev");
+    expect(artifact.objectKey).toBe("test/plan.json");
 
     const runEvents = await listRunEvents(client, {
       tenantId,
@@ -188,6 +216,35 @@ describeIfDatabase("database repositories", () => {
     expect(runEvents).toHaveLength(1);
     expect(runArtifacts).toHaveLength(1);
     expect(runArtifacts[0]?.storageUri).toContain("plan.json");
+  });
+
+  it("rejects invalid document scope combinations", async () => {
+    const project = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig(`document-scope-${crypto.randomUUID()}`)
+    });
+    const { runId } = await createTargetModelRun(project.projectId);
+
+    await expect(
+      createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        scopeType: "run",
+        kind: "specification",
+        path: "specification"
+      })
+    ).rejects.toThrow(/require a run id/i);
+
+    await expect(
+      createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        scopeType: "project",
+        kind: "specification",
+        path: "product/specification"
+      })
+    ).rejects.toThrow(/cannot reference a run/i);
   });
 
   it("stores task workspace bindings for later cleanup", async () => {
@@ -270,16 +327,7 @@ describeIfDatabase("database repositories", () => {
       tenantId,
       config: buildProjectConfig(`target-model-${crypto.randomUUID()}`)
     });
-    const runId = `run-${crypto.randomUUID()}`;
-
-    const run = await createRunRecord(client, {
-      tenantId,
-      runId,
-      projectId: project.projectId,
-      workflowInstanceId: `workflow-${crypto.randomUUID()}`,
-      executionEngine: "think",
-      status: "pending"
-    });
+    const { run, runId } = await createTargetModelRun(project.projectId);
 
     expect(run?.projectId).toBe(project.projectId);
     expect(run?.status).toBe("pending");
@@ -421,5 +469,227 @@ describeIfDatabase("database repositories", () => {
     expect(runTaskDependencies).toHaveLength(1);
     expect(updatedTaskB?.status).toBe("blocked");
     expect(fetchedRunTask?.conversationAgentName).toBe("validate-repositories");
+  });
+
+  it("rejects document revisions whose artifacts fall outside the document boundary", async () => {
+    const project = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig(`document-boundary-${crypto.randomUUID()}`)
+    });
+    const { runId } = await createTargetModelRun(project.projectId);
+    const { runId: otherRunId } = await createTargetModelRun(project.projectId);
+    const runDocument = expectRow(
+      await createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        scopeType: "run",
+        kind: "execution_plan",
+        path: "execution-plan"
+      }),
+      "Expected run document insert to return a row."
+    );
+    const wrongRunArtifact = expectRow(
+      await createArtifactRef(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId: otherRunId,
+        kind: "document_revision",
+        storageBackend: "r2",
+        storageUri: `r2://keystone-artifacts-dev/documents/run/${otherRunId}/${crypto.randomUUID()}.md`,
+        contentType: "text/markdown"
+      }),
+      "Expected wrong-run artifact insert to return a row."
+    );
+    const wrongKindArtifact = expectRow(
+      await createArtifactRef(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        kind: "plan",
+        storageBackend: "r2",
+        storageUri: `r2://keystone-artifacts-dev/documents/run/${runId}/${crypto.randomUUID()}.json`,
+        contentType: "application/json"
+      }),
+      "Expected wrong-kind artifact insert to return a row."
+    );
+
+    await expect(
+      createDocumentRevision(client, {
+        tenantId,
+        documentId: runDocument.documentId,
+        artifactRefId: wrongRunArtifact.artifactRefId,
+        title: "Wrong run"
+      })
+    ).rejects.toThrow(new RegExp(`does not belong to run ${runId}`, "i"));
+
+    await expect(
+      createDocumentRevision(client, {
+        tenantId,
+        documentId: runDocument.documentId,
+        artifactRefId: wrongKindArtifact.artifactRefId,
+        title: "Wrong kind"
+      })
+    ).rejects.toThrow(/not a document_revision artifact/i);
+  });
+
+  it("rejects invalid compile provenance revisions", async () => {
+    const project = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig(`compile-provenance-${crypto.randomUUID()}`)
+    });
+    const { runId } = await createTargetModelRun(project.projectId);
+    const { runId: otherRunId } = await createTargetModelRun(project.projectId);
+    const specificationDocument = expectRow(
+      await createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        scopeType: "run",
+        kind: "specification",
+        path: "specification"
+      }),
+      "Expected specification document insert to return a row."
+    );
+    const noteDocument = expectRow(
+      await createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        scopeType: "run",
+        kind: "execution_plan",
+        path: "notes/compile-issues"
+      }),
+      "Expected note document insert to return a row."
+    );
+    const otherRunDocument = expectRow(
+      await createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId: otherRunId,
+        scopeType: "run",
+        kind: "execution_plan",
+        path: "execution-plan"
+      }),
+      "Expected other-run document insert to return a row."
+    );
+    const specificationArtifact = expectRow(
+      await createArtifactRef(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        kind: "document_revision",
+        storageBackend: "r2",
+        storageUri: `r2://keystone-artifacts-dev/documents/run/${runId}/specification.md`,
+        contentType: "text/markdown"
+      }),
+      "Expected specification artifact insert to return a row."
+    );
+    const noteArtifact = expectRow(
+      await createArtifactRef(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        kind: "document_revision",
+        storageBackend: "r2",
+        storageUri: `r2://keystone-artifacts-dev/documents/run/${runId}/compile-issues.md`,
+        contentType: "text/markdown"
+      }),
+      "Expected note artifact insert to return a row."
+    );
+    const otherRunArtifact = expectRow(
+      await createArtifactRef(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId: otherRunId,
+        kind: "document_revision",
+        storageBackend: "r2",
+        storageUri: `r2://keystone-artifacts-dev/documents/run/${otherRunId}/execution-plan.md`,
+        contentType: "text/markdown"
+      }),
+      "Expected other-run artifact insert to return a row."
+    );
+    const specificationRevision = expectRow(
+      await createDocumentRevision(client, {
+        tenantId,
+        documentId: specificationDocument.documentId,
+        artifactRefId: specificationArtifact.artifactRefId,
+        title: "Specification v1"
+      }),
+      "Expected specification revision insert to return a row."
+    );
+    const noteRevision = expectRow(
+      await createDocumentRevision(client, {
+        tenantId,
+        documentId: noteDocument.documentId,
+        artifactRefId: noteArtifact.artifactRefId,
+        title: "Compile issues"
+      }),
+      "Expected note revision insert to return a row."
+    );
+    const otherRunRevision = expectRow(
+      await createDocumentRevision(client, {
+        tenantId,
+        documentId: otherRunDocument.documentId,
+        artifactRefId: otherRunArtifact.artifactRefId,
+        title: "Execution Plan v1"
+      }),
+      "Expected other-run revision insert to return a row."
+    );
+
+    await expect(
+      createRunRecord(client, {
+        tenantId,
+        runId: `run-${crypto.randomUUID()}`,
+        projectId: project.projectId,
+        workflowInstanceId: `workflow-${crypto.randomUUID()}`,
+        executionEngine: "think",
+        status: "compiled",
+        compiledSpecRevisionId: specificationRevision.documentRevisionId
+      })
+    ).rejects.toThrow(/does not belong to run/i);
+
+    await expect(
+      updateRunRecord(client, {
+        tenantId,
+        runId,
+        compiledExecutionPlanRevisionId: noteRevision.documentRevisionId
+      })
+    ).rejects.toThrow(/must reference the run execution-plan planning document/i);
+
+    await expect(
+      updateRunRecord(client, {
+        tenantId,
+        runId,
+        compiledExecutionPlanRevisionId: otherRunRevision.documentRevisionId
+      })
+    ).rejects.toThrow(new RegExp(`does not belong to run ${runId}`, "i"));
+  });
+
+  it("rejects self-dependencies in the run graph", async () => {
+    const project = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig(`run-self-dependency-${crypto.randomUUID()}`)
+    });
+    const { runId } = await createTargetModelRun(project.projectId);
+    const task = expectRow(
+      await createRunTask(client, {
+        tenantId,
+        runId,
+        name: "Single task",
+        description: "Should not depend on itself.",
+        status: "pending"
+      }),
+      "Expected run task insert to return a row."
+    );
+
+    await expect(
+      createRunTaskDependency(client, {
+        tenantId,
+        runId,
+        parentRunTaskId: task.runTaskId,
+        childRunTaskId: task.runTaskId
+      })
+    ).rejects.toThrow(/cannot reference the same task/i);
   });
 });

@@ -1,7 +1,8 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { DatabaseClient } from "./client";
-import { documentRevisions, documents, projects, runs } from "./schema";
+import type { ArtifactRefRow, DocumentRow } from "./schema";
+import { artifactRefs, documentRevisions, documents, projects, runs } from "./schema";
 
 export type DocumentScopeType = "project" | "run";
 
@@ -34,6 +35,8 @@ export interface CreateDocumentRevisionInput extends DocumentLookupInput {
   title: string;
   setAsCurrent?: boolean | undefined;
 }
+
+const DOCUMENT_REVISION_ARTIFACT_KIND = "document_revision";
 
 async function assertProjectOwnership(client: DatabaseClient, input: ProjectLookupInput) {
   const project = await client.db.query.projects.findFirst({
@@ -70,6 +73,38 @@ function assertDocumentScope(input: CreateDocumentInput) {
 
   if (input.scopeType !== "run" && input.kind === "execution_plan") {
     throw new Error("Only run-scoped documents may use the execution_plan kind.");
+  }
+}
+
+function assertRevisionArtifactBoundary(document: DocumentRow, artifact: ArtifactRefRow) {
+  if (artifact.projectId !== document.projectId) {
+    throw new Error(
+      `Artifact ${artifact.artifactRefId} does not belong to project ${document.projectId} for document ${document.documentId}.`
+    );
+  }
+
+  if (document.scopeType === "run") {
+    if (!document.runId) {
+      throw new Error(`Run-scoped document ${document.documentId} is missing its run id.`);
+    }
+
+    if (artifact.runId !== document.runId) {
+      throw new Error(
+        `Artifact ${artifact.artifactRefId} does not belong to run ${document.runId} for document ${document.documentId}.`
+      );
+    }
+  }
+
+  if ((artifact.artifactKind ?? artifact.kind) !== DOCUMENT_REVISION_ARTIFACT_KIND) {
+    throw new Error(
+      `Artifact ${artifact.artifactRefId} is not a ${DOCUMENT_REVISION_ARTIFACT_KIND} artifact.`
+    );
+  }
+
+  if (artifact.sessionId || artifact.taskId || artifact.runTaskId) {
+    throw new Error(
+      `Artifact ${artifact.artifactRefId} is task- or session-scoped and cannot back a document revision.`
+    );
   }
 }
 
@@ -179,16 +214,35 @@ export async function createDocumentRevision(
   input: CreateDocumentRevisionInput
 ) {
   return client.db.transaction(async (transaction) => {
-    const document = await transaction.query.documents.findFirst({
-      where: and(
-        eq(documents.tenantId, input.tenantId),
-        eq(documents.documentId, input.documentId)
+    const [document] = await transaction
+      .select()
+      .from(documents)
+      .where(
+        and(
+          eq(documents.tenantId, input.tenantId),
+          eq(documents.documentId, input.documentId)
+        )
       )
-    });
+      .for("update");
 
     if (!document) {
       throw new Error(`Document ${input.documentId} was not found for tenant ${input.tenantId}.`);
     }
+
+    const artifact = await transaction.query.artifactRefs.findFirst({
+      where: and(
+        eq(artifactRefs.tenantId, input.tenantId),
+        eq(artifactRefs.artifactRefId, input.artifactRefId)
+      )
+    });
+
+    if (!artifact) {
+      throw new Error(
+        `Artifact ${input.artifactRefId} was not found for tenant ${input.tenantId}.`
+      );
+    }
+
+    assertRevisionArtifactBoundary(document, artifact);
 
     const [nextRevision] = await transaction
       .select({

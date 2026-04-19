@@ -199,6 +199,11 @@ The migration strategy in this plan is therefore:
   **Decision:** Restore local JS dependencies before validation instead of stopping at the earlier missing-binaries baseline.  
   **Rationale:** `vitest` was absent in this worktree, but `npm install` was sufficient to recover the expected test runner so the phase could be validated meaningfully.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 1 fix pass  
+  **Decision:** Close the blocking repository review findings inside the Phase 1 modules instead of adding a follow-on schema phase.  
+  **Rationale:** The gaps were all at the repository boundary: artifact-to-document integrity, compile-provenance revision integrity, document-revision number allocation, and missing repository tests. They could be fixed cleanly without spilling into runtime, HTTP, or UI scope.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery completed against the target-model handoff, design docs, current runtime, API, tests, and UI.
@@ -210,6 +215,7 @@ The migration strategy in this plan is therefore:
 - [x] 2026-04-19 Local JS dependencies restored with `rtk npm install`, so repo validation commands can run again in this worktree.
 - [x] 2026-04-19 Phase 1 started: new persistence foundation implementation pass delegated to `ultrakit_implementer`.
 - [x] 2026-04-19 Phase 1 complete: additive target-model persistence foundation landed via new tables, repository helpers, and repository tests while legacy paths remain temporarily.
+- [x] 2026-04-19 Phase 1 targeted fix pass complete: repository integrity checks, revision-number allocation, and repository test coverage now address the blocking review findings.
 - [ ] Phase 2 complete: unified documents and revisions exist with artifact-backed storage and API surfaces.
 - [ ] Phase 3 complete: real `runs` rows and `execution_engine` plumbing exist alongside the legacy run/session path temporarily, without auto-seeding planning documents.
 - [ ] Phase 4 complete: compile and task execution write `run_tasks` and dependency edges, while legacy projections still function.
@@ -231,6 +237,7 @@ The migration strategy in this plan is therefore:
 - After restoring dependencies, the DB repository test command still skips in this environment because `DATABASE_URL`, `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`, and `KEYSTONE_RUN_DB_TESTS` are unset.
 - The broad `rtk npm run test` suite still fails in the sandbox for a pre-existing reason outside this phase: `tests/scripts/demo-contracts.test.ts` hits `Error: listen EPERM: operation not permitted 127.0.0.1`.
 - Because the service is not live, there is no product reason to carry old concepts forward once their replacements exist. Any temporary coexistence in this plan is purely to make implementation tractable.
+- Drizzle's Postgres select locks are enough to serialize per-document revision numbering cleanly in the repository layer, so Phase 1 did not need an extra sequence column or trigger to close the concurrency gap.
 
 ## Outcomes & Retrospective
 
@@ -253,6 +260,13 @@ Phase 1 outcome on 2026-04-19:
 - Extended `artifact_refs` toward the target model with `project_id`, `run_task_id`, `artifact_kind`, `bucket`, `object_key`, `object_version`, and `etag`, while preserving legacy columns and backfilling physical R2 facts from existing `r2://` URIs.
 - Added repository helpers for first-class documents, runs, run tasks, and dependency edges, and expanded the repository integration test to exercise the new persistence layer without changing runtime or HTTP behavior.
 - Validation improved from the initial missing-binaries baseline because `npm install` restored local tooling. The remaining validation gaps are environmental: DB-gated tests still need explicit DB env vars, and the demo-contract suite still cannot bind localhost in the sandbox.
+
+Phase 1 fix-pass outcome on 2026-04-19:
+
+- `createDocumentRevision` now enforces that revision artifacts stay within the target document's tenant/project boundary, match the run when the document is run-scoped, and use a document-revision artifact shape rather than arbitrary task or session artifacts.
+- Run compile-provenance fields now validate against canonical run planning document revisions for the same run/project context instead of accepting arbitrary revision UUIDs.
+- Document revision numbering now serializes on the owning document row, closing the `max(revision_number) + 1` race without adding new schema state.
+- Repository tests now cover legacy `r2://` bucket/object-key backfill, invalid document scope inputs, self-dependency rejection, and the new revision/provenance integrity guards.
 
 ## Context and Orientation
 
@@ -502,15 +516,15 @@ Success means the new tables/repositories exist and are covered, while legacy pa
 
 #### Status
 
-Completed on 2026-04-19.
+Completed on 2026-04-19 after the allowed targeted fix pass.
 
 #### Completion Notes
 
-Implemented the additive persistence foundation in `migrations/0004_target_model_persistence_foundation.sql`, widened `src/lib/db/schema.ts` and `src/lib/db/artifacts.ts`, added `src/lib/db/documents.ts`, expanded `src/lib/db/runs.ts` with first-class run/task repositories, and covered the new layer in `tests/lib/db-repositories.test.ts`. `rtk npm run test -- tests/lib/db-repositories.test.ts` now runs and skips only because the DB env vars are unset; `rtk npm run test` still hits the pre-existing sandbox `listen EPERM` failures in `tests/scripts/demo-contracts.test.ts`.
+Implemented the additive persistence foundation in `migrations/0004_target_model_persistence_foundation.sql`, widened `src/lib/db/schema.ts` and `src/lib/db/artifacts.ts`, added `src/lib/db/documents.ts`, expanded `src/lib/db/runs.ts` with first-class run/task repositories, and covered the new layer in `tests/lib/db-repositories.test.ts`. The targeted fix pass then hardened `createDocumentRevision` and run compile-provenance validation, serialized document revision numbering with a document-row `FOR UPDATE` lock, and expanded repository tests for the blocking review cases. `rtk npm run test -- tests/lib/db-repositories.test.ts` still skips only because the DB env vars are unset; `rtk npm run test` still hits the pre-existing sandbox `listen EPERM` failures in `tests/scripts/demo-contracts.test.ts`.
 
 #### Next Starter Context
 
-Phase 2 can now build unified document and revision APIs on top of real `documents`/`document_revisions` tables. Keep the artifact/API cutover in mind: `artifact_refs` still preserves the legacy required `run_id` shape in this phase, so fully target-shaped project-scoped revision artifacts should be finished alongside the later public artifact/document cutover rather than forced prematurely here.
+Phase 2 can now build unified document and revision APIs on top of real `documents`/`document_revisions` tables. Keep the artifact/API cutover in mind: `artifact_refs` still preserves the legacy required `run_id` shape in this phase, so fully target-shaped project-scoped revision artifacts should be finished alongside the later public artifact/document cutover rather than forced prematurely here. Compile provenance now expects canonical run planning documents by both kind and path (`specification`, `architecture`, `execution-plan`), so Phase 2 should preserve or formalize that planning-document contract when it adds document APIs.
 
 ## Phase 2: Introduce Unified Documents And Revisions
 
