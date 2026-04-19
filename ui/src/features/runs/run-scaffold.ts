@@ -17,28 +17,24 @@ export interface PlanningPhaseScaffold {
   chatTitle: string;
   documentTitle: string;
   documentName: string;
-  documentSummary: string;
-  composerPlaceholder: string;
+  documentLines: string[];
+  composerText: string;
   messages: PlanningMessageScaffold[];
-  currentState: string[];
-  backendCoverage: string[];
-  deferredWork: string[];
 }
 
 export interface ExecutionTaskScaffold {
   taskId: string;
   displayId: string;
+  graphLabel: string;
   title: string;
   status: string;
   dependsOn: string[];
   blockedBy: string[];
-  note: string;
   detailPath: string;
 }
 
 export interface TaskConversationEntryScaffold {
   speaker: string;
-  tone: string;
   body: string;
 }
 
@@ -53,11 +49,9 @@ export interface TaskDetailScaffold {
   displayId: string;
   title: string;
   status: string;
-  summary: string;
-  steeringNotice: string;
+  composerText: string;
   conversation: TaskConversationEntryScaffold[];
   reviewFiles: ReviewFileScaffold[];
-  artifactNotes: string[];
 }
 
 export interface RunScaffold {
@@ -67,21 +61,9 @@ export interface RunScaffold {
   status: string;
   updatedLabel: string;
   currentPhase: RunPhaseId;
-  statusNote: string;
   detailPath: string;
   planningPhases: Record<RunPlanningPhaseId, PlanningPhaseScaffold>;
   execution: {
-    summary: string;
-    graphNotes: string[];
-    backendCoverage: string[];
-    deferredWork: string[];
-    stats: {
-      totalTasks: number;
-      activeTasks: number;
-      blockedTasks: number;
-      completedTasks: number;
-      readyTasks: number;
-    };
     tasks: ExecutionTaskScaffold[];
   };
 }
@@ -93,7 +75,6 @@ interface RunSeed {
   status: string;
   updatedLabel: string;
   currentPhase: RunPhaseId;
-  statusNote: string;
 }
 
 const runSeeds: RunSeed[] = [
@@ -103,8 +84,7 @@ const runSeeds: RunSeed[] = [
     summary: "UI workspace build",
     status: "In progress",
     updatedLabel: "2m ago",
-    currentPhase: "execution",
-    statusNote: "Phase 2 uses this sample run to prove the nested stepper and execution drill-down shape."
+    currentPhase: "execution"
   },
   {
     runId: "run-103",
@@ -112,8 +92,7 @@ const runSeeds: RunSeed[] = [
     summary: "Docs refresh",
     status: "Complete",
     updatedLabel: "1h ago",
-    currentPhase: "architecture",
-    statusNote: "Completed sample run retained to show that older runs still reopen inside the same stepper shell."
+    currentPhase: "architecture"
   },
   {
     runId: "run-102",
@@ -121,8 +100,7 @@ const runSeeds: RunSeed[] = [
     summary: "Task steering work",
     status: "Blocked",
     updatedLabel: "3h ago",
-    currentPhase: "execution-plan",
-    statusNote: "Blocked sample run keeps the status language grounded without implying live task steering is already wired."
+    currentPhase: "execution-plan"
   },
   {
     runId: "run-101",
@@ -130,207 +108,154 @@ const runSeeds: RunSeed[] = [
     summary: "Initial operator UI",
     status: "Draft",
     updatedLabel: "1d ago",
-    currentPhase: "specification",
-    statusNote: "Draft sample run keeps the run index honest about early lifecycle states."
+    currentPhase: "specification"
   }
 ];
 
 const planningCopy = {
   specification: {
     chatTitle: "Specification agent chat",
-    documentTitle: "Living product specification",
+    documentTitle: "Living product spec",
     documentName: "product-spec.md",
-    documentSummary:
-      "This scaffold keeps the split between an operator conversation and the current product specification, while project documents stay stub-backed.",
-    composerPlaceholder: "Refine operator goals, acceptance criteria, and current scope...",
+    documentLines: ["always reflects the", "current intended product state"],
+    composerText: "message composer......................",
     messages: [
       {
         speaker: "agent",
-        body: "Captured the operator goal as a focused workspace instead of a dashboard shell."
+        body: "define operator goals"
       },
       {
         speaker: "user",
-        body: "Add the run index first, then lock the stepper and task detail structure."
+        body: "add run index + workstreams"
       },
       {
         speaker: "agent",
-        body: "Revising the current specification so later UI phases inherit the same run flow."
+        body: "revising current spec"
       }
     ]
   },
   architecture: {
     chatTitle: "Architecture agent chat",
-    documentTitle: "Living architecture document",
+    documentTitle: "Living architecture doc",
     documentName: "architecture.md",
-    documentSummary:
-      "The architecture pane stays focused on current boundaries, not historical changelogs, and remains explicit about Worker plus SPA ownership.",
-    composerPlaceholder: "Clarify runtime boundaries, route ownership, or future adapters...",
+    documentLines: ["current technical", "architecture + decisions only"],
+    composerText: "message composer......................",
     messages: [
       {
         speaker: "agent",
-        body: "Holding the current runtime shape to one Worker deployable with a nested SPA route tree."
+        body: "refine system boundaries"
       },
       {
         speaker: "user",
-        body: "Keep the existing Hono routes and do not introduce a second app frame."
+        body: "Worker + React + Radix"
       },
       {
         speaker: "agent",
-        body: "Documenting the shared planning layout so feature work can fill it in later without moving routes."
+        body: "capture current decisions"
       }
     ]
   },
   "execution-plan": {
     chatTitle: "Execution plan agent chat",
-    documentTitle: "Execution plan document",
+    documentTitle: "Execution plan doc",
     documentName: "execution-plan.md",
-    documentSummary:
-      "The execution-plan pane keeps the plan as a living delivery artifact and stays honest about host-only validation for the final Worker build.",
-    composerPlaceholder: "Adjust phases, validation steps, or next-slice constraints...",
+    documentLines: ["phases, deliverables,", "validation, risks"],
+    composerText: "message composer......................",
     messages: [
       {
         speaker: "agent",
-        body: "Sequencing route scaffolding before live adapters so the file ownership stays stable."
+        body: "phase the UI rollout"
       },
       {
         speaker: "user",
-        body: "Keep placeholders honest and preserve the current API seams without pretending the DAG is live."
+        body: "include route reset"
       },
       {
-        speaker: "agent",
-        body: "Recording the build caveat and the route hierarchy as deliberate plan inputs."
+        speaker: "user",
+        body: "include zellij + localflare"
       }
     ]
   }
-} as const satisfies Record<
-  RunPlanningPhaseId,
-  Omit<PlanningPhaseScaffold, "phaseId" | "currentState" | "backendCoverage" | "deferredWork">
->;
+} as const satisfies Record<RunPlanningPhaseId, Omit<PlanningPhaseScaffold, "phaseId">>;
 
 function createExecutionTasks(runId: string): ExecutionTaskScaffold[] {
   return [
     {
       taskId: "task-029",
       displayId: "TASK-029",
-      title: "Freeze run stepper layout",
+      graphLabel: "Spec",
+      title: "Specification outline",
       status: "Complete",
       dependsOn: [],
       blockedBy: [],
-      note: "The horizontal phase rail now lives at the run-detail boundary.",
       detailPath: buildRunTaskPath(runId, "task-029")
     },
     {
       taskId: "task-030",
       displayId: "TASK-030",
-      title: "Shape planning split workspace",
+      graphLabel: "Arch",
+      title: "Architecture decisions",
       status: "Complete",
       dependsOn: ["task-029"],
       blockedBy: [],
-      note: "Specification, architecture, and plan now share the same two-pane structure.",
       detailPath: buildRunTaskPath(runId, "task-030")
     },
     {
       taskId: "task-031",
       displayId: "TASK-031",
-      title: "Map placeholder document contracts",
+      graphLabel: "Plan",
+      title: "Execution plan",
       status: "Complete",
       dependsOn: ["task-030"],
       blockedBy: [],
-      note: "Document panes call out the current stub-backed project surfaces instead of faking content.",
       detailPath: buildRunTaskPath(runId, "task-031")
     },
     {
       taskId: "task-032",
       displayId: "TASK-032",
+      graphLabel: "Shell",
       title: "Build execution drill-down",
       status: "Running",
       dependsOn: ["task-031"],
       blockedBy: [],
-      note: "The graph-to-task route handoff is live as structure only; manual steering remains frozen.",
       detailPath: buildRunTaskPath(runId, "task-032")
     },
     {
       taskId: "task-033",
       displayId: "TASK-033",
+      graphLabel: "Task View",
       title: "DAG wiring",
       status: "Blocked",
       dependsOn: ["task-032"],
       blockedBy: ["task-032"],
-      note: "Task graph visuals are placeholder-backed until the real workflow graph adapter lands.",
       detailPath: buildRunTaskPath(runId, "task-033")
     },
     {
       taskId: "task-034",
       displayId: "TASK-034",
+      graphLabel: "Docs",
       title: "Documentation alignment",
       status: "Ready",
       dependsOn: ["task-031"],
       blockedBy: [],
-      note: "Later phases can reuse this route ownership when Documentation and Workstreams gain structure.",
       detailPath: buildRunTaskPath(runId, "task-034")
     }
   ];
 }
 
-function countExecutionStats(tasks: ExecutionTaskScaffold[]) {
-  return {
-    totalTasks: tasks.length,
-    activeTasks: tasks.filter((task) => task.status === "Running").length,
-    blockedTasks: tasks.filter((task) => task.status === "Blocked").length,
-    completedTasks: tasks.filter((task) => task.status === "Complete").length,
-    readyTasks: tasks.filter((task) => task.status === "Ready").length
-  };
-}
-
-function createPlanningPhases(run: RunSeed): Record<RunPlanningPhaseId, PlanningPhaseScaffold> {
+function createPlanningPhases(): Record<RunPlanningPhaseId, PlanningPhaseScaffold> {
   return {
     specification: {
       phaseId: "specification",
-      ...planningCopy.specification,
-      currentState: [
-        `${run.displayId} keeps the product-spec split visible without implying the spec is loaded from the backend yet.`,
-        "The route boundary is now stable enough for later query adapters and editor states."
-      ],
-      backendCoverage: [
-        "`GET /v1/runs/:runId` and `GET /v1/runs/:runId/stream` exist, but this UI still uses fixed view models.",
-        "`GET /v1/projects/:projectId/documents` remains stub-backed, so the document pane stays explicitly structural."
-      ],
-      deferredWork: [
-        "No live thread history, composer submission, or persisted draft behavior is implemented.",
-        "Document editing, version history, and cross-run comparison stay out of scope for Phase 2."
-      ]
+      ...planningCopy.specification
     },
     architecture: {
       phaseId: "architecture",
-      ...planningCopy.architecture,
-      currentState: [
-        `${run.displayId} shows how run phases share a stable frame while the global sidebar stays fixed.`,
-        "The architecture surface now has a permanent route boundary for future decisions and evidence."
-      ],
-      backendCoverage: [
-        "The current Worker APIs stay authoritative; the scaffold does not add a second runtime or parallel data model.",
-        "Project-level architecture documents still come from stubbed project-document seams later."
-      ],
-      deferredWork: [
-        "No live architecture diffing, approvals, or document collaboration states exist yet.",
-        "The right pane is a scaffold, not a full document renderer."
-      ]
+      ...planningCopy.architecture
     },
     "execution-plan": {
       phaseId: "execution-plan",
-      ...planningCopy["execution-plan"],
-      currentState: [
-        `${run.displayId} keeps planning in the same split shell while execution stays a distinct route family.`,
-        "Validation expectations and placeholder boundaries are fixed before deeper feature work begins."
-      ],
-      backendCoverage: [
-        "The planner surface calls out the current host-only `npm run build` proof instead of masking it.",
-        "Decision-package and evidence adapters remain deferred even though their API shapes already exist."
-      ],
-      deferredWork: [
-        "No live planner edits, risk tracking, or approval routing are implemented yet.",
-        "Task graph generation still belongs to later execution data work."
-      ]
+      ...planningCopy["execution-plan"]
     }
   };
 }
@@ -345,26 +270,9 @@ function createRunScaffold(seed: RunSeed): RunScaffold {
     status: seed.status,
     updatedLabel: seed.updatedLabel,
     currentPhase: seed.currentPhase,
-    statusNote: seed.statusNote,
     detailPath: buildRunPath(seed.runId),
-    planningPhases: createPlanningPhases(seed),
+    planningPhases: createPlanningPhases(),
     execution: {
-      summary:
-        "Execution defaults to the workflow view first, then drills into a task-scoped conversation plus code review sidebar without leaving the run shell.",
-      graphNotes: [
-        "Task cards are static view models in Phase 2, but they already preserve dependency and blocker wording.",
-        "Opening a task keeps the same run context and stepper state instead of navigating to a separate screen."
-      ],
-      backendCoverage: [
-        "`GET /v1/runs/:runId/graph`, `GET /v1/runs/:runId/tasks`, and task conversation/artifact detail routes are implemented backend seams.",
-        "`POST /v1/runs/:runId/tasks/:taskId/conversation/messages` still returns a typed not-implemented response, so the steering composer is visual only.",
-        "`GET /v1/runs/:runId/evidence`, `/integration`, and `/release` remain typed stubs and should stay visibly unmaterialized."
-      ],
-      deferredWork: [
-        "No live DAG layout, streaming task updates, or persisted operator steering is implemented in this phase.",
-        "The code review sidebar shape is present, but it does not load real diffs or artifact bundles yet."
-      ],
-      stats: countExecutionStats(tasks),
       tasks
     }
   };
@@ -374,12 +282,10 @@ function createFallbackRunSeed(runId: string): RunSeed {
   return {
     runId,
     displayId: runId.replace(/^run-/, "Run-"),
-    summary: "Scaffold-only run placeholder",
+    summary: "Run placeholder",
     status: "Draft",
     updatedLabel: "Just now",
-    currentPhase: "specification",
-    statusNote:
-      "This run id is not part of the fixed Phase 2 sample set, so the UI falls back to a generic scaffold."
+    currentPhase: "specification"
   };
 }
 

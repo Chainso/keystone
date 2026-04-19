@@ -160,8 +160,7 @@ pre {
 .project-tab-link,
 .filter-chip,
 .documentation-tree-item,
-.type-picker-option,
-.task-node-card {
+.type-picker-option {
   transition:
     border-color 140ms ease,
     background-color 140ms ease,
@@ -293,8 +292,6 @@ pre {
 .hero-aside-title,
 .composer-placeholder-label,
 .document-section-label,
-.task-node-id,
-.execution-stat-label,
 .placeholder-field-label {
   margin: 0;
   color: var(--text-muted);
@@ -337,8 +334,6 @@ pre {
 .composer-placeholder-copy,
 .document-card-summary,
 .task-detail-summary,
-.task-node-note,
-.task-node-meta,
 .message-card-body,
 .documentation-tree-group-summary,
 .documentation-tree-item-summary,
@@ -346,20 +341,14 @@ pre {
 .table-row-note,
 .environment-var-value,
 .review-file-note,
-.run-status-note,
 .project-switcher-meta,
 .workspace-panel-summary {
   color: var(--text-secondary);
   line-height: 1.6;
 }
 
-.run-status-note {
-  margin: 0;
-}
-
 .page-section-title,
-.type-picker-option-title,
-.task-node-title {
+.type-picker-option-title {
   margin: 0 0 0.75rem;
   font-size: 1rem;
   line-height: 1.35;
@@ -421,6 +410,7 @@ pre {
 .project-tab-link,
 .filter-chip,
 .documentation-tree-item,
+.execution-node,
 .type-picker-option {
   display: inline-flex;
   align-items: center;
@@ -450,10 +440,10 @@ pre {
 .filter-chip:focus-visible,
 .documentation-tree-item:hover,
 .documentation-tree-item:focus-visible,
+.execution-node:hover,
+.execution-node:focus-visible,
 .type-picker-option:hover,
-.type-picker-option:focus-visible,
-.task-node-card:hover,
-.task-node-card:focus-visible {
+.type-picker-option:focus-visible {
   background: var(--accent-fill);
 }
 
@@ -472,7 +462,6 @@ pre {
 
 .runs-table-header,
 .workspace-panel-header,
-.task-node-header,
 .type-picker-header,
 .component-card-header,
 .project-config-section-header {
@@ -521,11 +510,20 @@ pre {
   text-decoration: underline;
 }
 
-.run-hero {
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+.runs-page-title,
+.run-detail-title {
+  margin: 0;
+  font-size: 1.85rem;
+  line-height: 1.1;
 }
 
-.run-meta-row,
+.run-detail-header,
+.run-stage-body,
+.document-copy {
+  display: grid;
+  gap: 1rem;
+}
+
 .filter-chip-row,
 .project-config-section-actions,
 .source-mode-row,
@@ -566,8 +564,7 @@ pre {
   grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 1fr);
 }
 
-.message-card,
-.task-node-card {
+.message-card {
   display: grid;
   gap: 0.6rem;
   padding: 0.85rem 0.9rem;
@@ -583,12 +580,6 @@ pre {
   text-transform: uppercase;
 }
 
-.message-card-tone {
-  margin-left: 0.35rem;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-}
-
 .message-card-body {
   margin: 0;
 }
@@ -599,10 +590,44 @@ pre {
   background: var(--surface-subtle);
 }
 
+.composer-field {
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  resize: vertical;
+}
+
 .composer-placeholder-copy,
 .document-card-summary,
 .task-detail-summary {
   margin: 0.45rem 0 0;
+}
+
+.document-name,
+.document-line,
+.execution-board-note,
+.task-detail-title,
+.review-sidebar-label {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.document-name,
+.review-sidebar-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.document-rule {
+  height: 1px;
+  background: var(--border-muted);
 }
 
 .document-section {
@@ -612,57 +637,70 @@ pre {
   border-top: 1px solid var(--border-muted);
 }
 
-.execution-stats {
+.execution-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.execution-stat-card {
-  padding: 0.8rem;
+  gap: 1rem;
+  padding: 1rem;
   border: 1px solid var(--border-muted);
   background: var(--surface-subtle);
 }
 
-.execution-stat-value {
-  display: block;
-  margin-top: 0.35rem;
-  font-size: 1.3rem;
+.execution-dag-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.execution-flow {
+.execution-dag-row-branch {
+  padding-left: clamp(3rem, 18vw, 16rem);
+}
+
+.execution-dag-arrow,
+.execution-dag-branch-arrow {
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
+.execution-node {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
+  gap: 0.3rem;
+  min-width: 8rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-panel);
 }
 
-.task-node-card {
-  width: 100%;
-  color: inherit;
-  text-align: left;
+.execution-node-label {
+  font-weight: 600;
+  line-height: 1.2;
 }
 
-.task-node-header,
-.task-detail-heading,
+.execution-node-title {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.execution-node-active {
+  border-color: var(--accent-line);
+  background: var(--accent-fill);
+}
+
+.execution-node-blocked {
+  border-color: #c18e85;
+  background: #f4e2de;
+}
+
+.execution-node-queued {
+  background: var(--surface-muted);
+}
+
 .documentation-tree-group-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-}
-
-.task-node-title {
-  margin: 0.2rem 0 0;
-}
-
-.task-node-note,
-.task-node-meta {
-  margin: 0;
-}
-
-.task-detail-heading {
-  flex-direction: column;
-  align-items: flex-end;
 }
 
 .review-file-card {
@@ -886,10 +924,6 @@ pre {
   .documentation-grid {
     grid-template-columns: 1fr;
   }
-
-  .execution-stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 960px) {
@@ -903,8 +937,6 @@ pre {
   }
 
   .page-hero,
-  .run-hero,
-  .execution-flow,
   .project-form-grid,
   .component-card-overrides,
   .project-rule-grid {
@@ -912,8 +944,6 @@ pre {
   }
 
   .workspace-panel-header,
-  .task-node-header,
-  .task-detail-heading,
   .runs-table-header,
   .type-picker-header,
   .component-card-header,
@@ -924,7 +954,7 @@ pre {
   }
 
   .workspace-panel-summary,
-  .task-detail-heading {
+  .review-sidebar-label {
     text-align: left;
   }
 
@@ -943,8 +973,7 @@ pre {
   }
 
   .run-stepper,
-  .project-tab-strip,
-  .execution-stats {
+  .project-tab-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -955,8 +984,7 @@ pre {
   }
 
   .run-stepper,
-  .project-tab-strip,
-  .execution-stats {
+  .project-tab-strip {
     grid-template-columns: 1fr;
   }
 }

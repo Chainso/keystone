@@ -110,6 +110,11 @@ Compatibility that **is** required:
   **Decision:** Close the remaining shell review finding with test-only route-target assertions instead of reopening the shell implementation.  
   **Rationale:** The important gap was coverage, not behavior. The shared shell already sourced its destinations correctly, so the smallest truthful fix was to assert the actual `href` targets for sidebar destinations and project-action links.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 2  
+  **Decision:** Move run-only workspace components under `features/` and collapse the `Runs` surfaces to the plain board structures from the ASCII spec.  
+  **Rationale:** The visible drift and the layer-boundary drift were the same problem. Rewriting the `Runs` surfaces without moving those modules out of `shared` would have preserved the wrong ownership while the files were already open.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed through direct review of `design/workspace-spec.md`, the current UI implementation, and five parallel frame-specific audits.
@@ -118,7 +123,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 User approval recorded and execution started.
 - [x] 2026-04-18 Phase 1: Reset the shared shell and base styling to a minimal ASCII-faithful scaffold.
 - [x] 2026-04-18 Phase 1 fix pass: strengthened shell route-target coverage for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`.
-- [ ] Phase 2: Realign the `Runs` family to the index / planning panes / execution / task-detail boards.
+- [x] 2026-04-18 Phase 2: Realign the `Runs` family to the index / planning panes / execution / task-detail boards.
 - [ ] Phase 3: Realign `Documentation` and `Workstreams` to their canonical boards.
 - [ ] Phase 4: Realign `New project` and `Project settings` to the project-configuration boards.
 - [ ] Phase 5: Update tests, docs, and plan notes; capture the corrective outcome and the dependency this creates for later live-wiring work.
@@ -133,6 +138,7 @@ Compatibility that **is** required:
 - A separate React architecture audit found five additional structural risks to address while correcting the scaffold: run-specific layouts living in `shared`, a mode-driven project-configuration monolith, large prop-bag workspace components, route files acting as feature surfaces, and view-model hooks mixing local UI state with feature data shaping.
 - Resetting the shell styling cleanly required replacing nearly the entire shared stylesheet, because out-of-scope route families still depend on the same global class layer. A small shell-only CSS patch would have preserved too much of the prior chrome.
 - The only post-implementation Phase 1 review finding was a shell test-coverage gap. The shell implementation itself already used the expected route definitions, so the corrective pass stayed test-only.
+- The `Runs` boundary correction was lower-risk than expected because the route modules were already thin containers. Most of the Phase 2 structural change came from moving the workspace components under `features/` and deleting run-only copy/data fields from the scaffold models.
 
 ## Outcomes & Retrospective
 
@@ -148,6 +154,14 @@ Phase 1 outcome on 2026-04-18:
 - The shared stylesheet now uses neutral border-and-panel primitives that keep the existing route tree renderable without the old gradients, shadows, or branded chrome.
 - The shell test now asserts the actual targets for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`, so a miswired shared-shell destination will fail Phase 1 validation.
 - Phase 2 can now focus on run-surface structure and ownership boundaries without also carrying shell-level cleanup.
+
+Phase 2 outcome on 2026-04-18:
+
+- The `Runs` index now renders as a plain heading-plus-table board with the existing route targets intact and no explainer sidebar or scaffold narration.
+- The run detail shell now shows only the run heading, the phase stepper, and the active board content; the old coverage/status aside is gone.
+- Specification, architecture, and execution-plan phases now render as direct chat-plus-document splits with semantic composer textareas and document content that matches the canonical board.
+- Execution now defaults to a graph-first DAG placeholder with clickable task nodes, and task detail is reduced to the conversation-plus-review split from the board.
+- Run-specific workspace components no longer live under `ui/src/shared/layout/`; they now sit under `features/runs/components/` and `features/execution/components/`, leaving the shared layer to generic primitives.
 
 ## Context and Orientation
 
@@ -456,13 +470,18 @@ Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retro
 Keep the current route URLs intact. Do not widen this phase into live data, real diff rendering, or task messaging writes. Avoid replacing one large prop-bag workspace with another equally rigid one.
 
 **Status**  
-Not started.
+Completed on 2026-04-18.
 
 **Completion Notes**  
-None yet.
+- Replaced the `Runs` index hero/aside layout with a plain table board and kept the existing `/runs/:runId` route targets intact.
+- Simplified the run detail shell and phase stepper to board-like labels only, removing the prior coverage, deferred-work, and scaffold-status copy.
+- Rewrote the planning panes, execution DAG surface, and task-detail split around feature-owned components with lighter scaffold data and no raw API/backlog narration.
+- Moved run-only workspace components out of `ui/src/shared/layout/` into `ui/src/features/runs/components/` and `ui/src/features/execution/components/`.
+- Updated [ui/src/test/runs-routes.test.tsx](../../../ui/src/test/runs-routes.test.tsx) to assert the new board structure and the absence of the old `Runs` explainer copy.
+- Validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx`, and `rtk npm run test`.
 
 **Next Starter Context**  
-The route hierarchy is already correct. Focus on simplifying what is rendered and deleting the extra panels, summaries, and copy that are not in the board. Use this phase to fix the `shared` vs feature boundary for run workspaces while the files are already open.
+Phase 3 should leave the `Runs` family alone unless a shared primitive regression is discovered. The run-specific workspace boundary is corrected, so the next work should focus on making `Documentation` and `Workstreams` match their boards without reintroducing route-as-feature or explainer-sidebar patterns.
 
 ## Phase 3: Realign Documentation and Workstreams
 

@@ -1,7 +1,7 @@
 import type { NavLinkRenderProps } from "react-router-dom";
 import { NavLink } from "react-router-dom";
 
-import { runPhaseDefinitions } from "../navigation/run-phases";
+import { runPhaseDefinitions } from "../../../shared/navigation/run-phases";
 
 function getStepLinkClassName({ isActive }: NavLinkRenderProps) {
   return isActive ? "run-step-link is-active" : "run-step-link";
@@ -18,7 +18,6 @@ export function RunPhaseStepper() {
           className={getStepLinkClassName}
         >
           <span className="run-step-link-label">{phase.label}</span>
-          <span className="run-step-link-summary">{phase.summary}</span>
         </NavLink>
       ))}
     </nav>
