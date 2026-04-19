@@ -17,6 +17,8 @@ import {
 import { uiScaffoldDataset } from "../features/resource-model/scaffold-dataset";
 import {
   createProjectOverrideDataset,
+  getNewProjectConfiguration,
+  getProjectConfiguration,
   getProjectDocumentationSelection,
   getRunDefaultPhaseId,
   listRunSummaries,
@@ -268,11 +270,48 @@ describe("resource-model selectors", () => {
     ]);
   });
 
+  it("derives new-project and settings configuration from the shared resource model", () => {
+    const newProjectConfiguration = getNewProjectConfiguration();
+    const projectConfiguration = getProjectConfiguration("project-keystone-cloudflare");
+
+    expect(newProjectConfiguration?.overview).toEqual({
+      displayName: "Keystone Cloudflare",
+      projectKey: "keystone-cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    });
+    expect(newProjectConfiguration?.components).toEqual([]);
+    expect(newProjectConfiguration?.rules.reviewInstructions).toEqual([
+      "Keep route ownership explicit.",
+      "Capture component-specific review focus when needed."
+    ]);
+    expect(newProjectConfiguration?.environmentVariables.map((envVar) => envVar.name)).toEqual([
+      "KEYSTONE_AGENT_RUNTIME",
+      "KEYSTONE_CHAT_COMPLETIONS_BASE_URL",
+      "KEYSTONE_CHAT_COMPLETIONS_MODEL"
+    ]);
+
+    expect(projectConfiguration?.overview).toEqual({
+      displayName: "Keystone Cloudflare",
+      projectKey: "keystone-cloudflare",
+      description: "Internal operator workspace for runs, documentation, and workstreams."
+    });
+    expect(projectConfiguration?.components).toEqual([
+      expect.objectContaining({
+        componentId: "component-worker-app",
+        displayName: "API",
+        componentKey: "api",
+        sourceMode: "localPath",
+        localPath: "./services/api"
+      })
+    ]);
+  });
+
   it("keeps project context available through the resource-model provider seam", () => {
     const project: CurrentProject = {
       projectId: "project-custom",
       projectKey: "custom-project",
-      displayName: "Custom Project"
+      displayName: "Custom Project",
+      description: "Custom project scaffold."
     };
 
     render(
@@ -298,7 +337,8 @@ describe("resource-model selectors", () => {
     const project: CurrentProject = {
       projectId: "project-custom",
       projectKey: "custom-project",
-      displayName: "Custom Project"
+      displayName: "Custom Project",
+      description: "Custom project scaffold."
     };
     const dataset = createProjectOverrideDataset(project);
 
@@ -308,6 +348,11 @@ describe("resource-model selectors", () => {
     );
     expect(listProjectDocumentationGroups(project.projectId, dataset))
       .toEqual(listProjectDocumentationGroups(uiScaffoldDataset.meta.defaultProjectId));
+    expect(getProjectConfiguration(project.projectId, dataset)?.overview).toEqual({
+      displayName: "Custom Project",
+      projectKey: "custom-project",
+      description: "Custom project scaffold."
+    });
     expect(listRunSummaries(uiScaffoldDataset.meta.defaultProjectId, dataset)).toHaveLength(0);
   });
 

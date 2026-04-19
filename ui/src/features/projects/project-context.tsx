@@ -23,7 +23,8 @@ export function CurrentProjectProvider({
   if (
     project.projectId === scaffoldProject.projectId &&
     project.projectKey === scaffoldProject.projectKey &&
-    project.displayName === scaffoldProject.displayName
+    project.displayName === scaffoldProject.displayName &&
+    project.description === scaffoldProject.description
   ) {
     return <ResourceModelProvider>{children}</ResourceModelProvider>;
   }

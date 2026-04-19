@@ -3,11 +3,13 @@ import type { ComponentType } from "react";
 import type { ProjectConfigurationTabId } from "../project-configuration-scaffold";
 import {
   useNewProjectComponentsViewModel,
+  useNewProjectEnvironmentViewModel,
   useNewProjectOverviewViewModel,
-  useProjectEnvironmentViewModel,
-  useProjectRulesViewModel,
+  useNewProjectRulesViewModel,
+  useProjectSettingsEnvironmentViewModel,
   useProjectSettingsComponentsViewModel,
-  useProjectSettingsOverviewViewModel
+  useProjectSettingsOverviewViewModel,
+  useProjectSettingsRulesViewModel
 } from "../use-project-configuration-view-model";
 import { ComponentTypePicker } from "../../../shared/forms/component-type-picker";
 import {
@@ -86,8 +88,8 @@ function ComponentsTab({
   );
 }
 
-function ProjectRulesTab() {
-  const model = useProjectRulesViewModel();
+function NewProjectRulesTab() {
+  const model = useNewProjectRulesViewModel();
 
   return (
     <ProjectConfigurationSection title={model.heading}>
@@ -99,8 +101,35 @@ function ProjectRulesTab() {
   );
 }
 
-function ProjectEnvironmentTab() {
-  const model = useProjectEnvironmentViewModel();
+function ProjectSettingsRulesTab() {
+  const model = useProjectSettingsRulesViewModel();
+
+  return (
+    <ProjectConfigurationSection title={model.heading}>
+      <div className="project-rule-grid">
+        <PlaceholderListField label="Project review instructions" items={model.reviewInstructions} />
+        <PlaceholderListField label="Project test instructions" items={model.testInstructions} />
+      </div>
+    </ProjectConfigurationSection>
+  );
+}
+
+function NewProjectEnvironmentTab() {
+  const model = useNewProjectEnvironmentViewModel();
+
+  return (
+    <ProjectConfigurationSection title={model.heading}>
+      <div className="project-environment-stack">
+        {model.envVars.map((envVar) => (
+          <PlaceholderTextField key={envVar.name} label={envVar.name} value={envVar.value} />
+        ))}
+      </div>
+    </ProjectConfigurationSection>
+  );
+}
+
+function ProjectSettingsEnvironmentTab() {
+  const model = useProjectSettingsEnvironmentViewModel();
 
   return (
     <ProjectConfigurationSection title={model.heading}>
@@ -132,15 +161,15 @@ function ProjectSettingsComponentsTab() {
 const newProjectTabComponents: Record<ProjectConfigurationTabId, ComponentType> = {
   overview: NewProjectOverviewTab,
   components: NewProjectComponentsTab,
-  rules: ProjectRulesTab,
-  environment: ProjectEnvironmentTab
+  rules: NewProjectRulesTab,
+  environment: NewProjectEnvironmentTab
 };
 
 const projectSettingsTabComponents: Record<ProjectConfigurationTabId, ComponentType> = {
   overview: ProjectSettingsOverviewTab,
   components: ProjectSettingsComponentsTab,
-  rules: ProjectRulesTab,
-  environment: ProjectEnvironmentTab
+  rules: ProjectSettingsRulesTab,
+  environment: ProjectSettingsEnvironmentTab
 };
 
 export function NewProjectConfigurationTabContent({

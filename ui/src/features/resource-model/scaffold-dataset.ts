@@ -3,6 +3,7 @@ import type {
   ResourceDocument,
   ResourceDocumentRevision,
   ResourceModelDataset,
+  ResourceProjectConfiguration,
   ResourceProject,
   ResourceRun,
   ResourceTask,
@@ -510,6 +511,92 @@ const artifacts: ResourceArtifact[] = [
   }
 ];
 
+const projectConfigurations: ResourceProjectConfiguration[] = [
+  {
+    configurationId: "new-project-template",
+    kind: "template",
+    overview: {
+      displayName: "Keystone Cloudflare",
+      projectKey: "keystone-cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    },
+    components: [],
+    rules: {
+      reviewInstructions: [
+        "Keep route ownership explicit.",
+        "Capture component-specific review focus when needed."
+      ],
+      testInstructions: [
+        "Run lint, typecheck, and test before handoff.",
+        "Verify the project configuration tabs."
+      ]
+    },
+    environmentVariables: [
+      {
+        name: "KEYSTONE_AGENT_RUNTIME",
+        value: "scripted"
+      },
+      {
+        name: "KEYSTONE_CHAT_COMPLETIONS_BASE_URL",
+        value: "http://localhost:10531"
+      },
+      {
+        name: "KEYSTONE_CHAT_COMPLETIONS_MODEL",
+        value: "gpt-5.4-mini"
+      }
+    ]
+  },
+  {
+    configurationId: "project-keystone-cloudflare-settings",
+    kind: "project",
+    projectId: "project-keystone-cloudflare",
+    overview: {
+      displayName: "Keystone Cloudflare",
+      projectKey: "keystone-cloudflare",
+      description: "Internal operator workspace for runs, documentation, and workstreams."
+    },
+    components: [
+      {
+        componentId: "component-worker-app",
+        heading: "Component 1",
+        displayName: "API",
+        componentKey: "api",
+        kind: "git_repository",
+        sourceMode: "localPath",
+        localPath: "./services/api",
+        gitUrl: "",
+        defaultRef: "main",
+        reviewInstructions: ["Focus on API changes"],
+        testInstructions: ["Run targeted API tests"]
+      }
+    ],
+    rules: {
+      reviewInstructions: [
+        "Keep route ownership explicit.",
+        "Capture component-specific review focus when needed."
+      ],
+      testInstructions: [
+        "Run lint, typecheck, and test before handoff.",
+        "Verify the project configuration tabs."
+      ]
+    },
+    environmentVariables: [
+      {
+        name: "KEYSTONE_AGENT_RUNTIME",
+        value: "scripted"
+      },
+      {
+        name: "KEYSTONE_CHAT_COMPLETIONS_BASE_URL",
+        value: "http://localhost:10531"
+      },
+      {
+        name: "KEYSTONE_CHAT_COMPLETIONS_MODEL",
+        value: "gpt-5.4-mini"
+      }
+    ]
+  }
+];
+
 export const uiScaffoldDataset: ResourceModelDataset = {
   meta: {
     defaultProjectId: "project-keystone-cloudflare",
@@ -521,7 +608,8 @@ export const uiScaffoldDataset: ResourceModelDataset = {
   documentRevisions,
   tasks,
   workflowGraphs,
-  artifacts
+  artifacts,
+  projectConfigurations
 };
 
 export interface ResourceModelIndexes {
@@ -537,6 +625,8 @@ export interface ResourceModelIndexes {
   workflowGraphsByRunId: Map<string, ResourceWorkflowGraph>;
   artifactsById: Map<string, ResourceArtifact>;
   artifactsByTaskId: Map<string, ResourceArtifact[]>;
+  projectConfigurationTemplate: ResourceProjectConfiguration | null;
+  projectConfigurationsByProjectId: Map<string, ResourceProjectConfiguration>;
 }
 
 const indexCache = new WeakMap<ResourceModelDataset, ResourceModelIndexes>();
@@ -585,7 +675,14 @@ export function getResourceModelIndexes(dataset: ResourceModelDataset = uiScaffo
       dataset.workflowGraphs.map((graph) => [graph.runId, graph])
     ),
     artifactsById: new Map(dataset.artifacts.map((artifact) => [artifact.artifactId, artifact])),
-    artifactsByTaskId: groupByKey(dataset.artifacts, (artifact) => artifact.taskId)
+    artifactsByTaskId: groupByKey(dataset.artifacts, (artifact) => artifact.taskId),
+    projectConfigurationTemplate:
+      dataset.projectConfigurations.find((configuration) => configuration.kind === "template") ?? null,
+    projectConfigurationsByProjectId: new Map(
+      dataset.projectConfigurations
+        .filter((configuration) => configuration.projectId !== undefined)
+        .map((configuration) => [configuration.projectId!, configuration])
+    )
   };
 
   indexCache.set(dataset, indexes);

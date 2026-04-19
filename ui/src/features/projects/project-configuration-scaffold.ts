@@ -1,25 +1,18 @@
+import type {
+  ResourceProjectConfigurationComponent,
+  ResourceProjectComponentKind,
+  ResourceProjectComponentSourceMode
+} from "../resource-model/types";
+
 export type ProjectConfigurationMode = "new" | "settings";
 export type ProjectConfigurationTabId = "overview" | "components" | "rules" | "environment";
-export type ProjectComponentKindId = "git_repository";
-export type ProjectComponentSourceMode = "localPath" | "gitUrl";
+export type ProjectComponentKindId = ResourceProjectComponentKind;
+export type ProjectComponentSourceMode = ResourceProjectComponentSourceMode;
+export type ProjectComponentScaffold = ResourceProjectConfigurationComponent;
 
 export interface ProjectConfigurationTabDefinition {
   tabId: ProjectConfigurationTabId;
   label: string;
-}
-
-export interface ProjectComponentScaffold {
-  componentId: string;
-  heading: string;
-  displayName: string;
-  componentKey: string;
-  kindLabel: string;
-  sourceMode: ProjectComponentSourceMode;
-  localPath: string;
-  gitUrl: string;
-  defaultRef: string;
-  reviewInstructions: string[];
-  testInstructions: string[];
 }
 
 export interface ProjectComponentTypeOption {
@@ -64,28 +57,28 @@ export function buildProjectConfigurationPath(
   return mode === "new" ? `/projects/new/${tabId}` : `/settings/${tabId}`;
 }
 
-export function getProjectComponentSourceModeLabel(sourceMode: ProjectComponentSourceMode) {
-  return sourceMode === "localPath" ? "Local path" : "Git URL";
+export function getProjectComponentKindLabel(kind: ProjectComponentKindId) {
+  return kind === "git_repository" ? "Git repository" : kind;
 }
 
-export function buildProjectComponentScaffold(
+export function buildProjectConfigurationComponentDraft(
   mode: ProjectConfigurationMode,
   index: number
-) {
+): ProjectComponentScaffold {
   if (mode === "settings" && index === 0) {
     return {
       componentId: "component-worker-app",
       heading: "Component 1",
       displayName: "API",
       componentKey: "api",
-      kindLabel: "Git repository",
+      kind: "git_repository",
       sourceMode: "localPath",
       localPath: "./services/api",
       gitUrl: "",
       defaultRef: "main",
       reviewInstructions: ["Focus on API changes"],
       testInstructions: ["Run targeted API tests"]
-    } satisfies ProjectComponentScaffold;
+    };
   }
 
   const componentNumber = index + 1;
@@ -96,7 +89,7 @@ export function buildProjectComponentScaffold(
     displayName: mode === "new" ? `Repository ${componentNumber}` : `Background worker ${componentNumber}`,
     componentKey:
       mode === "new" ? `repository-${componentNumber}` : `background-worker-${componentNumber}`,
-    kindLabel: "Git repository",
+    kind: "git_repository",
     sourceMode: "gitUrl",
     localPath: "",
     gitUrl:
@@ -112,5 +105,5 @@ export function buildProjectComponentScaffold(
       mode === "new"
         ? ["Run the component test plan"]
         : ["Run the worker test plan"]
-  } satisfies ProjectComponentScaffold;
+  };
 }

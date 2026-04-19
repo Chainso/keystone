@@ -290,7 +290,9 @@ describe("Phase 3 destination scaffolds", () => {
         .closest(".project-config-section-header")
         ?.querySelector("button")
     ).toBeNull();
-    expect(screen.getByText("No components added yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Add repository components before saving the project scaffold.")
+    ).toBeInTheDocument();
 
     fireEvent.click(addComponentButton);
     expect(addComponentButton).toHaveAttribute("aria-expanded", "true");

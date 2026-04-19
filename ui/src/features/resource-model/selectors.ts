@@ -14,6 +14,10 @@ import type {
   ResourceDocument,
   ResourceDocumentRevision,
   ResourceModelDataset,
+  ResourceProjectConfiguration,
+  ResourceProjectConfigurationComponent,
+  ResourceProjectConfigurationRules,
+  ResourceProjectEnvironmentVariable,
   ResourceProject
 } from "./types";
 import { buildRunPath, buildRunTaskPath } from "../../shared/navigation/run-phases";
@@ -22,6 +26,7 @@ export interface CurrentProjectSummary {
   projectId: string;
   projectKey: string;
   displayName: string;
+  description: string;
 }
 
 export interface RunScaffoldSummary {
@@ -69,6 +74,18 @@ export interface WorkstreamTaskSummary {
   status: string;
   updatedLabel: string;
   detailPath: string;
+}
+
+export interface ProjectConfigurationSelection {
+  configurationId: string;
+  overview: {
+    displayName: string;
+    projectKey: string;
+    description: string;
+  };
+  components: ResourceProjectConfigurationComponent[];
+  rules: ResourceProjectConfigurationRules;
+  environmentVariables: ResourceProjectEnvironmentVariable[];
 }
 
 function getIndexes(dataset: ResourceModelDataset) {
@@ -174,7 +191,8 @@ export function selectCurrentProjectSummary(
   return {
     projectId: project.projectId,
     projectKey: project.projectKey,
-    displayName: project.displayName
+    displayName: project.displayName,
+    description: project.description
   };
 }
 
@@ -441,6 +459,48 @@ export function getProjectDocumentationSelection(
   };
 }
 
+function selectProjectConfiguration(
+  configuration: ResourceProjectConfiguration
+): ProjectConfigurationSelection {
+  return {
+    configurationId: configuration.configurationId,
+    overview: { ...configuration.overview },
+    components: configuration.components.map((component) => ({ ...component })),
+    rules: {
+      reviewInstructions: [...configuration.rules.reviewInstructions],
+      testInstructions: [...configuration.rules.testInstructions]
+    },
+    environmentVariables: configuration.environmentVariables.map((environmentVariable) => ({
+      ...environmentVariable
+    }))
+  };
+}
+
+export function getNewProjectConfiguration(
+  dataset: ResourceModelDataset = uiScaffoldDataset
+): ProjectConfigurationSelection | null {
+  const configuration = getIndexes(dataset).projectConfigurationTemplate;
+
+  if (!configuration) {
+    return null;
+  }
+
+  return selectProjectConfiguration(configuration);
+}
+
+export function getProjectConfiguration(
+  projectId: string,
+  dataset: ResourceModelDataset = uiScaffoldDataset
+): ProjectConfigurationSelection | null {
+  const configuration = getIndexes(dataset).projectConfigurationsByProjectId.get(projectId);
+
+  if (!configuration) {
+    return null;
+  }
+
+  return selectProjectConfiguration(configuration);
+}
+
 export function createProjectOverrideDataset(
   project: CurrentProjectSummary,
   dataset: ResourceModelDataset = uiScaffoldDataset
@@ -476,6 +536,22 @@ export function createProjectOverrideDataset(
     ),
     tasks: dataset.tasks.map((task) =>
       task.projectId === sourceProjectId ? { ...task, projectId: overrideProject.projectId } : task
-    )
+    ),
+    projectConfigurations: dataset.projectConfigurations.map((configuration) => {
+      if (configuration.projectId !== sourceProjectId) {
+        return configuration;
+      }
+
+      return {
+        ...configuration,
+        projectId: overrideProject.projectId,
+        overview: {
+          ...configuration.overview,
+          displayName: project.displayName,
+          projectKey: project.projectKey,
+          description: project.description
+        }
+      };
+    })
   };
 }

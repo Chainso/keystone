@@ -10,6 +10,10 @@ export type ResourceRunStatus = "Draft" | "In progress" | "Complete" | "Blocked"
 
 export type ResourceTaskStatus = "Ready" | "Queued" | "Running" | "Blocked" | "Complete";
 
+export type ResourceProjectConfigurationKind = "template" | "project";
+export type ResourceProjectComponentKind = "git_repository";
+export type ResourceProjectComponentSourceMode = "localPath" | "gitUrl";
+
 export interface ConversationLocator {
   agentClass: string;
   agentName: string;
@@ -20,6 +24,46 @@ export interface ResourceProject {
   projectKey: string;
   displayName: string;
   description: string;
+}
+
+export interface ResourceProjectConfigurationOverview {
+  displayName: string;
+  projectKey: string;
+  description: string;
+}
+
+export interface ResourceProjectConfigurationComponent {
+  componentId: string;
+  heading: string;
+  displayName: string;
+  componentKey: string;
+  kind: ResourceProjectComponentKind;
+  sourceMode: ResourceProjectComponentSourceMode;
+  localPath: string;
+  gitUrl: string;
+  defaultRef: string;
+  reviewInstructions: string[];
+  testInstructions: string[];
+}
+
+export interface ResourceProjectConfigurationRules {
+  reviewInstructions: string[];
+  testInstructions: string[];
+}
+
+export interface ResourceProjectEnvironmentVariable {
+  name: string;
+  value: string;
+}
+
+export interface ResourceProjectConfiguration {
+  configurationId: string;
+  kind: ResourceProjectConfigurationKind;
+  projectId?: string;
+  overview: ResourceProjectConfigurationOverview;
+  components: ResourceProjectConfigurationComponent[];
+  rules: ResourceProjectConfigurationRules;
+  environmentVariables: ResourceProjectEnvironmentVariable[];
 }
 
 export interface ResourceRun {
@@ -98,4 +142,5 @@ export interface ResourceModelDataset {
   tasks: ResourceTask[];
   workflowGraphs: ResourceWorkflowGraph[];
   artifacts: ResourceArtifact[];
+  projectConfigurations: ResourceProjectConfiguration[];
 }

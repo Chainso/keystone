@@ -1,14 +1,20 @@
 import { useState } from "react";
 
 import {
-  buildProjectComponentScaffold,
+  getNewProjectConfiguration,
+  getProjectConfiguration
+} from "../resource-model/selectors";
+import {
+  buildProjectConfigurationComponentDraft,
   buildProjectConfigurationPath,
   projectComponentTypeOptions,
   projectConfigurationTabs,
   type ProjectComponentScaffold,
-  type ProjectComponentTypeOption
+  type ProjectComponentTypeOption,
+  type ProjectConfigurationMode
 } from "./project-configuration-scaffold";
 import { useCurrentProject } from "./project-context";
+import { useResourceModel } from "../resource-model/context";
 
 interface ProjectConfigurationShellViewModel {
   title: string;
@@ -62,7 +68,7 @@ interface ProjectEnvironmentViewModel {
   heading: string;
 }
 
-function buildProjectConfigurationTabs(mode: "new" | "settings") {
+function buildProjectConfigurationTabs(mode: ProjectConfigurationMode) {
   return projectConfigurationTabs.map((tab) => ({
     tabId: tab.tabId,
     label: tab.label,
@@ -70,22 +76,46 @@ function buildProjectConfigurationTabs(mode: "new" | "settings") {
   }));
 }
 
-function useProjectComponentsModel(
-  mode: "new" | "settings",
-  initialComponents: ProjectComponentScaffold[]
-): ProjectComponentsViewModel {
+function useProjectConfigurationSeed(mode: ProjectConfigurationMode) {
+  const { state } = useResourceModel();
+  const project = useCurrentProject();
+
+  if (mode === "new") {
+    const configuration = getNewProjectConfiguration(state.dataset);
+
+    if (!configuration) {
+      throw new Error("New project configuration scaffold is missing.");
+    }
+
+    return configuration;
+  }
+
+  const configuration = getProjectConfiguration(project.projectId, state.dataset);
+
+  if (!configuration) {
+    throw new Error(`Project configuration scaffold is missing for "${project.projectId}".`);
+  }
+
+  return configuration;
+}
+
+function useProjectComponentsModel(mode: ProjectConfigurationMode): ProjectComponentsViewModel {
+  const configuration = useProjectConfigurationSeed(mode);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
-  const [components, setComponents] = useState(initialComponents);
+  const [components, setComponents] = useState(configuration.components);
 
   return {
     components,
-    emptyState: "No components added yet.",
+    emptyState:
+      mode === "new"
+        ? "Add repository components before saving the project scaffold."
+        : "No project components configured yet.",
     footerActions: mode === "new" ? ["Cancel", "Save Draft", "Next"] : ["Discard", "Save"],
     heading: "Components",
     pickComponentType() {
       setComponents((currentComponents) => [
         ...currentComponents,
-        buildProjectComponentScaffold(mode, currentComponents.length)
+        buildProjectConfigurationComponentDraft(mode, currentComponents.length)
       ]);
       setTypePickerOpen(false);
     },
@@ -95,6 +125,46 @@ function useProjectComponentsModel(
     typeOptions: projectComponentTypeOptions,
     typePickerOpen,
     typePickerTitle: "Add component menu"
+  };
+}
+
+function useProjectOverviewModel(mode: ProjectConfigurationMode): ProjectOverviewViewModel {
+  const configuration = useProjectConfigurationSeed(mode);
+
+  return {
+    heading: "Overview",
+    descriptionField: {
+      label: "Description",
+      value: configuration.overview.description
+    },
+    footerActions: mode === "new" ? ["Cancel", "Save Draft", "Next"] : ["Discard", "Save"],
+    keyField: {
+      label: "Project key",
+      value: configuration.overview.projectKey
+    },
+    nameField: {
+      label: "Project name",
+      value: configuration.overview.displayName
+    }
+  };
+}
+
+function useProjectRulesModel(mode: ProjectConfigurationMode): ProjectRulesViewModel {
+  const configuration = useProjectConfigurationSeed(mode);
+
+  return {
+    heading: "Rules",
+    reviewInstructions: configuration.rules.reviewInstructions,
+    testInstructions: configuration.rules.testInstructions
+  };
+}
+
+function useProjectEnvironmentModel(mode: ProjectConfigurationMode): ProjectEnvironmentViewModel {
+  const configuration = useProjectConfigurationSeed(mode);
+
+  return {
+    envVars: configuration.environmentVariables,
+    heading: "Environment"
   };
 }
 
@@ -114,84 +184,34 @@ export function useProjectSettingsConfigurationShellViewModel(): ProjectConfigur
   };
 }
 
-export function useNewProjectOverviewViewModel(): ProjectOverviewViewModel {
-  return {
-    heading: "Overview",
-    descriptionField: {
-      label: "Description",
-      value: "Internal operator workspace for the Keystone Cloudflare project."
-    },
-    footerActions: ["Cancel", "Save Draft", "Next"],
-    keyField: {
-      label: "Project key",
-      value: "keystone-cloudflare"
-    },
-    nameField: {
-      label: "Project name",
-      value: "Keystone Cloudflare"
-    }
-  };
+export function useNewProjectOverviewViewModel() {
+  return useProjectOverviewModel("new");
 }
 
-export function useProjectSettingsOverviewViewModel(): ProjectOverviewViewModel {
-  const project = useCurrentProject();
-
-  return {
-    heading: "Overview",
-    descriptionField: {
-      label: "Description",
-      value: "Internal operator workspace for runs, documentation, and workstreams."
-    },
-    footerActions: ["Discard", "Save"],
-    keyField: {
-      label: "Project key",
-      value: project.projectKey
-    },
-    nameField: {
-      label: "Project name",
-      value: project.displayName
-    }
-  };
+export function useProjectSettingsOverviewViewModel() {
+  return useProjectOverviewModel("settings");
 }
 
-export function useNewProjectComponentsViewModel(): ProjectComponentsViewModel {
-  return useProjectComponentsModel("new", []);
+export function useNewProjectComponentsViewModel() {
+  return useProjectComponentsModel("new");
 }
 
-export function useProjectSettingsComponentsViewModel(): ProjectComponentsViewModel {
-  return useProjectComponentsModel("settings", [buildProjectComponentScaffold("settings", 0)]);
+export function useProjectSettingsComponentsViewModel() {
+  return useProjectComponentsModel("settings");
 }
 
-export function useProjectRulesViewModel(): ProjectRulesViewModel {
-  return {
-    heading: "Rules",
-    reviewInstructions: [
-      "Keep route ownership explicit.",
-      "Capture component-specific review focus when needed."
-    ],
-    testInstructions: [
-      "Run lint, typecheck, and test before handoff.",
-      "Verify the project configuration tabs."
-    ]
-  };
+export function useNewProjectRulesViewModel() {
+  return useProjectRulesModel("new");
 }
 
-export function useProjectEnvironmentViewModel(): ProjectEnvironmentViewModel {
-  return {
-    envVars: [
-      {
-        name: "KEYSTONE_AGENT_RUNTIME",
-        value: "scripted"
-      },
-      {
-        name: "KEYSTONE_CHAT_COMPLETIONS_BASE_URL",
-        value: "http://localhost:10531"
-      },
-      {
-        name: "KEYSTONE_CHAT_COMPLETIONS_MODEL",
-        value: "gpt-5.4-mini"
-      }
-    ],
-    heading: "Environment"
-  };
+export function useProjectSettingsRulesViewModel() {
+  return useProjectRulesModel("settings");
+}
+
+export function useNewProjectEnvironmentViewModel() {
+  return useProjectEnvironmentModel("new");
+}
+
+export function useProjectSettingsEnvironmentViewModel() {
+  return useProjectEnvironmentModel("settings");
 }
