@@ -1,41 +1,57 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createDocumentRepositoryClient } from "./document-db-fixture";
+
+const projectDocumentFixture = {
+  tenantId: "tenant-read",
+  projectId: "project-123",
+  documentId: "doc-project-spec",
+  runId: null,
+  scopeType: "project" as const,
+  kind: "specification" as const,
+  path: "product/specification",
+  currentRevisionId: "revision-project-spec-v1",
+  conversationAgentClass: "PlanningDocumentAgent",
+  conversationAgentName: "project-specification",
+  createdAt: new Date("2026-04-17T10:45:00.000Z"),
+  updatedAt: new Date("2026-04-17T11:15:00.000Z")
+};
+
+const projectDocumentRevisionFixture = {
+  documentRevisionId: "revision-project-spec-v1",
+  documentId: "doc-project-spec",
+  artifactRefId: "artifact-project-spec-v1",
+  revisionNumber: 1,
+  title: "Project Specification v1",
+  createdAt: new Date("2026-04-17T11:15:00.000Z")
+};
+
+const projectDocumentRepositoryFixture = {
+  projects: [
+    {
+      tenantId: "tenant-read",
+      projectId: "project-123"
+    }
+  ],
+  runs: [],
+  documents: [projectDocumentFixture],
+  documentRevisions: [projectDocumentRevisionFixture]
+};
+
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
-  const projectDocument = {
-    tenantId: "tenant-read",
-    projectId: "project-123",
-    documentId: "doc-project-spec",
-    runId: null,
-    scopeType: "project" as const,
-    kind: "specification" as const,
-    path: "product/specification",
-    currentRevisionId: "revision-project-spec-v1",
-    conversationAgentClass: "PlanningDocumentAgent",
-    conversationAgentName: "project-specification",
-    createdAt: new Date("2026-04-17T10:45:00.000Z"),
-    updatedAt: new Date("2026-04-17T11:15:00.000Z")
-  };
-  const projectDocumentRevision = {
-    documentRevisionId: "revision-project-spec-v1",
-    documentId: "doc-project-spec",
-    artifactRefId: "artifact-project-spec-v1",
-    revisionNumber: 1,
-    title: "Project Specification v1",
-    createdAt: new Date("2026-04-17T11:15:00.000Z")
-  };
 
   return {
     close,
+    bucketDelete: vi.fn(async () => undefined),
     bucketPut: vi.fn(async () => ({
       httpEtag: "etag-project-spec-v2",
       size: 27
     })),
-    createWorkerDatabaseClient: vi.fn(() => ({
-      close,
-      db: {},
-      sql: {}
-    })),
+    createWorkerDatabaseClient: vi.fn(() =>
+      createDocumentRepositoryClient(projectDocumentRepositoryFixture, close)
+    ),
+    deleteArtifactRef: vi.fn(async () => null),
     createArtifactRef: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       artifactRefId: "artifact-project-spec-v2",
@@ -208,34 +224,6 @@ const mocked = vi.hoisted(() => {
         }
       }
     ]),
-    listProjectDocumentsWithCurrentRevision: vi.fn(async (_client, input) => [
-      {
-        ...projectDocument,
-        tenantId: input.tenantId,
-        currentRevision: projectDocumentRevision
-      }
-    ]),
-    getProjectDocument: vi.fn(async (_client, input) => {
-      if (input.projectId !== "project-123" || input.documentId !== "doc-project-spec") {
-        return undefined;
-      }
-
-      return {
-        ...projectDocument,
-        tenantId: input.tenantId
-      };
-    }),
-    getDocumentWithCurrentRevision: vi.fn(async (_client, input) => {
-      if (input.documentId !== "doc-project-spec") {
-        return undefined;
-      }
-
-      return {
-        ...projectDocument,
-        tenantId: input.tenantId,
-        currentRevision: projectDocumentRevision
-      };
-    }),
     createDocument: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       projectId: input.projectId,
@@ -309,19 +297,34 @@ vi.mock("../../src/lib/db/runs", () => ({
   listProjectRunSessions: mocked.listProjectRunSessions
 }));
 
-vi.mock("../../src/lib/db/documents", () => ({
-  createDocument: mocked.createDocument,
-  createDocumentRevision: mocked.createDocumentRevision,
-  getDocumentWithCurrentRevision: mocked.getDocumentWithCurrentRevision,
-  getProjectDocument: mocked.getProjectDocument,
-  getRunDocument: vi.fn(),
-  listProjectDocumentsWithCurrentRevision: mocked.listProjectDocumentsWithCurrentRevision,
-  listRunDocumentsWithCurrentRevision: vi.fn()
-}));
+vi.mock("../../src/lib/db/documents", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/db/documents")>(
+    "../../src/lib/db/documents"
+  );
 
-vi.mock("../../src/lib/db/artifacts", () => ({
-  createArtifactRef: mocked.createArtifactRef
-}));
+  return {
+    ...actual,
+    createDocument: mocked.createDocument,
+    createDocumentRevision: mocked.createDocumentRevision,
+    getProjectDocument: vi.fn(actual.getProjectDocument),
+    getRunDocument: vi.fn(actual.getRunDocument),
+    getDocumentWithCurrentRevision: vi.fn(actual.getDocumentWithCurrentRevision),
+    listProjectDocumentsWithCurrentRevision: vi.fn(actual.listProjectDocumentsWithCurrentRevision),
+    listRunDocumentsWithCurrentRevision: vi.fn(actual.listRunDocumentsWithCurrentRevision)
+  };
+});
+
+vi.mock("../../src/lib/db/artifacts", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/db/artifacts")>(
+    "../../src/lib/db/artifacts"
+  );
+
+  return {
+    ...actual,
+    createArtifactRef: mocked.createArtifactRef,
+    deleteArtifactRef: mocked.deleteArtifactRef
+  };
+});
 
 vi.mock("../../src/http/handlers/runs", () => ({
   createRunHandler: vi.fn(),
@@ -349,10 +352,12 @@ vi.mock("../../src/http/handlers/dev-think", () => ({
   runThinkSmokeHandler: vi.fn()
 }));
 
+const documentsDb = await import("../../src/lib/db/documents");
 const { app } = await import("../../src/http/app");
 
 const env = {
   ARTIFACTS_BUCKET: {
+    delete: mocked.bucketDelete,
     put: mocked.bucketPut
   } as unknown as R2Bucket,
   HYPERDRIVE: {
@@ -450,11 +455,9 @@ function buildProjectPayload() {
 describe("project API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.createWorkerDatabaseClient.mockReturnValue({
-      close: mocked.close,
-      db: {},
-      sql: {}
-    });
+    mocked.createWorkerDatabaseClient.mockImplementation(() =>
+      createDocumentRepositoryClient(projectDocumentRepositoryFixture, mocked.close)
+    );
   });
 
   it("lists tenant-scoped projects", async () => {
@@ -918,7 +921,7 @@ describe("project API", () => {
         resourceType: "document"
       }
     });
-    expect(mocked.listProjectDocumentsWithCurrentRevision).toHaveBeenCalledWith(
+    expect(documentsDb.listProjectDocumentsWithCurrentRevision).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantId: "tenant-read",
@@ -989,6 +992,35 @@ describe("project API", () => {
         path: "technical/architecture"
       })
     );
+  });
+
+  it("maps unexpected document creation failures to internal_error responses", async () => {
+    mocked.createDocument.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-write"
+        },
+        body: JSON.stringify({
+          kind: "architecture",
+          path: "technical/architecture"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "internal_error",
+        message: "Document persistence failed."
+      }
+    });
   });
 
   it("returns a project document detail", async () => {
@@ -1073,6 +1105,46 @@ describe("project API", () => {
         documentId: "doc-project-spec",
         title: "Project Specification v2"
       })
+    );
+  });
+
+  it("deletes uploaded project revision artifacts when persistence fails downstream", async () => {
+    mocked.createDocumentRevision.mockRejectedValueOnce(new Error("document revision insert failed"));
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents/doc-project-spec/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        },
+        body: JSON.stringify({
+          title: "Project Specification v2",
+          body: "# Revised specification\n",
+          contentType: "text/markdown; charset=utf-8"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "internal_error",
+        message: "Document persistence failed."
+      }
+    });
+    expect(mocked.deleteArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        artifactRefId: "artifact-project-spec-v2"
+      })
+    );
+    expect(mocked.bucketDelete).toHaveBeenCalledWith(
+      expect.stringMatching(/^documents\/project\/project-123\/doc-project-spec\//)
     );
   });
 

@@ -6,6 +6,7 @@ import type {
   DocumentRevisionRow,
   DocumentRow
 } from "./schema";
+import { buildProjectScopedArtifactRunId } from "./artifacts";
 import {
   type DocumentKind,
   type DocumentScopeType,
@@ -94,7 +95,15 @@ function assertRevisionArtifactBoundary(document: DocumentRow, artifact: Artifac
     );
   }
 
-  if (document.scopeType === "run") {
+  if (document.scopeType === "project") {
+    const expectedProjectScopedRunId = buildProjectScopedArtifactRunId(document.projectId);
+
+    if (artifact.runId !== expectedProjectScopedRunId) {
+      throw new Error(
+        `Artifact ${artifact.artifactRefId} does not belong to the project-scoped document boundary for document ${document.documentId}.`
+      );
+    }
+  } else {
     if (!document.runId) {
       throw new Error(`Run-scoped document ${document.documentId} is missing its run id.`);
     }

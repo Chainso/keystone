@@ -70,6 +70,10 @@ export async function putArtifactJson(
   });
 }
 
+export async function deleteArtifactObject(bucket: R2Bucket, key: string) {
+  await bucket.delete(key);
+}
+
 export async function getArtifactText(bucket: R2Bucket, key: string) {
   const object = await bucket.get(key);
 

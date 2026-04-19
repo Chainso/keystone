@@ -385,12 +385,45 @@ describeIfDatabase("database repositories", () => {
       artifactRefId: artifact?.artifactRefId ?? "",
       title: "Execution Plan v1"
     });
+    const projectArtifactV2 = await createArtifactRef(client, {
+      tenantId,
+      projectId: project.projectId,
+      kind: "document_revision",
+      storageBackend: "r2",
+      storageUri: `r2://keystone-artifacts-dev/documents/project/${project.projectId}/${projectDocument?.documentId}-v2.md`,
+      contentType: "text/markdown",
+      etag: "etag-project-spec-2",
+      sizeBytes: 112
+    });
+    const artifactV2 = await createArtifactRef(client, {
+      tenantId,
+      projectId: project.projectId,
+      runId,
+      kind: "document_revision",
+      storageBackend: "r2",
+      storageUri: `r2://keystone-artifacts-dev/documents/run/${runId}/${runDocument?.documentId}-v2.md`,
+      contentType: "text/markdown",
+      etag: "etag-plan-2",
+      sizeBytes: 144
+    });
+    const projectRevisionV2 = await createDocumentRevision(client, {
+      tenantId,
+      documentId: projectDocument?.documentId ?? "",
+      artifactRefId: projectArtifactV2?.artifactRefId ?? "",
+      title: "Project Specification v2"
+    });
+    const revisionV2 = await createDocumentRevision(client, {
+      tenantId,
+      documentId: runDocument?.documentId ?? "",
+      artifactRefId: artifactV2?.artifactRefId ?? "",
+      title: "Execution Plan v2"
+    });
     const compiledAt = new Date("2026-04-19T08:15:00.000Z");
     const updatedRun = await updateRunRecord(client, {
       tenantId,
       runId,
       status: "compiled",
-      compiledExecutionPlanRevisionId: revision?.documentRevisionId ?? null,
+      compiledExecutionPlanRevisionId: revisionV2?.documentRevisionId ?? null,
       compiledAt
     });
 
@@ -449,6 +482,10 @@ describeIfDatabase("database repositories", () => {
       tenantId,
       documentId: runDocument?.documentId ?? ""
     });
+    const projectDocumentRevisions = await listDocumentRevisions(client, {
+      tenantId,
+      documentId: projectDocument?.documentId ?? ""
+    });
     const runTasks = await listRunTasks(client, {
       tenantId,
       runId
@@ -473,21 +510,24 @@ describeIfDatabase("database repositories", () => {
     expect(projectArtifact?.objectKey).toContain(`/documents/project/${project.projectId}/`);
     expect(projectArtifact?.etag).toBe("etag-project-spec-1");
     expect(projectRevision?.revisionNumber).toBe(1);
-    expect(refreshedProjectDocument?.currentRevisionId).toBe(projectRevision?.documentRevisionId);
+    expect(projectRevisionV2?.revisionNumber).toBe(2);
+    expect(refreshedProjectDocument?.currentRevisionId).toBe(projectRevisionV2?.documentRevisionId);
     expect(artifact?.artifactKind).toBe("document_revision");
     expect(artifact?.bucket).toBe("keystone-artifacts-dev");
     expect(artifact?.objectKey).toContain(`/documents/run/${runId}/`);
     expect(artifact?.etag).toBe("etag-plan-1");
     expect(revision?.revisionNumber).toBe(1);
-    expect(refreshedRunDocument?.currentRevisionId).toBe(revision?.documentRevisionId);
+    expect(revisionV2?.revisionNumber).toBe(2);
+    expect(refreshedRunDocument?.currentRevisionId).toBe(revisionV2?.documentRevisionId);
     expect(updatedRun?.status).toBe("compiled");
-    expect(updatedRun?.compiledExecutionPlanRevisionId).toBe(revision?.documentRevisionId);
+    expect(updatedRun?.compiledExecutionPlanRevisionId).toBe(revisionV2?.documentRevisionId);
     expect(updatedRun?.compiledAt?.toISOString()).toBe(compiledAt.toISOString());
     expect(fetchedRun?.runId).toBe(runId);
     expect(projectRuns).toHaveLength(1);
     expect(projectDocuments.map((document) => document.path)).toEqual(["product/specification"]);
     expect(runDocuments.map((document) => document.path)).toEqual(["execution-plan"]);
-    expect(documentRevisions.map((entry) => entry.revisionNumber)).toEqual([1]);
+    expect(projectDocumentRevisions.map((entry) => entry.revisionNumber)).toEqual([1, 2]);
+    expect(documentRevisions.map((entry) => entry.revisionNumber)).toEqual([1, 2]);
     expect(runTasks.map((task) => task.name)).toEqual(["Prepare schema", "Validate repositories"]);
     expect(dependency?.parentRunTaskId).toBe(taskA?.runTaskId);
     expect(dependency?.childRunTaskId).toBe(taskB?.runTaskId);
@@ -514,6 +554,16 @@ describeIfDatabase("database repositories", () => {
       }),
       "Expected run document insert to return a row."
     );
+    const projectDocument = expectRow(
+      await createDocument(client, {
+        tenantId,
+        projectId: project.projectId,
+        scopeType: "project",
+        kind: "specification",
+        path: "product/specification"
+      }),
+      "Expected project document insert to return a row."
+    );
     const wrongRunArtifact = expectRow(
       await createArtifactRef(client, {
         tenantId,
@@ -538,6 +588,18 @@ describeIfDatabase("database repositories", () => {
       }),
       "Expected wrong-kind artifact insert to return a row."
     );
+    const projectDocumentWrongBoundaryArtifact = expectRow(
+      await createArtifactRef(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        kind: "document_revision",
+        storageBackend: "r2",
+        storageUri: `r2://keystone-artifacts-dev/documents/run/${runId}/${crypto.randomUUID()}.md`,
+        contentType: "text/markdown"
+      }),
+      "Expected project boundary artifact insert to return a row."
+    );
 
     await expect(
       createDocumentRevision(client, {
@@ -556,6 +618,15 @@ describeIfDatabase("database repositories", () => {
         title: "Wrong kind"
       })
     ).rejects.toThrow(/not a document_revision artifact/i);
+
+    await expect(
+      createDocumentRevision(client, {
+        tenantId,
+        documentId: projectDocument.documentId,
+        artifactRefId: projectDocumentWrongBoundaryArtifact.artifactRefId,
+        title: "Wrong project boundary"
+      })
+    ).rejects.toThrow(/project-scoped document boundary/i);
   });
 
   it("rejects invalid compile provenance revisions", async () => {

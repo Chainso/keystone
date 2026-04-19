@@ -112,6 +112,26 @@ export async function createArtifactRef(
   return inserted;
 }
 
+export async function deleteArtifactRef(
+  client: DatabaseClient,
+  input: {
+    tenantId: string;
+    artifactRefId: string;
+  }
+) {
+  const [deleted] = await client.db
+    .delete(artifactRefs)
+    .where(
+      and(
+        eq(artifactRefs.tenantId, input.tenantId),
+        eq(artifactRefs.artifactRefId, input.artifactRefId)
+      )
+    )
+    .returning();
+
+  return deleted ?? null;
+}
+
 export async function getArtifactRef(
   client: DatabaseClient,
   tenantId: string,

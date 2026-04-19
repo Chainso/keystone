@@ -1,8 +1,12 @@
 import type { Context } from "hono";
 
 import type { AppEnv } from "../../../../env";
-import { decodeArtifactBody, putArtifactBytes } from "../../../../lib/artifacts/r2";
-import { createArtifactRef } from "../../../../lib/db/artifacts";
+import {
+  decodeArtifactBody,
+  deleteArtifactObject,
+  putArtifactBytes
+} from "../../../../lib/artifacts/r2";
+import { createArtifactRef, deleteArtifactRef } from "../../../../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../../../../lib/db/client";
 import {
   createDocument,
@@ -94,7 +98,7 @@ function resolveDocumentError(error: unknown) {
   }
 
   if (error instanceof Error) {
-    return jsonErrorResponse("invalid_request", error.message, 400);
+    return jsonErrorResponse("internal_error", "Document persistence failed.", 500);
   }
 
   return null;
@@ -223,11 +227,13 @@ async function writeDocumentRevision(
   input: ReturnType<typeof parseDocumentRevisionCreateInput>
 ) {
   const client = createWorkerDatabaseClient(context.env);
+  let artifactKey: string | null = null;
+  let createdArtifactRefId: string | null = null;
 
   try {
     const artifactBody = decodeArtifactBody(input.body, input.encoding);
     const documentRevisionId = crypto.randomUUID();
-    const artifactKey = buildDocumentArtifactKey({
+    artifactKey = buildDocumentArtifactKey({
       scopeType: document.scopeType,
       projectId: document.projectId,
       runId: document.runId,
@@ -265,6 +271,7 @@ async function writeDocumentRevision(
         documentRevisionId
       }
     });
+    createdArtifactRefId = artifact.artifactRefId;
     const revision = await createDocumentRevision(client, {
       tenantId: document.tenantId,
       documentId: document.documentId,
@@ -274,6 +281,36 @@ async function writeDocumentRevision(
     });
 
     return serializeDocumentRevisionResource(document, revision);
+  } catch (error) {
+    const cleanupErrors: unknown[] = [];
+
+    if (createdArtifactRefId) {
+      try {
+        await deleteArtifactRef(client, {
+          tenantId: document.tenantId,
+          artifactRefId: createdArtifactRefId
+        });
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+
+    if (artifactKey) {
+      try {
+        await deleteArtifactObject(context.env.ARTIFACTS_BUCKET, artifactKey);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        "Document revision write failed and cleanup did not complete."
+      );
+    }
+
+    throw error;
   } finally {
     await client.close();
   }

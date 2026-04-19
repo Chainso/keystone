@@ -1,29 +1,46 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createDocumentRepositoryClient } from "./document-db-fixture";
+
+const runDocumentFixture = {
+  tenantId: "tenant-fixture",
+  projectId: "project-fixture",
+  documentId: "doc-run-plan",
+  runId: "run-123",
+  scopeType: "run" as const,
+  kind: "execution_plan" as const,
+  path: "execution-plan",
+  currentRevisionId: "revision-run-plan-v1",
+  conversationAgentClass: "PlanningDocumentAgent",
+  conversationAgentName: "run-execution-plan",
+  createdAt: new Date("2026-04-14T00:01:00.000Z"),
+  updatedAt: new Date("2026-04-14T00:05:00.000Z")
+};
+
+const runDocumentRevisionFixture = {
+  documentRevisionId: "revision-run-plan-v1",
+  documentId: "doc-run-plan",
+  artifactRefId: "artifact-run-plan-v1",
+  revisionNumber: 1,
+  title: "Execution Plan v1",
+  createdAt: new Date("2026-04-14T00:05:00.000Z")
+};
+
+const runDocumentRepositoryFixture = {
+  projects: [],
+  runs: [
+    {
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      projectId: "project-fixture"
+    }
+  ],
+  documents: [runDocumentFixture],
+  documentRevisions: [runDocumentRevisionFixture]
+};
+
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
-  const runDocument = {
-    tenantId: "tenant-fixture",
-    projectId: "project-fixture",
-    documentId: "doc-run-plan",
-    runId: "run-123",
-    scopeType: "run" as const,
-    kind: "execution_plan" as const,
-    path: "execution-plan",
-    currentRevisionId: "revision-run-plan-v1",
-    conversationAgentClass: "PlanningDocumentAgent",
-    conversationAgentName: "run-execution-plan",
-    createdAt: new Date("2026-04-14T00:01:00.000Z"),
-    updatedAt: new Date("2026-04-14T00:05:00.000Z")
-  };
-  const runDocumentRevision = {
-    documentRevisionId: "revision-run-plan-v1",
-    documentId: "doc-run-plan",
-    artifactRefId: "artifact-run-plan-v1",
-    revisionNumber: 1,
-    title: "Execution Plan v1",
-    createdAt: new Date("2026-04-14T00:05:00.000Z")
-  };
   const getThinkAgentStub = vi.fn(() => ({
     runImplementerTurn: vi.fn(async () => ({
       outcome: "completed",
@@ -54,6 +71,7 @@ const mocked = vi.hoisted(() => {
 
   return {
     bucketGet: vi.fn(async () => null),
+    bucketDelete: vi.fn(async () => undefined),
     bucketPut: vi.fn(async () => ({
       httpEtag: "etag-run-plan-v2",
       size: 19
@@ -129,6 +147,7 @@ const mocked = vi.hoisted(() => {
       createdAt: new Date("2026-04-14T00:06:00.000Z"),
       metadata: input.metadata ?? {}
     })),
+    deleteArtifactRef: vi.fn(async () => null),
     getArtifactRef: vi.fn(async (_client, _tenantId, artifactId) => ({
       tenantId: "tenant-fixture",
       artifactRefId: artifactId,
@@ -169,35 +188,6 @@ const mocked = vi.hoisted(() => {
       title: input.title,
       createdAt: new Date("2026-04-14T00:06:00.000Z")
     })),
-    listRunDocumentsWithCurrentRevision: vi.fn(async (_client, input) => [
-      {
-        ...runDocument,
-        tenantId: input.tenantId,
-        runId: input.runId,
-        currentRevision: runDocumentRevision
-      }
-    ]),
-    getRunDocument: vi.fn(async (_client, input) => {
-      if (input.runId !== "run-123" || input.documentId !== "doc-run-plan") {
-        return undefined;
-      }
-
-      return {
-        ...runDocument,
-        tenantId: input.tenantId,
-        runId: input.runId
-      };
-    }),
-    getDocumentWithCurrentRevision: vi.fn(async (_client, input) => {
-      if (input.documentId !== "doc-run-plan") {
-        return undefined;
-      }
-
-      return {
-        ...runDocument,
-        currentRevision: runDocumentRevision
-      };
-    }),
     listRunApprovalRecords: vi.fn(async () => []),
     resolveApprovalRecord: vi.fn(async () => ({
       status: "approved",
@@ -321,11 +311,9 @@ const mocked = vi.hoisted(() => {
         }
       ]
     })),
-    createWorkerDatabaseClient: vi.fn(() => ({
-      close,
-      db: {},
-      sql: {}
-    })),
+    createWorkerDatabaseClient: vi.fn(() =>
+      createDocumentRepositoryClient(runDocumentRepositoryFixture, close)
+    ),
     getProject: vi.fn(async () => ({
       tenantId: "tenant-fixture",
       projectId: "project-fixture",
@@ -419,20 +407,28 @@ vi.mock("../../src/lib/db/artifacts", async () => {
   return {
     ...actual,
     createArtifactRef: mocked.createArtifactRef,
+    deleteArtifactRef: mocked.deleteArtifactRef,
     getArtifactRef: mocked.getArtifactRef,
     listRunArtifacts: mocked.listRunArtifacts
   };
 });
 
-vi.mock("../../src/lib/db/documents", () => ({
-  createDocument: mocked.createDocument,
-  createDocumentRevision: mocked.createDocumentRevision,
-  getDocumentWithCurrentRevision: mocked.getDocumentWithCurrentRevision,
-  getProjectDocument: vi.fn(),
-  getRunDocument: mocked.getRunDocument,
-  listProjectDocumentsWithCurrentRevision: vi.fn(),
-  listRunDocumentsWithCurrentRevision: mocked.listRunDocumentsWithCurrentRevision
-}));
+vi.mock("../../src/lib/db/documents", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/db/documents")>(
+    "../../src/lib/db/documents"
+  );
+
+  return {
+    ...actual,
+    createDocument: mocked.createDocument,
+    createDocumentRevision: mocked.createDocumentRevision,
+    getDocumentWithCurrentRevision: vi.fn(actual.getDocumentWithCurrentRevision),
+    getProjectDocument: vi.fn(actual.getProjectDocument),
+    getRunDocument: vi.fn(actual.getRunDocument),
+    listProjectDocumentsWithCurrentRevision: vi.fn(actual.listProjectDocumentsWithCurrentRevision),
+    listRunDocumentsWithCurrentRevision: vi.fn(actual.listRunDocumentsWithCurrentRevision)
+  };
+});
 
 vi.mock("../../src/lib/db/approvals", () => ({
   getApprovalRecord: mocked.getApprovalRecord,
@@ -465,10 +461,12 @@ vi.mock("../../src/lib/artifacts/r2", async () => {
   };
 });
 
+const documentsDb = await import("../../src/lib/db/documents");
 const { app } = await import("../../src/http/app");
 
 const env = {
   ARTIFACTS_BUCKET: {
+    delete: mocked.bucketDelete,
     get: mocked.bucketGet,
     put: mocked.bucketPut
   } as unknown as R2Bucket,
@@ -527,11 +525,9 @@ function buildCompiledRunPlan() {
 describe("app", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.createWorkerDatabaseClient.mockReturnValue({
-      close: vi.fn(async () => undefined),
-      db: {},
-      sql: {}
-    });
+    mocked.createWorkerDatabaseClient.mockImplementation(() =>
+      createDocumentRepositoryClient(runDocumentRepositoryFixture, mocked.close)
+    );
     mocked.listRunSessions.mockResolvedValue([
       {
         tenantId: "tenant-fixture",
@@ -935,7 +931,7 @@ describe("app", () => {
         resourceType: "document"
       }
     });
-    expect(mocked.listRunDocumentsWithCurrentRevision).toHaveBeenCalledWith(
+    expect(documentsDb.listRunDocumentsWithCurrentRevision).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantId: "tenant-fixture",
@@ -1070,6 +1066,46 @@ describe("app", () => {
         runId: "run-123",
         kind: "document_revision"
       })
+    );
+  });
+
+  it("deletes uploaded run revision artifacts when persistence fails downstream", async () => {
+    mocked.createDocumentRevision.mockRejectedValueOnce(new Error("document revision insert failed"));
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          title: "Execution Plan v2",
+          body: "# Update\n",
+          contentType: "text/markdown; charset=utf-8"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "internal_error",
+        message: "Document persistence failed."
+      }
+    });
+    expect(mocked.deleteArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        artifactRefId: "artifact-run-plan-v2"
+      })
+    );
+    expect(mocked.bucketDelete).toHaveBeenCalledWith(
+      expect.stringMatching(/^documents\/run\/run-123\/doc-run-plan\//)
     );
   });
 

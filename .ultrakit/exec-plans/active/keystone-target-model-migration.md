@@ -209,6 +209,11 @@ The migration strategy in this plan is therefore:
   **Decision:** Hide the still-required `artifact_refs.run_id` legacy shape behind the repository/API boundary for project-scoped document revisions instead of widening the whole artifact/runtime surface in this phase.
   **Rationale:** Phase 2 needed real artifact-backed project documents now, but Phase 1 intentionally left `artifact_refs.run_id` required for existing runtime consumers. A project-scoped ownership shim keeps the public document/artifact model target-aligned without spilling into the later artifact and runtime cutover work.
 
+- **Date:** 2026-04-19
+  **Phase:** Phase 2 fix pass
+  **Decision:** Close the blocking review findings inside the Phase 2 persistence and HTTP test layers instead of reopening the migration sequence.
+  **Rationale:** The remaining gaps were all Phase 2-local: project-scoped artifact-boundary enforcement, compensating cleanup for failed revision writes, broad error classification, and missing test coverage for real hydration plus second revisions.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery completed against the target-model handoff, design docs, current runtime, API, tests, and UI.
@@ -222,6 +227,7 @@ The migration strategy in this plan is therefore:
 - [x] 2026-04-19 Phase 1 complete: additive target-model persistence foundation landed via new tables, repository helpers, and repository tests while legacy paths remain temporarily.
 - [x] 2026-04-19 Phase 1 targeted fix pass complete: repository integrity checks, revision-number allocation, and repository test coverage now address the blocking review findings.
 - [x] 2026-04-19 Phase 2 complete: unified documents and revisions now exist with artifact-backed storage, canonical kind/path enforcement, and real project/run document APIs.
+- [x] 2026-04-19 Phase 2 targeted fix pass complete: project-scoped revision artifacts now enforce the ownership shim, failed revision writes clean up uploaded blobs plus inserted artifact refs, generic persistence failures surface as server errors, and Phase 2 tests now cover real current-revision hydration plus second-revision behavior.
 - [ ] Phase 3 complete: real `runs` rows and `execution_engine` plumbing exist alongside the legacy run/session path temporarily, without auto-seeding planning documents.
 - [ ] Phase 4 complete: compile and task execution write `run_tasks` and dependency edges, while legacy projections still function.
 - [ ] Phase 5 complete: public run/task/document APIs and scripts cut over to the target model, and old public contract shapes are removed rather than shimmed.
@@ -240,6 +246,7 @@ The migration strategy in this plan is therefore:
 - The current worktree does not have local JS tool binaries installed, so broad validation cannot be rerun here without restoring dependencies first.
 - Phase 1 can widen `artifact_refs` safely, but it cannot yet make `run_id` nullable without touching current runtime/API consumers that still require `runId`. Project-scoped document revisions therefore need a later artifact/API cutover phase before they can be fully target-shaped end to end.
 - Phase 2 can ship project-scoped document revisions now by storing an internal `project:${projectId}` ownership surrogate in `artifact_refs.run_id` and stripping that surrogate from the public artifact response. Full nullable project-scoped artifact ownership can still wait for the later artifact cutover.
+- The real current-revision hydration helpers can be exercised in HTTP tests without a live database by wrapping them over a narrow query-fixture client; Phase 2 no longer needs canned hydration mocks just to keep route tests fast.
 - After restoring dependencies, the DB repository test command still skips in this environment because `DATABASE_URL`, `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`, and `KEYSTONE_RUN_DB_TESTS` are unset.
 - The broad `rtk npm run test` suite still fails in the sandbox for a pre-existing reason outside this phase: `tests/scripts/demo-contracts.test.ts` hits `Error: listen EPERM: operation not permitted 127.0.0.1`.
 - Because the service is not live, there is no product reason to carry old concepts forward once their replacements exist. Any temporary coexistence in this plan is purely to make implementation tractable.
@@ -273,6 +280,12 @@ Phase 2 outcome on 2026-04-19:
 - Expanded HTTP tests for project and run document list/create/detail/revision behavior and repository tests for canonical path enforcement and project-scoped revision artifacts.
 - Added repository helpers for first-class documents, runs, run tasks, and dependency edges, and expanded the repository integration test to exercise the new persistence layer without changing runtime or HTTP behavior.
 - Validation improved from the initial missing-binaries baseline because `npm install` restored local tooling. The remaining validation gaps are environmental: DB-gated tests still need explicit DB env vars, and the demo-contract suite still cannot bind localhost in the sandbox.
+
+Phase 2 fix-pass outcome on 2026-04-19:
+
+- Project-scoped document revisions now enforce the `project:${projectId}` artifact-ownership shim, so same-project run artifacts cannot slip into canonical project documents.
+- Document revision writes now clean up uploaded R2 objects and inserted artifact refs when downstream persistence fails, keeping the Phase 2 write path failure-safe within scope.
+- Document HTTP tests now hit the real current-revision hydration helpers through a lightweight query fixture, and repository integration coverage asserts second-revision numbering plus `currentRevisionId` replacement when DB-gated tests are enabled.
 
 Phase 1 fix-pass outcome on 2026-04-19:
 
@@ -620,15 +633,15 @@ Success means document and revision APIs are real and project-document stubs are
 
 #### Status
 
-Completed on 2026-04-19.
+Completed on 2026-04-19 after the allowed targeted fix pass.
 
 #### Completion Notes
 
-Implemented a shared document domain model in `src/lib/documents/model.ts`, expanded `src/lib/db/documents.ts` and `src/lib/db/artifacts.ts` for scoped document/revision persistence plus the temporary project-artifact ownership shim, added `src/http/api/v1/documents/contracts.ts` and `src/http/api/v1/documents/handlers.ts`, and rewired project/run routers to serve real nested document resources. Project-document stubs are gone; decision-package routes remain untouched. `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts` passed. `rtk npm run test` still fails only on the pre-existing sandbox `listen EPERM` issue in `tests/scripts/demo-contracts.test.ts`. `rtk npm run test -- tests/lib/db-repositories.test.ts` still skips because the DB env vars are unset in this environment.
+Implemented a shared document domain model in `src/lib/documents/model.ts`, expanded `src/lib/db/documents.ts` and `src/lib/db/artifacts.ts` for scoped document/revision persistence plus the temporary project-artifact ownership shim, added `src/http/api/v1/documents/contracts.ts` and `src/http/api/v1/documents/handlers.ts`, and rewired project/run routers to serve real nested document resources. Project-document stubs are gone; decision-package routes remain untouched. The allowed targeted fix pass then tightened project-scoped revision artifact ownership to the `project:${projectId}` boundary, added compensating artifact-ref plus R2 cleanup for failed revision writes, narrowed generic document persistence errors to server failures, replaced canned HTTP hydration mocks with wrapped real repository helpers, and extended repository coverage to second revisions. `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts` passed. `rtk npm run test -- tests/lib/db-repositories.test.ts` still skips because `DATABASE_URL`, `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`, and `KEYSTONE_RUN_DB_TESTS` are unset in this environment. `rtk npm run test` still fails only on the pre-existing sandbox `listen EPERM` issue in `tests/scripts/demo-contracts.test.ts`.
 
 #### Next Starter Context
 
-Phase 3 can now start writing and reading real `runs` rows and `execution_engine` fields while leaving the new document APIs intact. Project-scoped document revision artifacts currently use the internal `project:${projectId}` ownership surrogate to satisfy the still-required `artifact_refs.run_id`; remove that surrogate only when the later artifact/public cutover makes nullable project-scoped artifact ownership safe. Keep decision-package routes untouched until the dedicated contract cutover phase.
+Phase 3 can now start writing and reading real `runs` rows and `execution_engine` fields while leaving the new document APIs intact. Project-scoped document revision artifacts still use the internal `project:${projectId}` ownership surrogate to satisfy the still-required `artifact_refs.run_id`, but Phase 2 now enforces that surrogate on revision attachment and cleans up failed writes; remove the surrogate only when the later artifact/public cutover makes nullable project-scoped artifact ownership safe. Keep decision-package routes untouched until the dedicated contract cutover phase.
 
 ## Phase 3: Introduce Real Runs And Execution Engine
 
