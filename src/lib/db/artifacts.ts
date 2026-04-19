@@ -1,38 +1,84 @@
 import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 
 import type { ArtifactStorageBackend } from "../../maestro/contracts";
+import { parseR2Uri } from "../artifacts/r2";
 import type { DatabaseClient } from "./client";
 import { artifactRefs } from "./schema";
 
 export interface CreateArtifactRefInput {
   tenantId: string;
   runId: string;
+  projectId?: string | null | undefined;
   sessionId?: string | null | undefined;
   taskId?: string | null | undefined;
+  runTaskId?: string | null | undefined;
   kind: string;
+  artifactKind?: string | null | undefined;
   storageBackend: ArtifactStorageBackend;
   storageUri: string;
+  bucket?: string | null | undefined;
+  objectKey?: string | null | undefined;
+  objectVersion?: string | null | undefined;
+  etag?: string | null | undefined;
   contentType: string;
   sha256?: string | null | undefined;
   sizeBytes?: number | null | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
 
+function resolvePhysicalObjectLocation(input: CreateArtifactRefInput) {
+  if (input.bucket || input.objectKey) {
+    return {
+      bucket: input.bucket ?? null,
+      objectKey: input.objectKey ?? null
+    };
+  }
+
+  if (input.storageBackend !== "r2") {
+    return {
+      bucket: null,
+      objectKey: null
+    };
+  }
+
+  try {
+    const parsed = parseR2Uri(input.storageUri);
+
+    return {
+      bucket: parsed.bucketName,
+      objectKey: parsed.key
+    };
+  } catch {
+    return {
+      bucket: null,
+      objectKey: null
+    };
+  }
+}
+
 export async function createArtifactRef(
   client: DatabaseClient,
   input: CreateArtifactRefInput
 ) {
+  const physicalLocation = resolvePhysicalObjectLocation(input);
   const [inserted] = await client.db
     .insert(artifactRefs)
     .values({
       tenantId: input.tenantId,
       artifactRefId: crypto.randomUUID(),
+      projectId: input.projectId ?? null,
       runId: input.runId,
       sessionId: input.sessionId ?? null,
       taskId: input.taskId ?? null,
+      runTaskId: input.runTaskId ?? null,
       kind: input.kind,
+      artifactKind: input.artifactKind ?? input.kind,
       storageBackend: input.storageBackend,
       storageUri: input.storageUri,
+      bucket: physicalLocation.bucket,
+      objectKey: physicalLocation.objectKey,
+      objectVersion: input.objectVersion ?? null,
+      etag: input.etag ?? null,
       contentType: input.contentType,
       sha256: input.sha256 ?? null,
       sizeBytes: input.sizeBytes ?? null,

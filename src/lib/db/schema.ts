@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -34,19 +35,30 @@ export const artifactRefs = pgTable(
   {
     tenantId: text("tenant_id").notNull(),
     artifactRefId: uuid("artifact_ref_id").primaryKey(),
+    projectId: uuid("project_id").references(() => projects.projectId, { onDelete: "cascade" }),
     runId: text("run_id").notNull(),
     sessionId: uuid("session_id"),
     taskId: text("task_id"),
+    runTaskId: uuid("run_task_id").references(() => runTasks.runTaskId, { onDelete: "set null" }),
     kind: text("kind").notNull(),
+    artifactKind: text("artifact_kind"),
     storageBackend: text("storage_backend").notNull(),
     storageUri: text("storage_uri").notNull(),
+    bucket: text("bucket"),
+    objectKey: text("object_key"),
+    objectVersion: text("object_version"),
+    etag: text("etag"),
     contentType: text("content_type").notNull(),
     sha256: text("sha256"),
     sizeBytes: bigint("size_bytes", { mode: "number" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(jsonbDefault)
   },
-  (table) => [index("idx_artifact_refs_tenant_run").on(table.tenantId, table.runId)]
+  (table) => [
+    index("idx_artifact_refs_tenant_run").on(table.tenantId, table.runId),
+    index("idx_artifact_refs_tenant_project").on(table.tenantId, table.projectId),
+    index("idx_artifact_refs_run_task").on(table.runTaskId)
+  ]
 );
 
 export const sessionEvents = pgTable(
@@ -289,6 +301,153 @@ export const projectIntegrationBindings = pgTable(
   ]
 );
 
+export const runs = pgTable(
+  "runs",
+  {
+    runId: text("run_id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    workflowInstanceId: text("workflow_instance_id").notNull(),
+    executionEngine: text("execution_engine").notNull(),
+    sandboxId: text("sandbox_id"),
+    status: text("status").notNull(),
+    compiledSpecRevisionId: uuid("compiled_spec_revision_id").references(
+      () => documentRevisions.documentRevisionId,
+      { onDelete: "set null" }
+    ),
+    compiledArchitectureRevisionId: uuid("compiled_architecture_revision_id").references(
+      () => documentRevisions.documentRevisionId,
+      { onDelete: "set null" }
+    ),
+    compiledExecutionPlanRevisionId: uuid("compiled_execution_plan_revision_id").references(
+      () => documentRevisions.documentRevisionId,
+      { onDelete: "set null" }
+    ),
+    compiledAt: timestamp("compiled_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    index("idx_runs_tenant_project_created").on(table.tenantId, table.projectId, table.createdAt),
+    index("idx_runs_project_created").on(table.projectId, table.createdAt)
+  ]
+);
+
+export const documents = pgTable(
+  "documents",
+  {
+    documentId: uuid("document_id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    runId: text("run_id").references(() => runs.runId, { onDelete: "cascade" }),
+    scopeType: text("scope_type").notNull(),
+    kind: text("kind").notNull(),
+    path: text("path").notNull(),
+    currentRevisionId: uuid("current_revision_id").references(
+      () => documentRevisions.documentRevisionId,
+      { onDelete: "set null" }
+    ),
+    conversationAgentClass: text("conversation_agent_class"),
+    conversationAgentName: text("conversation_agent_name"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("uq_documents_project_path")
+      .on(table.projectId, table.path)
+      .where(sql`${table.scopeType} = 'project'`),
+    uniqueIndex("uq_documents_run_path")
+      .on(table.runId, table.path)
+      .where(sql`${table.scopeType} = 'run'`),
+    index("idx_documents_tenant_project_created").on(table.tenantId, table.projectId, table.createdAt),
+    index("idx_documents_run_created").on(table.runId, table.createdAt)
+  ]
+);
+
+export const documentRevisions = pgTable(
+  "document_revisions",
+  {
+    documentRevisionId: uuid("document_revision_id").primaryKey(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.documentId, { onDelete: "cascade" }),
+    artifactRefId: uuid("artifact_ref_id")
+      .notNull()
+      .references(() => artifactRefs.artifactRefId),
+    revisionNumber: integer("revision_number").notNull(),
+    title: text("title").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("uq_document_revisions_document_revision_number").on(
+      table.documentId,
+      table.revisionNumber
+    ),
+    uniqueIndex("uq_document_revisions_artifact_ref").on(table.artifactRefId),
+    index("idx_document_revisions_document_created").on(table.documentId, table.createdAt)
+  ]
+);
+
+export const runTasks = pgTable(
+  "run_tasks",
+  {
+    runTaskId: uuid("run_task_id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.runId, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    status: text("status").notNull(),
+    conversationAgentClass: text("conversation_agent_class"),
+    conversationAgentName: text("conversation_agent_name"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("uq_run_tasks_run_task").on(table.runId, table.runTaskId),
+    index("idx_run_tasks_run_created").on(table.runId, table.createdAt)
+  ]
+);
+
+export const runTaskDependencies = pgTable(
+  "run_task_dependencies",
+  {
+    runTaskDependencyId: uuid("run_task_dependency_id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.runId, { onDelete: "cascade" }),
+    parentRunTaskId: uuid("parent_run_task_id").notNull(),
+    childRunTaskId: uuid("child_run_task_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("uq_run_task_dependencies_run_edge").on(
+      table.runId,
+      table.parentRunTaskId,
+      table.childRunTaskId
+    ),
+    index("idx_run_task_dependencies_run_created").on(table.runId, table.createdAt),
+    foreignKey({
+      name: "fk_run_task_dependencies_parent",
+      columns: [table.runId, table.parentRunTaskId],
+      foreignColumns: [runTasks.runId, runTasks.runTaskId]
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "fk_run_task_dependencies_child",
+      columns: [table.runId, table.childRunTaskId],
+      foreignColumns: [runTasks.runId, runTasks.runTaskId]
+    }).onDelete("cascade")
+  ]
+);
+
 export type SessionRow = typeof sessions.$inferSelect;
 export type NewSessionRow = typeof sessions.$inferInsert;
 export type SessionEventRow = typeof sessionEvents.$inferSelect;
@@ -305,6 +464,16 @@ export type ProjectComponentRow = typeof projectComponents.$inferSelect;
 export type ProjectComponentRuleOverrideRow = typeof projectComponentRuleOverrides.$inferSelect;
 export type ProjectEnvVarRow = typeof projectEnvVars.$inferSelect;
 export type ProjectIntegrationBindingRow = typeof projectIntegrationBindings.$inferSelect;
+export type RunRow = typeof runs.$inferSelect;
+export type NewRunRow = typeof runs.$inferInsert;
+export type DocumentRow = typeof documents.$inferSelect;
+export type NewDocumentRow = typeof documents.$inferInsert;
+export type DocumentRevisionRow = typeof documentRevisions.$inferSelect;
+export type NewDocumentRevisionRow = typeof documentRevisions.$inferInsert;
+export type RunTaskRow = typeof runTasks.$inferSelect;
+export type NewRunTaskRow = typeof runTasks.$inferInsert;
+export type RunTaskDependencyRow = typeof runTaskDependencies.$inferSelect;
+export type NewRunTaskDependencyRow = typeof runTaskDependencies.$inferInsert;
 
 export const schema = {
   sessions,
@@ -319,5 +488,10 @@ export const schema = {
   projectComponents,
   projectComponentRuleOverrides,
   projectEnvVars,
-  projectIntegrationBindings
+  projectIntegrationBindings,
+  runs,
+  documents,
+  documentRevisions,
+  runTasks,
+  runTaskDependencies
 };
