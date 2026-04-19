@@ -1,27 +1,30 @@
 import { Link } from "react-router-dom";
 
 import type { ExecutionRowViewModel } from "../use-execution-view-model";
+import type { ResourceTaskStatus } from "../../resource-model/types";
 
 interface ExecutionWorkspaceProps {
   rows: ExecutionRowViewModel[];
 }
 
-function getExecutionNodeTone(status: string) {
-  const normalized = status.toLowerCase();
+function assertNeverStatus(status: never): never {
+  throw new Error(`Execution node tone has no mapping for task status "${String(status)}".`);
+}
 
-  if (normalized.includes("block")) {
-    return "blocked";
+function getExecutionNodeTone(status: ResourceTaskStatus) {
+  switch (status) {
+    case "Blocked":
+      return "blocked";
+    case "Running":
+      return "active";
+    case "Ready":
+    case "Queued":
+      return "queued";
+    case "Complete":
+      return "complete";
+    default:
+      return assertNeverStatus(status);
   }
-
-  if (normalized.includes("running") || normalized.includes("progress")) {
-    return "active";
-  }
-
-  if (normalized.includes("ready") || normalized.includes("queue") || normalized.includes("draft")) {
-    return "queued";
-  }
-
-  return "complete";
 }
 
 export function ExecutionWorkspace({ rows }: ExecutionWorkspaceProps) {
@@ -39,7 +42,12 @@ export function ExecutionWorkspace({ rows }: ExecutionWorkspaceProps) {
             key={row.rowId}
             className={row.tasks.length > 1 ? "execution-dag-row execution-dag-row-branch" : "execution-dag-row"}
           >
-            {row.tasks.map((task, taskIndex) => (
+            {row.tasks.length > 1 ? (
+              <p className="execution-board-note">
+                Depth {row.depth + 1}: sibling tasks share dependency depth; left-to-right position is not ordered.
+              </p>
+            ) : null}
+            {row.tasks.map((task) => (
               <Link
                 key={task.taskId}
                 to={task.detailPath}
@@ -60,11 +68,6 @@ export function ExecutionWorkspace({ rows }: ExecutionWorkspaceProps) {
                     Blocked by {task.blockedByCount} {task.blockedByCount === 1 ? "task" : "tasks"}
                   </span>
                 ) : null}
-                {taskIndex < row.tasks.length - 1 ? (
-                  <span aria-hidden="true" className="execution-dag-arrow">
-                    -&gt;
-                  </span>
-                ) : null}
               </Link>
             ))}
             {rowIndex < rows.length - 1 ? (
@@ -75,7 +78,9 @@ export function ExecutionWorkspace({ rows }: ExecutionWorkspaceProps) {
           </div>
         ))}
 
-        <p className="execution-board-note">Workflow rows are derived from task dependencies in the scaffold graph.</p>
+        <p className="execution-board-note">
+          Workflow rows are grouped by dependency depth in the scaffold graph.
+        </p>
         <p className="execution-board-note">Click a task node to open that task inside Execution.</p>
       </div>
     </section>

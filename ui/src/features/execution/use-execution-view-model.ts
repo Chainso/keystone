@@ -8,14 +8,14 @@ import {
   getTaskArtifacts,
   listRunTasks
 } from "../resource-model/selectors";
-import type { ConversationLocator, ResourceTask } from "../resource-model/types";
+import type { ConversationLocator, ResourceTask, ResourceTaskStatus } from "../resource-model/types";
 
 export interface ExecutionNodeViewModel {
   taskId: string;
   displayId: string;
   graphLabel: string;
   title: string;
-  status: string;
+  status: ResourceTaskStatus;
   dependencyCount: number;
   blockedByCount: number;
   detailPath: string;
@@ -23,6 +23,7 @@ export interface ExecutionNodeViewModel {
 
 export interface ExecutionRowViewModel {
   rowId: string;
+  depth: number;
   tasks: ExecutionNodeViewModel[];
 }
 
@@ -155,6 +156,7 @@ export function useRunExecutionViewModel(runId: string): RunExecutionViewModel {
       .sort(([left], [right]) => left - right)
       .map(([depth, rowTasks]) => ({
         rowId: `execution-row-${depth}`,
+        depth,
         tasks: rowTasks.map(toExecutionNodeViewModel)
       }))
   };

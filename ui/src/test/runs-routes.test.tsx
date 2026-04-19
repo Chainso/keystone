@@ -128,7 +128,7 @@ describe("Phase 2 runs routes", () => {
   );
 
   it("renders the execution DAG shell", async () => {
-    renderRoute("/runs/run-104/execution");
+    const { container } = renderRoute("/runs/run-104/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Build shell/i })).toHaveAttribute(
@@ -140,12 +140,21 @@ describe("Phase 2 runs routes", () => {
       "/runs/run-104/execution/tasks/task-033"
     );
     expect(
-      screen.getByText("Workflow rows are derived from task dependencies in the scaffold graph.")
+      screen.getByText("Workflow rows are grouped by dependency depth in the scaffold graph.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Depth 4: sibling tasks share dependency depth; left-to-right position is not ordered."
+      )
     ).toBeInTheDocument();
     expect(
       screen.getByText("Click a task node to open that task inside Execution.")
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Execution summary")).not.toBeInTheDocument();
+
+    const branchRow = container.querySelector(".execution-dag-row-branch");
+    expect(branchRow).not.toBeNull();
+    expect(branchRow?.querySelectorAll(".execution-node .execution-dag-arrow")).toHaveLength(0);
   });
 
   it("renders the task detail split inside execution", async () => {

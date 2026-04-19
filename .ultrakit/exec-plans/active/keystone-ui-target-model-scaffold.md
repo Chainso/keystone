@@ -157,6 +157,11 @@ Compatibility that **is** required:
   **Decision:** Rebuild execution, task detail, and workstreams from resource-model selectors, with execution rows derived from workflow-task dependencies, task detail reduced to locator plus artifact state, and workstreams projected from project tasks instead of a separate scaffold table.  
   **Rationale:** This removes the last user-facing dependency on `run-scaffold.ts`/`workstreams-scaffold.ts` for Phase 3 surfaces without inventing transcript state or a separate workstream noun.
 
+- **Date:** 2026-04-19  
+  **Phase:** Phase 3 fix pass  
+  **Decision:** Keep the execution board scaffold grouped by dependency depth, but remove sibling-to-sibling arrow glyphs and map task-node tone from an explicit closed status table instead of status substring checks.  
+  **Rationale:** Depth rows are a valid scaffold compression, but the previous arrow chain falsely implied sequential ordering across sibling branches and the substring-based tone logic would silently misclassify future task statuses.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery and planning inputs gathered from the current repo docs, existing UI scaffold, and target-model decisions previously resolved in the Keystone modelling worktree.
@@ -166,6 +171,7 @@ Compatibility that **is** required:
 - [x] 2026-04-19 Phase 2 complete: reworked `Runs` and planning routes around resource-model selectors, derived `/runs/:runId` redirects from target-model data, and replaced fake planning transcripts with explicit document-plus-locator workspaces.
 - [x] 2026-04-19 Phase 2 targeted fix pass complete: added redirect coverage for the `architecture` and `specification` fallback branches, and corrected the selector so only runs marked with compiled tasks default to `execution`.
 - [x] 2026-04-19 Phase 3 complete: reworked `Execution`, task detail, and `Workstreams` around tasks, workflow graph, artifacts, and conversation locators.
+- [x] 2026-04-19 Phase 3 targeted fix pass complete: removed false sibling ordering cues from the execution board, switched execution-node tone to an explicit task-status mapping, and updated execution-route coverage to assert the clarified scaffold contract.
 - [ ] 2026-04-19 Phase 4 pending: rework `Documentation` around target-model document and revision contracts.
 - [ ] 2026-04-19 Phase 5 pending: rework project configuration scaffolds around target-model project and repository/component contracts.
 - [ ] 2026-04-19 Phase 6 pending: remove obsolete scaffold modules, update developer docs, and rerun final validation.
@@ -184,6 +190,7 @@ Compatibility that **is** required:
 - Adding real run summary metadata to the shared run-detail header made one existing Phase 3 smoke test ambiguous because the run summary text duplicated a task title. The durable fix was to scope that assertion to the task-detail section instead of asserting global text uniqueness.
 - The Phase 2 fallback redirect tests exposed that the scaffold needs an explicit `hasCompiledTasks` signal on runs. Phase 3 task/workflow placeholders can exist for direct execution-route coverage even when the approved default destination should still be a planning document.
 - Phase 3 confirmed that project-scoped workstreams and direct task routes both depend on the same selector truth: some runs legitimately expose execution tasks for drill-down even when they still default to planning routes.
+- Phase 3's execution board can stay scaffold-only and depth-based, but it has to state that sibling nodes in the same row are parallel branches rather than implying a left-to-right sequence.
 
 ## Outcomes & Retrospective
 
@@ -225,6 +232,12 @@ Phase 3 outcome on 2026-04-19:
 - `ui/src/features/execution/components/{execution-workspace,task-detail-workspace}.tsx` now render selector-backed execution/task surfaces without fake transcript arrays, fake composer state, or bespoke review-file scaffolds.
 - `ui/src/features/workstreams/use-workstreams-view-model.ts` now projects project-scoped task rows from the shared dataset, keeps filter behavior in feature-local state, and preserves pagination as an explicit UI concept even with a finite scaffold dataset.
 - `ui/src/test/runs-routes.test.tsx` and `ui/src/test/phase3-destinations.test.tsx` now assert workflow-graph structure, locator/artifact task detail state, and task-derived workstream navigation. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+
+Phase 3 targeted fix pass outcome on 2026-04-19:
+
+- `ui/src/features/execution/components/execution-workspace.tsx` now treats same-depth rows as unordered sibling branches, removes the synthetic sibling arrow chain, and uses an explicit exhaustive `ResourceTaskStatus` to node-tone mapping.
+- `ui/src/features/execution/use-execution-view-model.ts` now carries the closed task-status type and row depth through the execution view model so the board can describe parallel branches without reopening the underlying scaffold contract.
+- `ui/src/test/runs-routes.test.tsx` now verifies the clarified dependency-depth note and asserts that branch rows no longer render intra-row arrow glyphs. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
 ## Context and Orientation
 
@@ -342,7 +355,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 
 #### Phase Handoff
 
-- **Status:** Complete
+- **Status:** Complete (fixed after review)
 - **Goal:** Rework execution, task detail, and workstreams so they compose from workflow graph, tasks, artifacts, and conversation locators instead of hand-authored execution/task/workstream rows.
 - **Scope Boundary:** In scope: execution board composition, task detail composition, project-scoped workstreams projection, and related route smoke tests. Out of scope: documentation, project configuration, live task chat transport, and backend API implementation.
 - **Read First:**
@@ -374,7 +387,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Deliverables:** Target-model-based execution/workstreams view models and updated destination tests that no longer rely on fake execution rows or fake transcript content.
 - **Commit Expectation:** `Rework execution and workstreams scaffold`
 - **Known Constraints / Baseline Failures:** Keep conversation as a locator only; do not fabricate full task transcript state. Keep workstreams project-scoped and paginated in concept even if the scaffold dataset is finite. Do not add a separate `workstream` source model.
-- **Completion Notes:** Reworked `ui/src/features/execution/use-execution-view-model.ts` to derive execution rows from workflow graphs and task selectors, replaced fake task transcript/review state in `task-detail-workspace.tsx` with conversation locator plus artifact/dependency projections, and rewired `ui/src/features/workstreams/use-workstreams-view-model.ts` to project project-scoped task rows with filter and pagination metadata from the shared resource model. Updated `ui/src/test/runs-routes.test.tsx` and `ui/src/test/phase3-destinations.test.tsx` to assert workflow-graph rendering, locator/artifact task detail state, and task-derived workstream links. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
+- **Completion Notes:** Reworked `ui/src/features/execution/use-execution-view-model.ts` to derive execution rows from workflow graphs and task selectors, replaced fake task transcript/review state in `task-detail-workspace.tsx` with conversation locator plus artifact/dependency projections, and rewired `ui/src/features/workstreams/use-workstreams-view-model.ts` to project project-scoped task rows with filter and pagination metadata from the shared resource model. Updated `ui/src/test/runs-routes.test.tsx` and `ui/src/test/phase3-destinations.test.tsx` to assert workflow-graph rendering, locator/artifact task detail state, and task-derived workstream links. The targeted fix pass then removed false sibling-order arrows from the execution board, added an explicit closed task-status-to-tone mapping, and tightened execution-route coverage around the clarified scaffold contract. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 - **Next Starter Context:** Phase 4 can now treat execution and workstreams as fully cut over to `ui/src/features/resource-model/`. The next pass should apply the same selector-first approach to Documentation, replacing hard-coded tree groups and placeholder copy with document/revision-derived selection behavior while leaving project configuration untouched.
 
 ### Phase 4: Documentation Cutover
