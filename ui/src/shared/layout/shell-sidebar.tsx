@@ -19,26 +19,30 @@ export function ShellSidebar() {
     <aside className="shell-sidebar">
       <section className="sidebar-block" aria-labelledby="project-context-label">
         <p id="project-context-label" className="sidebar-label">
-          Project context
+          Project
         </p>
-        <div className="project-switcher">
-          <div>
-            <p className="project-switcher-name">{project.displayName}</p>
-            <p className="project-switcher-meta">
-              {project.projectKey} - {project.summary}
-            </p>
-          </div>
+        <button type="button" className="project-switcher" disabled>
+          <span className="project-switcher-details">
+            <span className="project-switcher-name">{project.displayName}</span>
+            <span className="project-switcher-meta">{project.projectKey}</span>
+          </span>
           <span className="project-switcher-chevron" aria-hidden="true">
             v
           </span>
-        </div>
+        </button>
         <div className="project-actions">
           {projectActions.map((action) => (
-            <NavLink key={action.path} to={action.path} className={getActionLinkClassName}>
+            <NavLink
+              key={action.path}
+              to={action.path}
+              aria-label={action.label}
+              className={getActionLinkClassName}
+              title={action.label}
+            >
               <span className="action-link-symbol" aria-hidden="true">
                 {action.glyph}
               </span>
-              <span>{action.label}</span>
+              <span className="sr-only">{action.label}</span>
             </NavLink>
           ))}
         </div>
@@ -53,17 +57,14 @@ export function ShellSidebar() {
               to={destination.path}
               className={getSidebarLinkClassName}
             >
+              <span className="sidebar-link-marker" aria-hidden="true">
+                {">"}
+              </span>
               <span className="sidebar-link-title">{destination.label}</span>
-              <span className="sidebar-link-summary">{destination.summary}</span>
             </NavLink>
           ))}
         </nav>
       </section>
-
-      <p className="sidebar-footnote">
-        The shell is real, but the destination content is intentionally scaffold-only in this
-        phase.
-      </p>
     </aside>
   );
 }

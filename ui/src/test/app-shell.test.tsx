@@ -20,7 +20,17 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Run-104" })).toHaveAttribute("href", "/runs/run-104");
+    expect(screen.getByRole("link", { name: "New project" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Project settings" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
+    expect(screen.getByText("keystone-cloudflare")).toBeInTheDocument();
+    expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/destination content is intentionally scaffold-only/i)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Open the run index, nested stepper phases, and execution scaffold./i)
+    ).not.toBeInTheDocument();
   });
 
   it.each([

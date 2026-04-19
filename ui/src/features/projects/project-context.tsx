@@ -4,14 +4,12 @@ export interface CurrentProject {
   projectId: string;
   projectKey: string;
   displayName: string;
-  summary: string;
 }
 
 export const scaffoldProject: CurrentProject = {
   projectId: "project-keystone-cloudflare",
   projectKey: "keystone-cloudflare",
-  displayName: "Keystone Cloudflare",
-  summary: "UI structure scaffold placeholder"
+  displayName: "Keystone Cloudflare"
 };
 
 const CurrentProjectContext = createContext<CurrentProject | null>(null);
