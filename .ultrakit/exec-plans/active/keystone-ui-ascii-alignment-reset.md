@@ -130,6 +130,11 @@ Compatibility that **is** required:
   **Decision:** Correct the remaining `Documentation`/`Workstreams` review drift in seed data, row interaction, test coverage, and active-plan ownership references instead of reopening the Phase 3 surface extraction.  
   **Rationale:** The feature-owned destination move landed, but the workstreams table rows no longer matched the canonical board, the board still exposed a duplicated row-navigation contract, and the active plan still pointed readers at route files instead of the feature-owned workspace/scaffold modules that actually own those surfaces now.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 4  
+  **Decision:** Collapse project configuration to one shared board shell plus explicit `new` and `settings` tab variants, and replace the placeholder wrappers with semantic form controls.  
+  **Rationale:** The remaining drift was split across both presentation and structure: hero/right-rail narration lived in the shared scaffold, while the tab route and view-model hook were growing around `mode` branching. A plain shared shell plus explicit mode-specific tab composition corrected both without changing the route tree.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed through direct review of `design/workspace-spec.md`, the current UI implementation, and five parallel frame-specific audits.
@@ -142,7 +147,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 2 targeted fix pass: aligned `run-102` with the canonical `Execution` stage, restored the reviewed ASCII copy drift, and corrected the active-plan `Runs`/`Execution` file references to the feature-owned component locations that actually landed.
 - [x] 2026-04-18 Phase 3: Realigned `Documentation` and `Workstreams` to their canonical tree/viewer and filter/table boards, and restored thin route containers through feature-owned destination surfaces.
 - [x] 2026-04-18 Phase 3 targeted fix pass: restored the canonical `Workstreams` rows, removed the duplicated row-vs-link navigation contract, strengthened Phase 3 destination coverage, and corrected the active-plan `Documentation`/`Workstreams` ownership references to the feature-owned modules that actually landed.
-- [ ] Phase 4: Realign `New project` and `Project settings` to the project-configuration boards.
+- [x] 2026-04-18 Phase 4: Realigned `New project` and `Project settings` to the project-configuration boards, removed the scaffold narration/right rail, and split the tab composition into explicit `new` vs `settings` variants with semantic controls.
 - [ ] Phase 5: Update tests, docs, and plan notes; capture the corrective outcome and the dependency this creates for later live-wiring work.
 
 ## Surprises & Discoveries
@@ -159,6 +164,7 @@ Compatibility that **is** required:
 - The Phase 2 workspace move was correct, but the plan text and one seeded run still lagged behind it. The targeted fix pass had to reconcile stale `shared/layout` references in the active plan and a `run-102` default redirect that still pointed at `execution-plan`.
 - Phase 3 did not need any new shared layout primitive after the shell reset. Feature-owned destination components plus smaller scaffold-data modules were enough to restore both board fidelity and route-container boundaries.
 - The Phase 3 surface move was correct, but the `Workstreams` seed drifted from the canonical board in all four visible rows, not just the blocked one. The targeted fix pass had to reconcile those literals, remove the row-level pseudo-control that survived the extraction, and update the plan text so it pointed at the feature-owned workspace/scaffold modules rather than the now-thin route containers.
+- Phase 4 needed only a narrow stylesheet follow-up: once the placeholder spans became real `input`, `textarea`, and `select` elements, the existing scaffold class names were still reusable with a small width/font/reset patch rather than another layout rewrite.
 
 ## Outcomes & Retrospective
 
@@ -202,6 +208,14 @@ Phase 3 targeted fix pass outcome on 2026-04-18:
 - `Workstreams` no longer treats each table row as a focusable pseudo-control wrapped around a nested link; the task link is now the single row-level navigation contract.
 - [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) now checks the documentation tree shape and selection state plus all `Workstreams` filter views against the canonical row content, so obvious group/selection and board-literal regressions fail quickly.
 - The active plan context and Phase 3 handoff now point readers at the feature-owned documentation/workstreams workspace and scaffold modules instead of implying the route files are still the main surface owners.
+
+Phase 4 outcome on 2026-04-18:
+
+- `New project` and `Project settings` now render as one main configuration panel with a plain tab strip and no hero, honesty aside, or right-rail scaffold narration.
+- The project-configuration route family now composes explicit `new` and `settings` tab variants over smaller view-model hooks, so later live wiring can extend concrete modules instead of deepening one `mode` hotspot.
+- Placeholder wrappers are gone from the visible form surface: overview, components, rules, and environment now render semantic inputs, textareas, selects, radios, and list-shaped inputs.
+- The settings components board now matches the canonical API component example more closely, including the `API` component identity, local path, and rule-override field labels from the ASCII board.
+- Phase 4 validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx` (`5` tests passed), and `rtk npm run test` (`33` files passed, `2` skipped; `144` tests passed, `8` skipped).
 
 ## Context and Orientation
 
@@ -664,13 +678,16 @@ Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retro
 Do not expand this phase into actual project CRUD wiring. Preserve the route family and tab ids so the separate live-wiring plan can reuse them. Prefer explicit tab modules and route-level composition over pushing more branching into one route file or one broad view-model hook.
 
 **Status**  
-Not started.
+Completed on 2026-04-18.
 
 **Completion Notes**  
-None yet.
+- Removed the project-configuration hero/header narration and right sidebar from [ui/src/shared/layout/project-configuration-scaffold.tsx](../../../ui/src/shared/layout/project-configuration-scaffold.tsx), leaving one board panel plus the tab strip.
+- Split [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx) and [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts) into explicit `new` vs `settings` tab composition instead of one growing `mode` branch.
+- Replaced the placeholder display wrappers with semantic controls in [ui/src/shared/forms/placeholder-field.tsx](../../../ui/src/shared/forms/placeholder-field.tsx), [ui/src/shared/forms/placeholder-list-field.tsx](../../../ui/src/shared/forms/placeholder-list-field.tsx), and [ui/src/shared/forms/component-type-picker.tsx](../../../ui/src/shared/forms/component-type-picker.tsx), then updated [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) to assert the new board contract.
+- Validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx`, and `rtk npm run test`.
 
 **Next Starter Context**  
-This phase should leave the structure clearly ready for the live-wiring plan, but it should not start that live-wiring work itself.
+Phase 5 should treat the project-configuration board layout and explicit `new`/`settings` composition as the corrected baseline. The remaining closeout work is tests/docs/notes alignment and final corrective-plan bookkeeping, not new project CRUD wiring.
 
 ## Phase 5: Update tests, docs, and corrective notes
 

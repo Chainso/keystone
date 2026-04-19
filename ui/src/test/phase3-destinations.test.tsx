@@ -168,13 +168,22 @@ describe("Phase 3 destination scaffolds", () => {
     const { router } = renderRoute("/projects/new");
 
     expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+    expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
+    expect(screen.queryByText("Current contract")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/projects/new/overview");
     });
 
     const projectTabs = screen.getByRole("navigation", { name: "Project configuration tabs" });
 
-    expect(screen.getByText("Checkout workflow")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Keystone Cloudflare");
+    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("keystone-cloudflare");
+    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
+      "Internal operator workspace for the Keystone Cloudflare project."
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save Draft" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 
     const rulesTab = getLinkByHref(projectTabs, "/projects/new/rules");
     expect(rulesTab).toHaveAttribute("href", "/projects/new/rules");
@@ -184,7 +193,10 @@ describe("Phase 3 destination scaffolds", () => {
       expect(router.state.location.pathname).toBe("/projects/new/rules");
     });
 
-    expect(screen.getByRole("heading", { name: "Project-wide rules" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Rules" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project review instructions 1" })).toHaveValue(
+      "Keep route ownership explicit."
+    );
 
     const environmentTab = getLinkByHref(projectTabs, "/projects/new/environment");
     expect(environmentTab).toHaveAttribute("href", "/projects/new/environment");
@@ -194,8 +206,8 @@ describe("Phase 3 destination scaffolds", () => {
       expect(router.state.location.pathname).toBe("/projects/new/environment");
     });
 
-    expect(screen.getByRole("heading", { name: "Project environment" })).toBeInTheDocument();
-    expect(screen.getByText("KEYSTONE_AGENT_RUNTIME")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Environment" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "KEYSTONE_AGENT_RUNTIME" })).toHaveValue("scripted");
   });
 
   it("redirects /settings to components, supports tab navigation, and models both git_repository source modes", async () => {
@@ -204,6 +216,8 @@ describe("Phase 3 destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
     ).toBeInTheDocument();
+    expect(screen.queryByText("Current contract")).not.toBeInTheDocument();
+    expect(screen.queryByText("Still intentionally placeholder-only")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/settings/components");
     });
@@ -217,8 +231,8 @@ describe("Phase 3 destination scaffolds", () => {
       expect(router.state.location.pathname).toBe("/settings/environment");
     });
 
-    expect(screen.getByRole("heading", { name: "Project environment" })).toBeInTheDocument();
-    expect(screen.getByText("KEYSTONE_AGENT_RUNTIME")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Environment" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "KEYSTONE_AGENT_RUNTIME" })).toHaveValue("scripted");
 
     fireEvent.click(getLinkByHref(projectTabs, "/settings/components"));
     await waitFor(() => {
@@ -226,13 +240,17 @@ describe("Phase 3 destination scaffolds", () => {
     });
 
     const currentComponentCard = getComponentCard("Component 1");
-    expect(currentComponentCard.queries.getByText("./")).toBeInTheDocument();
-    expect(
-      currentComponentCard.queries.getByText("Not used for local workspace source.")
-    ).toBeInTheDocument();
-    expect(currentComponentCard.card.querySelector(".source-mode-pill.is-active")).toHaveTextContent(
-      "Local path"
+    expect(currentComponentCard.queries.getByRole("combobox", { name: "Type" })).toHaveValue(
+      "Git repository"
     );
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue("API");
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue("api");
+    expect(currentComponentCard.queries.getByRole("radio", { name: "Local path" })).toBeChecked();
+    expect(currentComponentCard.queries.getByRole("radio", { name: "Git URL" })).not.toBeChecked();
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue(
+      "./services/api"
+    );
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue("");
 
     fireEvent.click(screen.getByRole("button", { name: /\+ Add component/i }));
     expect(screen.getByRole("heading", { name: "Add component menu" })).toBeInTheDocument();
@@ -240,13 +258,17 @@ describe("Phase 3 destination scaffolds", () => {
     fireEvent.click(screen.getByRole("button", { name: /Git repository/i }));
 
     const newComponentCard = getComponentCard("Component 2");
-    expect(newComponentCard.queries.getByText("background-worker-2")).toBeInTheDocument();
-    expect(
-      newComponentCard.queries.getByText("https://github.com/keystone/background-worker-2.git")
-    ).toBeInTheDocument();
-    expect(newComponentCard.queries.getByText("Not used for remote Git source.")).toBeInTheDocument();
-    expect(newComponentCard.card.querySelector(".source-mode-pill.is-active")).toHaveTextContent(
-      "Git URL"
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue(
+      "Background worker 2"
+    );
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue(
+      "background-worker-2"
+    );
+    expect(newComponentCard.queries.getByRole("radio", { name: "Local path" })).not.toBeChecked();
+    expect(newComponentCard.queries.getByRole("radio", { name: "Git URL" })).toBeChecked();
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue("");
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue(
+      "https://github.com/keystone/background-worker-2.git"
     );
   });
 });

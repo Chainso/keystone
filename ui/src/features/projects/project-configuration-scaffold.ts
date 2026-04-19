@@ -6,19 +6,17 @@ export type ProjectComponentSourceMode = "localPath" | "gitUrl";
 export interface ProjectConfigurationTabDefinition {
   tabId: ProjectConfigurationTabId;
   label: string;
-  summary: string;
 }
 
 export interface ProjectComponentScaffold {
   componentId: string;
   heading: string;
-  statusLabel: string;
   displayName: string;
   componentKey: string;
   kindLabel: string;
   sourceMode: ProjectComponentSourceMode;
-  localPath?: string;
-  gitUrl?: string;
+  localPath: string;
+  gitUrl: string;
   defaultRef: string;
   reviewInstructions: string[];
   testInstructions: string[];
@@ -33,23 +31,19 @@ export interface ProjectComponentTypeOption {
 export const projectConfigurationTabs: ProjectConfigurationTabDefinition[] = [
   {
     tabId: "overview",
-    label: "Overview",
-    summary: "Project identity and framing."
+    label: "Overview"
   },
   {
     tabId: "components",
-    label: "Components",
-    summary: "Source components and component-level rules."
+    label: "Components"
   },
   {
     tabId: "rules",
-    label: "Rules",
-    summary: "Review and test instructions."
+    label: "Rules"
   },
   {
     tabId: "environment",
-    label: "Environment",
-    summary: "Non-secret project variables."
+    label: "Environment"
   }
 ];
 
@@ -57,8 +51,7 @@ export const projectComponentTypeOptions: ProjectComponentTypeOption[] = [
   {
     kindId: "git_repository",
     label: "Git repository",
-    description:
-      "The only supported component type today. It still goes through a picker so future component kinds fit the same flow."
+    description: "Source code checked out from a Git repository."
   }
 ];
 
@@ -85,15 +78,15 @@ export function buildProjectComponentScaffold(
     return {
       componentId: "component-worker-app",
       heading: "Component 1",
-      statusLabel: "Current component",
-      displayName: "Worker app",
-      componentKey: "worker-app",
+      displayName: "API",
+      componentKey: "api",
       kindLabel: "Git repository",
       sourceMode: "localPath",
-      localPath: "./",
+      localPath: "./services/api",
+      gitUrl: "",
       defaultRef: "main",
-      reviewInstructions: ["Focus on Worker/runtime boundaries and route ownership."],
-      testInstructions: ["Run `npm run test` and preserve the existing route smoke coverage."]
+      reviewInstructions: ["Focus on API changes"],
+      testInstructions: ["Run targeted API tests"]
     } satisfies ProjectComponentScaffold;
   }
 
@@ -102,12 +95,12 @@ export function buildProjectComponentScaffold(
   return {
     componentId: `${mode}-component-${componentNumber}`,
     heading: `Component ${componentNumber}`,
-    statusLabel: mode === "new" ? "Draft component" : "Pending addition",
     displayName: mode === "new" ? `Repository ${componentNumber}` : `Background worker ${componentNumber}`,
     componentKey:
       mode === "new" ? `repository-${componentNumber}` : `background-worker-${componentNumber}`,
     kindLabel: "Git repository",
     sourceMode: "gitUrl",
+    localPath: "",
     gitUrl:
       mode === "new"
         ? `https://github.com/keystone/repository-${componentNumber}.git`
@@ -115,11 +108,11 @@ export function buildProjectComponentScaffold(
     defaultRef: "main",
     reviewInstructions:
       mode === "new"
-        ? ["Capture component-specific review focus after the draft project scaffold is stable."]
-        : ["Limit review overrides to the background worker behavior introduced in this draft."],
+        ? ["Focus on repository boundaries"]
+        : ["Focus on background worker changes"],
     testInstructions:
       mode === "new"
-        ? ["Add targeted test instructions after the first runnable component path is confirmed."]
-        : ["Add any worker-specific validation once this placeholder becomes a real component."]
+        ? ["Run the component test plan"]
+        : ["Run the worker test plan"]
   } satisfies ProjectComponentScaffold;
 }

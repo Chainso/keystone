@@ -872,18 +872,21 @@ pre {
 }
 
 .placeholder-field-input,
-.placeholder-list-item,
 .environment-var-value {
   display: block;
+  width: 100%;
   min-height: 2.75rem;
   padding: 0.8rem 0.85rem;
   border: 1px solid var(--border-muted);
   background: var(--surface-subtle);
+  color: var(--text-primary);
+  font: inherit;
   line-height: 1.55;
 }
 
 .placeholder-field-textarea {
   min-height: 6rem;
+  resize: vertical;
 }
 
 .placeholder-list-editor {

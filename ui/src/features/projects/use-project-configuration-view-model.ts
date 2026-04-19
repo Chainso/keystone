@@ -3,172 +3,195 @@ import { useState } from "react";
 import {
   buildProjectComponentScaffold,
   buildProjectConfigurationPath,
-  getProjectConfigurationDefaultTab,
   projectComponentTypeOptions,
   projectConfigurationTabs,
-  type ProjectConfigurationMode
+  type ProjectComponentScaffold,
+  type ProjectComponentTypeOption
 } from "./project-configuration-scaffold";
 import { useCurrentProject } from "./project-context";
 
-export function useProjectConfigurationShellViewModel(mode: ProjectConfigurationMode) {
-  const project = useCurrentProject();
-  const isNewProject = mode === "new";
+interface ProjectConfigurationShellViewModel {
+  title: string;
+  tabs: Array<{
+    label: string;
+    path: string;
+    tabId: (typeof projectConfigurationTabs)[number]["tabId"];
+  }>;
+}
 
-  return {
-    title: isNewProject ? "New project" : `Project settings: ${project.displayName}`,
-    summary: isNewProject
-      ? "New project and project settings now share one tabbed configuration surface, but form submission and backend writes remain intentionally out of scope."
-      : "Project settings now has the same tabbed structure as project creation so future edits can land without reopening layout or route ownership.",
-    honestyCopy: isNewProject
-      ? "This route proves the shared project-configuration layout before create-project submission exists. Buttons and fields are structural only in Phase 3."
-      : "This route freezes the project-settings tabs, component picker flow, and field groups before any real project-update wiring lands.",
-    defaultPath: buildProjectConfigurationPath(mode, getProjectConfigurationDefaultTab(mode)),
-    tabs: projectConfigurationTabs.map((tab) => ({
-      tabId: tab.tabId,
-      label: tab.label,
-      summary: tab.summary,
-      path: buildProjectConfigurationPath(mode, tab.tabId)
-    })),
-    sidebarSections: [
-      {
-        eyebrow: "Current contract",
-        title: "What this surface freezes",
-        items: [
-          "Project creation and settings now share one tab layout instead of diverging into separate flows.",
-          "Git-repository components can now model either a local workspace path or a remote Git URL, matching the existing backend contract shape.",
-          "Component creation still starts with a type picker even though only Git repository is currently supported."
-        ]
-      },
-      {
-        eyebrow: "Deferred",
-        title: "Still intentionally placeholder-only",
-        items: [
-          "No `POST /v1/projects` or `PUT /v1/projects/:projectId` wiring is attached to these controls yet.",
-          "Rules and environment inputs stay structural only, with no persistence or validation behavior in Phase 3."
-        ]
-      }
-    ]
+interface ProjectOverviewViewModel {
+  heading: string;
+  descriptionField: {
+    label: string;
+    value: string;
+  };
+  footerActions: string[];
+  keyField: {
+    label: string;
+    value: string;
+  };
+  nameField: {
+    label: string;
+    value: string;
   };
 }
 
-export function useProjectOverviewViewModel(mode: ProjectConfigurationMode) {
-  const project = useCurrentProject();
-  const fields =
-    mode === "new"
-      ? [
-          {
-            label: "Project name",
-            value: "Checkout workflow"
-          },
-          {
-            label: "Project key",
-            value: "checkout-workflow"
-          },
-          {
-            label: "Description",
-            value: "Operator workspace for the checkout rewrite and release preparation."
-          }
-        ]
-      : [
-          {
-            label: "Project name",
-            value: project.displayName
-          },
-          {
-            label: "Project key",
-            value: project.projectKey
-          },
-          {
-            label: "Description",
-            value: "Worker-first operator workspace with scaffolded runs, documentation, and project settings."
-          }
-        ];
-
-  return {
-    heading: "Project identity",
-    summary:
-      "Overview holds the shared identity fields for both create-project and settings without committing to real form submission yet.",
-    nameField: fields[0]!,
-    keyField: fields[1]!,
-    descriptionField: fields[2]!,
-    footerActions:
-      mode === "new"
-        ? ["Cancel", "Save draft", "Next"]
-        : ["Discard", "Save changes"]
-  };
+interface ProjectComponentsViewModel {
+  components: ProjectComponentScaffold[];
+  emptyState: string;
+  footerActions: string[];
+  heading: string;
+  pickComponentType: (kindId: ProjectComponentTypeOption["kindId"]) => void;
+  toggleTypePicker: () => void;
+  typeOptions: ProjectComponentTypeOption[];
+  typePickerOpen: boolean;
+  typePickerTitle: string;
 }
 
-export function useProjectComponentsViewModel(mode: ProjectConfigurationMode) {
-  const [isPickerOpen, setPickerOpen] = useState(false);
-  const [components, setComponents] = useState(() =>
-    mode === "settings" ? [buildProjectComponentScaffold("settings", 0)] : []
-  );
+interface ProjectRulesViewModel {
+  heading: string;
+  reviewInstructions: string[];
+  testInstructions: string[];
+}
+
+interface ProjectEnvironmentViewModel {
+  envVars: Array<{
+    name: string;
+    value: string;
+  }>;
+  heading: string;
+}
+
+function buildProjectConfigurationTabs(mode: "new" | "settings") {
+  return projectConfigurationTabs.map((tab) => ({
+    tabId: tab.tabId,
+    label: tab.label,
+    path: buildProjectConfigurationPath(mode, tab.tabId)
+  }));
+}
+
+function useProjectComponentsModel(
+  mode: "new" | "settings",
+  initialComponents: ProjectComponentScaffold[]
+): ProjectComponentsViewModel {
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const [components, setComponents] = useState(initialComponents);
 
   return {
-    heading: "Project components",
-    summary:
-      "Components keep the project-to-code boundary explicit. The picker flow is real as structure, even though component edits still do not submit anywhere.",
-    emptyState:
-      "A project must contain at least one component. Use the type picker to add the first placeholder component before real validation and submission exist.",
-    typePickerTitle: "Add component menu",
-    typePickerSummary:
-      "The picker stays in the flow even with a single supported option so future component kinds fit without redesign.",
-    typePickerOpen: isPickerOpen,
-    typeOptions: projectComponentTypeOptions,
     components,
-    openTypePicker() {
-      setPickerOpen(true);
-    },
-    closeTypePicker() {
-      setPickerOpen(false);
-    },
+    emptyState: "No components added yet.",
+    footerActions: mode === "new" ? ["Cancel", "Save Draft", "Next"] : ["Discard", "Save"],
+    heading: "Components",
     pickComponentType() {
       setComponents((currentComponents) => [
         ...currentComponents,
         buildProjectComponentScaffold(mode, currentComponents.length)
       ]);
-      setPickerOpen(false);
+      setTypePickerOpen(false);
+    },
+    toggleTypePicker() {
+      setTypePickerOpen((currentValue) => !currentValue);
+    },
+    typeOptions: projectComponentTypeOptions,
+    typePickerOpen,
+    typePickerTitle: "Add component menu"
+  };
+}
+
+export function useNewProjectConfigurationShellViewModel(): ProjectConfigurationShellViewModel {
+  return {
+    title: "New project",
+    tabs: buildProjectConfigurationTabs("new")
+  };
+}
+
+export function useProjectSettingsConfigurationShellViewModel(): ProjectConfigurationShellViewModel {
+  const project = useCurrentProject();
+
+  return {
+    title: `Project settings: ${project.displayName}`,
+    tabs: buildProjectConfigurationTabs("settings")
+  };
+}
+
+export function useNewProjectOverviewViewModel(): ProjectOverviewViewModel {
+  return {
+    heading: "Overview",
+    descriptionField: {
+      label: "Description",
+      value: "Internal operator workspace for the Keystone Cloudflare project."
+    },
+    footerActions: ["Cancel", "Save Draft", "Next"],
+    keyField: {
+      label: "Project key",
+      value: "keystone-cloudflare"
+    },
+    nameField: {
+      label: "Project name",
+      value: "Keystone Cloudflare"
     }
   };
 }
 
-export function useProjectRulesViewModel() {
+export function useProjectSettingsOverviewViewModel(): ProjectOverviewViewModel {
+  const project = useCurrentProject();
+
   return {
-    heading: "Project-wide rules",
-    summary:
-      "Rules are intentionally list-shaped inputs so review and test guidance can stay structured when the real project write flow lands.",
+    heading: "Overview",
+    descriptionField: {
+      label: "Description",
+      value: "Internal operator workspace for runs, documentation, and workstreams."
+    },
+    footerActions: ["Discard", "Save"],
+    keyField: {
+      label: "Project key",
+      value: project.projectKey
+    },
+    nameField: {
+      label: "Project name",
+      value: project.displayName
+    }
+  };
+}
+
+export function useNewProjectComponentsViewModel(): ProjectComponentsViewModel {
+  return useProjectComponentsModel("new", []);
+}
+
+export function useProjectSettingsComponentsViewModel(): ProjectComponentsViewModel {
+  return useProjectComponentsModel("settings", [buildProjectComponentScaffold("settings", 0)]);
+}
+
+export function useProjectRulesViewModel(): ProjectRulesViewModel {
+  return {
+    heading: "Rules",
     reviewInstructions: [
-      "Keep UI route boundaries explicit when placeholder content grows.",
-      "Call out backend stubs instead of implying project documents are already persisted."
+      "Keep route ownership explicit.",
+      "Capture component-specific review focus when needed."
     ],
     testInstructions: [
-      "Run `npm run lint`, `npm run typecheck`, and `npm run test` before handoff.",
-      "Record the known host-only `npm run build` caveat if it still applies."
+      "Run lint, typecheck, and test before handoff.",
+      "Verify the project configuration tabs."
     ]
   };
 }
 
-export function useProjectEnvironmentViewModel() {
+export function useProjectEnvironmentViewModel(): ProjectEnvironmentViewModel {
   return {
-    heading: "Project environment",
-    summary:
-      "Environment stays limited to non-secret project values in `v1`, and the Phase 3 UI keeps that boundary visible instead of inventing secret-management behavior.",
     envVars: [
       {
         name: "KEYSTONE_AGENT_RUNTIME",
-        value: "scripted",
-        note: "Non-secret default runtime selector."
+        value: "scripted"
       },
       {
         name: "KEYSTONE_CHAT_COMPLETIONS_BASE_URL",
-        value: "http://localhost:10531",
-        note: "Local OpenAI-compatible backend used by compile and Think paths."
+        value: "http://localhost:10531"
       },
       {
         name: "KEYSTONE_CHAT_COMPLETIONS_MODEL",
-        value: "gpt-5.4-mini",
-        note: "Placeholder model name shown structurally only."
+        value: "gpt-5.4-mini"
       }
-    ]
+    ],
+    heading: "Environment"
   };
 }
