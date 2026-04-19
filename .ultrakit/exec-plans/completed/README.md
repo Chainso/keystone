@@ -13,6 +13,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 | [keystone-m1-cloudflare-foundation](./keystone-m1-cloudflare-foundation.md) | 2026-04-17 | Delivered the full Keystone M1 demo, docs, and archive proof. |
 | [keystone-ui-first-api-scaffold](./keystone-ui-first-api-scaffold.md) | 2026-04-18 | Reworked the public API around the UI-first resource model, migrated the demo/tests/docs, and left the remaining backend gaps as explicit typed stubs. |
 | [keystone-ui-structure-scaffold](./keystone-ui-structure-scaffold.md) | 2026-04-18 | Delivered the Worker-served React workspace scaffold, route/module boundaries, durable docs, and final validation proof. |
+| [keystone-ui-ascii-alignment-reset](./keystone-ui-ascii-alignment-reset.md) | 2026-04-18 | Realigned the shipped UI to the canonical ASCII boards, updated durable docs/notes, and closed the corrective scaffold pass. |
 
 Add completed plans using this format:
 

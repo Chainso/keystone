@@ -140,6 +140,11 @@ Compatibility that **is** required:
   **Decision:** Keep [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) as the explicit shell split, but move the remaining section/card/tab-renderer hotspot out of [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx) into feature-owned project-configuration components while restoring the reviewed board details.  
   **Rationale:** The original Phase 4 landing fixed the broad board shape, but the route still owned too much tab rendering and the settings/components board still missed several ASCII details. A proportional feature extraction plus board-literal cleanup closed those gaps without redesigning the route family.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 5  
+  **Decision:** Keep the closeout pass focused on docs, durable notes, and archive bookkeeping because the existing UI tests already asserted the corrected board structure and removed copy.  
+  **Rationale:** Revalidation showed the remaining drift lived in README and developer docs, not in the routed UI scaffold or the current smoke coverage. Expanding Phase 5 back into UI code or test rewrites would have reopened scope without changing the shipped scaffold.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed through direct review of `design/workspace-spec.md`, the current UI implementation, and five parallel frame-specific audits.
@@ -154,7 +159,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 3 targeted fix pass: restored the canonical `Workstreams` rows, removed the duplicated row-vs-link navigation contract, strengthened Phase 3 destination coverage, and corrected the active-plan `Documentation`/`Workstreams` ownership references to the feature-owned modules that actually landed.
 - [x] 2026-04-18 Phase 4: Realigned `New project` and `Project settings` to the project-configuration boards, removed the scaffold narration/right rail, and split the tab composition into explicit `new` vs `settings` variants with semantic controls.
 - [x] 2026-04-18 Phase 4 targeted fix pass: moved the remaining project-configuration section/card/tab renderers into feature-owned components, restored the reviewed components-board literals, right-aligned the board action rows, and expanded the destination test matrix to cover `new/components` and `settings/overview`.
-- [ ] Phase 5: Update tests, docs, and plan notes; capture the corrective outcome and the dependency this creates for later live-wiring work.
+- [x] 2026-04-18 Phase 5: Aligned README/developer docs/notes with the corrected minimal scaffold, revalidated the full baseline, and archived the corrective plan.
 
 ## Surprises & Discoveries
 
@@ -172,6 +177,7 @@ Compatibility that **is** required:
 - The Phase 3 surface move was correct, but the `Workstreams` seed drifted from the canonical board in all four visible rows, not just the blocked one. The targeted fix pass had to reconcile those literals, remove the row-level pseudo-control that survived the extraction, and update the plan text so it pointed at the feature-owned workspace/scaffold modules rather than the now-thin route containers.
 - Phase 4 needed only a narrow stylesheet follow-up: once the placeholder spans became real `input`, `textarea`, and `select` elements, the existing scaffold class names were still reusable with a small width/font/reset patch rather than another layout rewrite.
 - The remaining Phase 4 hotspot was narrower than the original audit implied: the shell/layout split in [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) was already the right boundary, but the tab route still carried too much section/card rendering. The fix pass could stay proportional by extracting only those feature-owned tab components and leaving the shell layer intact.
+- By Phase 5, the remaining misalignment was in repo documentation rather than in UI tests. The existing shell and destination tests already checked the corrected board structure and the absence of removed scaffold narration, so closeout stayed documentation-first.
 
 ## Outcomes & Retrospective
 
@@ -231,6 +237,14 @@ Phase 4 targeted fix pass outcome on 2026-04-18:
 - [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) now covers the missing `new/components` and `settings/overview` route halves, asserts the component-card fields introduced in Phase 4, and includes a structural assertion that the removed project-configuration scaffold chrome is still gone.
 - Targeted fix pass validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx`, and `rtk npm run test`.
 
+Phase 5 outcome on 2026-04-18:
+
+- README, [m1-architecture](../../developer-docs/m1-architecture.md), and [m1-local-runbook](../../developer-docs/m1-local-runbook.md) now describe the shipped UI as a minimal board-aligned Worker-served SPA with feature-owned runs, documentation, workstreams, and project-configuration surfaces instead of backend-gap narration or placeholder-honesty copy.
+- `.ultrakit/notes.md` now records the durable scaffold boundary that landed: thin route containers, feature-owned destination boards, and a project-configuration shell split that should not collapse back into the route file.
+- The current UI tests did not need further changes for closeout because they already assert the corrected scaffold structure and the absence of the removed narration/chrome. Phase 5 revalidated the full baseline instead.
+- The build baseline is unchanged: `rtk npm run build` still completes `vite build` in the sandbox and then fails only when Wrangler/Docker try to write under the home directory, and the host-shell rerun now passes with the same build output once those writes are allowed.
+- The corrective plan is complete and archived; later UI work should treat this minimal scaffold as the stable baseline for live wiring rather than reopen shell or board-shape decisions.
+
 ## Context and Orientation
 
 Relevant current repository state:
@@ -275,10 +289,10 @@ Relevant current repository state:
   - [ui/src/shared/forms/component-type-picker.tsx](../../../ui/src/shared/forms/component-type-picker.tsx)
   - [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts)
   - The React audit found that this area is already drifting into a mode-driven monolith and should be split into clearer tab modules / route composition before live wiring lands.
-- Current UI tests live under [ui/src/test/](../../../ui/src/test/) and currently assert some scaffold-specific behaviors and strings that this plan intends to remove.
+- Current UI tests live under [ui/src/test/](../../../ui/src/test/) and now assert the corrected board structure plus the absence of the removed scaffold narration/chrome.
 - Other active plans currently awaiting approval are:
-  - [keystone-project-document-and-decision-package-collections.md](./keystone-project-document-and-decision-package-collections.md)
-  - [keystone-ui-project-management-live-wiring.md](./keystone-ui-project-management-live-wiring.md)
+  - [keystone-project-document-and-decision-package-collections.md](../active/keystone-project-document-and-decision-package-collections.md)
+  - [keystone-ui-project-management-live-wiring.md](../active/keystone-ui-project-management-live-wiring.md)
 
 The working assumption for execution is that this corrective plan lands before the live-wiring plan, because the live-wiring work should fill in the corrected scaffold rather than preserve the current presentation.
 
@@ -760,21 +774,25 @@ Success means the full baseline still holds, the tests now assert corrected scaf
 Update all living sections in this plan. Update repo docs and notes as needed. If the plan completes, archive it according to the plan contract.
 
 **Deliverables**  
-- corrected tests,
+- validated scaffold tests,
 - updated docs/notes,
-- final plan state ready for approval-to-execute flow or, later, for archival after execution.
+- final archived plan state with accurate bookkeeping.
 
 **Commit Expectation**  
-`Document corrected ASCII-first UI scaffold`
+`Document ASCII-aligned UI scaffold`
 
 **Known Constraints / Baseline Failures**  
 `npm run build` still requires a host rerun on this machine after the expected sandbox Wrangler/Docker write failure.
 
 **Status**  
-Not started.
+Completed on 2026-04-18.
 
 **Completion Notes**  
-None yet.
+- Updated [README.md](../../../README.md), [m1-architecture](../../developer-docs/m1-architecture.md), and [m1-local-runbook](../../developer-docs/m1-local-runbook.md) so they describe the shipped UI as a minimal board-aligned Worker-served SPA with feature-owned destination surfaces and no extra shell narration/right-rail chrome.
+- Added durable project notes for the corrected scaffold boundaries in [`.ultrakit/notes.md`](../../notes.md), including the thin-route contract and the `new` vs `settings` project-configuration ownership split.
+- Revalidated `rtk npm run lint`, `rtk npm run typecheck`, and `rtk npm run test`; the existing UI tests already covered the corrected scaffold and required no further edits during closeout.
+- Revalidated `rtk npm run build` and confirmed the baseline is unchanged: `vite build` succeeds in the sandbox, then Wrangler/Docker fail on home-directory writes under `~/.config/.wrangler` and `~/.docker/buildx/activity`; the same command then passed in a host-shell rerun.
+- Archived this plan under [`.ultrakit/exec-plans/completed/keystone-ui-ascii-alignment-reset.md`](./keystone-ui-ascii-alignment-reset.md), removed it from the active-plan index, and added it to the completed-plan archive summary.
 
 **Next Starter Context**  
-When this phase starts, the corrective UI changes should already be in place. The test suite and docs need to stop reinforcing the old scaffold narration and start reflecting the corrected minimal scaffold.
+Plan complete and archived. The next UI-facing plan should treat the current Worker-served SPA route tree plus feature-owned board surfaces as stable, and should add live data or behavior inside those boundaries instead of reintroducing shell chrome or moving destination rendering back into route/shared modules.

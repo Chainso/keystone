@@ -8,8 +8,8 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
-
-No active plans.
+| [keystone-project-document-and-decision-package-collections](./keystone-project-document-and-decision-package-collections.md) | Awaiting Approval | Codex | 2026-04-18 |
+| [keystone-ui-project-management-live-wiring](./keystone-ui-project-management-live-wiring.md) | Awaiting Approval | Codex | 2026-04-18 |
 
 Add active plans in priority order using this format:
 

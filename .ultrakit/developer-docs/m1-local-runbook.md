@@ -17,7 +17,7 @@ export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://post
 npm run db:migrate
 ```
 
-For the standard scaffold-era UI workflow, then start the checked-in zellij helper from a normal host shell:
+For the standard local UI workflow, then start the checked-in zellij helper from a normal host shell:
 
 ```bash
 npm run dev:zellij
@@ -25,6 +25,8 @@ npm run dev:zellij
 
 That opens vertically split panes for `npx localflare` and `npm run dev:ui`.
 By default it also opens the local UI in the system browser once `/v1/health` responds at `http://127.0.0.1:8787`.
+
+The UI served in that workflow is the same Worker-hosted SPA route tree shipped in the repo: minimal board-shaped `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces backed by fixed scaffold data.
 
 If you need a different browser target or want to suppress the browser launch:
 
@@ -99,7 +101,7 @@ If you need the fixture project without starting a run, use:
 npm run demo:ensure-project
 ```
 
-For the Think-backed fixture path, use the dedicated runbook. The exact Phase 5 gate is:
+For the Think-backed fixture path, use the dedicated runbook. The stable validation pair is:
 
 ```bash
 KEYSTONE_AGENT_RUNTIME=think npm run demo:run
@@ -159,5 +161,5 @@ The approval-gated path is a project whose compile target resolves to `gitUrl`. 
 - `RunCoordinatorDO was not initialized before use`: a workflow path is publishing events before initializing the coordinator.
 - `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted sandbox boundary on this host.
 - empty or stalled compile output: confirm the backend is reachable at `http://localhost:10531/v1/chat/completions`.
-- `defines multiple executable components`: the project materializes multiple code components but still lacks an explicit compile-target selector for Phase 4/5 runtime proof.
+- `defines multiple executable components`: the project materializes multiple code components but still lacks an explicit compile-target selector for the current runtime proof.
 - `EROFS` under `~/.config/.wrangler` or `~/.docker/buildx/activity` during `npm run build`: rerun the dry-run deploy from a host shell outside the Codex sandbox.

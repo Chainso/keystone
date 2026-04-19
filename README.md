@@ -10,7 +10,7 @@ Keystone is a single Cloudflare Worker project that currently proves:
 - sandboxed task execution with session sandboxes and task worktrees
 - provider-backed compile and Think live-model turns using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
 - a runtime selector that keeps `scripted` as the default path, preserves a deterministic `think/mock` validation mode, and enables a fixture-scoped live compile plus Think task demo through the same `/v1/runs` entrypoint
-- a structure-first React workspace shell served from the same Worker deployable, now including a scaffolded `Runs` index plus nested run-phase and execution routes alongside the placeholder `Documentation`, `Workstreams`, `New project`, and `Project settings` destinations
+- a structure-first React workspace shell served from the same Worker deployable, now including minimal board-shaped `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces over the canonical route tree
 
 ## Core Commands
 
@@ -35,13 +35,13 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 `npm run dev` no longer needs a host `CLOUDFLARE_API_TOKEN` just to satisfy the Think runtime. The Think-backed model path now uses `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` and `KEYSTONE_CHAT_COMPLETIONS_MODEL` directly.
 
-`npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the placeholder shell while Wrangler is already running.
+`npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the workspace shell while Wrangler is already running.
 
-`npm run dev:zellij` is the checked-in Phase 1 helper for the standard UI scaffold workflow. After Postgres is up and `npm run db:migrate` has completed, it opens zellij with vertically split panes that run `npx localflare` and `npm run dev:ui` from repo root, then opens the local UI in the default browser once `/v1/health` responds at `http://127.0.0.1:8787`. Use it from a normal host shell, not inside the Codex sandbox, because local Worker startup on this machine still needs host execution. If you need a different browser target, export `KEYSTONE_BROWSER_URL` or `KEYSTONE_BASE_URL` first. If you want to suppress browser launch, export `KEYSTONE_OPEN_BROWSER=0`.
+`npm run dev:zellij` is the checked-in helper for the standard UI scaffold workflow. After Postgres is up and `npm run db:migrate` has completed, it opens zellij with vertically split panes that run `npx localflare` and `npm run dev:ui` from repo root, then opens the local UI in the default browser once `/v1/health` responds at `http://127.0.0.1:8787`. Use it from a normal host shell, not inside the Codex sandbox, because local Worker startup on this machine still needs host execution. If you need a different browser target, export `KEYSTONE_BROWSER_URL` or `KEYSTONE_BASE_URL` first. If you want to suppress browser launch, export `KEYSTONE_OPEN_BROWSER=0`.
 
 ## UI Scaffold
 
-Phase 1 and Phase 2 add a structure-only React SPA under `ui/` and serve the built assets through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
+The current UI is a structure-first React SPA under `ui/` served through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
 
 For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manual path or do not use zellij, keep using `npm run dev` plus `npm run dev:ui` in separate terminals.
 
@@ -49,18 +49,19 @@ Current UI scope:
 
 - the global project-scoped sidebar
 - top-level destination routes for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
-- a `Runs` index with a placeholder run table and a disabled `New run` control
+- a plain `Runs` index with a disabled `New run` control
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
-- an execution default shell with placeholder workflow nodes and a task-detail route with chat-plus-review split
-- placeholder screens and view models that explicitly state current backend gaps
+- a graph-first `Execution` board with workflow nodes and a task-detail route with chat-plus-review split
+- board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with minimal scaffold data and no extra hero, aside, or right-rail chrome
 
 Current UI non-goals:
 
 - live backend loading
 - real run creation, project switching, or destination content loading
 - real task conversations, DAG layout, or review diff content
+- persisted documentation, workstream, or project-configuration editing
 - final visual polish
-- destination-specific behavior beyond the current scaffold shells
+- destination-specific behavior beyond the current scaffold surfaces
 
 ## UI Architecture
 
@@ -68,17 +69,17 @@ The frontend scaffold is intentionally split by ownership so future feature work
 
 - `ui/src/app/`: React entrypoint, provider stack, and shared stylesheet
 - `ui/src/routes/`: route containers and nested layouts that mirror `design/workspace-spec.md`
-- `ui/src/features/`: placeholder view-model hooks and scaffold data for runs, execution, documentation, workstreams, and project configuration
-- `ui/src/shared/`: reusable layout, navigation, and placeholder-form primitives
+- `ui/src/features/`: feature-owned workspace components, local scaffold data, and view-model hooks for runs, execution, documentation, workstreams, and project configuration
+- `ui/src/shared/`: reusable shell, navigation, and generic layout/form primitives
 - `ui/src/test/`: route and shell smoke coverage for the scaffold contracts
 
-`ui/src/routes/router.tsx` is the canonical route tree. Route files own URL structure and layout composition, feature hooks own placeholder state and backend-gap messaging, and shared components stay presentational.
+`ui/src/routes/router.tsx` is the canonical route tree. Route files stay thin and own URL structure plus layout composition, feature modules own destination-specific board rendering and local scaffold state, and shared components stay generic.
 
 Current UI boundary:
 
 - the scaffold is served from the same Worker deployable as the `v1` API
-- the UI still uses fixed placeholder view models instead of live backend adapters
-- project documents, decision packages, evidence, integration, release, and operator steering remain explicit backend gaps in the rendered copy
+- the UI still uses fixed scaffold data instead of live backend adapters
+- documentation collections, decision packages, evidence, integration, release, and project editing flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend
 

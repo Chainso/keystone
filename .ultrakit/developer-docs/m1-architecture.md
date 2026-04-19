@@ -66,19 +66,25 @@ The canonical operator-facing surface is now:
 
 ## Operator UI Scaffold
 
-The shipped frontend is a structure-first React SPA under `ui/`:
+The shipped frontend is a structure-first React SPA under `ui/` that now matches the minimal board layout from `design/workspace-spec.md`:
 
 - `ui/src/app/` owns app bootstrap, providers, and global styles.
 - `ui/src/routes/` owns the canonical route tree and nested layout boundaries from `design/workspace-spec.md`.
-- `ui/src/features/` owns placeholder view-model hooks and fixed scaffold data for runs, execution, documentation, workstreams, and project configuration.
-- `ui/src/shared/` owns reusable layout, navigation, and placeholder-form primitives.
+- `ui/src/features/` owns destination-specific workspace components, local scaffold data, and view-model hooks for runs, execution, documentation, workstreams, and project configuration.
+- `ui/src/shared/` owns reusable shell, navigation, and generic layout/form primitives only.
 - `ui/src/test/` owns route and shell smoke coverage for the scaffold contracts.
 
-Current boundary:
+Ownership boundary:
 
-- the route tree is real and stable, but the destination content is still scaffold-only
-- the UI uses local placeholder models, not live query/caching adapters
-- project documents, decision packages, evidence, integration, release, and operator steering are still backend gaps and are called out explicitly in the UI copy
+- `Runs`, `Execution`, `Documentation`, and `Workstreams` render through feature-owned board components under `ui/src/features/**/components/`, while the route files stay as thin containers.
+- `ui/src/routes/projects/project-configuration-layout.tsx` owns the `new` vs `settings` shell split, and `ui/src/features/projects/components/project-configuration-tabs.tsx` owns the tab-specific board content.
+- `ui/src/shared/` should not regain destination-specific workspace components or decorative chrome that is outside the ASCII boards.
+
+Current UI boundary:
+
+- the route tree is real and stable, but the destination content still uses fixed scaffold data
+- the UI does not yet use live query/caching adapters
+- documentation collections, decision packages, evidence, integration, release, and project editing remain unwired behind the stable route tree
 
 ## Security and Approval Edge
 
