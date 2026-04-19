@@ -72,7 +72,7 @@ export function ExecutionWorkspace({ tasks }: ExecutionWorkspaceProps) {
           </div>
         ) : null}
 
-        <p className="execution-board-note">Running = highlighted. Ready = dim. Complete = solid.</p>
+        <p className="execution-board-note">running = highlighted   queued = dim   done = solid</p>
         <p className="execution-board-note">Click a task node to open that task inside Execution.</p>
       </div>
     </section>

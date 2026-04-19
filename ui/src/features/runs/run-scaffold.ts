@@ -100,7 +100,7 @@ const runSeeds: RunSeed[] = [
     summary: "Task steering work",
     status: "Blocked",
     updatedLabel: "3h ago",
-    currentPhase: "execution-plan"
+    currentPhase: "execution"
   },
   {
     runId: "run-101",
@@ -168,7 +168,7 @@ const planningCopy = {
       },
       {
         speaker: "user",
-        body: "include route reset"
+        body: "include scaffold spike"
       },
       {
         speaker: "user",

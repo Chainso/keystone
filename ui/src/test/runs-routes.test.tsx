@@ -26,6 +26,20 @@ describe("Phase 2 runs routes", () => {
     expect(screen.queryByText("Current backend coverage")).not.toBeInTheDocument();
   });
 
+  it("redirects run-102 to execution from the run shell", async () => {
+    const { router } = renderRoute("/runs/run-102");
+
+    expect(await screen.findByRole("heading", { name: "Run-102" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-102/execution");
+    });
+    expect(
+      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
+        current: "page"
+      })
+    ).toHaveAttribute("href", "/runs/run-102/execution");
+  });
+
   it("renders run index rows with run-detail navigation targets", async () => {
     renderRoute("/runs");
 
@@ -57,6 +71,9 @@ describe("Phase 2 runs routes", () => {
     expect(await screen.findByRole("heading", { name: "Run-104" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: document })).toBeInTheDocument();
+    if (path === "/runs/run-104/execution-plan") {
+      expect(screen.getByText("include scaffold spike")).toBeInTheDocument();
+    }
     expect(screen.getByRole("textbox", { name: "Message composer" })).toHaveValue(
       "message composer......................"
     );
@@ -75,6 +92,9 @@ describe("Phase 2 runs routes", () => {
       "href",
       "/runs/run-104/execution/tasks/task-033"
     );
+    expect(
+      screen.getByText(/running = highlighted\s+queued = dim\s+done = solid/i)
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Click a task node to open that task inside Execution.")
     ).toBeInTheDocument();

@@ -115,6 +115,11 @@ Compatibility that **is** required:
   **Decision:** Move run-only workspace components under `features/` and collapse the `Runs` surfaces to the plain board structures from the ASCII spec.  
   **Rationale:** The visible drift and the layer-boundary drift were the same problem. Rewriting the `Runs` surfaces without moving those modules out of `shared` would have preserved the wrong ownership while the files were already open.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 2 targeted fix pass  
+  **Decision:** Realign the remaining `Runs` scaffold literals and plan references with the canonical ASCII board instead of treating the initial Phase 2 landing as final.  
+  **Rationale:** The Phase 2 component move landed, but `run-102`, one execution-plan chat line, the execution legend, and the active-plan file references still reflected review drift rather than the canonical board text and current feature-owned locations.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed through direct review of `design/workspace-spec.md`, the current UI implementation, and five parallel frame-specific audits.
@@ -124,6 +129,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 1: Reset the shared shell and base styling to a minimal ASCII-faithful scaffold.
 - [x] 2026-04-18 Phase 1 fix pass: strengthened shell route-target coverage for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`.
 - [x] 2026-04-18 Phase 2: Realign the `Runs` family to the index / planning panes / execution / task-detail boards.
+- [x] 2026-04-18 Phase 2 targeted fix pass: aligned `run-102` with the canonical `Execution` stage, restored the reviewed ASCII copy drift, and corrected the active-plan `Runs`/`Execution` file references to the feature-owned component locations that actually landed.
 - [ ] Phase 3: Realign `Documentation` and `Workstreams` to their canonical boards.
 - [ ] Phase 4: Realign `New project` and `Project settings` to the project-configuration boards.
 - [ ] Phase 5: Update tests, docs, and plan notes; capture the corrective outcome and the dependency this creates for later live-wiring work.
@@ -139,6 +145,7 @@ Compatibility that **is** required:
 - Resetting the shell styling cleanly required replacing nearly the entire shared stylesheet, because out-of-scope route families still depend on the same global class layer. A small shell-only CSS patch would have preserved too much of the prior chrome.
 - The only post-implementation Phase 1 review finding was a shell test-coverage gap. The shell implementation itself already used the expected route definitions, so the corrective pass stayed test-only.
 - The `Runs` boundary correction was lower-risk than expected because the route modules were already thin containers. Most of the Phase 2 structural change came from moving the workspace components under `features/` and deleting run-only copy/data fields from the scaffold models.
+- The Phase 2 workspace move was correct, but the plan text and one seeded run still lagged behind it. The targeted fix pass had to reconcile stale `shared/layout` references in the active plan and a `run-102` default redirect that still pointed at `execution-plan`.
 
 ## Outcomes & Retrospective
 
@@ -163,6 +170,12 @@ Phase 2 outcome on 2026-04-18:
 - Execution now defaults to a graph-first DAG placeholder with clickable task nodes, and task detail is reduced to the conversation-plus-review split from the board.
 - Run-specific workspace components no longer live under `ui/src/shared/layout/`; they now sit under `features/runs/components/` and `features/execution/components/`, leaving the shared layer to generic primitives.
 
+Phase 2 targeted fix pass outcome on 2026-04-18:
+
+- `run-102` now matches the canonical `Runs` board row and redirects into `Execution` by default instead of reopening the execution-plan pane.
+- The execution-plan chat copy and execution legend now match the exact ASCII board text where the review flagged literal drift.
+- The active plan’s `Runs` context and Phase 2 handoff now point at the feature-owned workspace components that actually landed, so later phases do not chase deleted `ui/src/shared/layout/*` files.
+
 ## Context and Orientation
 
 Relevant current repository state:
@@ -176,14 +189,15 @@ Relevant current repository state:
   - [ui/src/app/styles.css](../../../ui/src/app/styles.css)
 - The `Runs` surface is split across:
   - [ui/src/routes/runs/](../../../ui/src/routes/runs/)
-  - [ui/src/shared/layout/run-detail-scaffold.tsx](../../../ui/src/shared/layout/run-detail-scaffold.tsx)
-  - [ui/src/shared/layout/run-phase-stepper.tsx](../../../ui/src/shared/layout/run-phase-stepper.tsx)
-  - [ui/src/shared/layout/planning-workspace.tsx](../../../ui/src/shared/layout/planning-workspace.tsx)
-  - [ui/src/shared/layout/execution-workspace.tsx](../../../ui/src/shared/layout/execution-workspace.tsx)
-  - [ui/src/shared/layout/task-detail-workspace.tsx](../../../ui/src/shared/layout/task-detail-workspace.tsx)
+  - [ui/src/features/runs/components/run-detail-scaffold.tsx](../../../ui/src/features/runs/components/run-detail-scaffold.tsx)
+  - [ui/src/features/runs/components/run-phase-stepper.tsx](../../../ui/src/features/runs/components/run-phase-stepper.tsx)
+  - [ui/src/features/runs/components/planning-workspace.tsx](../../../ui/src/features/runs/components/planning-workspace.tsx)
+  - [ui/src/features/execution/components/execution-workspace.tsx](../../../ui/src/features/execution/components/execution-workspace.tsx)
+  - [ui/src/features/execution/components/task-detail-workspace.tsx](../../../ui/src/features/execution/components/task-detail-workspace.tsx)
   - [ui/src/features/runs/run-scaffold.ts](../../../ui/src/features/runs/run-scaffold.ts)
+  - [ui/src/features/runs/use-run-view-model.ts](../../../ui/src/features/runs/use-run-view-model.ts)
   - [ui/src/features/execution/use-execution-view-model.ts](../../../ui/src/features/execution/use-execution-view-model.ts)
-  - The React audit found that these run-specific workspace layouts should either move under `features/runs` or be rewritten around feature-neutral props; leaving them in `shared` as-is is a poor long-term boundary.
+  - The React audit originally flagged these run-specific workspace layouts when they lived under `shared`. Phase 2 moved them under feature ownership; later work should keep run-only surfaces out of the shared layer.
 - The `Documentation` surface lives in:
   - [ui/src/routes/documentation/documentation-route.tsx](../../../ui/src/routes/documentation/documentation-route.tsx)
   - [ui/src/features/documentation/use-documentation-view-model.ts](../../../ui/src/features/documentation/use-documentation-view-model.ts)
@@ -420,23 +434,25 @@ Out of scope: `Documentation`, `Workstreams`, project configuration, and live ba
 `design/workspace-spec.md`  
 `ui/src/routes/runs/runs-index-route.tsx`  
 `ui/src/routes/runs/run-detail-layout.tsx`  
-`ui/src/shared/layout/run-detail-scaffold.tsx`  
-`ui/src/shared/layout/run-phase-stepper.tsx`  
-`ui/src/shared/layout/planning-workspace.tsx`  
-`ui/src/shared/layout/execution-workspace.tsx`  
-`ui/src/shared/layout/task-detail-workspace.tsx`  
+`ui/src/features/runs/components/run-detail-scaffold.tsx`  
+`ui/src/features/runs/components/run-phase-stepper.tsx`  
+`ui/src/features/runs/components/planning-workspace.tsx`  
+`ui/src/features/execution/components/execution-workspace.tsx`  
+`ui/src/features/execution/components/task-detail-workspace.tsx`  
 `ui/src/features/runs/run-scaffold.ts`  
+`ui/src/features/runs/use-run-view-model.ts`  
 `ui/src/features/runs/use-runs-index-view-model.ts`  
 `ui/src/features/execution/use-execution-view-model.ts`
 
 **Files Expected To Change**  
 `ui/src/routes/runs/runs-index-route.tsx`  
-`ui/src/shared/layout/run-detail-scaffold.tsx`  
-`ui/src/shared/layout/run-phase-stepper.tsx`  
-`ui/src/shared/layout/planning-workspace.tsx`  
-`ui/src/shared/layout/execution-workspace.tsx`  
-`ui/src/shared/layout/task-detail-workspace.tsx`  
+`ui/src/features/runs/components/run-detail-scaffold.tsx`  
+`ui/src/features/runs/components/run-phase-stepper.tsx`  
+`ui/src/features/runs/components/planning-workspace.tsx`  
+`ui/src/features/execution/components/execution-workspace.tsx`  
+`ui/src/features/execution/components/task-detail-workspace.tsx`  
 `ui/src/features/runs/run-scaffold.ts`  
+`ui/src/features/runs/use-run-view-model.ts`  
 `ui/src/features/runs/use-runs-index-view-model.ts`  
 `ui/src/features/execution/use-execution-view-model.ts`  
 Potentially supporting test files under `ui/src/test/`.
@@ -470,18 +486,20 @@ Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retro
 Keep the current route URLs intact. Do not widen this phase into live data, real diff rendering, or task messaging writes. Avoid replacing one large prop-bag workspace with another equally rigid one.
 
 **Status**  
-Completed on 2026-04-18.
+Completed on 2026-04-18. Targeted fix pass completed on 2026-04-18.
 
 **Completion Notes**  
 - Replaced the `Runs` index hero/aside layout with a plain table board and kept the existing `/runs/:runId` route targets intact.
 - Simplified the run detail shell and phase stepper to board-like labels only, removing the prior coverage, deferred-work, and scaffold-status copy.
 - Rewrote the planning panes, execution DAG surface, and task-detail split around feature-owned components with lighter scaffold data and no raw API/backlog narration.
 - Moved run-only workspace components out of `ui/src/shared/layout/` into `ui/src/features/runs/components/` and `ui/src/features/execution/components/`.
+- Targeted fix pass: aligned `run-102` with the canonical `Execution` stage, restored `user: include scaffold spike` in the execution-plan chat, and corrected the execution legend to `running = highlighted   queued = dim   done = solid`.
+- Targeted fix pass: updated the active plan context and Phase 2 handoff to reference the feature-owned run and execution components that actually landed.
 - Updated [ui/src/test/runs-routes.test.tsx](../../../ui/src/test/runs-routes.test.tsx) to assert the new board structure and the absence of the old `Runs` explainer copy.
-- Validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx`, and `rtk npm run test`.
+- Validation passed for the implementation and the targeted fix pass: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx` (`9` tests passed), and `rtk npm run test` (`33` files passed, `2` skipped; `143` tests passed, `8` skipped).
 
 **Next Starter Context**  
-Phase 3 should leave the `Runs` family alone unless a shared primitive regression is discovered. The run-specific workspace boundary is corrected, so the next work should focus on making `Documentation` and `Workstreams` match their boards without reintroducing route-as-feature or explainer-sidebar patterns.
+Phase 3 should leave the `Runs` family alone unless a shared primitive regression is discovered. The targeted fix pass closed the remaining Phase 2 scaffold drift, so the next work should focus on making `Documentation` and `Workstreams` match their boards without reintroducing route-as-feature or explainer-sidebar patterns.
 
 ## Phase 3: Realign Documentation and Workstreams
 
