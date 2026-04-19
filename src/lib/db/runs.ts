@@ -2,6 +2,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { assertSessionStatusTransition, buildConfiguredSession } from "../../maestro/session";
 import type { SessionSpec, SessionStatus } from "../../maestro/contracts";
+import { resolveRunExecutionEngine } from "../runs/options";
+import { buildRunWorkflowInstanceId } from "../workflows/ids";
 import type { DatabaseClient } from "./client";
 import {
   documentRevisions,
@@ -11,7 +13,8 @@ import {
   runTasks,
   runs,
   sessions,
-  type RunRow
+  type RunRow,
+  type SessionRow
 } from "./schema";
 
 interface RunLookupInput {
@@ -93,6 +96,9 @@ const compileProvenanceRequirements = {
 
 type CompileProvenanceField = keyof typeof compileProvenanceRequirements;
 
+type RunDbTransaction = Parameters<Parameters<DatabaseClient["db"]["transaction"]>[0]>[0];
+type RunDbExecutor = DatabaseClient["db"] | RunDbTransaction;
+
 type CompileProvenanceInput = Pick<
   CreateRunRecordInput,
   | "compiledSpecRevisionId"
@@ -106,16 +112,34 @@ type CompileProvenanceInput = Pick<
     | "compiledExecutionPlanRevisionId"
   >;
 
-async function assertProjectOwnership(
-  client: DatabaseClient,
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+async function findProjectRecord(
+  db: RunDbExecutor,
   input: {
     tenantId: string;
     projectId: string;
   }
 ) {
-  const project = await client.db.query.projects.findFirst({
+  return db.query.projects.findFirst({
     where: and(eq(projects.tenantId, input.tenantId), eq(projects.projectId, input.projectId))
   });
+}
+
+async function assertProjectOwnership(
+  db: RunDbExecutor,
+  input: {
+    tenantId: string;
+    projectId: string;
+  }
+) {
+  const project = await findProjectRecord(db, input);
 
   if (!project) {
     throw new Error(`Project ${input.projectId} was not found for tenant ${input.tenantId}.`);
@@ -124,10 +148,14 @@ async function assertProjectOwnership(
   return project;
 }
 
-async function assertRunOwnership(client: DatabaseClient, input: RunLookupInput) {
-  const run = await client.db.query.runs.findFirst({
+async function findRunRecord(db: RunDbExecutor, input: RunLookupInput) {
+  return db.query.runs.findFirst({
     where: and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId))
   });
+}
+
+async function assertRunOwnership(db: RunDbExecutor, input: RunLookupInput) {
+  const run = await findRunRecord(db, input);
 
   if (!run) {
     throw new Error(`Run ${input.runId} was not found for tenant ${input.tenantId}.`);
@@ -166,7 +194,7 @@ function deriveRunLifecycleTimestamps(
 }
 
 async function assertCompileProvenanceRevisions(
-  client: DatabaseClient,
+  db: RunDbExecutor,
   context: {
     tenantId: string;
     projectId: string;
@@ -198,7 +226,7 @@ async function assertCompileProvenanceRevisions(
     return;
   }
 
-  const revisions = await client.db
+  const revisions = await db
     .select({
       documentRevisionId: documentRevisions.documentRevisionId,
       documentId: documentRevisions.documentId,
@@ -251,23 +279,8 @@ async function assertCompileProvenanceRevisions(
   }
 }
 
-export async function createRunRecord(client: DatabaseClient, input: CreateRunRecordInput) {
-  await assertProjectOwnership(client, {
-    tenantId: input.tenantId,
-    projectId: input.projectId
-  });
-
-  await assertCompileProvenanceRevisions(
-    client,
-    {
-      tenantId: input.tenantId,
-      projectId: input.projectId,
-      runId: input.runId
-    },
-    input
-  );
-
-  const [inserted] = await client.db
+async function insertRunRecord(db: RunDbExecutor, input: CreateRunRecordInput) {
+  const [inserted] = await db
     .insert(runs)
     .values({
       runId: input.runId,
@@ -289,10 +302,119 @@ export async function createRunRecord(client: DatabaseClient, input: CreateRunRe
   return inserted;
 }
 
-export async function getRunRecord(client: DatabaseClient, input: RunLookupInput) {
-  return client.db.query.runs.findFirst({
-    where: and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId))
+async function updateRunRecordRow(
+  db: RunDbExecutor,
+  existing: RunRow,
+  input: UpdateRunRecordInput
+) {
+  const [updated] = await db
+    .update(runs)
+    .set({
+      workflowInstanceId: input.workflowInstanceId ?? existing.workflowInstanceId,
+      executionEngine: input.executionEngine ?? existing.executionEngine,
+      sandboxId: input.sandboxId === undefined ? existing.sandboxId : input.sandboxId,
+      status: input.status ?? existing.status,
+      compiledSpecRevisionId:
+        input.compiledSpecRevisionId === undefined
+          ? existing.compiledSpecRevisionId
+          : input.compiledSpecRevisionId,
+      compiledArchitectureRevisionId:
+        input.compiledArchitectureRevisionId === undefined
+          ? existing.compiledArchitectureRevisionId
+          : input.compiledArchitectureRevisionId,
+      compiledExecutionPlanRevisionId:
+        input.compiledExecutionPlanRevisionId === undefined
+          ? existing.compiledExecutionPlanRevisionId
+          : input.compiledExecutionPlanRevisionId,
+      compiledAt: input.compiledAt === undefined ? existing.compiledAt : input.compiledAt,
+      startedAt: input.startedAt === undefined ? existing.startedAt : input.startedAt,
+      endedAt: input.endedAt === undefined ? existing.endedAt : input.endedAt,
+      updatedAt: new Date()
+    })
+    .where(and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId)))
+    .returning();
+
+  return updated;
+}
+
+async function findSessionRecord(
+  db: RunDbExecutor,
+  tenantId: string,
+  sessionId: string
+) {
+  return db.query.sessions.findFirst({
+    where: and(eq(sessions.tenantId, tenantId), eq(sessions.sessionId, sessionId))
   });
+}
+
+async function insertSessionRecordRow(db: RunDbExecutor, session: ReturnType<typeof buildConfiguredSession>) {
+  const [inserted] = await db
+    .insert(sessions)
+    .values({
+      tenantId: session.tenantId,
+      sessionId: session.sessionId,
+      runId: session.runId,
+      sessionType: session.sessionType,
+      status: session.status,
+      parentSessionId: session.parentSessionId ?? null,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      metadata: session.metadata
+    })
+    .returning();
+
+  return inserted;
+}
+
+function deriveRunSeedFromSession(
+  session: SessionRow,
+  status: SessionStatus,
+  metadata: Record<string, unknown>,
+  transitionAt: Date
+): CreateRunRecordInput | null {
+  const projectId = asString(asRecord(metadata.project)?.projectId);
+
+  if (!projectId) {
+    return null;
+  }
+
+  const lifecycleTimestamps = deriveRunLifecycleTimestamps(null, status, transitionAt);
+
+  return {
+    tenantId: session.tenantId,
+    runId: session.runId,
+    projectId,
+    workflowInstanceId:
+      asString(metadata.workflowInstanceId) ??
+      buildRunWorkflowInstanceId(session.tenantId, session.runId),
+    executionEngine: resolveRunExecutionEngine(undefined, metadata),
+    status,
+    startedAt: lifecycleTimestamps.startedAt ?? null,
+    endedAt: lifecycleTimestamps.endedAt ?? null
+  };
+}
+
+export async function createRunRecord(client: DatabaseClient, input: CreateRunRecordInput) {
+  await assertProjectOwnership(client.db, {
+    tenantId: input.tenantId,
+    projectId: input.projectId
+  });
+
+  await assertCompileProvenanceRevisions(
+    client.db,
+    {
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      runId: input.runId
+    },
+    input
+  );
+
+  return insertRunRecord(client.db, input);
+}
+
+export async function getRunRecord(client: DatabaseClient, input: RunLookupInput) {
+  return findRunRecord(client.db, input);
 }
 
 export async function ensureRunRecord(client: DatabaseClient, input: CreateRunRecordInput) {
@@ -336,7 +458,7 @@ export async function listProjectRuns(
     projectId: string;
   }
 ) {
-  await assertProjectOwnership(client, input);
+  await assertProjectOwnership(client.db, input);
 
   return client.db.query.runs.findMany({
     where: and(eq(runs.tenantId, input.tenantId), eq(runs.projectId, input.projectId)),
@@ -345,10 +467,10 @@ export async function listProjectRuns(
 }
 
 export async function updateRunRecord(client: DatabaseClient, input: UpdateRunRecordInput) {
-  const existing = await assertRunOwnership(client, input);
+  const existing = await assertRunOwnership(client.db, input);
 
   await assertCompileProvenanceRevisions(
-    client,
+    client.db,
     {
       tenantId: existing.tenantId,
       projectId: existing.projectId,
@@ -357,38 +479,11 @@ export async function updateRunRecord(client: DatabaseClient, input: UpdateRunRe
     input
   );
 
-  const [updated] = await client.db
-    .update(runs)
-    .set({
-      workflowInstanceId: input.workflowInstanceId ?? existing.workflowInstanceId,
-      executionEngine: input.executionEngine ?? existing.executionEngine,
-      sandboxId: input.sandboxId === undefined ? existing.sandboxId : input.sandboxId,
-      status: input.status ?? existing.status,
-      compiledSpecRevisionId:
-        input.compiledSpecRevisionId === undefined
-          ? existing.compiledSpecRevisionId
-          : input.compiledSpecRevisionId,
-      compiledArchitectureRevisionId:
-        input.compiledArchitectureRevisionId === undefined
-          ? existing.compiledArchitectureRevisionId
-          : input.compiledArchitectureRevisionId,
-      compiledExecutionPlanRevisionId:
-        input.compiledExecutionPlanRevisionId === undefined
-          ? existing.compiledExecutionPlanRevisionId
-          : input.compiledExecutionPlanRevisionId,
-      compiledAt: input.compiledAt === undefined ? existing.compiledAt : input.compiledAt,
-      startedAt: input.startedAt === undefined ? existing.startedAt : input.startedAt,
-      endedAt: input.endedAt === undefined ? existing.endedAt : input.endedAt,
-      updatedAt: new Date()
-    })
-    .where(and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId)))
-    .returning();
-
-  return updated;
+  return updateRunRecordRow(client.db, existing, input);
 }
 
 export async function createRunTask(client: DatabaseClient, input: CreateRunTaskInput) {
-  await assertRunOwnership(client, input);
+  await assertRunOwnership(client.db, input);
 
   const [inserted] = await client.db
     .insert(runTasks)
@@ -414,7 +509,7 @@ export async function getRunTask(
     runTaskId: string;
   }
 ) {
-  await assertRunOwnership(client, input);
+  await assertRunOwnership(client.db, input);
 
   return client.db.query.runTasks.findFirst({
     where: and(eq(runTasks.runId, input.runId), eq(runTasks.runTaskId, input.runTaskId))
@@ -422,7 +517,7 @@ export async function getRunTask(
 }
 
 export async function listRunTasks(client: DatabaseClient, input: RunLookupInput) {
-  await assertRunOwnership(client, input);
+  await assertRunOwnership(client.db, input);
 
   return client.db.query.runTasks.findMany({
     where: eq(runTasks.runId, input.runId),
@@ -465,7 +560,7 @@ export async function createRunTaskDependency(
   client: DatabaseClient,
   input: CreateRunTaskDependencyInput
 ) {
-  await assertRunOwnership(client, input);
+  await assertRunOwnership(client.db, input);
 
   if (input.parentRunTaskId === input.childRunTaskId) {
     throw new Error("Run task dependencies cannot reference the same task on both ends.");
@@ -485,7 +580,7 @@ export async function createRunTaskDependency(
 }
 
 export async function listRunTaskDependencies(client: DatabaseClient, input: RunLookupInput) {
-  await assertRunOwnership(client, input);
+  await assertRunOwnership(client.db, input);
 
   return client.db.query.runTaskDependencies.findMany({
     where: eq(runTaskDependencies.runId, input.runId),
@@ -502,22 +597,7 @@ export async function createSessionRecord(
   }
 ) {
   const session = buildConfiguredSession(sessionSpec, overrides);
-  const [inserted] = await client.db
-    .insert(sessions)
-    .values({
-      tenantId: session.tenantId,
-      sessionId: session.sessionId,
-      runId: session.runId,
-      sessionType: session.sessionType,
-      status: session.status,
-      parentSessionId: session.parentSessionId ?? null,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      metadata: session.metadata
-    })
-    .returning();
-
-  return inserted;
+  return insertSessionRecordRow(client.db, session);
 }
 
 export async function getSessionRecord(
@@ -525,8 +605,51 @@ export async function getSessionRecord(
   tenantId: string,
   sessionId: string
 ) {
-  return client.db.query.sessions.findFirst({
-    where: and(eq(sessions.tenantId, tenantId), eq(sessions.sessionId, sessionId))
+  return findSessionRecord(client.db, tenantId, sessionId);
+}
+
+export async function createRunSessionMirror(
+  client: DatabaseClient,
+  input: {
+    sessionSpec: SessionSpec;
+    projectId: string;
+    workflowInstanceId: string;
+    executionEngine: string;
+    sessionId?: string | undefined;
+    status?: SessionStatus | undefined;
+  }
+) {
+  return client.db.transaction(async (transaction) => {
+    await assertProjectOwnership(transaction, {
+      tenantId: input.sessionSpec.tenantId,
+      projectId: input.projectId
+    });
+
+    const session = buildConfiguredSession(input.sessionSpec, {
+      sessionId: input.sessionId,
+      status: input.status
+    });
+    const insertedSession = await insertSessionRecordRow(transaction, session);
+    const lifecycleTimestamps = deriveRunLifecycleTimestamps(
+      null,
+      insertedSession.status as SessionStatus,
+      insertedSession.updatedAt
+    );
+    const runRecord = await insertRunRecord(transaction, {
+      tenantId: insertedSession.tenantId,
+      runId: insertedSession.runId,
+      projectId: input.projectId,
+      workflowInstanceId: input.workflowInstanceId,
+      executionEngine: input.executionEngine,
+      status: insertedSession.status,
+      startedAt: lifecycleTimestamps.startedAt ?? null,
+      endedAt: lifecycleTimestamps.endedAt ?? null
+    });
+
+    return {
+      session: insertedSession,
+      runRecord
+    };
   });
 }
 
@@ -574,42 +697,64 @@ export async function updateSessionStatus(
     metadata?: Record<string, unknown> | undefined;
   }
 ) {
-  const existing = await getSessionRecord(client, input.tenantId, input.sessionId);
+  return client.db.transaction(async (transaction) => {
+    const existing = await findSessionRecord(transaction, input.tenantId, input.sessionId);
 
-  if (!existing) {
-    throw new Error(`Session ${input.sessionId} was not found for tenant ${input.tenantId}.`);
-  }
-
-  assertSessionStatusTransition(existing.status as SessionStatus, input.status);
-
-  const [updated] = await client.db
-    .update(sessions)
-    .set({
-      status: input.status,
-      updatedAt: new Date(),
-      metadata: input.metadata ?? existing.metadata
-    })
-    .where(and(eq(sessions.tenantId, input.tenantId), eq(sessions.sessionId, input.sessionId)))
-    .returning();
-
-  if (existing.sessionType === "run") {
-    const run = await getRunRecord(client, {
-      tenantId: existing.tenantId,
-      runId: existing.runId
-    });
-
-    if (run) {
-      const lifecycleTimestamps = deriveRunLifecycleTimestamps(run, input.status, updated.updatedAt);
-
-      await updateRunRecord(client, {
-        tenantId: existing.tenantId,
-        runId: existing.runId,
-        status: input.status,
-        startedAt: lifecycleTimestamps.startedAt,
-        endedAt: lifecycleTimestamps.endedAt
-      });
+    if (!existing) {
+      throw new Error(`Session ${input.sessionId} was not found for tenant ${input.tenantId}.`);
     }
-  }
 
-  return updated;
+    assertSessionStatusTransition(existing.status as SessionStatus, input.status);
+
+    const nextMetadata = input.metadata ?? existing.metadata;
+    const [updated] = await transaction
+      .update(sessions)
+      .set({
+        status: input.status,
+        updatedAt: new Date(),
+        metadata: nextMetadata
+      })
+      .where(and(eq(sessions.tenantId, input.tenantId), eq(sessions.sessionId, input.sessionId)))
+      .returning();
+
+    if (existing.sessionType === "run") {
+      const run = await findRunRecord(transaction, {
+        tenantId: existing.tenantId,
+        runId: existing.runId
+      });
+
+      if (run) {
+        const lifecycleTimestamps = deriveRunLifecycleTimestamps(run, input.status, updated.updatedAt);
+
+        await updateRunRecordRow(transaction, run, {
+          tenantId: existing.tenantId,
+          runId: existing.runId,
+          status: input.status,
+          startedAt: lifecycleTimestamps.startedAt,
+          endedAt: lifecycleTimestamps.endedAt
+        });
+      } else {
+        const runSeed = deriveRunSeedFromSession(
+          existing,
+          input.status,
+          nextMetadata,
+          updated.updatedAt
+        );
+
+        if (!runSeed) {
+          throw new Error(
+            `Run ${existing.runId} is missing while updating run session ${existing.sessionId}, and the session metadata cannot reconstruct the mirror row.`
+          );
+        }
+
+        await assertProjectOwnership(transaction, {
+          tenantId: runSeed.tenantId,
+          projectId: runSeed.projectId
+        });
+        await insertRunRecord(transaction, runSeed);
+      }
+    }
+
+    return updated;
+  });
 }

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { runs, sessions } from "../../src/lib/db/schema";
+
 const mocked = vi.hoisted(() => {
   const state = {
     artifactRefInputs: [] as Array<Record<string, unknown>>,
@@ -117,6 +119,196 @@ vi.mock("../../src/lib/db/runs", () => ({
 }));
 
 const { finalizeRun } = await import("../../src/keystone/integration/finalize-run");
+const {
+  createRunSessionMirror: actualCreateRunSessionMirror,
+  updateSessionStatus: actualUpdateSessionStatus
+} = await vi.importActual<typeof import("../../src/lib/db/runs")>("../../src/lib/db/runs");
+
+function buildSessionRow(
+  overrides: Partial<{
+    tenantId: string;
+    sessionId: string;
+    runId: string;
+    sessionType: "run";
+    status: string;
+    parentSessionId: string | null;
+    metadata: Record<string, unknown>;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = {}
+) {
+  return {
+    tenantId: "tenant-fixture",
+    sessionId: "run-session-123",
+    runId: "run-123",
+    sessionType: "run" as const,
+    status: "active",
+    parentSessionId: null,
+    metadata: {
+      project: {
+        projectId: "project-fixture",
+        projectKey: "fixture-demo-project",
+        displayName: "Fixture Demo Project"
+      },
+      workflowInstanceId: "run-workflow-123",
+      executionEngine: "think",
+      runtime: "think",
+      options: {
+        thinkMode: "live",
+        preserveSandbox: true
+      }
+    },
+    createdAt: new Date("2026-04-17T00:00:00.000Z"),
+    updatedAt: new Date("2026-04-17T00:00:00.000Z"),
+    ...overrides
+  };
+}
+
+function buildRunRow(
+  overrides: Partial<{
+    tenantId: string;
+    runId: string;
+    projectId: string;
+    workflowInstanceId: string;
+    executionEngine: string;
+    sandboxId: string | null;
+    status: string;
+    compiledSpecRevisionId: string | null;
+    compiledArchitectureRevisionId: string | null;
+    compiledExecutionPlanRevisionId: string | null;
+    compiledAt: Date | null;
+    startedAt: Date | null;
+    endedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = {}
+) {
+  return {
+    tenantId: "tenant-fixture",
+    runId: "run-123",
+    projectId: "project-fixture",
+    workflowInstanceId: "run-workflow-123",
+    executionEngine: "think",
+    sandboxId: null,
+    status: "active",
+    compiledSpecRevisionId: null,
+    compiledArchitectureRevisionId: null,
+    compiledExecutionPlanRevisionId: null,
+    compiledAt: null,
+    startedAt: new Date("2026-04-17T00:00:00.000Z"),
+    endedAt: null,
+    createdAt: new Date("2026-04-17T00:00:00.000Z"),
+    updatedAt: new Date("2026-04-17T00:00:00.000Z"),
+    ...overrides
+  };
+}
+
+function createMirrorClient(
+  options: {
+    session?: ReturnType<typeof buildSessionRow> | null | undefined;
+    run?: ReturnType<typeof buildRunRow> | null | undefined;
+    failRunInsert?: boolean | undefined;
+    failRunUpdate?: boolean | undefined;
+    projectExists?: boolean | undefined;
+  } = {}
+) {
+  let state = {
+    session: options.session === undefined ? null : structuredClone(options.session),
+    run: options.run === undefined ? null : structuredClone(options.run),
+    project:
+      options.projectExists === false
+        ? null
+        : {
+            tenantId: "tenant-fixture",
+            projectId: "project-fixture"
+          }
+  };
+
+  function cloneState() {
+    return structuredClone(state);
+  }
+
+  function createDb(target: typeof state) {
+    return {
+      query: {
+        projects: {
+          findFirst: vi.fn(async () => structuredClone(target.project))
+        },
+        sessions: {
+          findFirst: vi.fn(async () => structuredClone(target.session))
+        },
+        runs: {
+          findFirst: vi.fn(async () => structuredClone(target.run))
+        }
+      },
+      insert: (table: unknown) => ({
+        values: (value: Record<string, unknown>) => ({
+          returning: async () => {
+            if (table === sessions) {
+              target.session = structuredClone(value) as typeof target.session;
+              return [structuredClone(target.session)];
+            }
+
+            if (table === runs) {
+              if (options.failRunInsert) {
+                throw new Error("run insert failed");
+              }
+
+              target.run = structuredClone(value) as typeof target.run;
+              return [structuredClone(target.run)];
+            }
+
+            throw new Error("Unexpected table insert in mirror test.");
+          }
+        })
+      }),
+      update: (table: unknown) => ({
+        set: (value: Record<string, unknown>) => ({
+          where: () => ({
+            returning: async () => {
+              if (table === sessions) {
+                target.session = {
+                  ...(target.session ?? buildSessionRow()),
+                  ...structuredClone(value)
+                };
+                return [structuredClone(target.session)];
+              }
+
+              if (table === runs) {
+                if (options.failRunUpdate) {
+                  throw new Error("run update failed");
+                }
+
+                target.run = {
+                  ...(target.run ?? buildRunRow()),
+                  ...structuredClone(value)
+                };
+                return [structuredClone(target.run)];
+              }
+
+              throw new Error("Unexpected table update in mirror test.");
+            }
+          })
+        })
+      }),
+      transaction: async <T>(callback: (transaction: ReturnType<typeof createDb>) => Promise<T>) => {
+        const draft = cloneState();
+        const result = await callback(createDb(draft));
+        state = draft;
+        return result;
+      }
+    };
+  }
+
+  return {
+    client: {
+      connectionString: "postgres://test",
+      sql: {} as never,
+      db: createDb(state)
+    },
+    getState: () => cloneState()
+  };
+}
 
 describe("finalizeRun", () => {
   beforeEach(() => {
@@ -176,5 +368,90 @@ describe("finalizeRun", () => {
         })
       ])
     );
+  });
+});
+
+describe("run/session mirror safeguards", () => {
+  it("rolls back run creation if the session/run mirror cannot be written atomically", async () => {
+    const { client, getState } = createMirrorClient({
+      failRunInsert: true
+    });
+
+    await expect(
+      actualCreateRunSessionMirror(client as never, {
+        sessionSpec: {
+          tenantId: "tenant-fixture",
+          runId: "run-123",
+          sessionType: "run",
+          metadata: buildSessionRow().metadata
+        },
+        projectId: "project-fixture",
+        workflowInstanceId: "run-workflow-123",
+        executionEngine: "think"
+      })
+    ).rejects.toThrow(/run insert failed/);
+
+    expect(getState()).toMatchObject({
+      session: null,
+      run: null
+    });
+  });
+
+  it("backfills a missing run row from run-session metadata during terminal status updates", async () => {
+    const { client, getState } = createMirrorClient({
+      session: buildSessionRow(),
+      run: null
+    });
+
+    const updated = await actualUpdateSessionStatus(client as never, {
+      tenantId: "tenant-fixture",
+      sessionId: "run-session-123",
+      status: "archived",
+      metadata: {
+        ...buildSessionRow().metadata,
+        runSummaryArtifactRefId: "run-summary-artifact",
+        successfulTasks: 1,
+        failedTasks: 0
+      }
+    });
+
+    const state = getState();
+
+    expect(updated.status).toBe("archived");
+    expect(state.session?.status).toBe("archived");
+    expect(state.run).toMatchObject({
+      runId: "run-123",
+      projectId: "project-fixture",
+      workflowInstanceId: "run-workflow-123",
+      executionEngine: "think",
+      status: "archived"
+    });
+    expect(state.run?.endedAt).toBeInstanceOf(Date);
+  });
+
+  it("rolls back the session update when the mirrored run update fails", async () => {
+    const { client, getState } = createMirrorClient({
+      session: buildSessionRow(),
+      run: buildRunRow(),
+      failRunUpdate: true
+    });
+
+    await expect(
+      actualUpdateSessionStatus(client as never, {
+        tenantId: "tenant-fixture",
+        sessionId: "run-session-123",
+        status: "archived",
+        metadata: {
+          ...buildSessionRow().metadata,
+          runSummaryArtifactRefId: "run-summary-artifact"
+        }
+      })
+    ).rejects.toThrow(/run update failed/);
+
+    const state = getState();
+
+    expect(state.session?.status).toBe("active");
+    expect(state.run?.status).toBe("active");
+    expect(state.run?.endedAt).toBeNull();
   });
 });

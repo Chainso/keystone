@@ -76,26 +76,46 @@ const mocked = vi.hoisted(() => {
       httpEtag: "etag-run-plan-v2",
       size: 19
     })),
-    createRunRecord: vi.fn(async (_client, input) => ({
-      tenantId: input.tenantId,
-      runId: input.runId,
-      projectId: input.projectId,
-      workflowInstanceId: input.workflowInstanceId,
-      executionEngine: input.executionEngine,
-      sandboxId: input.sandboxId ?? null,
-      status: input.status,
-      compiledSpecRevisionId: input.compiledSpecRevisionId ?? null,
-      compiledArchitectureRevisionId: input.compiledArchitectureRevisionId ?? null,
-      compiledExecutionPlanRevisionId: input.compiledExecutionPlanRevisionId ?? null,
-      compiledAt: input.compiledAt ?? null,
-      startedAt: input.startedAt ?? null,
-      endedAt: input.endedAt ?? null,
+    createRunSessionMirror: vi.fn(async (_client, input) => ({
+      session: {
+        tenantId: input.sessionSpec.tenantId,
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: input.sessionSpec.runId,
+        sessionType: input.sessionSpec.sessionType,
+        status: input.status ?? "configured",
+        parentSessionId: input.sessionSpec.parentSessionId ?? null,
+        metadata: input.sessionSpec.metadata ?? {},
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z")
+      },
+      runRecord: {
+        tenantId: input.sessionSpec.tenantId,
+        runId: input.sessionSpec.runId,
+        projectId: input.projectId,
+        workflowInstanceId: input.workflowInstanceId,
+        executionEngine: input.executionEngine,
+        sandboxId: null,
+        status: input.status ?? "configured",
+        compiledSpecRevisionId: null,
+        compiledArchitectureRevisionId: null,
+        compiledExecutionPlanRevisionId: null,
+        compiledAt: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z")
+      }
+    })),
+    createSessionRecord: vi.fn(async (_client, spec) => ({
+      tenantId: spec.tenantId,
+      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+      runId: spec.runId,
+      sessionType: spec.sessionType,
+      status: "configured",
+      parentSessionId: spec.parentSessionId ?? null,
+      metadata: spec.metadata ?? {},
       createdAt: new Date("2026-04-14T00:00:00.000Z"),
       updatedAt: new Date("2026-04-14T00:00:00.000Z")
-    })),
-    createSessionRecord: vi.fn(async () => ({
-      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
-      status: "configured"
     })),
     listProjectRuns: vi.fn(async (_client, input) => [
       {
@@ -421,7 +441,7 @@ vi.mock("../../src/lib/db/client", () => ({
 }));
 
 vi.mock("../../src/lib/db/runs", () => ({
-  createRunRecord: mocked.createRunRecord,
+  createRunSessionMirror: mocked.createRunSessionMirror,
   createSessionRecord: mocked.createSessionRecord,
   getRunRecord: mocked.getRunRecord,
   listProjectRuns: mocked.listProjectRuns,
@@ -698,13 +718,21 @@ describe("app", () => {
         })
       })
     );
-    expect(mocked.createRunRecord).toHaveBeenCalledWith(
+    expect(mocked.createRunSessionMirror).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        tenantId: "tenant-fixture",
         projectId: "project-fixture",
         executionEngine: "scripted",
-        status: "configured"
+        sessionSpec: expect.objectContaining({
+          tenantId: "tenant-fixture",
+          sessionType: "run",
+          metadata: expect.objectContaining({
+            project: expect.objectContaining({
+              projectId: "project-fixture"
+            }),
+            executionEngine: "scripted"
+          })
+        })
       })
     );
     expect(mocked.createDocument).not.toHaveBeenCalled();
@@ -942,6 +970,76 @@ describe("app", () => {
         apiVersion: "v1",
         envelope: "detail",
         resourceType: "run"
+      }
+    });
+  });
+
+  it("prefers the run row for project ownership and execution engine when session metadata disagrees", async () => {
+    mocked.getRunRecord.mockResolvedValueOnce({
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      projectId: "project-from-runs",
+      workflowInstanceId: "run-workflow-instance",
+      executionEngine: "think",
+      sandboxId: null,
+      status: "configured",
+      compiledSpecRevisionId: null,
+      compiledArchitectureRevisionId: null,
+      compiledExecutionPlanRevisionId: null,
+      compiledAt: null,
+      startedAt: null,
+      endedAt: null,
+      createdAt: new Date("2026-04-14T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-14T00:00:00.000Z")
+    });
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: "run-123",
+        sessionType: "run",
+        status: "configured",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z"),
+        metadata: {
+          project: {
+            projectId: "project-from-session",
+            projectKey: "legacy-project-key",
+            displayName: "Legacy Session Project"
+          },
+          executionEngine: "scripted",
+          runtime: "scripted",
+          options: {
+            thinkMode: "live",
+            preserveSandbox: true
+          }
+        }
+      }
+    ]);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        projectId: "project-from-runs",
+        execution: {
+          runtime: "think",
+          thinkMode: "live",
+          preserveSandbox: true
+        }
       }
     });
   });

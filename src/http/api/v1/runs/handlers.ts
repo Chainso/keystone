@@ -14,8 +14,7 @@ import { createWorkerDatabaseClient } from "../../../../lib/db/client";
 import { appendSessionEvent, listRunEvents } from "../../../../lib/db/events";
 import { getProject } from "../../../../lib/db/projects";
 import {
-  createRunRecord,
-  createSessionRecord,
+  createRunSessionMirror,
   getRunRecord,
   listRunSessions
 } from "../../../../lib/db/runs";
@@ -199,36 +198,28 @@ export async function createRunHandler(context: Context<AppEnv>) {
       );
     }
 
-    const session = await createSessionRecord(client, {
-      tenantId: auth.tenantId,
-      runId,
-      sessionType: "run",
-      metadata: {
-        authMode: auth.authMode,
-        project: {
-          projectId: project.projectId,
-          projectKey: project.projectKey,
-          displayName: project.displayName
-        },
-        decisionPackageId: input.decisionPackage.payload.decisionPackageId,
-        decisionPackage: input.decisionPackage,
-        executionEngine,
-        runtime: executionEngine,
-        options
-      }
-    });
-
-    if (!session) {
-      return jsonErrorResponse("session_create_failed", "Run session creation failed.", 500);
-    }
-
-    const runRecord = await createRunRecord(client, {
-      tenantId: auth.tenantId,
-      runId,
+    const { session, runRecord } = await createRunSessionMirror(client, {
+      sessionSpec: {
+        tenantId: auth.tenantId,
+        runId,
+        sessionType: "run",
+        metadata: {
+          authMode: auth.authMode,
+          project: {
+            projectId: project.projectId,
+            projectKey: project.projectKey,
+            displayName: project.displayName
+          },
+          decisionPackageId: input.decisionPackage.payload.decisionPackageId,
+          decisionPackage: input.decisionPackage,
+          executionEngine,
+          runtime: executionEngine,
+          options
+        }
+      },
       projectId: project.projectId,
       workflowInstanceId,
-      executionEngine,
-      status: session.status
+      executionEngine
     });
 
     await appendSessionEvent(client, {

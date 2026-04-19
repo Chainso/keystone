@@ -482,6 +482,85 @@ describe("RunWorkflow compile routing", () => {
     });
   });
 
+  it("reuses persisted run-session execution metadata over a conflicting workflow request", async () => {
+    const env = createWorkflowEnv();
+    const step = createStep();
+    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
+    const persistedTask = mocked.persistedLivePlan.tasks[0];
+
+    if (!persistedTask) {
+      throw new Error("Expected the persisted live compile fixture to include a task.");
+    }
+
+    mocked.ensureSessionRecord.mockResolvedValueOnce({
+      tenantId: "tenant-fixture",
+      sessionId: "run-session-123",
+      runId: "run-123",
+      sessionType: "run",
+      status: "active",
+      parentSessionId: null,
+      metadata: {
+        project: {
+          projectId: "project-fixture",
+          projectKey: "fixture-demo-project",
+          displayName: "Fixture Demo Project"
+        },
+        decisionPackageId: "demo-greeting-update",
+        workflowInstanceId: "run-run-123-tenant-fixt",
+        executionEngine: "think",
+        runtime: "scripted",
+        options: {
+          thinkMode: "live",
+          preserveSandbox: true
+        }
+      },
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    });
+
+    const result = await workflow.run(
+      {
+        payload: {
+          ...createWorkflowEvent("mock").payload,
+          executionEngine: "scripted",
+          runtime: "scripted",
+          options: {
+            thinkMode: "mock",
+            preserveSandbox: false
+          }
+        }
+      } as never,
+      step as never
+    );
+
+    expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
+    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
+    expect(mocked.ensureRunRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        runId: "run-123",
+        executionEngine: "think",
+        status: "active"
+      })
+    );
+    expect(env.TASK_WORKFLOW.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: persistedTask.taskId,
+          runtime: "think",
+          options: {
+            thinkMode: "live",
+            preserveSandbox: true
+          }
+        })
+      })
+    );
+    expect(result).toMatchObject({
+      runId: "run-123",
+      finalStatus: "archived"
+    });
+  });
+
   it("fails clearly when multiple executable project components leave compile target selection ambiguous", async () => {
     const env = createWorkflowEnv();
     const step = createStep();

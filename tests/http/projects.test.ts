@@ -1239,4 +1239,79 @@ describe("project API", () => {
       "run-123"
     );
   });
+
+  it("uses the run row as the authority when project-run listing sees legacy session drift", async () => {
+    mocked.listProjectRuns.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-read",
+        runId: "run-123",
+        projectId: "project-123",
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think",
+        sandboxId: null,
+        status: "archived",
+        compiledSpecRevisionId: null,
+        compiledArchitectureRevisionId: null,
+        compiledExecutionPlanRevisionId: null,
+        compiledAt: null,
+        startedAt: new Date("2026-04-17T10:35:00.000Z"),
+        endedAt: new Date("2026-04-17T11:30:00.000Z"),
+        createdAt: new Date("2026-04-17T10:30:00.000Z"),
+        updatedAt: new Date("2026-04-17T11:30:00.000Z")
+      }
+    ]);
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-read",
+        sessionId: "run-session-123",
+        runId: "run-123",
+        sessionType: "run" as const,
+        status: "archived",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-17T10:30:00.000Z"),
+        updatedAt: new Date("2026-04-17T11:30:00.000Z"),
+        metadata: {
+          project: {
+            projectId: "project-session-drift",
+            projectKey: "legacy-project",
+            displayName: "Legacy Session Project"
+          },
+          executionEngine: "scripted",
+          runtime: "scripted",
+          options: {
+            thinkMode: "live",
+            preserveSandbox: true
+          }
+        }
+      }
+    ]);
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/runs",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        items: [
+          {
+            runId: "run-123",
+            projectId: "project-123",
+            execution: {
+              runtime: "think",
+              thinkMode: "live",
+              preserveSandbox: true
+            }
+          }
+        ]
+      }
+    });
+  });
 });
