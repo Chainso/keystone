@@ -31,26 +31,36 @@ function getLinkByHref(container: HTMLElement, href: string) {
 }
 
 describe("Phase 3 destination scaffolds", () => {
-  it("switches the documentation viewer between placeholder project documents", async () => {
+  it("switches the documentation viewer between project documents without the removed scaffold chrome", async () => {
     renderRoute("/documentation");
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Current living product specification" })
+      screen.getByRole("heading", { name: "current living product specification" })
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Doc tree" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Document viewer" })).toBeInTheDocument();
+    expect(screen.queryByText("Phase 3 scaffold")).not.toBeInTheDocument();
+    expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
+    expect(screen.queryByText("Deferred work")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Open questions/i }));
 
-    expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
-    expect(screen.getByText(/local placeholder viewer/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/How should current project documents evolve once editing and persistence are added\?/i)
+    ).toBeInTheDocument();
   });
 
-  it("filters placeholder workstreams while keeping execution task route targets intact", async () => {
+  it("filters workstreams while keeping execution task route targets intact and removing the right rail", async () => {
     renderRoute("/workstreams");
 
     expect(
       await screen.findByRole("heading", { name: "Active and queued project work" })
     ).toBeInTheDocument();
+    expect(screen.getByText("Filters:")).toBeInTheDocument();
+    expect(screen.queryByText("Route handoff")).not.toBeInTheDocument();
+    expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Blocked/i }));
 

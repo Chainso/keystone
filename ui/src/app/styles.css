@@ -611,14 +611,17 @@ pre {
 .document-line,
 .execution-board-note,
 .task-detail-title,
-.review-sidebar-label {
+.review-sidebar-label,
+.document-viewer-title,
+.workstreams-filter-label {
   margin: 0;
   color: var(--text-secondary);
   line-height: 1.6;
 }
 
 .document-name,
-.review-sidebar-label {
+.review-sidebar-label,
+.workstreams-filter-label {
   color: var(--text-muted);
   font-size: 0.75rem;
   letter-spacing: 0.08em;
@@ -783,6 +786,17 @@ pre {
   justify-content: flex-end;
 }
 
+.workstreams-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.workstreams-filter-bar .filter-chip-row {
+  justify-content: flex-start;
+}
+
 .filter-chip {
   padding: 0.55rem 0.75rem;
   color: var(--text-secondary);
@@ -800,6 +814,15 @@ pre {
 
 .table-row-note {
   font-size: 0.86rem;
+}
+
+.workstreams-table-row {
+  cursor: pointer;
+}
+
+.workstreams-table-row:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: -2px;
 }
 
 .project-config-panel {
