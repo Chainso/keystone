@@ -76,10 +76,46 @@ const mocked = vi.hoisted(() => {
       httpEtag: "etag-run-plan-v2",
       size: 19
     })),
+    createRunRecord: vi.fn(async (_client, input) => ({
+      tenantId: input.tenantId,
+      runId: input.runId,
+      projectId: input.projectId,
+      workflowInstanceId: input.workflowInstanceId,
+      executionEngine: input.executionEngine,
+      sandboxId: input.sandboxId ?? null,
+      status: input.status,
+      compiledSpecRevisionId: input.compiledSpecRevisionId ?? null,
+      compiledArchitectureRevisionId: input.compiledArchitectureRevisionId ?? null,
+      compiledExecutionPlanRevisionId: input.compiledExecutionPlanRevisionId ?? null,
+      compiledAt: input.compiledAt ?? null,
+      startedAt: input.startedAt ?? null,
+      endedAt: input.endedAt ?? null,
+      createdAt: new Date("2026-04-14T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-14T00:00:00.000Z")
+    })),
     createSessionRecord: vi.fn(async () => ({
       sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
       status: "configured"
     })),
+    listProjectRuns: vi.fn(async (_client, input) => [
+      {
+        tenantId: input.tenantId,
+        runId: "run-123",
+        projectId: input.projectId,
+        workflowInstanceId: "run-workflow-instance",
+        executionEngine: "think",
+        sandboxId: null,
+        status: "configured",
+        compiledSpecRevisionId: null,
+        compiledArchitectureRevisionId: null,
+        compiledExecutionPlanRevisionId: null,
+        compiledAt: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z")
+      }
+    ]),
     listRunSessions: vi.fn(async () => [
       {
         tenantId: "tenant-fixture",
@@ -385,8 +421,10 @@ vi.mock("../../src/lib/db/client", () => ({
 }));
 
 vi.mock("../../src/lib/db/runs", () => ({
+  createRunRecord: mocked.createRunRecord,
   createSessionRecord: mocked.createSessionRecord,
   getRunRecord: mocked.getRunRecord,
+  listProjectRuns: mocked.listProjectRuns,
   listRunSessions: mocked.listRunSessions
 }));
 
@@ -655,10 +693,21 @@ describe("app", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           projectId: "project-fixture",
+          executionEngine: "scripted",
           runtime: "scripted"
         })
       })
     );
+    expect(mocked.createRunRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        executionEngine: "scripted",
+        status: "configured"
+      })
+    );
+    expect(mocked.createDocument).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -800,6 +849,7 @@ describe("app", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           projectId: "project-fixture",
+          executionEngine: "think",
           runtime: "think",
           options: {
             thinkMode: "mock",
@@ -850,6 +900,7 @@ describe("app", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           projectId: "project-fixture",
+          executionEngine: "think",
           runtime: "think",
           options: {
             thinkMode: "live",
@@ -891,6 +942,45 @@ describe("app", () => {
         apiVersion: "v1",
         envelope: "detail",
         resourceType: "run"
+      }
+    });
+  });
+
+  it("reads the run project id from the target-model run row when session metadata omits it", async () => {
+    mocked.listRunSessions.mockResolvedValueOnce([
+      {
+        tenantId: "tenant-fixture",
+        sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
+        runId: "run-123",
+        sessionType: "run",
+        status: "configured",
+        parentSessionId: null,
+        createdAt: new Date("2026-04-14T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-14T00:00:00.000Z"),
+        metadata: {}
+      }
+    ] as never);
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123",
+      {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        runId: "run-123",
+        projectId: "project-fixture",
+        execution: {
+          runtime: "think"
+        }
       }
     });
   });

@@ -1,7 +1,8 @@
-import type { AgentRuntimeKind } from "../../maestro/contracts";
+import { agentRuntimeKindValues, type AgentRuntimeKind } from "../../maestro/contracts";
 import { z } from "zod";
 
 export const thinkDemoModeValues = ["mock", "live"] as const;
+const executionEngineKinds = new Set<string>(agentRuntimeKindValues);
 
 export const runExecutionOptionsSchema = z
   .object({
@@ -15,6 +16,33 @@ export const runExecutionOptionsSchema = z
 
 export type ThinkDemoMode = (typeof thinkDemoModeValues)[number];
 export type RunExecutionOptions = z.output<typeof runExecutionOptionsSchema>;
+export type ExecutionEngine = AgentRuntimeKind;
+
+export function parseExecutionEngine(value: unknown): ExecutionEngine | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (!executionEngineKinds.has(normalized)) {
+    return null;
+  }
+
+  return normalized as ExecutionEngine;
+}
+
+export function resolveRunExecutionEngine(
+  requestedExecutionEngine: unknown,
+  existingMetadata?: Record<string, unknown> | null | undefined
+): ExecutionEngine {
+  return (
+    parseExecutionEngine(existingMetadata?.executionEngine) ??
+    parseExecutionEngine(existingMetadata?.runtime) ??
+    parseExecutionEngine(requestedExecutionEngine) ??
+    "scripted"
+  );
+}
 
 export function parseRunExecutionOptions(value: unknown): RunExecutionOptions {
   return runExecutionOptionsSchema.parse(value ?? {});
@@ -34,14 +62,14 @@ export function resolveRunExecutionOptions(
 }
 
 export function isLiveThinkExecution(
-  runtime: AgentRuntimeKind,
+  runtime: ExecutionEngine,
   options: RunExecutionOptions
 ) {
   return runtime === "think" && options.thinkMode === "live";
 }
 
 export function isMockThinkExecution(
-  runtime: AgentRuntimeKind,
+  runtime: ExecutionEngine,
   options: RunExecutionOptions
 ) {
   return runtime === "think" && options.thinkMode === "mock";

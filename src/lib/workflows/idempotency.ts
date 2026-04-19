@@ -63,5 +63,10 @@ export function resolveRunAgentRuntime(
   requestedRuntime: unknown,
   existingMetadata?: Record<string, unknown> | null | undefined
 ): AgentRuntimeKind {
-  return parseAgentRuntimeKind(existingMetadata?.runtime) ?? parseAgentRuntimeKind(requestedRuntime) ?? "scripted";
+  return (
+    parseAgentRuntimeKind(existingMetadata?.executionEngine) ??
+    parseAgentRuntimeKind(existingMetadata?.runtime) ??
+    parseAgentRuntimeKind(requestedRuntime) ??
+    "scripted"
+  );
 }

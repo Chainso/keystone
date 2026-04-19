@@ -13,11 +13,18 @@ import {
 import { createWorkerDatabaseClient } from "../../../../lib/db/client";
 import { appendSessionEvent, listRunEvents } from "../../../../lib/db/events";
 import { getProject } from "../../../../lib/db/projects";
-import { createSessionRecord, listRunSessions } from "../../../../lib/db/runs";
+import {
+  createRunRecord,
+  createSessionRecord,
+  getRunRecord,
+  listRunSessions
+} from "../../../../lib/db/runs";
 import { jsonErrorResponse, throwJsonHttpError } from "../../../../lib/http/errors";
-import { resolveRunExecutionOptions } from "../../../../lib/runs/options";
+import {
+  resolveRunExecutionEngine,
+  resolveRunExecutionOptions
+} from "../../../../lib/runs/options";
 import { buildRunWorkflowInstanceId } from "../../../../lib/workflows/ids";
-import { resolveRunAgentRuntime } from "../../../../lib/workflows/idempotency";
 import { jsonNotImplementedResponse } from "../common/not-implemented";
 import { artifactCollectionEnvelopeSchema } from "../artifacts/contracts";
 import {
@@ -88,9 +95,15 @@ async function loadRunState(context: Context<AppEnv>, runId: string) {
   const client = createWorkerDatabaseClient(context.env);
 
   try {
-    const sessions = await listRunSessions(client, auth.tenantId, runId);
+    const [runRecord, sessions] = await Promise.all([
+      getRunRecord(client, {
+        tenantId: auth.tenantId,
+        runId
+      }),
+      listRunSessions(client, auth.tenantId, runId)
+    ]);
 
-    if (sessions.length === 0) {
+    if (!runRecord && sessions.length === 0) {
       await client.close();
       return null;
     }
@@ -107,6 +120,7 @@ async function loadRunState(context: Context<AppEnv>, runId: string) {
     return {
       auth,
       client,
+      runRecord,
       sessions,
       events,
       artifacts,
@@ -163,7 +177,9 @@ export async function createRunHandler(context: Context<AppEnv>) {
     });
   }
 
-  const runtime = resolveRunAgentRuntime(context.req.header("X-Keystone-Agent-Runtime"));
+  const executionEngine = resolveRunExecutionEngine(
+    context.req.header("X-Keystone-Agent-Runtime")
+  );
   const options = resolveRunExecutionOptions(input.options);
   const runId = crypto.randomUUID();
   const workflowInstanceId = buildRunWorkflowInstanceId(auth.tenantId, runId);
@@ -196,7 +212,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
         },
         decisionPackageId: input.decisionPackage.payload.decisionPackageId,
         decisionPackage: input.decisionPackage,
-        runtime,
+        executionEngine,
+        runtime: executionEngine,
         options
       }
     });
@@ -204,6 +221,15 @@ export async function createRunHandler(context: Context<AppEnv>) {
     if (!session) {
       return jsonErrorResponse("session_create_failed", "Run session creation failed.", 500);
     }
+
+    const runRecord = await createRunRecord(client, {
+      tenantId: auth.tenantId,
+      runId,
+      projectId: project.projectId,
+      workflowInstanceId,
+      executionEngine,
+      status: session.status
+    });
 
     await appendSessionEvent(client, {
       tenantId: auth.tenantId,
@@ -241,7 +267,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
           source: "payload",
           payload: decisionPackageSchema.parse(input.decisionPackage.payload)
         },
-        runtime,
+        executionEngine,
+        runtime: executionEngine,
         options
       }
     });
@@ -250,6 +277,7 @@ export async function createRunHandler(context: Context<AppEnv>) {
     const run = projectRunResource({
       tenantId: auth.tenantId,
       runId,
+      runRecord,
       sessions: [
         {
           tenantId: auth.tenantId,
@@ -269,7 +297,8 @@ export async function createRunHandler(context: Context<AppEnv>) {
             },
             decisionPackageId: input.decisionPackage.payload.decisionPackageId,
             decisionPackage: input.decisionPackage,
-            runtime,
+            executionEngine,
+            runtime: executionEngine,
             options
           }
         }
@@ -324,6 +353,7 @@ export async function getRunHandler(context: Context<AppEnv>) {
     const run = projectRunResource({
       tenantId: state.auth.tenantId,
       runId,
+      runRecord: state.runRecord,
       sessions: state.sessions,
       events: state.events,
       artifacts: state.artifacts,

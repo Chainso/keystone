@@ -3,7 +3,16 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { assertSessionStatusTransition, buildConfiguredSession } from "../../maestro/session";
 import type { SessionSpec, SessionStatus } from "../../maestro/contracts";
 import type { DatabaseClient } from "./client";
-import { documentRevisions, documents, projects, runTaskDependencies, runTasks, runs, sessions } from "./schema";
+import {
+  documentRevisions,
+  documents,
+  projects,
+  runTaskDependencies,
+  runTasks,
+  runs,
+  sessions,
+  type RunRow
+} from "./schema";
 
 interface RunLookupInput {
   tenantId: string;
@@ -125,6 +134,35 @@ async function assertRunOwnership(client: DatabaseClient, input: RunLookupInput)
   }
 
   return run;
+}
+
+function isTerminalRunStatus(status: string) {
+  return status === "archived" || status === "failed" || status === "cancelled";
+}
+
+function deriveRunLifecycleTimestamps(
+  existing: RunRow | null,
+  status: string,
+  transitionAt: Date
+) {
+  if (status === "active") {
+    return {
+      startedAt: existing?.startedAt ?? transitionAt,
+      endedAt: existing?.endedAt ?? null
+    };
+  }
+
+  if (isTerminalRunStatus(status)) {
+    return {
+      startedAt: existing?.startedAt ?? transitionAt,
+      endedAt: existing?.endedAt ?? transitionAt
+    };
+  }
+
+  return {
+    startedAt: existing?.startedAt,
+    endedAt: existing?.endedAt
+  };
 }
 
 async function assertCompileProvenanceRevisions(
@@ -254,6 +292,40 @@ export async function createRunRecord(client: DatabaseClient, input: CreateRunRe
 export async function getRunRecord(client: DatabaseClient, input: RunLookupInput) {
   return client.db.query.runs.findFirst({
     where: and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId))
+  });
+}
+
+export async function ensureRunRecord(client: DatabaseClient, input: CreateRunRecordInput) {
+  const existing = await getRunRecord(client, {
+    tenantId: input.tenantId,
+    runId: input.runId
+  });
+
+  if (!existing) {
+    return createRunRecord(client, input);
+  }
+
+  if (existing.projectId !== input.projectId) {
+    throw new Error(
+      `Run ${input.runId} already belongs to project ${existing.projectId}, not ${input.projectId}.`
+    );
+  }
+
+  const lifecycleTimestamps = deriveRunLifecycleTimestamps(existing, input.status, new Date());
+
+  return updateRunRecord(client, {
+    tenantId: input.tenantId,
+    runId: input.runId,
+    workflowInstanceId: input.workflowInstanceId,
+    executionEngine: input.executionEngine,
+    sandboxId: input.sandboxId,
+    status: input.status,
+    compiledSpecRevisionId: input.compiledSpecRevisionId,
+    compiledArchitectureRevisionId: input.compiledArchitectureRevisionId,
+    compiledExecutionPlanRevisionId: input.compiledExecutionPlanRevisionId,
+    compiledAt: input.compiledAt,
+    startedAt: input.startedAt ?? lifecycleTimestamps.startedAt,
+    endedAt: input.endedAt ?? lifecycleTimestamps.endedAt
   });
 }
 
@@ -476,24 +548,21 @@ export async function listProjectRunSessions(
     projectId: string;
   }
 ) {
+  const projectRuns = await listProjectRuns(client, input);
+
+  if (projectRuns.length === 0) {
+    return [];
+  }
+
+  const runIds = new Set(projectRuns.map((run) => run.runId));
+
   return client.db.query.sessions.findMany({
     where: and(
       eq(sessions.tenantId, input.tenantId),
       eq(sessions.sessionType, "run")
     ),
     orderBy: [asc(sessions.createdAt)]
-  }).then((rows) =>
-    rows.filter((row) => {
-      const project = row.metadata?.project;
-
-      return (
-        typeof project === "object" &&
-        project !== null &&
-        "projectId" in project &&
-        project.projectId === input.projectId
-      );
-    })
-  );
+  }).then((rows) => rows.filter((row) => runIds.has(row.runId)));
 }
 
 export async function updateSessionStatus(
@@ -522,6 +591,25 @@ export async function updateSessionStatus(
     })
     .where(and(eq(sessions.tenantId, input.tenantId), eq(sessions.sessionId, input.sessionId)))
     .returning();
+
+  if (existing.sessionType === "run") {
+    const run = await getRunRecord(client, {
+      tenantId: existing.tenantId,
+      runId: existing.runId
+    });
+
+    if (run) {
+      const lifecycleTimestamps = deriveRunLifecycleTimestamps(run, input.status, updated.updatedAt);
+
+      await updateRunRecord(client, {
+        tenantId: existing.tenantId,
+        runId: existing.runId,
+        status: input.status,
+        startedAt: lifecycleTimestamps.startedAt,
+        endedAt: lifecycleTimestamps.endedAt
+      });
+    }
+  }
 
   return updated;
 }

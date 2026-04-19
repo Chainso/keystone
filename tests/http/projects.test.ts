@@ -199,11 +199,30 @@ const mocked = vi.hoisted(() => {
         updatedAt: new Date("2026-04-17T09:30:00.000Z")
       }
     ]),
-    listProjectRunSessions: vi.fn(async (_client, input) => [
+    listProjectRuns: vi.fn(async (_client, input) => [
       {
         tenantId: input.tenantId,
-        sessionId: "run-session-123",
         runId: "run-123",
+        projectId: input.projectId,
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think",
+        sandboxId: null,
+        status: "archived",
+        compiledSpecRevisionId: null,
+        compiledArchitectureRevisionId: null,
+        compiledExecutionPlanRevisionId: null,
+        compiledAt: null,
+        startedAt: new Date("2026-04-17T10:35:00.000Z"),
+        endedAt: new Date("2026-04-17T11:30:00.000Z"),
+        createdAt: new Date("2026-04-17T10:30:00.000Z"),
+        updatedAt: new Date("2026-04-17T11:30:00.000Z")
+      }
+    ]),
+    listRunSessions: vi.fn(async (_client, tenantId, runId) => [
+      {
+        tenantId,
+        sessionId: "run-session-123",
+        runId,
         sessionType: "run" as const,
         status: "archived",
         parentSessionId: null,
@@ -211,7 +230,7 @@ const mocked = vi.hoisted(() => {
         updatedAt: new Date("2026-04-17T11:30:00.000Z"),
         metadata: {
           project: {
-            projectId: input.projectId,
+            projectId: "project-123",
             projectKey: "fixture-demo-project",
             displayName: "Fixture Demo Project"
           },
@@ -294,7 +313,8 @@ vi.mock("../../src/lib/db/projects", () => ({
 
 vi.mock("../../src/lib/db/runs", () => ({
   getRunRecord: mocked.getRunRecord,
-  listProjectRunSessions: mocked.listProjectRunSessions
+  listProjectRuns: mocked.listProjectRuns,
+  listRunSessions: mocked.listRunSessions
 }));
 
 vi.mock("../../src/lib/db/documents", async () => {
@@ -1206,12 +1226,17 @@ describe("project API", () => {
         resourceType: "run"
       }
     });
-    expect(mocked.listProjectRunSessions).toHaveBeenCalledWith(
+    expect(mocked.listProjectRuns).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantId: "tenant-read",
         projectId: "project-123"
       })
+    );
+    expect(mocked.listRunSessions).toHaveBeenCalledWith(
+      expect.anything(),
+      "tenant-read",
+      "run-123"
     );
   });
 });

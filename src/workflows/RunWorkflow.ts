@@ -12,7 +12,7 @@ import { ensureApprovalRequest } from "../lib/approvals/service";
 import { createWorkerDatabaseClient } from "../lib/db/client";
 import { getProject } from "../lib/db/projects";
 import type { AgentRuntimeKind } from "../maestro/contracts";
-import { getSessionRecord, updateSessionStatus } from "../lib/db/runs";
+import { ensureRunRecord, getSessionRecord, updateSessionStatus } from "../lib/db/runs";
 import { appendAndPublishRunEvent } from "../lib/events/publish";
 import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
 import {
@@ -23,6 +23,7 @@ import type { RunExecutionOptions } from "../lib/runs/options";
 import {
   isLiveThinkExecution,
   isMockThinkExecution,
+  resolveRunExecutionEngine,
   resolveRunExecutionOptions
 } from "../lib/runs/options";
 import { evaluateRepoSourcePolicy } from "../lib/security/policy";
@@ -33,8 +34,7 @@ import {
 } from "../lib/workflows/ids";
 import {
   ensureSessionRecord,
-  loadExistingRunPlan,
-  resolveRunAgentRuntime
+  loadExistingRunPlan
 } from "../lib/workflows/idempotency";
 import {
   compileDemoFixtureRunPlan,
@@ -65,6 +65,7 @@ export interface RunWorkflowParams {
   runSessionId?: string | undefined;
   projectId: string;
   decisionPackage?: RunWorkflowDecisionPackageInput | undefined;
+  executionEngine?: AgentRuntimeKind | undefined;
   runtime?: AgentRuntimeKind | undefined;
   options?: RunExecutionOptions | undefined;
 }
@@ -105,7 +106,7 @@ interface RunContextSnapshot {
   workflowInstanceId: string;
   compileRepo: CompileRepoSource;
   projectExecution: ProjectExecutionSnapshot;
-  runtime: AgentRuntimeKind;
+  executionEngine: AgentRuntimeKind;
   options: RunExecutionOptions;
 }
 
@@ -203,6 +204,10 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           throw new Error(`Run session ${runSessionId} could not be loaded.`);
         }
 
+        const executionEngine = resolveRunExecutionEngine(
+          event.payload.executionEngine ?? event.payload.runtime,
+          currentSession.metadata
+        );
         const statusMetadata = {
           project: {
             projectId: project.projectId,
@@ -215,9 +220,19 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           },
           decisionPackageId: decisionPackage.decisionPackageId,
           workflowInstanceId,
-          runtime: resolveRunAgentRuntime(event.payload.runtime, currentSession.metadata),
+          executionEngine,
+          runtime: executionEngine,
           options: resolveRunExecutionOptions(event.payload.options, currentSession.metadata)
         };
+
+        await ensureRunRecord(client, {
+          tenantId: event.payload.tenantId,
+          runId: event.payload.runId,
+          projectId: project.projectId,
+          workflowInstanceId,
+          executionEngine,
+          status: currentSession.status
+        });
 
         if (currentSession.status === "configured") {
           currentSession = await updateSessionStatus(client, {
@@ -278,7 +293,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           workflowInstanceId,
           compileRepo,
           projectExecution,
-          runtime: statusMetadata.runtime,
+          executionEngine,
           options: statusMetadata.options
         };
       } finally {
@@ -418,7 +433,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         const compile = shouldUseFixtureCompileForRun(
           runContext.compileRepo,
           decisionPackage,
-          runContext.runtime,
+          runContext.executionEngine,
           runContext.options
         )
           ? compileDemoFixtureRunPlan
@@ -446,7 +461,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
     const taskInstanceIds = await step.do("fanout tasks", async () => {
       const plan = await loadCompiledRunPlanArtifact(this.env, event.payload.tenantId, event.payload.runId);
 
-      if (isLiveThinkExecution(runContext.runtime, runContext.options)) {
+      if (isLiveThinkExecution(runContext.executionEngine, runContext.options)) {
         try {
           assertFixtureScopedCompiledPlan(
             plan,
@@ -472,7 +487,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
             projectKey: runContext.projectExecution.projectKey,
             displayName: runContext.projectExecution.displayName
           },
-          runtime: runContext.runtime,
+          runtime: runContext.executionEngine,
           options: runContext.options
         }
       }));
@@ -483,7 +498,10 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
     });
 
     let taskResults: TaskWorkflowOutput[] = [];
-    const maxTaskPollAttempts = isLiveThinkExecution(runContext.runtime, runContext.options)
+    const maxTaskPollAttempts = isLiveThinkExecution(
+      runContext.executionEngine,
+      runContext.options
+    )
       ? LIVE_THINK_MAX_TASK_POLL_ATTEMPTS
       : DEFAULT_MAX_TASK_POLL_ATTEMPTS;
 

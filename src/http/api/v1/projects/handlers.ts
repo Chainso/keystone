@@ -9,7 +9,7 @@ import {
   listProjects,
   updateProject
 } from "../../../../lib/db/projects";
-import { listProjectRunSessions } from "../../../../lib/db/runs";
+import { listProjectRuns, listRunSessions } from "../../../../lib/db/runs";
 import { jsonErrorResponse, throwJsonHttpError } from "../../../../lib/http/errors";
 import { parseProjectListQuery, parseProjectWriteInput } from "../../../contracts/project-input";
 import { decisionPackageCollectionEnvelopeSchema } from "../decision-packages/contracts";
@@ -274,15 +274,19 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
       );
     }
 
-    const sessions = await listProjectRunSessions(client, {
+    const runs = await listProjectRuns(client, {
       tenantId: auth.tenantId,
       projectId
     });
-    const items = sessions.map((session) =>
+    const runSessions = await Promise.all(
+      runs.map((run) => listRunSessions(client, auth.tenantId, run.runId))
+    );
+    const items = runs.map((run, index) =>
       projectRunResource({
         tenantId: auth.tenantId,
-        runId: session.runId,
-        sessions: [session],
+        runId: run.runId,
+        runRecord: run,
+        sessions: runSessions[index] ?? [],
         events: [],
         artifacts: [],
         liveSnapshot: null,

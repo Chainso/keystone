@@ -214,6 +214,11 @@ The migration strategy in this plan is therefore:
   **Decision:** Close the blocking review findings inside the Phase 2 persistence and HTTP test layers instead of reopening the migration sequence.
   **Rationale:** The remaining gaps were all Phase 2-local: project-scoped artifact-boundary enforcement, compensating cleanup for failed revision writes, broad error classification, and missing test coverage for real hydration plus second revisions.
 
+- **Date:** 2026-04-19
+  **Phase:** Phase 3
+  **Decision:** Mirror run-session status changes into `runs` inside the repository layer and have the run workflow backfill a missing `runs` row before any status transitions.
+  **Rationale:** Normal HTTP run creation and direct workflow launches both need real target-model run rows now, but Phase 3 still keeps legacy sessions alive. Centralizing the status mirror in `updateSessionStatus` avoids touching every caller separately while `ensureRunRecord` keeps the workflow-entry path coherent.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery completed against the target-model handoff, design docs, current runtime, API, tests, and UI.
@@ -228,7 +233,7 @@ The migration strategy in this plan is therefore:
 - [x] 2026-04-19 Phase 1 targeted fix pass complete: repository integrity checks, revision-number allocation, and repository test coverage now address the blocking review findings.
 - [x] 2026-04-19 Phase 2 complete: unified documents and revisions now exist with artifact-backed storage, canonical kind/path enforcement, and real project/run document APIs.
 - [x] 2026-04-19 Phase 2 targeted fix pass complete: project-scoped revision artifacts now enforce the ownership shim, failed revision writes clean up uploaded blobs plus inserted artifact refs, generic persistence failures surface as server errors, and Phase 2 tests now cover real current-revision hydration plus second-revision behavior.
-- [ ] Phase 3 complete: real `runs` rows and `execution_engine` plumbing exist alongside the legacy run/session path temporarily, without auto-seeding planning documents.
+- [x] 2026-04-19 Phase 3 complete: real `runs` rows and `execution_engine` plumbing now exist alongside the legacy run/session path temporarily, without auto-seeding planning documents.
 - [ ] Phase 4 complete: compile and task execution write `run_tasks` and dependency edges, while legacy projections still function.
 - [ ] Phase 5 complete: public run/task/document APIs and scripts cut over to the target model, and old public contract shapes are removed rather than shimmed.
 - [ ] Phase 6 complete: UI reads the new document/run-task model under the existing route structure.
@@ -251,6 +256,7 @@ The migration strategy in this plan is therefore:
 - The broad `rtk npm run test` suite still fails in the sandbox for a pre-existing reason outside this phase: `tests/scripts/demo-contracts.test.ts` hits `Error: listen EPERM: operation not permitted 127.0.0.1`.
 - Because the service is not live, there is no product reason to carry old concepts forward once their replacements exist. Any temporary coexistence in this plan is purely to make implementation tractable.
 - Drizzle's Postgres select locks are enough to serialize per-document revision numbering cleanly in the repository layer, so Phase 1 did not need an extra sequence column or trigger to close the concurrency gap.
+- Phase 3 did not need a separate run-status daemon or workflow-only shim: updating `updateSessionStatus` to mirror run-session transitions into `runs` was enough to keep finalization and approval-driven status changes aligned while the old session model remains in place.
 
 ## Outcomes & Retrospective
 
@@ -286,6 +292,13 @@ Phase 2 fix-pass outcome on 2026-04-19:
 - Project-scoped document revisions now enforce the `project:${projectId}` artifact-ownership shim, so same-project run artifacts cannot slip into canonical project documents.
 - Document revision writes now clean up uploaded R2 objects and inserted artifact refs when downstream persistence fails, keeping the Phase 2 write path failure-safe within scope.
 - Document HTTP tests now hit the real current-revision hydration helpers through a lightweight query fixture, and repository integration coverage asserts second-revision numbering plus `currentRevisionId` replacement when DB-gated tests are enabled.
+
+Phase 3 outcome on 2026-04-19:
+
+- `POST /v1/runs` now creates a real `runs` row alongside the legacy run session, stores `executionEngine` internally while preserving the old public `runtime + thinkMode` contract, and still does not auto-create planning documents.
+- Run detail and project-run listing now resolve project ownership and execution state from `runs` first instead of depending on `session.metadata.project.projectId`.
+- The run workflow now backfills a missing run row for direct workflow launches, stores `executionEngine` in session metadata for transitional readers, and relies on repository-layer status mirroring so run finalization keeps the new `runs` table in sync with the surviving session path.
+- Validation for this phase passed on the scoped workflow/input suites plus adjacent HTTP suites, while the broad `rtk npm run test` command still fails only on the pre-existing sandbox `listen EPERM` issue in `tests/scripts/demo-contracts.test.ts`.
 
 Phase 1 fix-pass outcome on 2026-04-19:
 
@@ -721,15 +734,15 @@ Success means `runs` are being written and kept in sync without yet deleting the
 
 #### Status
 
-Pending approval.
+Completed on 2026-04-19.
 
 #### Completion Notes
 
-Not started.
+`src/http/api/v1/runs/handlers.ts` now creates real `runs` rows during run creation and loads run detail state from `runs` plus sessions; `src/http/api/v1/runs/projections.ts` prefers the run row for `projectId`, `status`, and execution metadata; `src/http/api/v1/projects/handlers.ts` now lists project runs from the `runs` table and only uses sessions for the still-public `sessions.total` projection. `src/lib/runs/options.ts` added transitional execution-engine resolution, `src/lib/workflows/idempotency.ts` now honors `executionEngine` metadata, `src/workflows/RunWorkflow.ts` backfills/updates run rows for workflow-entry launches, and `src/lib/db/runs.ts` now offers `ensureRunRecord` plus repository-layer status mirroring from run sessions into `runs`. The Phase 3 tests now cover dual-write expectations and the fact that run creation still does not seed planning documents. `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/finalize-run.test.ts tests/http/run-input.test.ts` passed. Supplemental adjacent HTTP validation `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts` also passed. `rtk npm run test` still fails only on the pre-existing sandbox `listen EPERM` problem in `tests/scripts/demo-contracts.test.ts`.
 
 #### Next Starter Context
 
-Do not remove `sessions` yet. This phase succeeds only if both legacy and new run stores can coexist while tests still pass.
+Phase 4 can assume `runs` is now the authoritative run-identity table even though the public API and task/runtime projections still read legacy sessions and events for parts of the response. Keep the dual-write status mirror in place until `run_tasks`, compile provenance, and task-state rows become authoritative; do not remove session-backed projections until the Phase 5 cutover is ready.
 
 ## Phase 4: Persist Compile Output And Task State As A Real DAG
 

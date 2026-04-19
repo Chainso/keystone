@@ -100,6 +100,23 @@ const mocked = vi.hoisted(() => {
       updatedAt: new Date("2026-04-17T00:00:00.000Z")
     })),
     getSessionRecord: vi.fn(async () => undefined),
+    ensureRunRecord: vi.fn(async (_client, input) => ({
+      tenantId: input.tenantId,
+      runId: input.runId,
+      projectId: input.projectId,
+      workflowInstanceId: input.workflowInstanceId,
+      executionEngine: input.executionEngine,
+      sandboxId: input.sandboxId ?? null,
+      status: input.status,
+      compiledSpecRevisionId: null,
+      compiledArchitectureRevisionId: null,
+      compiledExecutionPlanRevisionId: null,
+      compiledAt: null,
+      startedAt: null,
+      endedAt: null,
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    })),
     updateSessionStatus: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       sessionId: input.sessionId,
@@ -229,6 +246,7 @@ vi.mock("../../../src/lib/db/projects", () => ({
 }));
 
 vi.mock("../../../src/lib/db/runs", () => ({
+  ensureRunRecord: mocked.ensureRunRecord,
   getSessionRecord: mocked.getSessionRecord,
   updateSessionStatus: mocked.updateSessionStatus
 }));
@@ -423,8 +441,20 @@ describe("RunWorkflow compile routing", () => {
           testInstructions: ["Run fixture tests."]
         },
         componentRuleOverrides: []
-      }
+      },
+      executionEngine: "think",
+      runtime: "think"
     });
+    expect(mocked.ensureRunRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        projectId: "project-fixture",
+        executionEngine: "think",
+        status: "configured"
+      })
+    );
     expect(fanoutCall.params).toMatchObject({
       taskId: persistedTask.taskId,
       project: {

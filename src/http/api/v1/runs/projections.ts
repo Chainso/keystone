@@ -2,7 +2,12 @@ import type { WorkerBindings } from "../../../../env";
 import { runPlanArtifactKey } from "../../../../lib/artifacts/keys";
 import { getArtifactText } from "../../../../lib/artifacts/r2";
 import { isProjectScopedArtifactRunId } from "../../../../lib/db/artifacts";
-import type { ArtifactRefRow, SessionEventRow, SessionRow } from "../../../../lib/db/schema";
+import type {
+  ArtifactRefRow,
+  RunRow,
+  SessionEventRow,
+  SessionRow
+} from "../../../../lib/db/schema";
 import type { RunCoordinatorSnapshot } from "../../../../lib/runs/summary";
 import { compiledRunPlanSchema } from "../../../../keystone/compile/contracts";
 import type { ArtifactResource } from "../artifacts/contracts";
@@ -64,7 +69,15 @@ function getRunSession(sessions: SessionRow[]) {
   return sessions.find((session) => session.sessionType === "run") ?? sessions[0] ?? null;
 }
 
-function getRunProjectId(runSession: SessionRow | null, events: SessionEventRow[]) {
+function getRunProjectId(
+  runRecord: RunRow | null | undefined,
+  runSession: SessionRow | null,
+  events: SessionEventRow[]
+) {
+  if (typeof runRecord?.projectId === "string" && runRecord.projectId.trim().length > 0) {
+    return runRecord.projectId;
+  }
+
   const metadata = asRecord(runSession?.metadata);
   const project = asRecord(metadata?.project);
   const projectId = asString(project?.projectId);
@@ -142,12 +155,15 @@ function summarizeArtifacts(artifacts: ArtifactRefRow[]) {
   };
 }
 
-function getRunExecution(runSession: SessionRow | null) {
+function getRunExecution(runRecord: RunRow | null | undefined, runSession: SessionRow | null) {
   const metadata = asRecord(runSession?.metadata);
   const options = asRecord(metadata?.options);
 
   return {
-    runtime: asString(metadata?.runtime),
+    runtime:
+      asString(runRecord?.executionEngine) ??
+      asString(metadata?.executionEngine) ??
+      asString(metadata?.runtime),
     thinkMode: asString(options?.thinkMode),
     preserveSandbox: Boolean(options?.preserveSandbox)
   };
@@ -197,6 +213,7 @@ export async function loadRunPlanSummary(
 export function projectRunResource(input: {
   tenantId: string;
   runId: string;
+  runRecord?: RunRow | null | undefined;
   sessions: SessionRow[];
   events: SessionEventRow[];
   artifacts: ArtifactRefRow[];
@@ -219,21 +236,22 @@ export function projectRunResource(input: {
     },
     tenantId: input.tenantId,
     runId: input.runId,
-    projectId: getRunProjectId(runSession, input.events),
+    projectId: getRunProjectId(input.runRecord, runSession, input.events),
     decisionPackageId: getDecisionPackageId(runSession, input.runPlanSummary ?? null),
     summary: getRunSummaryText(runSession, input.runPlanSummary ?? null),
-    status: input.liveSnapshot?.status ?? runSession?.status ?? "unknown",
+    status: input.liveSnapshot?.status ?? input.runRecord?.status ?? runSession?.status ?? "unknown",
     currentTaskId: currentTask?.[0] ?? null,
-    createdAt: toIso(runSession?.createdAt),
+    createdAt: toIso(input.runRecord?.createdAt ?? runSession?.createdAt),
     updatedAt:
       input.liveSnapshot?.updatedAt ??
       toIso(latestEvent?.ts) ??
+      toIso(input.runRecord?.updatedAt) ??
       toIso(runSession?.updatedAt),
     sessions: {
       total: input.sessions.length
     },
     artifacts: summarizeArtifacts(input.artifacts),
-    execution: getRunExecution(runSession)
+    execution: getRunExecution(input.runRecord, runSession)
   });
 }
 
