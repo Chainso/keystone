@@ -793,6 +793,7 @@ Completed on 2026-04-18.
 - Revalidated `rtk npm run lint`, `rtk npm run typecheck`, and `rtk npm run test`; the existing UI tests already covered the corrected scaffold and required no further edits during closeout.
 - Revalidated `rtk npm run build` and confirmed the baseline is unchanged: `vite build` succeeds in the sandbox, then Wrangler/Docker fail on home-directory writes under `~/.config/.wrangler` and `~/.docker/buildx/activity`; the same command then passed in a host-shell rerun.
 - Archived this plan under [`.ultrakit/exec-plans/completed/keystone-ui-ascii-alignment-reset.md`](./keystone-ui-ascii-alignment-reset.md), removed it from the active-plan index, and added it to the completed-plan archive summary.
+- Follow-up audit fixes landed on 2026-04-19 without reopening the plan: `Runs` and `Workstreams` rows now honor whole-row activation, the sidebar project switcher no longer renders the extra `projectKey` line, the documentation tree renders `├─` / `└─` child markers, and the route tests were updated to lock those design-alignment details in place.
 
 **Next Starter Context**  
 Plan complete and archived. The next UI-facing plan should treat the current Worker-served SPA route tree plus feature-owned board surfaces as stable, and should add live data or behavior inside those boundaries instead of reintroducing shell chrome or moving destination rendering back into route/shared modules.
