@@ -125,6 +125,11 @@ Compatibility that **is** required:
   **Decision:** Move `Documentation` and `Workstreams` rendering into feature-owned surfaces and trim their view models back to board-shaped data only.  
   **Rationale:** Both destinations had route files acting as page implementations and view-model hooks carrying the extra explainer copy that drifted away from the ASCII boards. Extracting feature surfaces corrected both problems without changing the route tree.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 3 targeted fix pass  
+  **Decision:** Correct the remaining `Documentation`/`Workstreams` review drift in seed data, row interaction, test coverage, and active-plan ownership references instead of reopening the Phase 3 surface extraction.  
+  **Rationale:** The feature-owned destination move landed, but the workstreams table rows no longer matched the canonical board, the board still exposed a duplicated row-navigation contract, and the active plan still pointed readers at route files instead of the feature-owned workspace/scaffold modules that actually own those surfaces now.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed through direct review of `design/workspace-spec.md`, the current UI implementation, and five parallel frame-specific audits.
@@ -136,6 +141,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 2: Realign the `Runs` family to the index / planning panes / execution / task-detail boards.
 - [x] 2026-04-18 Phase 2 targeted fix pass: aligned `run-102` with the canonical `Execution` stage, restored the reviewed ASCII copy drift, and corrected the active-plan `Runs`/`Execution` file references to the feature-owned component locations that actually landed.
 - [x] 2026-04-18 Phase 3: Realigned `Documentation` and `Workstreams` to their canonical tree/viewer and filter/table boards, and restored thin route containers through feature-owned destination surfaces.
+- [x] 2026-04-18 Phase 3 targeted fix pass: restored the canonical `Workstreams` rows, removed the duplicated row-vs-link navigation contract, strengthened Phase 3 destination coverage, and corrected the active-plan `Documentation`/`Workstreams` ownership references to the feature-owned modules that actually landed.
 - [ ] Phase 4: Realign `New project` and `Project settings` to the project-configuration boards.
 - [ ] Phase 5: Update tests, docs, and plan notes; capture the corrective outcome and the dependency this creates for later live-wiring work.
 
@@ -152,6 +158,7 @@ Compatibility that **is** required:
 - The `Runs` boundary correction was lower-risk than expected because the route modules were already thin containers. Most of the Phase 2 structural change came from moving the workspace components under `features/` and deleting run-only copy/data fields from the scaffold models.
 - The Phase 2 workspace move was correct, but the plan text and one seeded run still lagged behind it. The targeted fix pass had to reconcile stale `shared/layout` references in the active plan and a `run-102` default redirect that still pointed at `execution-plan`.
 - Phase 3 did not need any new shared layout primitive after the shell reset. Feature-owned destination components plus smaller scaffold-data modules were enough to restore both board fidelity and route-container boundaries.
+- The Phase 3 surface move was correct, but the `Workstreams` seed drifted from the canonical board in all four visible rows, not just the blocked one. The targeted fix pass had to reconcile those literals, remove the row-level pseudo-control that survived the extraction, and update the plan text so it pointed at the feature-owned workspace/scaffold modules rather than the now-thin route containers.
 
 ## Outcomes & Retrospective
 
@@ -189,6 +196,13 @@ Phase 3 outcome on 2026-04-18:
 - Both route files are thin containers again: destination rendering moved into `ui/src/features/documentation/components/` and `ui/src/features/workstreams/components/`, and the hooks now focus on local selection/filter state over smaller scaffold-data modules.
 - Phase 3 validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx` (`4` tests passed), and `rtk npm run test` (`33` files passed, `2` skipped; `143` tests passed, `8` skipped).
 
+Phase 3 targeted fix pass outcome on 2026-04-18:
+
+- The visible `Workstreams` table rows now match the canonical board values for task id, title, run, status, and updated timestamp, including the restored blocked `TASK-019` row in `Run-101`.
+- `Workstreams` no longer treats each table row as a focusable pseudo-control wrapped around a nested link; the task link is now the single row-level navigation contract.
+- [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) now checks the documentation tree shape and selection state plus all `Workstreams` filter views against the canonical row content, so obvious group/selection and board-literal regressions fail quickly.
+- The active plan context and Phase 3 handoff now point readers at the feature-owned documentation/workstreams workspace and scaffold modules instead of implying the route files are still the main surface owners.
+
 ## Context and Orientation
 
 Relevant current repository state:
@@ -212,13 +226,15 @@ Relevant current repository state:
   - [ui/src/features/execution/use-execution-view-model.ts](../../../ui/src/features/execution/use-execution-view-model.ts)
   - The React audit originally flagged these run-specific workspace layouts when they lived under `shared`. Phase 2 moved them under feature ownership; later work should keep run-only surfaces out of the shared layer.
 - The `Documentation` surface lives in:
-  - [ui/src/routes/documentation/documentation-route.tsx](../../../ui/src/routes/documentation/documentation-route.tsx)
+  - [ui/src/features/documentation/components/documentation-workspace.tsx](../../../ui/src/features/documentation/components/documentation-workspace.tsx)
+  - [ui/src/features/documentation/documentation-scaffold.ts](../../../ui/src/features/documentation/documentation-scaffold.ts)
   - [ui/src/features/documentation/use-documentation-view-model.ts](../../../ui/src/features/documentation/use-documentation-view-model.ts)
-  - The React audit found that `DocumentationRoute` currently acts as both route container and feature surface.
+  - [ui/src/routes/documentation/documentation-route.tsx](../../../ui/src/routes/documentation/documentation-route.tsx) now stays as the thin route container over those feature-owned modules.
 - The `Workstreams` surface lives in:
-  - [ui/src/routes/workstreams/workstreams-route.tsx](../../../ui/src/routes/workstreams/workstreams-route.tsx)
+  - [ui/src/features/workstreams/components/workstreams-board.tsx](../../../ui/src/features/workstreams/components/workstreams-board.tsx)
+  - [ui/src/features/workstreams/workstreams-scaffold.ts](../../../ui/src/features/workstreams/workstreams-scaffold.ts)
   - [ui/src/features/workstreams/use-workstreams-view-model.ts](../../../ui/src/features/workstreams/use-workstreams-view-model.ts)
-  - The React audit found that `WorkstreamsRoute` is trending toward the same route-as-feature pattern.
+  - [ui/src/routes/workstreams/workstreams-route.tsx](../../../ui/src/routes/workstreams/workstreams-route.tsx) now stays as the thin route container over those feature-owned modules.
 - The project-configuration surfaces live in:
   - [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx)
   - [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx)
@@ -347,8 +363,8 @@ Important files and modules for this work:
 - Shared navigation data: [ui/src/shared/navigation/destinations.ts](../../../ui/src/shared/navigation/destinations.ts)
 - Shared styles: [ui/src/app/styles.css](../../../ui/src/app/styles.css)
 - Runs layout/data: [ui/src/routes/runs/](../../../ui/src/routes/runs/), [ui/src/shared/layout/](../../../ui/src/shared/layout/), [ui/src/features/runs/](../../../ui/src/features/runs/), [ui/src/features/execution/](../../../ui/src/features/execution/)
-- Documentation layout/data: [ui/src/routes/documentation/documentation-route.tsx](../../../ui/src/routes/documentation/documentation-route.tsx), [ui/src/features/documentation/use-documentation-view-model.ts](../../../ui/src/features/documentation/use-documentation-view-model.ts)
-- Workstreams layout/data: [ui/src/routes/workstreams/workstreams-route.tsx](../../../ui/src/routes/workstreams/workstreams-route.tsx), [ui/src/features/workstreams/use-workstreams-view-model.ts](../../../ui/src/features/workstreams/use-workstreams-view-model.ts)
+- Documentation layout/data: [ui/src/features/documentation/components/documentation-workspace.tsx](../../../ui/src/features/documentation/components/documentation-workspace.tsx), [ui/src/features/documentation/documentation-scaffold.ts](../../../ui/src/features/documentation/documentation-scaffold.ts), [ui/src/features/documentation/use-documentation-view-model.ts](../../../ui/src/features/documentation/use-documentation-view-model.ts), [ui/src/routes/documentation/documentation-route.tsx](../../../ui/src/routes/documentation/documentation-route.tsx)
+- Workstreams layout/data: [ui/src/features/workstreams/components/workstreams-board.tsx](../../../ui/src/features/workstreams/components/workstreams-board.tsx), [ui/src/features/workstreams/workstreams-scaffold.ts](../../../ui/src/features/workstreams/workstreams-scaffold.ts), [ui/src/features/workstreams/use-workstreams-view-model.ts](../../../ui/src/features/workstreams/use-workstreams-view-model.ts), [ui/src/routes/workstreams/workstreams-route.tsx](../../../ui/src/routes/workstreams/workstreams-route.tsx)
 - Project configuration layout/data: [ui/src/routes/projects/](../../../ui/src/routes/projects/), [ui/src/shared/forms/](../../../ui/src/shared/forms/), [ui/src/features/projects/](../../../ui/src/features/projects/)
 - UI tests: [ui/src/test/](../../../ui/src/test/)
 
@@ -522,22 +538,26 @@ Phase 3 should leave the `Runs` family alone unless a shared primitive regressio
 Reduce `Documentation` and `Workstreams` to the exact board-shaped scaffolds the spec calls for.
 
 **Scope Boundary**  
-In scope: the `Documentation` and `Workstreams` route components, their feature view models, any shared table/panel primitives they need after the shell reset, and the extraction needed to keep route files as thin containers rather than destination monoliths.  
+In scope: the feature-owned `Documentation` and `Workstreams` workspace/scaffold/view-model modules, any shared table/panel primitives they need after the shell reset, and the thin route-container updates needed to keep destination rendering out of the route files.  
 Out of scope: `Runs`, project configuration, and live document/workstream adapters.
 
 **Read First**  
 `design/workspace-spec.md`  
-`ui/src/routes/documentation/documentation-route.tsx`  
+`ui/src/features/documentation/components/documentation-workspace.tsx`  
+`ui/src/features/documentation/documentation-scaffold.ts`  
 `ui/src/features/documentation/use-documentation-view-model.ts`  
-`ui/src/routes/workstreams/workstreams-route.tsx`  
+`ui/src/features/workstreams/components/workstreams-board.tsx`  
+`ui/src/features/workstreams/workstreams-scaffold.ts`  
 `ui/src/features/workstreams/use-workstreams-view-model.ts`
 
 **Files Expected To Change**  
-`ui/src/routes/documentation/documentation-route.tsx`  
+`ui/src/features/documentation/components/documentation-workspace.tsx`  
+`ui/src/features/documentation/documentation-scaffold.ts`  
 `ui/src/features/documentation/use-documentation-view-model.ts`  
-`ui/src/routes/workstreams/workstreams-route.tsx`  
+`ui/src/features/workstreams/components/workstreams-board.tsx`  
+`ui/src/features/workstreams/workstreams-scaffold.ts`  
 `ui/src/features/workstreams/use-workstreams-view-model.ts`  
-Potentially small shared layout/test files.
+Potentially the thin route containers plus small shared layout/test files.
 
 **Validation**  
 Run:
@@ -561,23 +581,27 @@ Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retro
 - destination-specific rendering moved out of the route files into clearer feature surfaces where needed.
 
 **Commit Expectation**  
-`Simplify documentation and workstreams scaffolds`
+`Correct phase 3 scaffold fidelity`
 
 **Known Constraints / Baseline Failures**  
 Rows should route into the existing task-detail route shape, but this phase should not redesign task detail or add live project-wide filtering. Keep hooks from growing into broader mixed “UI state + data shaping + rendering contract” bundles if small separations are practical while touching the files.
 
 **Status**  
-Completed on 2026-04-18.
+Completed on 2026-04-18. Targeted fix pass completed on 2026-04-18.
 
 **Completion Notes**  
 - Reduced [ui/src/routes/documentation/documentation-route.tsx](../../../ui/src/routes/documentation/documentation-route.tsx) to a route container and moved the destination rendering into [ui/src/features/documentation/components/documentation-workspace.tsx](../../../ui/src/features/documentation/components/documentation-workspace.tsx) with tree/viewer-only scaffold content from [ui/src/features/documentation/documentation-scaffold.ts](../../../ui/src/features/documentation/documentation-scaffold.ts).
 - Reduced [ui/src/routes/workstreams/workstreams-route.tsx](../../../ui/src/routes/workstreams/workstreams-route.tsx) to a route container and moved the destination rendering into [ui/src/features/workstreams/components/workstreams-board.tsx](../../../ui/src/features/workstreams/components/workstreams-board.tsx) with filter/table-only scaffold content from [ui/src/features/workstreams/workstreams-scaffold.ts](../../../ui/src/features/workstreams/workstreams-scaffold.ts).
 - Trimmed both view-model hooks to local selection/filter state plus board-shaped data, removing the prior backend-gap, deferred-work, and route-handoff copy.
 - Updated [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) to assert the tree/viewer and filter/table structures plus the absence of the removed scaffold chrome.
-- Validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx` (`4` tests passed), and `rtk npm run test` (`33` files passed, `2` skipped; `143` tests passed, `8` skipped).
+- Targeted fix pass: realigned [ui/src/features/workstreams/workstreams-scaffold.ts](../../../ui/src/features/workstreams/workstreams-scaffold.ts) with the canonical `Workstreams` board rows, including the restored blocked `TASK-019` entry in `Run-101`.
+- Targeted fix pass: simplified [ui/src/features/workstreams/components/workstreams-board.tsx](../../../ui/src/features/workstreams/components/workstreams-board.tsx) to a single link-based navigation contract instead of a focusable row plus nested `Link`.
+- Targeted fix pass: strengthened [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) to cover the canonical workstreams rows and filter states plus the documentation tree shape and selection state.
+- Targeted fix pass: updated the active-plan context and Phase 3 handoff to reference the feature-owned documentation/workstreams workspace and scaffold modules instead of centering the route containers.
+- Validation passed for the implementation and the targeted fix pass: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx` (`4` tests passed), and `rtk npm run test` (`33` files passed, `2` skipped; `143` tests passed, `8` skipped).
 
 **Next Starter Context**  
-Phase 4 should leave `Documentation` and `Workstreams` alone unless a shared primitive regression is discovered. The remaining corrective work is the project-configuration family, where the same hero/aside/right-rail drift still exists behind the shared route layout.
+Phase 4 should leave `Documentation` and `Workstreams` alone unless a shared primitive regression is discovered. The targeted fix pass closed the remaining Phase 3 board-fidelity, navigation-contract, test-coverage, and ownership-reference drift, so the remaining corrective work is the project-configuration family behind the shared route layout.
 
 ## Phase 4: Realign New Project and Project Settings
 

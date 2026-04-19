@@ -30,8 +30,29 @@ function getLinkByHref(container: HTMLElement, href: string) {
   return link as HTMLAnchorElement;
 }
 
+function getTableBodyRows() {
+  return within(screen.getByRole("table")).getAllByRole("row").slice(1);
+}
+
+function expectWorkstreamRows(expectedRows: string[][]) {
+  const rows = getTableBodyRows();
+
+  expect(rows).toHaveLength(expectedRows.length);
+
+  expectedRows.forEach((expectedCells, index) => {
+    expect(
+      within(rows[index]!)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent?.trim() ?? "")
+    ).toEqual(expectedCells);
+
+    expect(rows[index]).not.toHaveAttribute("tabindex");
+    expect(within(rows[index]!).getAllByRole("link")).toHaveLength(1);
+  });
+}
+
 describe("Phase 3 destination scaffolds", () => {
-  it("switches the documentation viewer between project documents without the removed scaffold chrome", async () => {
+  it("renders the documentation tree shape and switches selection without the removed scaffold chrome", async () => {
     renderRoute("/documentation");
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
@@ -44,15 +65,45 @@ describe("Phase 3 destination scaffolds", () => {
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
     expect(screen.queryByText("Deferred work")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Open questions/i }));
+    const documentationTree = screen.getByLabelText("Documentation tree");
+    expect(within(documentationTree).getByText("▾ Product Specifications")).toBeInTheDocument();
+    expect(within(documentationTree).getByText("▾ Technical Architecture")).toBeInTheDocument();
+    expect(within(documentationTree).getByText("▾ Miscellaneous Notes")).toBeInTheDocument();
+    expect(within(documentationTree).getAllByRole("button")).toHaveLength(4);
+    expect(within(documentationTree).getAllByRole("button", { name: "Current" })).toHaveLength(2);
+
+    const productGroup = screen.getByText("▾ Product Specifications").closest("section");
+    const notesGroup = screen.getByText("▾ Miscellaneous Notes").closest("section");
+
+    expect(productGroup).not.toBeNull();
+    expect(notesGroup).not.toBeNull();
+
+    const currentSpecButton = within(productGroup as HTMLElement).getByRole("button", {
+      name: "Current"
+    });
+    const openQuestionsButton = within(notesGroup as HTMLElement).getByRole("button", {
+      name: "Open questions"
+    });
+
+    expect(currentSpecButton).toHaveAttribute("aria-pressed", "true");
+    expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(openQuestionsButton);
 
     expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
     expect(
       screen.getByText(/How should current project documents evolve once editing and persistence are added\?/i)
     ).toBeInTheDocument();
+    expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
+    expect(openQuestionsButton).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(documentationTree)
+        .getAllByRole("button")
+        .filter((button) => button.getAttribute("aria-pressed") === "true")
+    ).toHaveLength(1);
   });
 
-  it("filters workstreams while keeping execution task route targets intact and removing the right rail", async () => {
+  it("renders the canonical workstreams rows and filters them without the removed right rail", async () => {
     renderRoute("/workstreams");
 
     expect(
@@ -61,16 +112,32 @@ describe("Phase 3 destination scaffolds", () => {
     expect(screen.getByText("Filters:")).toBeInTheDocument();
     expect(screen.queryByText("Route handoff")).not.toBeInTheDocument();
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
+    expectWorkstreamRows([
+      ["TASK-032", "Build shell", "Run-104", "Running", "2m ago"],
+      ["TASK-033", "DAG wiring", "Run-104", "Queued", "4m ago"],
+      ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"],
+      ["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]
+    ]);
 
-    fireEvent.click(screen.getByRole("button", { name: /Blocked/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Running" }));
+    expectWorkstreamRows([
+      ["TASK-032", "Build shell", "Run-104", "Running", "2m ago"],
+      ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"]
+    ]);
 
-    expect(screen.getByRole("link", { name: "Open TASK-033 in Run-102" })).toHaveAttribute(
-      "href",
-      "/runs/run-102/execution/tasks/task-033"
-    );
-    expect(
-      screen.queryByRole("link", { name: "Open TASK-034 in Run-104" })
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Queued" }));
+    expectWorkstreamRows([["TASK-033", "DAG wiring", "Run-104", "Queued", "4m ago"]]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Blocked" }));
+    expectWorkstreamRows([["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]]);
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expectWorkstreamRows([
+      ["TASK-032", "Build shell", "Run-104", "Running", "2m ago"],
+      ["TASK-033", "DAG wiring", "Run-104", "Queued", "4m ago"],
+      ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"],
+      ["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]
+    ]);
   });
 
   it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {

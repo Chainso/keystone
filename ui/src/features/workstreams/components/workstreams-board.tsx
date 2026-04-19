@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import type { WorkstreamRowViewModel, WorkstreamsViewModel } from "../use-workstreams-view-model";
 
@@ -11,30 +11,10 @@ interface WorkstreamsRowProps {
 }
 
 function WorkstreamsRow({ row }: WorkstreamsRowProps) {
-  const navigate = useNavigate();
-
-  function openRow() {
-    navigate(row.detailPath);
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLTableRowElement>) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openRow();
-    }
-  }
-
   return (
-    <tr className="workstreams-table-row" tabIndex={0} onClick={openRow} onKeyDown={handleKeyDown}>
+    <tr>
       <td>
-        <Link
-          to={row.detailPath}
-          className="table-primary-link"
-          aria-label={`Open ${row.taskDisplayId} in ${row.runDisplayId}`}
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-        >
+        <Link to={row.detailPath} className="table-primary-link">
           {row.taskDisplayId}
         </Link>
       </td>
@@ -88,7 +68,7 @@ export function WorkstreamsBoard({ model }: WorkstreamsBoardProps) {
           </table>
         </div>
 
-        <p className="page-section-copy">Click a row to open that task inside Runs &gt; Execution.</p>
+        <p className="page-section-copy">Use the task link to open that task inside Runs &gt; Execution.</p>
       </section>
     </div>
   );

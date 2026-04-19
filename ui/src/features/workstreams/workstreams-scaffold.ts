@@ -16,38 +16,38 @@ export const workstreamRows: WorkstreamRowScaffold[] = [
   {
     rowId: "run-104-task-032",
     taskDisplayId: "TASK-032",
-    title: "Build execution drill-down",
+    title: "Build shell",
     runDisplayId: "Run-104",
     status: "Running",
     updatedLabel: "2m ago",
     detailPath: buildRunTaskPath("run-104", "task-032")
   },
   {
-    rowId: "run-104-task-034",
-    taskDisplayId: "TASK-034",
-    title: "Documentation alignment",
+    rowId: "run-104-task-033",
+    taskDisplayId: "TASK-033",
+    title: "DAG wiring",
     runDisplayId: "Run-104",
     status: "Queued",
     updatedLabel: "4m ago",
-    detailPath: buildRunTaskPath("run-104", "task-034")
+    detailPath: buildRunTaskPath("run-104", "task-033")
   },
   {
-    rowId: "run-103-task-032",
-    taskDisplayId: "TASK-032",
-    title: "Build execution drill-down",
+    rowId: "run-103-task-021",
+    taskDisplayId: "TASK-021",
+    title: "Docs refresh",
     runDisplayId: "Run-103",
     status: "Running",
     updatedLabel: "9m ago",
     detailPath: buildRunTaskPath("run-103", "task-032")
   },
   {
-    rowId: "run-102-task-033",
-    taskDisplayId: "TASK-033",
-    title: "DAG wiring",
-    runDisplayId: "Run-102",
+    rowId: "run-101-task-019",
+    taskDisplayId: "TASK-019",
+    title: "Review fix",
+    runDisplayId: "Run-101",
     status: "Blocked",
     updatedLabel: "1h ago",
-    detailPath: buildRunTaskPath("run-102", "task-033")
+    detailPath: buildRunTaskPath("run-101", "task-033")
   }
 ];
 

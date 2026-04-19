@@ -816,15 +816,6 @@ pre {
   font-size: 0.86rem;
 }
 
-.workstreams-table-row {
-  cursor: pointer;
-}
-
-.workstreams-table-row:focus-visible {
-  outline: 2px solid var(--accent-line);
-  outline-offset: -2px;
-}
-
 .project-config-panel {
   gap: 1.15rem;
 }
