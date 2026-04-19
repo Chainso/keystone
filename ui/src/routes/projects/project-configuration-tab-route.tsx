@@ -2,6 +2,7 @@ import type {
   ProjectConfigurationMode,
   ProjectConfigurationTabId
 } from "../../features/projects/project-configuration-scaffold";
+import { getProjectComponentSourceModeLabel } from "../../features/projects/project-configuration-scaffold";
 import {
   useProjectComponentsViewModel,
   useProjectEnvironmentViewModel,
@@ -107,15 +108,34 @@ function ComponentsTab({ mode }: { mode: ProjectConfigurationMode }) {
                 <div className="placeholder-field">
                   <span className="placeholder-field-label">Source mode</span>
                   <div className="source-mode-row">
-                    <span className="source-mode-pill is-active">{component.sourceModeLabel}</span>
-                    <span className="source-mode-pill">Git URL</span>
+                    <span
+                      className={
+                        component.sourceMode === "localPath"
+                          ? "source-mode-pill is-active"
+                          : "source-mode-pill"
+                      }
+                    >
+                      {getProjectComponentSourceModeLabel("localPath")}
+                    </span>
+                    <span
+                      className={
+                        component.sourceMode === "gitUrl"
+                          ? "source-mode-pill is-active"
+                          : "source-mode-pill"
+                      }
+                    >
+                      {getProjectComponentSourceModeLabel("gitUrl")}
+                    </span>
                   </div>
                 </div>
 
-                <PlaceholderTextField label="Local path" value={component.localPath} />
+                <PlaceholderTextField
+                  label="Local path"
+                  value={component.localPath ?? "Not used for remote Git source."}
+                />
                 <PlaceholderTextField
                   label="Git URL"
-                  value={component.gitUrl || "Configure remote source later if needed."}
+                  value={component.gitUrl ?? "Not used for local workspace source."}
                 />
                 <PlaceholderTextField label="Default ref" value={component.defaultRef} />
               </div>

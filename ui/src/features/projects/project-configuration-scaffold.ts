@@ -1,6 +1,7 @@
 export type ProjectConfigurationMode = "new" | "settings";
 export type ProjectConfigurationTabId = "overview" | "components" | "rules" | "environment";
 export type ProjectComponentKindId = "git_repository";
+export type ProjectComponentSourceMode = "localPath" | "gitUrl";
 
 export interface ProjectConfigurationTabDefinition {
   tabId: ProjectConfigurationTabId;
@@ -15,9 +16,9 @@ export interface ProjectComponentScaffold {
   displayName: string;
   componentKey: string;
   kindLabel: string;
-  sourceModeLabel: string;
-  localPath: string;
-  gitUrl: string;
+  sourceMode: ProjectComponentSourceMode;
+  localPath?: string;
+  gitUrl?: string;
   defaultRef: string;
   reviewInstructions: string[];
   testInstructions: string[];
@@ -72,6 +73,10 @@ export function buildProjectConfigurationPath(
   return mode === "new" ? `/projects/new/${tabId}` : `/settings/${tabId}`;
 }
 
+export function getProjectComponentSourceModeLabel(sourceMode: ProjectComponentSourceMode) {
+  return sourceMode === "localPath" ? "Local path" : "Git URL";
+}
+
 export function buildProjectComponentScaffold(
   mode: ProjectConfigurationMode,
   index: number
@@ -84,9 +89,8 @@ export function buildProjectComponentScaffold(
       displayName: "Worker app",
       componentKey: "worker-app",
       kindLabel: "Git repository",
-      sourceModeLabel: "Local path",
+      sourceMode: "localPath",
       localPath: "./",
-      gitUrl: "",
       defaultRef: "main",
       reviewInstructions: ["Focus on Worker/runtime boundaries and route ownership."],
       testInstructions: ["Run `npm run test` and preserve the existing route smoke coverage."]
@@ -103,12 +107,11 @@ export function buildProjectComponentScaffold(
     componentKey:
       mode === "new" ? `repository-${componentNumber}` : `background-worker-${componentNumber}`,
     kindLabel: "Git repository",
-    sourceModeLabel: "Local path",
-    localPath:
+    sourceMode: "gitUrl",
+    gitUrl:
       mode === "new"
-        ? `./services/repository-${componentNumber}`
-        : `./workers/background-${componentNumber}`,
-    gitUrl: "",
+        ? `https://github.com/keystone/repository-${componentNumber}.git`
+        : `https://github.com/keystone/background-worker-${componentNumber}.git`,
     defaultRef: "main",
     reviewInstructions:
       mode === "new"

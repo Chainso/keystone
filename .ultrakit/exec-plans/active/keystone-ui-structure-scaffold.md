@@ -141,6 +141,11 @@ Compatibility that **is** required:
   **Decision:** Keep the documentation tree selection, workstream filters, and component type picker as local placeholder state inside feature-owned hooks rather than wiring live APIs or hard-coding static JSX.  
   **Rationale:** Phase 3 is still structure-first, but these surfaces need honest interactions that prove ownership boundaries and future adapter seams instead of freezing the UI into non-interactive mocks.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 3 fix pass  
+  **Decision:** Tighten the project-configuration smoke tests around concrete `/projects/new/*` and `/settings/*` tab targets, and model `git_repository` components as either `localPath` or `gitUrl` sources instead of a hardcoded local-path placeholder.  
+  **Rationale:** The review pass found that Phase 3 was only proving the default tab redirects and that the component scaffold did not structurally match the backend contract's one-of source shape.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, target references, current API surface, and Cloudflare-first frontend architecture options.
@@ -152,6 +157,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 2 completed: `Runs` index, nested run-detail stepper routes, execution DAG shell, and task-detail placeholder route now exist under the shared shell.
 - [x] 2026-04-18 Phase 2 fix pass completed: route tests now assert concrete `/runs` and execution-task targets, and invalid task ids surface the route error boundary instead of rendering the first scaffolded task.
 - [x] 2026-04-18 Phase 3 completed: `Documentation`, `Workstreams`, `New project`, and `Project settings` now use dedicated route families, placeholder feature hooks, project tabs, and the Git-repository-only component picker flow.
+- [x] 2026-04-18 Phase 3 fix pass completed: route tests now assert concrete `/projects/new/*` and `/settings/*` tab targets, and the `git_repository` scaffold models both `localPath` and `gitUrl` source modes.
 - [ ] Phase 4 completed: developer docs, README guidance, and validation coverage updated for the new UI scaffold.
 
 ## Surprises & Discoveries
@@ -167,8 +173,9 @@ Compatibility that **is** required:
 - The user wants the local frontend workflow codified early. Phase 1 was not fully closed until the zellij plus `npx localflare` helper was checked in and documented.
 - The current run APIs are already specific enough to label each Phase 2 scaffold honestly: run detail, graph, task, task conversation, and artifact seams exist, while project documents plus evidence/integration/release remain the explicit stub-backed gaps.
 - The Phase 2 route tests became much more reliable once `renderRoute()` returned the memory router, because redirect assertions could pin actual pathnames instead of inferring state from active CSS classes or concatenated nav labels.
-- Phase 3 confirmed that the old build caveat no longer reproduced on the current tree: `npm run build` completed inside the sandbox, including `wrangler deploy --dry-run` and the sandbox image build.
+- The old build caveat is still host-sensitive enough to verify each pass: the original Phase 3 implementation saw sandbox `npm run build` succeed, but the fix pass again hit Wrangler and Docker home-directory writes and required a host rerun.
 - Removing the old `routes/screens/*` placeholder modules once the dedicated destination route families landed made the Phase 3 scaffold much easier to read; otherwise the repo still looked like it had two competing sources of truth for the same surfaces.
+- The project-configuration tab links expose accessible names that concatenate the tab label and summary text, so route smoke tests are more stable when they pin the concrete `href` inside the tab nav instead of using fuzzy role-name matching.
 
 ## Outcomes & Retrospective
 
@@ -204,8 +211,9 @@ Phase 3 outcome on 2026-04-18:
 - `Documentation` now has a real two-pane project-doc shell with a placeholder tree, a viewer pane, and view-model-owned document selection instead of a single generic placeholder card.
 - `Workstreams` now has a real list shell with local filter chips, execution-task route targets, and sidebar notes that stay honest about the lack of live backend filtering.
 - `New project` and `Project settings` now share a tabbed configuration scaffold with nested tab routes, project-specific framing, list-shaped rule editors, non-secret environment placeholders, and a structural component type picker that still offers only `Git repository`.
+- The Phase 3 fix pass now proves the actual `/projects/new/*` and `/settings/*` tab href/path contracts, and the component scaffold shows both `localPath` and `gitUrl` variants of the `git_repository` source contract instead of leaving one mode empty.
 - The old Phase 1 placeholder destination files were removed so the Phase 3 route families are the only source of truth for these surfaces.
-- `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` all pass in the sandbox on the current tree; the earlier build caveat did not reproduce during this phase.
+- `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` still fails in the sandbox when Wrangler and Docker try to write under the host home directory, then passes when rerun outside the sandbox.
 
 ## Context and Orientation
 
@@ -586,19 +594,21 @@ Success means all top-level destinations from the workspace spec are navigable, 
 
 ### Status
 
-Completed on 2026-04-18.
+Completed on 2026-04-18 after the targeted fix pass for project-configuration route coverage and `git_repository` source-mode modeling.
 
 ### Completion Notes
 
 - Replaced the old placeholder destination modules with dedicated route families under `ui/src/routes/documentation/`, `ui/src/routes/workstreams/`, and `ui/src/routes/projects/`.
 - Added placeholder feature hooks for documentation selection, workstream filtering, shared project configuration tabs, and the component type picker flow.
 - Added shared form and layout primitives for project configuration while keeping the same shell and panel language established in Phases 1 and 2.
+- Tightened the Phase 3 smoke tests so they assert concrete `/projects/new/*` and `/settings/*` tab href/path behavior instead of only the default redirects.
+- Updated the `git_repository` component scaffold to represent either a local workspace path or a remote Git URL, matching the backend project's one-of source contract structurally.
 - Removed the superseded `ui/src/routes/screens/*` and `ui/src/shared/layout/placeholder-screen.tsx` placeholder files so the new destination routes are the only scaffold source of truth.
-- Validation results: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` all pass in the sandbox on the current tree.
+- Validation results: `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox. `npm run build` fails in the sandbox at Wrangler/Docker home-directory writes after `vite build` succeeds, then passes when rerun outside the sandbox.
 
 ### Next Starter Context
 
-Phase 4 should document the new destination route families and the shared project-configuration scaffold rather than reopening their structure. The relevant implementation now lives under `ui/src/routes/documentation/`, `ui/src/routes/workstreams/`, `ui/src/routes/projects/`, `ui/src/features/documentation/`, `ui/src/features/workstreams/`, `ui/src/features/projects/`, and `ui/src/shared/forms/`. `npm run build` now passes in the sandbox on the current tree, so the final documentation pass should record that updated validation reality if it still holds.
+Phase 4 should document the new destination route families and the shared project-configuration scaffold rather than reopening their structure. The relevant implementation now lives under `ui/src/routes/documentation/`, `ui/src/routes/workstreams/`, `ui/src/routes/projects/`, `ui/src/features/documentation/`, `ui/src/features/workstreams/`, `ui/src/features/projects/`, and `ui/src/shared/forms/`. The Phase 3 fix pass also pinned concrete project-tab route targets in `ui/src/test/phase3-destinations.test.tsx` and updated the component scaffold to represent both `localPath` and `gitUrl` source modes, so Phase 4 should preserve those contracts while documenting them. `npm run build` again required a host rerun on this machine because Wrangler and Docker still write under the user home directory.
 
 ## Phase 4
 

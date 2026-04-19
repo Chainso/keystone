@@ -35,7 +35,7 @@ export function useProjectConfigurationShellViewModel(mode: ProjectConfiguration
         title: "What this surface freezes",
         items: [
           "Project creation and settings now share one tab layout instead of diverging into separate flows.",
-          "Components, rules, and environment fields already map to the existing project backend contracts.",
+          "Git-repository components can now model either a local workspace path or a remote Git URL, matching the existing backend contract shape.",
           "Component creation still starts with a type picker even though only Git repository is currently supported."
         ]
       },
