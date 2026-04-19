@@ -25,7 +25,6 @@ export interface ProjectComponentScaffold {
 export interface ProjectComponentTypeOption {
   kindId: ProjectComponentKindId;
   label: string;
-  description: string;
 }
 
 export const projectConfigurationTabs: ProjectConfigurationTabDefinition[] = [
@@ -50,8 +49,7 @@ export const projectConfigurationTabs: ProjectConfigurationTabDefinition[] = [
 export const projectComponentTypeOptions: ProjectComponentTypeOption[] = [
   {
     kindId: "git_repository",
-    label: "Git repository",
-    description: "Source code checked out from a Git repository."
+    label: "Git repository"
   }
 ];
 

@@ -18,7 +18,11 @@ export function ComponentTypePicker({
       <ul className="page-list compact-list">
         {options.map((option) => (
           <li key={option.kindId}>
-            <button type="button" className="type-picker-option" onClick={() => onSelect(option.kindId)}>
+            <button
+              type="button"
+              className="type-picker-option"
+              onClick={() => onSelect(option.kindId)}
+            >
               <span className="type-picker-option-title">{option.label}</span>
             </button>
           </li>

@@ -30,6 +30,16 @@ function getLinkByHref(container: HTMLElement, href: string) {
   return link as HTMLAnchorElement;
 }
 
+function expectProjectConfigurationChromeRemoved(container: HTMLElement) {
+  const pageStage = container.querySelector(".page-stage");
+
+  expect(pageStage).not.toBeNull();
+  expect(pageStage?.querySelectorAll(".project-config-panel")).toHaveLength(1);
+  expect(pageStage?.querySelectorAll(".project-config-sidebar")).toHaveLength(0);
+  expect(pageStage?.querySelectorAll(".page-hero")).toHaveLength(0);
+  expect(pageStage?.querySelectorAll("aside")).toHaveLength(0);
+}
+
 function getTableBodyRows() {
   return within(screen.getByRole("table")).getAllByRole("row").slice(1);
 }
@@ -165,11 +175,12 @@ describe("Phase 3 destination scaffolds", () => {
   });
 
   it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {
-    const { router } = renderRoute("/projects/new");
+    const { container, router } = renderRoute("/projects/new");
 
     expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
     expect(screen.queryByText("Current contract")).not.toBeInTheDocument();
+    expectProjectConfigurationChromeRemoved(container);
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/projects/new/overview");
     });
@@ -210,14 +221,71 @@ describe("Phase 3 destination scaffolds", () => {
     expect(screen.getByRole("textbox", { name: "KEYSTONE_AGENT_RUNTIME" })).toHaveValue("scripted");
   });
 
+  it("renders the new-project components board with the add-component control in the body", async () => {
+    const { container } = renderRoute("/projects/new/components");
+
+    expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Components" })).toBeInTheDocument();
+    expectProjectConfigurationChromeRemoved(container);
+
+    const componentsSection = screen.getByRole("heading", { name: "Components" }).closest("section");
+    expect(componentsSection).not.toBeNull();
+
+    const addComponentButton = screen.getByRole("button", { name: "+ Add component" });
+    expect(addComponentButton).toHaveTextContent("+ Add component ▾");
+    expect(addComponentButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(componentsSection as HTMLElement)
+        .getByText("Components")
+        .closest(".project-config-section-header")
+        ?.querySelector("button")
+    ).toBeNull();
+    expect(screen.getByText("No components added yet.")).toBeInTheDocument();
+
+    fireEvent.click(addComponentButton);
+    expect(addComponentButton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("heading", { name: "Add component menu" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Git repository" }));
+
+    const newComponentCard = getComponentCard("Component 1");
+    expect(newComponentCard.queries.getByRole("combobox", { name: "Type" })).toHaveValue(
+      "Git repository"
+    );
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue(
+      "Repository 1"
+    );
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue(
+      "repository-1"
+    );
+    expect(newComponentCard.queries.getByRole("radio", { name: "Local path" })).not.toBeChecked();
+    expect(newComponentCard.queries.getByRole("radio", { name: "Git URL" })).toBeChecked();
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue("");
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue(
+      "https://github.com/keystone/repository-1.git"
+    );
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Default ref" })).toHaveValue(
+      "main"
+    );
+    expect(newComponentCard.queries.getByText("Optional rule override")).toBeInTheDocument();
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Review" })).toHaveValue(
+      "Focus on repository boundaries"
+    );
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Test" })).toHaveValue(
+      "Run the component test plan"
+    );
+    expect(newComponentCard.queries.getByRole("button", { name: "Remove" })).toBeDisabled();
+  });
+
   it("redirects /settings to components, supports tab navigation, and models both git_repository source modes", async () => {
-    const { router } = renderRoute("/settings");
+    const { container, router } = renderRoute("/settings");
 
     expect(
       await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
     ).toBeInTheDocument();
     expect(screen.queryByText("Current contract")).not.toBeInTheDocument();
     expect(screen.queryByText("Still intentionally placeholder-only")).not.toBeInTheDocument();
+    expectProjectConfigurationChromeRemoved(container);
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/settings/components");
     });
@@ -251,8 +319,19 @@ describe("Phase 3 destination scaffolds", () => {
       "./services/api"
     );
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue("");
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Default ref" })).toHaveValue(
+      "main"
+    );
+    expect(currentComponentCard.queries.getByText("Optional rule override")).toBeInTheDocument();
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Review" })).toHaveValue(
+      "Focus on API changes"
+    );
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Test" })).toHaveValue(
+      "Run targeted API tests"
+    );
+    expect(currentComponentCard.queries.getByRole("button", { name: "Remove" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: /\+ Add component/i }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add component" }));
     expect(screen.getByRole("heading", { name: "Add component menu" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Git repository/i }));
@@ -270,5 +349,24 @@ describe("Phase 3 destination scaffolds", () => {
     expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue(
       "https://github.com/keystone/background-worker-2.git"
     );
+  });
+
+  it("renders the settings overview board explicitly instead of relying on the components redirect", async () => {
+    const { container } = renderRoute("/settings/overview");
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expectProjectConfigurationChromeRemoved(container);
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue(
+      "Keystone Cloudflare"
+    );
+    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("keystone-cloudflare");
+    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
+      "Internal operator workspace for runs, documentation, and workstreams."
+    );
+    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 });

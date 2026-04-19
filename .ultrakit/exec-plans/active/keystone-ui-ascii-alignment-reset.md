@@ -135,6 +135,11 @@ Compatibility that **is** required:
   **Decision:** Collapse project configuration to one shared board shell plus explicit `new` and `settings` tab variants, and replace the placeholder wrappers with semantic form controls.  
   **Rationale:** The remaining drift was split across both presentation and structure: hero/right-rail narration lived in the shared scaffold, while the tab route and view-model hook were growing around `mode` branching. A plain shared shell plus explicit mode-specific tab composition corrected both without changing the route tree.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 4 targeted fix pass  
+  **Decision:** Keep [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) as the explicit shell split, but move the remaining section/card/tab-renderer hotspot out of [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx) into feature-owned project-configuration components while restoring the reviewed board details.  
+  **Rationale:** The original Phase 4 landing fixed the broad board shape, but the route still owned too much tab rendering and the settings/components board still missed several ASCII details. A proportional feature extraction plus board-literal cleanup closed those gaps without redesigning the route family.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed through direct review of `design/workspace-spec.md`, the current UI implementation, and five parallel frame-specific audits.
@@ -148,6 +153,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Phase 3: Realigned `Documentation` and `Workstreams` to their canonical tree/viewer and filter/table boards, and restored thin route containers through feature-owned destination surfaces.
 - [x] 2026-04-18 Phase 3 targeted fix pass: restored the canonical `Workstreams` rows, removed the duplicated row-vs-link navigation contract, strengthened Phase 3 destination coverage, and corrected the active-plan `Documentation`/`Workstreams` ownership references to the feature-owned modules that actually landed.
 - [x] 2026-04-18 Phase 4: Realigned `New project` and `Project settings` to the project-configuration boards, removed the scaffold narration/right rail, and split the tab composition into explicit `new` vs `settings` variants with semantic controls.
+- [x] 2026-04-18 Phase 4 targeted fix pass: moved the remaining project-configuration section/card/tab renderers into feature-owned components, restored the reviewed components-board literals, right-aligned the board action rows, and expanded the destination test matrix to cover `new/components` and `settings/overview`.
 - [ ] Phase 5: Update tests, docs, and plan notes; capture the corrective outcome and the dependency this creates for later live-wiring work.
 
 ## Surprises & Discoveries
@@ -165,6 +171,7 @@ Compatibility that **is** required:
 - Phase 3 did not need any new shared layout primitive after the shell reset. Feature-owned destination components plus smaller scaffold-data modules were enough to restore both board fidelity and route-container boundaries.
 - The Phase 3 surface move was correct, but the `Workstreams` seed drifted from the canonical board in all four visible rows, not just the blocked one. The targeted fix pass had to reconcile those literals, remove the row-level pseudo-control that survived the extraction, and update the plan text so it pointed at the feature-owned workspace/scaffold modules rather than the now-thin route containers.
 - Phase 4 needed only a narrow stylesheet follow-up: once the placeholder spans became real `input`, `textarea`, and `select` elements, the existing scaffold class names were still reusable with a small width/font/reset patch rather than another layout rewrite.
+- The remaining Phase 4 hotspot was narrower than the original audit implied: the shell/layout split in [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) was already the right boundary, but the tab route still carried too much section/card rendering. The fix pass could stay proportional by extracting only those feature-owned tab components and leaving the shell layer intact.
 
 ## Outcomes & Retrospective
 
@@ -217,6 +224,13 @@ Phase 4 outcome on 2026-04-18:
 - The settings components board now matches the canonical API component example more closely, including the `API` component identity, local path, and rule-override field labels from the ASCII board.
 - Phase 4 validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx` (`5` tests passed), and `rtk npm run test` (`33` files passed, `2` skipped; `144` tests passed, `8` skipped).
 
+Phase 4 targeted fix pass outcome on 2026-04-18:
+
+- [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) remains the explicit shell split for `new` vs `settings`, while the shared tab/section/card rendering moved out of [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx) into feature-owned modules under [ui/src/features/projects/components/](../../../ui/src/features/projects/components/).
+- The components board now matches the canonical ASCII layout more closely: `+ Add component` lives in the board body with a dropdown cue, `Optional rule override` is restored ahead of the review/test fields, and both the component-card and board footer action rows now sit on right-aligned footers.
+- [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) now covers the missing `new/components` and `settings/overview` route halves, asserts the component-card fields introduced in Phase 4, and includes a structural assertion that the removed project-configuration scaffold chrome is still gone.
+- Targeted fix pass validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx`, and `rtk npm run test`.
+
 ## Context and Orientation
 
 Relevant current repository state:
@@ -251,6 +265,9 @@ Relevant current repository state:
   - [ui/src/routes/workstreams/workstreams-route.tsx](../../../ui/src/routes/workstreams/workstreams-route.tsx) now stays as the thin route container over those feature-owned modules.
 - The project-configuration surfaces live in:
   - [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx)
+  - [ui/src/features/projects/components/project-configuration-tabs.tsx](../../../ui/src/features/projects/components/project-configuration-tabs.tsx)
+  - [ui/src/features/projects/components/project-configuration-section.tsx](../../../ui/src/features/projects/components/project-configuration-section.tsx)
+  - [ui/src/features/projects/components/project-component-card.tsx](../../../ui/src/features/projects/components/project-component-card.tsx)
   - [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx)
   - [ui/src/shared/layout/project-configuration-scaffold.tsx](../../../ui/src/shared/layout/project-configuration-scaffold.tsx)
   - [ui/src/shared/forms/placeholder-field.tsx](../../../ui/src/shared/forms/placeholder-field.tsx)
@@ -633,6 +650,9 @@ Out of scope: live create/update submission, project API wiring, selected-projec
 `design/workspace-spec.md`  
 `ui/src/routes/projects/project-configuration-layout.tsx`  
 `ui/src/routes/projects/project-configuration-tab-route.tsx`  
+`ui/src/features/projects/components/project-configuration-tabs.tsx`  
+`ui/src/features/projects/components/project-configuration-section.tsx`  
+`ui/src/features/projects/components/project-component-card.tsx`  
 `ui/src/shared/layout/project-configuration-scaffold.tsx`  
 `ui/src/shared/forms/placeholder-field.tsx`  
 `ui/src/shared/forms/placeholder-list-field.tsx`  
@@ -641,7 +661,11 @@ Out of scope: live create/update submission, project API wiring, selected-projec
 `ui/src/features/projects/use-project-configuration-view-model.ts`
 
 **Files Expected To Change**  
+`ui/src/routes/projects/project-configuration-layout.tsx`  
 `ui/src/routes/projects/project-configuration-tab-route.tsx`  
+`ui/src/features/projects/components/project-configuration-tabs.tsx`  
+`ui/src/features/projects/components/project-configuration-section.tsx`  
+`ui/src/features/projects/components/project-component-card.tsx`  
 `ui/src/shared/layout/project-configuration-scaffold.tsx`  
 `ui/src/shared/forms/placeholder-field.tsx`  
 `ui/src/shared/forms/placeholder-list-field.tsx`  
@@ -678,16 +702,17 @@ Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retro
 Do not expand this phase into actual project CRUD wiring. Preserve the route family and tab ids so the separate live-wiring plan can reuse them. Prefer explicit tab modules and route-level composition over pushing more branching into one route file or one broad view-model hook.
 
 **Status**  
-Completed on 2026-04-18.
+Completed on 2026-04-18. Targeted fix pass completed on 2026-04-18.
 
 **Completion Notes**  
 - Removed the project-configuration hero/header narration and right sidebar from [ui/src/shared/layout/project-configuration-scaffold.tsx](../../../ui/src/shared/layout/project-configuration-scaffold.tsx), leaving one board panel plus the tab strip.
-- Split [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx) and [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts) into explicit `new` vs `settings` tab composition instead of one growing `mode` branch.
+- Kept [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) as the explicit shell split, then split [ui/src/routes/projects/project-configuration-tab-route.tsx](../../../ui/src/routes/projects/project-configuration-tab-route.tsx), [ui/src/features/projects/components/project-configuration-tabs.tsx](../../../ui/src/features/projects/components/project-configuration-tabs.tsx), and [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts) into clearer `new` vs `settings` shell-vs-tab composition instead of one growing `mode` branch.
 - Replaced the placeholder display wrappers with semantic controls in [ui/src/shared/forms/placeholder-field.tsx](../../../ui/src/shared/forms/placeholder-field.tsx), [ui/src/shared/forms/placeholder-list-field.tsx](../../../ui/src/shared/forms/placeholder-list-field.tsx), and [ui/src/shared/forms/component-type-picker.tsx](../../../ui/src/shared/forms/component-type-picker.tsx), then updated [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx) to assert the new board contract.
+- The targeted fix pass moved `+ Add component` into the board body with the dropdown cue, restored `Optional rule override`, right-aligned the footer action rows, and strengthened the project-configuration route assertions in [ui/src/test/phase3-destinations.test.tsx](../../../ui/src/test/phase3-destinations.test.tsx).
 - Validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/phase3-destinations.test.tsx`, and `rtk npm run test`.
 
 **Next Starter Context**  
-Phase 5 should treat the project-configuration board layout and explicit `new`/`settings` composition as the corrected baseline. The remaining closeout work is tests/docs/notes alignment and final corrective-plan bookkeeping, not new project CRUD wiring.
+Phase 5 should treat the project-configuration board layout, the [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) shell split, and the feature-owned tab components under [ui/src/features/projects/components/](../../../ui/src/features/projects/components/) as the corrected baseline. The remaining closeout work is tests/docs/notes alignment and final corrective-plan bookkeeping, not new project CRUD wiring.
 
 ## Phase 5: Update tests, docs, and corrective notes
 
