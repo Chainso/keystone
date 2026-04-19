@@ -6,6 +6,8 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 ## Active Plans
 
+No active plans.
+
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
 

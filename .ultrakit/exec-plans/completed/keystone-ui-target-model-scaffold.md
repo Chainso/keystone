@@ -309,6 +309,11 @@ Final targeted fix pass outcome on 2026-04-19:
 - `ui/src/features/execution/use-execution-view-model.ts` now centralizes workflow-graph task resolution in one helper, and `ui/src/features/projects/{project-configuration-scaffold,use-project-configuration-view-model}.ts` now carry the selected component `kindId` through the draft-creation path instead of ignoring the callback argument.
 - `ui/src/test/runs-routes.test.tsx` and `ui/src/test/resource-model-selectors.test.tsx` now cover the hidden execution step for non-renderable runs, preserved execution availability for runs that do have a DAG, and the honest component-draft helper contract. Validation passed with `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck`.
 
+Archive outcome on 2026-04-19:
+
+- A final comprehensive parallel review pass over the entire plan and implementation came back clean except for the execution-step renderability mismatch and the expected archive bookkeeping gap.
+- The targeted fix pass landed as commit `083e91d` (`Fix final scaffold contract mismatches`), after which the plan met its acceptance criteria and was archived under `.ultrakit/exec-plans/completed/`.
+
 ## Context and Orientation
 
 The current repo state relevant to this plan is:
@@ -385,7 +390,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Goal:** Rework the `Runs` index, run detail shell, planning routes, and default-phase redirect to derive from the shared target-model scaffold resources.
 - **Scope Boundary:** In scope: runs index scaffolding, run header/stepper view models, planning workspace composition, and `/runs/:runId` redirect logic. Out of scope: execution/task detail, project-level workstreams, documentation, styling redesign, and live fetch wiring.
 - **Read First:**
-  - `.ultrakit/exec-plans/active/keystone-ui-target-model-scaffold.md`
+  - `.ultrakit/exec-plans/completed/keystone-ui-target-model-scaffold.md`
   - `ui/src/features/resource-model/*`
   - `ui/src/routes/runs/run-default-phase-route.tsx`
   - `ui/src/features/runs/use-runs-index-view-model.ts`
@@ -426,7 +431,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Goal:** Rework execution, task detail, and workstreams so they compose from workflow graph, tasks, artifacts, and conversation locators instead of hand-authored execution/task/workstream rows.
 - **Scope Boundary:** In scope: execution board composition, task detail composition, project-scoped workstreams projection, and related route smoke tests. Out of scope: documentation, project configuration, live task chat transport, and backend API implementation.
 - **Read First:**
-  - `.ultrakit/exec-plans/active/keystone-ui-target-model-scaffold.md`
+  - `.ultrakit/exec-plans/completed/keystone-ui-target-model-scaffold.md`
   - `ui/src/features/resource-model/*`
   - `ui/src/features/execution/use-execution-view-model.ts`
   - `ui/src/features/execution/components/execution-workspace.tsx`
@@ -465,7 +470,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Goal:** Rework Documentation so it derives from target-model documents and revisions while preserving the existing route and shell behavior.
 - **Scope Boundary:** In scope: documentation tree/viewer derivation, document selection state, and structural documentation tests. Out of scope: project configuration, styling redesign, document persistence, and route changes.
 - **Read First:**
-  - `.ultrakit/exec-plans/active/keystone-ui-target-model-scaffold.md`
+  - `.ultrakit/exec-plans/completed/keystone-ui-target-model-scaffold.md`
   - `ui/src/features/resource-model/*`
   - `ui/src/features/documentation/documentation-scaffold.ts`
   - `ui/src/features/documentation/use-documentation-view-model.ts`
@@ -494,7 +499,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Goal:** Rework project creation and settings scaffolds so they align with target-model project and repository/component contracts while preserving the current route structure.
 - **Scope Boundary:** In scope: current-project framing, project configuration view models, explicit `new` versus `settings` variants, and route tests for those surfaces. Out of scope: persistence, styling polish, live mutation flows, and route redesign.
 - **Read First:**
-  - `.ultrakit/exec-plans/active/keystone-ui-target-model-scaffold.md`
+  - `.ultrakit/exec-plans/completed/keystone-ui-target-model-scaffold.md`
   - `ui/src/features/resource-model/*`
   - `ui/src/features/projects/project-context.tsx`
   - `ui/src/features/projects/project-configuration-scaffold.ts`
@@ -527,7 +532,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Goal:** Remove replaced scaffold modules, update developer documentation to match the new architecture, and rerun final validation on the completed tree.
 - **Scope Boundary:** In scope: deleting obsolete scaffold modules, small import cleanup, developer doc updates, and final baseline validation. Out of scope: new features, styling polish, live API integration, or reopening the earlier phases' design decisions.
 - **Read First:**
-  - `.ultrakit/exec-plans/active/keystone-ui-target-model-scaffold.md`
+  - `.ultrakit/exec-plans/completed/keystone-ui-target-model-scaffold.md`
   - `.ultrakit/developer-docs/m1-architecture.md`
   - `.ultrakit/developer-docs/m1-local-runbook.md`
   - `ui/src/features/` modules touched by earlier phases
@@ -546,7 +551,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Commit Expectation:** `Document target-model UI scaffold`
 - **Known Constraints / Baseline Failures:** `npm run build` may still require a host shell on this machine because Wrangler/Docker write outside the sandbox. Do not leave dead scaffold modules presenting a second source of truth.
 - **Completion Notes:** Deleted the dead destination-local scaffold modules at `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`; updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` to describe the shared `ui/src/features/resource-model/` scaffold truthfully; reran final validation; and then completed a final targeted fix pass that hides the `execution` step when no workflow graph can render and makes the project-configuration draft helper consume the selected `kindId` honestly. `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` passed again in the sandbox. `rtk npm run build` first failed in the sandbox with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity`, then passed from a host-permitted shell as expected.
-- **Next Starter Context:** Phase execution is complete, including the final targeted fix pass. The tree is ready for orchestrator review and archival of the plan; preserve the pre-existing unstaged change in `.ultrakit/exec-plans/active/index.md` during that follow-up.
+- **Next Starter Context:** Phase execution is complete, including the final targeted fix pass and comprehensive review. The plan has been archived under `.ultrakit/exec-plans/completed/`, and the remaining repo-level context is the documented host-only `build` caveat for this Codex environment.
 
 ## Concrete Steps
 
