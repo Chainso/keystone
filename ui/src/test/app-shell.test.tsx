@@ -9,6 +9,10 @@ afterEach(() => {
   cleanup();
 });
 
+function expectShellLinkTarget(name: string, href: string) {
+  expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
+}
+
 describe("App shell", () => {
   it("redirects the default route to the Runs index inside the global shell", async () => {
     const { router } = renderRoute("/");
@@ -20,8 +24,11 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Run-104" })).toHaveAttribute("href", "/runs/run-104");
-    expect(screen.getByRole("link", { name: "New project" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Project settings" })).toBeInTheDocument();
+    expectShellLinkTarget("Runs", "/runs");
+    expectShellLinkTarget("Documentation", "/documentation");
+    expectShellLinkTarget("Workstreams", "/workstreams");
+    expectShellLinkTarget("New project", "/projects/new");
+    expectShellLinkTarget("Project settings", "/settings");
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
     expect(screen.getByText("keystone-cloudflare")).toBeInTheDocument();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
@@ -56,5 +63,10 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
     expect(screen.getByText("Keystone Cloudflare")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
+    expectShellLinkTarget("Runs", "/runs");
+    expectShellLinkTarget("Documentation", "/documentation");
+    expectShellLinkTarget("Workstreams", "/workstreams");
+    expectShellLinkTarget("New project", "/projects/new");
+    expectShellLinkTarget("Project settings", "/settings");
   });
 });

@@ -105,6 +105,11 @@ Compatibility that **is** required:
   **Decision:** Replace the shell’s summary-heavy sidebar with board-like project and navigation controls, and rewrite the global UI stylesheet to neutral layout primitives instead of tuning the existing bespoke treatment.  
   **Rationale:** The shell drift was caused by both copy and the shared visual system. Resetting only one of those layers would have left the scaffold reading like a polished milestone demo instead of the canonical workspace frame.
 
+- **Date:** 2026-04-18  
+  **Phase:** Phase 1 fix pass  
+  **Decision:** Close the remaining shell review finding with test-only route-target assertions instead of reopening the shell implementation.  
+  **Rationale:** The important gap was coverage, not behavior. The shared shell already sourced its destinations correctly, so the smallest truthful fix was to assert the actual `href` targets for sidebar destinations and project-action links.
+
 ## Progress
 
 - [x] 2026-04-18 Discovery completed through direct review of `design/workspace-spec.md`, the current UI implementation, and five parallel frame-specific audits.
@@ -112,6 +117,7 @@ Compatibility that **is** required:
 - [x] 2026-04-18 Corrective execution plan created and registered in `.ultrakit/exec-plans/active/index.md`.
 - [x] 2026-04-18 User approval recorded and execution started.
 - [x] 2026-04-18 Phase 1: Reset the shared shell and base styling to a minimal ASCII-faithful scaffold.
+- [x] 2026-04-18 Phase 1 fix pass: strengthened shell route-target coverage for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`.
 - [ ] Phase 2: Realign the `Runs` family to the index / planning panes / execution / task-detail boards.
 - [ ] Phase 3: Realign `Documentation` and `Workstreams` to their canonical boards.
 - [ ] Phase 4: Realign `New project` and `Project settings` to the project-configuration boards.
@@ -126,6 +132,7 @@ Compatibility that **is** required:
 - There are already two other active plans awaiting approval in `.ultrakit/exec-plans/active/index.md`. This corrective plan should be considered the higher-priority UI prerequisite for any plan that wants to fill in the current scaffold surfaces.
 - A separate React architecture audit found five additional structural risks to address while correcting the scaffold: run-specific layouts living in `shared`, a mode-driven project-configuration monolith, large prop-bag workspace components, route files acting as feature surfaces, and view-model hooks mixing local UI state with feature data shaping.
 - Resetting the shell styling cleanly required replacing nearly the entire shared stylesheet, because out-of-scope route families still depend on the same global class layer. A small shell-only CSS patch would have preserved too much of the prior chrome.
+- The only post-implementation Phase 1 review finding was a shell test-coverage gap. The shell implementation itself already used the expected route definitions, so the corrective pass stayed test-only.
 
 ## Outcomes & Retrospective
 
@@ -139,6 +146,7 @@ Phase 1 outcome on 2026-04-18:
 
 - The global shell now reads as a sparse project workspace: terse project context, icon-only project actions, primary navigation labels only, and no shell footnote or summary copy.
 - The shared stylesheet now uses neutral border-and-panel primitives that keep the existing route tree renderable without the old gradients, shadows, or branded chrome.
+- The shell test now asserts the actual targets for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`, so a miswired shared-shell destination will fail Phase 1 validation.
 - Phase 2 can now focus on run-surface structure and ownership boundaries without also carrying shell-level cleanup.
 
 ## Context and Orientation
@@ -339,6 +347,7 @@ Out of scope: surface-specific `Runs`, `Documentation`, `Workstreams`, or projec
 `ui/src/app/styles.css`  
 `ui/src/shared/layout/app-shell.tsx`  
 `ui/src/shared/layout/page-section.tsx`  
+`ui/src/test/app-shell.test.tsx`  
 Possibly small supporting shared-layout files if the current hero/page-section primitives are removed or collapsed.
 
 **Validation**  
@@ -370,16 +379,17 @@ Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retro
 `npm run build` still has the known sandbox-only Wrangler/Docker write failure and needs a host rerun for final confirmation.
 
 **Status**  
-Completed on 2026-04-18.
+Completed on 2026-04-18. Targeted fix pass completed on 2026-04-18.
 
 **Completion Notes**  
 - Removed navigation summaries, scaffold footnote copy, and the `UI structure scaffold placeholder` project text from the shared shell.
 - Simplified shared navigation and project-context data structures so the shell only carries project identity, route labels, and project-action glyphs.
 - Replaced `ui/src/app/styles.css` with a neutral scaffold stylesheet that still covers the current route-family markup used outside this phase.
-- Validation passed: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/app-shell.test.tsx`, and `rtk npm run test`.
+- Strengthened [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx) so the shell test asserts the actual `href` targets for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` on both the default redirect path and direct destination mounts.
+- Validation passed for the implementation and the targeted fix pass: `rtk npm run lint`, `rtk npm run typecheck`, `rtk npm run test -- ui/src/test/app-shell.test.tsx`, and `rtk npm run test`.
 
 **Next Starter Context**  
-Phase 2 should treat the shell reset as complete and focus only on the `Runs` family. The shared shell now provides the plain frame; the remaining drift is inside run-route headers, sidebars, summaries, and run-specific shared-layout ownership.
+Phase 2 should treat the shell reset as complete. The remaining shell review gap is closed in test coverage, and the next work should focus only on the `Runs` family’s rendered structure and ownership boundaries.
 
 ## Phase 2: Realign the Runs family
 
