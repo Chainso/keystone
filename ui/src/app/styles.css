@@ -133,14 +133,6 @@ pre {
   line-height: 1.2;
 }
 
-.project-switcher-meta {
-  margin: 0;
-  color: var(--text-muted);
-  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-  font-size: 0.8rem;
-  line-height: 1.4;
-}
-
 .project-switcher-chevron {
   color: var(--text-muted);
   font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
@@ -341,7 +333,6 @@ pre {
 .table-row-note,
 .environment-var-value,
 .review-file-note,
-.project-switcher-meta,
 .workspace-panel-summary {
   color: var(--text-secondary);
   line-height: 1.6;
@@ -497,8 +488,13 @@ pre {
   vertical-align: top;
 }
 
-.runs-table tbody tr:hover {
+.runs-table tbody tr:hover,
+.runs-table tbody tr:focus-within {
   background: var(--surface-subtle);
+}
+
+.table-clickable-row {
+  cursor: pointer;
 }
 
 .table-primary-link {
@@ -767,10 +763,19 @@ pre {
 
 .documentation-tree-item {
   display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  align-items: start;
   justify-content: stretch;
   gap: 0.3rem;
   width: 100%;
   text-align: left;
+}
+
+.documentation-tree-item-branch {
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .documentation-tree-item.is-active,

@@ -83,6 +83,8 @@ describe("Phase 3 destination scaffolds", () => {
     expect(within(documentationTree).getByText("▾ Product Specifications")).toBeInTheDocument();
     expect(within(documentationTree).getByText("▾ Technical Architecture")).toBeInTheDocument();
     expect(within(documentationTree).getByText("▾ Miscellaneous Notes")).toBeInTheDocument();
+    expect(within(documentationTree).getAllByText("└─")).toHaveLength(3);
+    expect(within(documentationTree).getAllByText("├─")).toHaveLength(1);
     expect(within(documentationTree).getAllByRole("button")).toHaveLength(4);
     expect(within(documentationTree).getAllByRole("button", { name: "Current" })).toHaveLength(2);
 
@@ -158,6 +160,24 @@ describe("Phase 3 destination scaffolds", () => {
       ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"],
       ["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]
     ]);
+  });
+
+  it("opens a workstream task when the user clicks the row body", async () => {
+    const { router } = renderRoute("/workstreams");
+
+    expect(
+      await screen.findByRole("heading", { name: "Active and queued project work" })
+    ).toBeInTheDocument();
+
+    const blockedRow = screen.getByRole("link", { name: "TASK-019" }).closest("tr");
+
+    expect(blockedRow).not.toBeNull();
+
+    fireEvent.click(within(blockedRow as HTMLElement).getByText("Review fix"));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-101/execution/tasks/task-019");
+    });
   });
 
   it("opens canonical workstream task routes without falling back to placeholder task ids", async () => {

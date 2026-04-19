@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import { renderRoute } from "./render-route";
 
@@ -41,12 +41,22 @@ describe("Phase 2 runs routes", () => {
   });
 
   it("renders run index rows with run-detail navigation targets", async () => {
-    renderRoute("/runs");
+    const { router } = renderRoute("/runs");
 
     expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Run-104" })).toHaveAttribute("href", "/runs/run-104");
     expect(screen.getByRole("link", { name: "Run-103" })).toHaveAttribute("href", "/runs/run-103");
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
+
+    const row = screen.getByRole("link", { name: "Run-104" }).closest("tr");
+
+    expect(row).not.toBeNull();
+
+    fireEvent.click(within(row as HTMLElement).getByText("UI workspace build"));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/execution");
+    });
   });
 
   it.each([

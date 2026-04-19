@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import type { MouseEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import type { WorkstreamRowViewModel, WorkstreamsViewModel } from "../use-workstreams-view-model";
 
@@ -11,8 +12,28 @@ interface WorkstreamsRowProps {
 }
 
 function WorkstreamsRow({ row }: WorkstreamsRowProps) {
+  const navigate = useNavigate();
+
+  function handleRowClick(event: MouseEvent<HTMLTableRowElement>) {
+    const target = event.target;
+
+    if (
+      event.button !== 0 ||
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      (target instanceof Element && target.closest("a, button, input, textarea, select, summary"))
+    ) {
+      return;
+    }
+
+    navigate(row.detailPath);
+  }
+
   return (
-    <tr>
+    <tr className="table-clickable-row" onClick={handleRowClick}>
       <td>
         <Link to={row.detailPath} className="table-primary-link">
           {row.taskDisplayId}
@@ -68,7 +89,7 @@ export function WorkstreamsBoard({ model }: WorkstreamsBoardProps) {
           </table>
         </div>
 
-        <p className="page-section-copy">Use the task link to open that task inside Runs &gt; Execution.</p>
+        <p className="page-section-copy">Click row to open that task inside Runs &gt; Execution.</p>
       </section>
     </div>
   );

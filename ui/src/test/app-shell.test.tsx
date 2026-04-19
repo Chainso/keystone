@@ -30,7 +30,7 @@ describe("App shell", () => {
     expectShellLinkTarget("New project", "/projects/new");
     expectShellLinkTarget("Project settings", "/settings");
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
-    expect(screen.getByText("keystone-cloudflare")).toBeInTheDocument();
+    expect(screen.queryByText("keystone-cloudflare")).not.toBeInTheDocument();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/destination content is intentionally scaffold-only/i)

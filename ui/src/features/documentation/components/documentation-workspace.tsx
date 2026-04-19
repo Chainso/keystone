@@ -24,21 +24,29 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
                   <p className="documentation-tree-group-title">▾ {group.label}</p>
 
                   <div className="documentation-tree-items">
-                    {group.documents.map((document) => (
-                      <button
-                        key={document.documentId}
-                        type="button"
-                        className={
-                          document.isSelected
-                            ? "documentation-tree-item is-active"
-                            : "documentation-tree-item"
-                        }
-                        aria-pressed={document.isSelected}
-                        onClick={() => model.selectDocument(document.documentId)}
-                      >
-                        <span className="documentation-tree-item-label">{document.label}</span>
-                      </button>
-                    ))}
+                    {group.documents.map((document, index) => {
+                      const branchMarker =
+                        index === group.documents.length - 1 ? "\u2514\u2500" : "\u251c\u2500";
+
+                      return (
+                        <button
+                          key={document.documentId}
+                          type="button"
+                          className={
+                            document.isSelected
+                              ? "documentation-tree-item is-active"
+                              : "documentation-tree-item"
+                          }
+                          aria-pressed={document.isSelected}
+                          onClick={() => model.selectDocument(document.documentId)}
+                        >
+                          <span className="documentation-tree-item-branch" aria-hidden="true">
+                            {branchMarker}
+                          </span>
+                          <span className="documentation-tree-item-label">{document.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </section>
               ))}

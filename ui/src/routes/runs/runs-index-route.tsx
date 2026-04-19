@@ -1,10 +1,30 @@
-import { Link } from "react-router-dom";
+import type { MouseEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import { useRunsIndexViewModel } from "../../features/runs/use-runs-index-view-model";
 import { StatusPill } from "../../shared/layout/status-pill";
 
 export function RunsIndexRoute() {
   const model = useRunsIndexViewModel();
+  const navigate = useNavigate();
+
+  function handleRowClick(event: MouseEvent<HTMLTableRowElement>, detailPath: string) {
+    const target = event.target;
+
+    if (
+      event.button !== 0 ||
+      event.defaultPrevented ||
+      event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      (target instanceof Element && target.closest("a, button, input, textarea, select, summary"))
+    ) {
+      return;
+    }
+
+    navigate(detailPath);
+  }
 
   return (
     <div className="page-stage">
@@ -29,7 +49,11 @@ export function RunsIndexRoute() {
             </thead>
             <tbody>
               {model.runs.map((run) => (
-                <tr key={run.runId}>
+                <tr
+                  key={run.runId}
+                  className="table-clickable-row"
+                  onClick={(event) => handleRowClick(event, run.detailPath)}
+                >
                   <td>
                     <Link to={run.detailPath} className="table-primary-link">
                       {run.displayId}

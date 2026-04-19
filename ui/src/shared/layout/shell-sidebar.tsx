@@ -24,7 +24,6 @@ export function ShellSidebar() {
         <button type="button" className="project-switcher" disabled>
           <span className="project-switcher-details">
             <span className="project-switcher-name">{project.displayName}</span>
-            <span className="project-switcher-meta">{project.projectKey}</span>
           </span>
           <span className="project-switcher-chevron" aria-hidden="true">
             v
