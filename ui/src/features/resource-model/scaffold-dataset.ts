@@ -24,7 +24,7 @@ const runs: ResourceRun[] = [
     runId: "run-104",
     projectId: "project-keystone-cloudflare",
     displayId: "Run-104",
-    summary: "UI workspace build",
+    summary: "Project workspace navigation",
     status: "In progress",
     updatedLabel: "2m ago",
     hasCompiledTasks: true
@@ -42,7 +42,7 @@ const runs: ResourceRun[] = [
     runId: "run-102",
     projectId: "project-keystone-cloudflare",
     displayId: "Run-102",
-    summary: "Task steering work",
+    summary: "Task routing rules",
     status: "Blocked",
     updatedLabel: "3h ago",
     hasCompiledTasks: false
@@ -51,7 +51,7 @@ const runs: ResourceRun[] = [
     runId: "run-101",
     projectId: "project-keystone-cloudflare",
     displayId: "Run-101",
-    summary: "Initial operator UI",
+    summary: "Run intake setup",
     status: "Draft",
     updatedLabel: "1d ago",
     hasCompiledTasks: false
@@ -110,8 +110,8 @@ const documents: ResourceDocument[] = [
     path: "runs/run-104/specification/product-spec.md",
     currentRevisionId: "run-104-specification-rev-1",
     conversationLocator: {
-      agentClass: "planner",
-      agentName: "Specification agent"
+      agentClass: "document-conversation",
+      agentName: "run-104/specification"
     }
   },
   {
@@ -125,8 +125,8 @@ const documents: ResourceDocument[] = [
     path: "runs/run-104/architecture/architecture.md",
     currentRevisionId: "run-104-architecture-rev-1",
     conversationLocator: {
-      agentClass: "planner",
-      agentName: "Architecture agent"
+      agentClass: "document-conversation",
+      agentName: "run-104/architecture"
     }
   },
   {
@@ -140,8 +140,8 @@ const documents: ResourceDocument[] = [
     path: "runs/run-104/execution-plan/execution-plan.md",
     currentRevisionId: "run-104-execution-plan-rev-1",
     conversationLocator: {
-      agentClass: "planner",
-      agentName: "Execution plan agent"
+      agentClass: "document-conversation",
+      agentName: "run-104/execution-plan"
     }
   },
   {
@@ -220,7 +220,7 @@ const documentRevisions: ResourceDocumentRevision[] = [
     contentLines: [
       "Operator work stays organized around Runs, Documentation, Workstreams, and project settings inside one workspace.",
       "This document captures the current product state instead of preserving run-by-run chat history as the source of truth.",
-      "The current direction keeps Documentation project-scoped and Workstreams focused on active task handoff into execution."
+      "The current direction keeps Documentation project-scoped and Workstreams focused on active task lists across runs."
     ]
   },
   {
@@ -269,7 +269,7 @@ const documentRevisions: ResourceDocumentRevision[] = [
     revisionId: "run-104-execution-plan-rev-1",
     documentId: "run-104-execution-plan",
     viewerTitle: "Execution plan doc",
-    contentLines: ["phases, deliverables,", "validation, risks"]
+    contentLines: ["navigation tasks,", "routing constraints, risks"]
   },
   {
     revisionId: "run-103-specification-rev-1",
@@ -299,13 +299,13 @@ const documentRevisions: ResourceDocumentRevision[] = [
     revisionId: "run-102-execution-plan-rev-1",
     documentId: "run-102-execution-plan",
     viewerTitle: "Execution plan doc",
-    contentLines: ["phased rollout", "keeps scaffold work manageable"]
+    contentLines: ["task sequencing,", "blocked-work handling"]
   },
   {
     revisionId: "run-101-specification-rev-1",
     documentId: "run-101-specification",
     viewerTitle: "Living product spec",
-    contentLines: ["initial operator UI", "starts from the run scaffold"]
+    contentLines: ["run intake setup", "starts from the initial brief"]
   }
 ];
 
@@ -323,8 +323,8 @@ const tasks: ResourceTask[] = [
     blockedBy: [],
     artifactIds: [],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "Specification drafter"
+      agentClass: "task-conversation",
+      agentName: "run-104/task-029"
     }
   },
   {
@@ -340,8 +340,8 @@ const tasks: ResourceTask[] = [
     blockedBy: [],
     artifactIds: [],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "Architecture drafter"
+      agentClass: "task-conversation",
+      agentName: "run-104/task-030"
     }
   },
   {
@@ -357,8 +357,8 @@ const tasks: ResourceTask[] = [
     blockedBy: [],
     artifactIds: [],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "Planner"
+      agentClass: "task-conversation",
+      agentName: "run-104/task-031"
     }
   },
   {
@@ -367,15 +367,15 @@ const tasks: ResourceTask[] = [
     runId: "run-104",
     displayId: "TASK-032",
     graphLabel: "Shell",
-    title: "Build shell",
+    title: "Run shell navigation",
     status: "Running",
     updatedLabel: "2m ago",
     dependsOn: ["task-031"],
     blockedBy: [],
     artifactIds: ["artifact-task-032-router", "artifact-task-032-workspace"],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "UI shell builder"
+      agentClass: "task-conversation",
+      agentName: "run-104/task-032"
     }
   },
   {
@@ -384,15 +384,15 @@ const tasks: ResourceTask[] = [
     runId: "run-104",
     displayId: "TASK-033",
     graphLabel: "Task View",
-    title: "DAG wiring",
+    title: "Task detail routing",
     status: "Queued",
     updatedLabel: "4m ago",
     dependsOn: ["task-032"],
     blockedBy: ["task-032"],
     artifactIds: ["artifact-task-033-task-detail"],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "Execution router"
+      agentClass: "task-conversation",
+      agentName: "run-104/task-033"
     }
   },
   {
@@ -401,15 +401,15 @@ const tasks: ResourceTask[] = [
     runId: "run-104",
     displayId: "TASK-034",
     graphLabel: "Docs",
-    title: "Documentation alignment",
+    title: "Documentation grouping",
     status: "Ready",
     updatedLabel: "8m ago",
     dependsOn: ["task-031"],
     blockedBy: [],
     artifactIds: [],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "Documentation aligner"
+      agentClass: "task-conversation",
+      agentName: "run-104/task-034"
     }
   },
   {
@@ -418,15 +418,15 @@ const tasks: ResourceTask[] = [
     runId: "run-103",
     displayId: "TASK-021",
     graphLabel: "Docs",
-    title: "Docs refresh",
+    title: "Documentation curation",
     status: "Running",
     updatedLabel: "9m ago",
     dependsOn: [],
     blockedBy: [],
     artifactIds: [],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "Documentation refresh"
+      agentClass: "task-conversation",
+      agentName: "run-103/task-021"
     }
   },
   {
@@ -435,15 +435,15 @@ const tasks: ResourceTask[] = [
     runId: "run-101",
     displayId: "TASK-019",
     graphLabel: "Review",
-    title: "Review fix",
+    title: "Blocked task visibility",
     status: "Blocked",
     updatedLabel: "1h ago",
     dependsOn: [],
     blockedBy: [],
     artifactIds: [],
     conversationLocator: {
-      agentClass: "executor",
-      agentName: "Review fixer"
+      agentClass: "task-conversation",
+      agentName: "run-101/task-019"
     }
   }
 ];
@@ -484,10 +484,10 @@ const artifacts: ResourceArtifact[] = [
     runId: "run-104",
     taskId: "task-032",
     path: "ui/src/routes/runs/task-detail-route.tsx",
-    summary: "Task detail route shell.",
+    summary: "Task detail route behavior.",
     diff: [
       "+ keep task detail scoped to the selected run",
-      "+ preserve the Back to DAG handoff"
+      "+ preserve the return path to the workflow graph"
     ]
   },
   {
@@ -503,9 +503,9 @@ const artifacts: ResourceArtifact[] = [
     runId: "run-104",
     taskId: "task-033",
     path: "ui/src/features/execution/components/task-detail-workspace.tsx",
-    summary: "Conversation and review split.",
+    summary: "Task detail split layout.",
     diff: [
-      "+ render the task conversation beside the code review sidebar",
+      "+ render task updates beside the review sidebar",
       "+ show one-pane diffs in collapsible file sections"
     ]
   }
@@ -527,7 +527,7 @@ const projectConfigurations: ResourceProjectConfiguration[] = [
         "Capture component-specific review focus when needed."
       ],
       testInstructions: [
-        "Run lint, typecheck, and test before handoff.",
+        "Run lint, typecheck, and targeted tests for affected components.",
         "Verify the project configuration tabs."
       ]
     },
@@ -576,7 +576,7 @@ const projectConfigurations: ResourceProjectConfiguration[] = [
         "Capture component-specific review focus when needed."
       ],
       testInstructions: [
-        "Run lint, typecheck, and test before handoff.",
+        "Run lint, typecheck, and targeted tests for affected components.",
         "Verify the project configuration tabs."
       ]
     },

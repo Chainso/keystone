@@ -9,7 +9,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Phase 2 runs routes", () => {
+describe("Run routes", () => {
   it("redirects /runs/:runId to the derived default phase", async () => {
     const { router } = renderRoute("/runs/run-104");
 
@@ -23,7 +23,7 @@ describe("Phase 2 runs routes", () => {
       })
     ).toHaveAttribute("href", "/runs/run-104/execution");
     expect(screen.getByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.getByText("UI workspace build")).toBeInTheDocument();
+    expect(screen.getByText("Project workspace navigation")).toBeInTheDocument();
   });
 
   it("redirects run-102 to execution-plan when no compiled tasks exist", async () => {
@@ -94,7 +94,7 @@ describe("Phase 2 runs routes", () => {
 
     expect(row).not.toBeNull();
 
-    fireEvent.click(within(row as HTMLElement).getByText("UI workspace build"));
+    fireEvent.click(within(row as HTMLElement).getByText("Project workspace navigation"));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-104/execution");
@@ -106,32 +106,34 @@ describe("Phase 2 runs routes", () => {
       path: "/runs/run-104/specification",
       title: "Specification conversation",
       document: "Living product spec",
-      agentName: "Specification agent",
       documentPath: "runs/run-104/specification/product-spec.md"
     },
     {
       path: "/runs/run-104/architecture",
       title: "Architecture conversation",
       document: "Living architecture doc",
-      agentName: "Architecture agent",
       documentPath: "runs/run-104/architecture/architecture.md"
     },
     {
       path: "/runs/run-104/execution-plan",
       title: "Execution Plan conversation",
       document: "Execution plan doc",
-      agentName: "Execution plan agent",
       documentPath: "runs/run-104/execution-plan/execution-plan.md"
     }
   ])(
     "renders the planning workspace from document and conversation locator data for $path",
-    async ({ path, title, document, agentName, documentPath }) => {
+    async ({ path, title, document, documentPath }) => {
       renderRoute(path);
 
       expect(await screen.findByRole("heading", { name: "Run-104" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: document })).toBeInTheDocument();
-      expect(screen.getByLabelText("Conversation locator")).toHaveTextContent(agentName);
+      expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+        "Conversation attached to this document."
+      );
+      expect(screen.getByLabelText("Conversation status")).not.toHaveTextContent(
+        "document-conversation"
+      );
       expect(screen.getByText(documentPath)).toBeInTheDocument();
       expect(screen.queryByRole("textbox", { name: "Message composer" })).not.toBeInTheDocument();
       expect(screen.getByRole("navigation", { name: "Run phases" })).toBeInTheDocument();
@@ -142,16 +144,16 @@ describe("Phase 2 runs routes", () => {
     const { container } = renderRoute("/runs/run-104/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Build shell/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Run shell navigation/i })).toHaveAttribute(
       "href",
       "/runs/run-104/execution/tasks/task-032"
     );
-    expect(screen.getByRole("link", { name: /DAG wiring/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Task detail routing/i })).toHaveAttribute(
       "href",
       "/runs/run-104/execution/tasks/task-033"
     );
     expect(
-      screen.getByText("Workflow rows are grouped by dependency depth in the scaffold graph.")
+      screen.getByText("Workflow rows are grouped by dependency depth in the current workflow graph.")
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -171,9 +173,9 @@ describe("Phase 2 runs routes", () => {
     expect(within(rows[1] as HTMLElement).getByText("Architecture decisions")).toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText("Execution plan")).toBeInTheDocument();
     expect(branchRow).not.toBeNull();
-    expect(within(branchRow as HTMLElement).getByText("Build shell")).toBeInTheDocument();
-    expect(within(branchRow as HTMLElement).getByText("Documentation alignment")).toBeInTheDocument();
-    expect(within(rows[4] as HTMLElement).getByText("DAG wiring")).toBeInTheDocument();
+    expect(within(branchRow as HTMLElement).getByText("Run shell navigation")).toBeInTheDocument();
+    expect(within(branchRow as HTMLElement).getByText("Documentation grouping")).toBeInTheDocument();
+    expect(within(rows[4] as HTMLElement).getByText("Task detail routing")).toBeInTheDocument();
     expect(branchRow?.querySelectorAll(".execution-node .execution-dag-arrow")).toHaveLength(0);
   });
 
@@ -181,7 +183,10 @@ describe("Phase 2 runs routes", () => {
     renderRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(screen.getByRole("heading", { name: "Run-104 / TASK-032" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation locator")).toHaveTextContent("UI shell builder");
+    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+      "Conversation attached to this task."
+    );
+    expect(screen.getByLabelText("Conversation status")).not.toHaveTextContent("task-conversation");
     expect(screen.getByRole("heading", { name: "Artifacts and review" })).toBeInTheDocument();
     expect(screen.getByText("Changed files")).toBeInTheDocument();
     expect(screen.getByText("TASK-031")).toBeInTheDocument();
@@ -193,7 +198,7 @@ describe("Phase 2 runs routes", () => {
       .closest("details");
 
     expect(routeArtifactCard).not.toBeNull();
-    expect(routeArtifactCard).toHaveTextContent("Task detail route shell.");
+    expect(routeArtifactCard).toHaveTextContent("Task detail route behavior.");
     expect(routeArtifactCard).toHaveTextContent("+ keep task detail scoped to the selected run");
     expect(workspaceArtifactCard).not.toBeNull();
     expect(workspaceArtifactCard).toHaveTextContent("Workflow DAG surface.");

@@ -75,15 +75,17 @@ export function TaskDetailWorkspace({
 
           <p className="task-detail-title">{title}</p>
 
-          <section className="document-card" aria-label="Conversation locator">
-            <p className="review-sidebar-label">Conversation locator</p>
+          <section className="document-card" aria-label="Conversation status">
+            <p className="review-sidebar-label">Conversation status</p>
             {conversationLocator ? (
               <>
-                <p className="message-card-speaker">{conversationLocator.agentName}</p>
-                <p className="document-card-summary">{conversationLocator.agentClass}</p>
+                <p className="message-card-speaker">Conversation attached to this task.</p>
+                <p className="document-card-summary">
+                  Task updates will resolve through the attached conversation when chat transport is added.
+                </p>
               </>
             ) : (
-              <p className="document-card-summary">No conversation locator recorded for this task.</p>
+              <p className="document-card-summary">No conversation is attached to this task yet.</p>
             )}
           </section>
 

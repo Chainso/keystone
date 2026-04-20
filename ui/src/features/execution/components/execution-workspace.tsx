@@ -79,7 +79,7 @@ export function ExecutionWorkspace({ rows }: ExecutionWorkspaceProps) {
         ))}
 
         <p className="execution-board-note">
-          Workflow rows are grouped by dependency depth in the scaffold graph.
+          Workflow rows are grouped by dependency depth in the current workflow graph.
         </p>
         <p className="execution-board-note">Click a task node to open that task inside Execution.</p>
       </div>

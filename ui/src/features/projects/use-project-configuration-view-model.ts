@@ -107,19 +107,20 @@ function useProjectConfigurationSeed(mode: ProjectConfigurationMode) {
 
 function useProjectComponentsModel(mode: ProjectConfigurationMode): ProjectComponentsViewModel {
   const { configuration, selectionKey } = useProjectConfigurationSeed(mode);
+  const serializedComponents = JSON.stringify(configuration.components);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [components, setComponents] = useState(configuration.components);
 
   useEffect(() => {
-    setComponents(configuration.components);
+    setComponents(JSON.parse(serializedComponents) as ProjectComponentScaffold[]);
     setTypePickerOpen(false);
-  }, [selectionKey]);
+  }, [selectionKey, serializedComponents]);
 
   return {
     components,
     emptyState:
       mode === "new"
-        ? "Add repository components before saving the project scaffold."
+        ? "Add repository components before saving the project."
         : "No project components configured yet.",
     footerActions: mode === "new" ? ["Cancel", "Save Draft", "Next"] : ["Discard", "Save"],
     heading: "Components",

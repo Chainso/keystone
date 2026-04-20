@@ -172,7 +172,7 @@ describe("resource-model selectors", () => {
           revisionId: "run-phase-execution-plan-doc-rev-1",
           documentId: "run-phase-execution-plan-doc",
           viewerTitle: "Execution plan doc",
-          contentLines: ["phase"]
+          contentLines: ["plan"]
         },
         {
           revisionId: "run-phase-architecture-doc-rev-1",
@@ -512,20 +512,20 @@ describe("resource-model selectors", () => {
             {
               componentId: "component-alt-worker",
               heading: "Component 1",
-              displayName: "Alt Worker",
-              componentKey: "alt-worker",
+              displayName: "Alt Service",
+              componentKey: "alt-service",
               kind: "git_repository",
               sourceMode: "gitUrl",
               localPath: "",
-              gitUrl: "https://github.com/keystone/alt-worker.git",
+              gitUrl: "https://github.com/keystone/alt-service.git",
               defaultRef: "main",
-              reviewInstructions: ["Focus on worker changes"],
-              testInstructions: ["Run worker tests"]
+              reviewInstructions: ["Focus on service changes"],
+              testInstructions: ["Run targeted service tests"]
             }
           ],
           rules: {
             reviewInstructions: ["Keep route ownership explicit."],
-            testInstructions: ["Run lint, typecheck, and test before handoff."]
+            testInstructions: ["Run lint, typecheck, and targeted tests."]
           },
           environmentVariables: []
         }
@@ -542,6 +542,53 @@ describe("resource-model selectors", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Switch settings project" }));
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("Alt Worker");
+    expect(screen.getByTestId("components-heading")).toHaveTextContent("Alt Service");
+  });
+
+  it("resynchronizes settings components when the backing configuration changes for the same project", () => {
+    const initialDataset: ResourceModelDataset = uiScaffoldDataset;
+    const updatedDataset: ResourceModelDataset = {
+      ...uiScaffoldDataset,
+      projectConfigurations: uiScaffoldDataset.projectConfigurations.map((configuration) => {
+        if (configuration.projectId !== "project-keystone-cloudflare") {
+          return configuration;
+        }
+
+        return {
+          ...configuration,
+          components: [
+            {
+              componentId: "component-worker-app",
+              heading: "Component 1",
+              displayName: "Gateway",
+              componentKey: "gateway",
+              kind: "git_repository",
+              sourceMode: "localPath",
+              localPath: "./services/gateway",
+              gitUrl: "",
+              defaultRef: "main",
+              reviewInstructions: ["Focus on gateway changes"],
+              testInstructions: ["Run targeted gateway tests"]
+            }
+          ]
+        };
+      })
+    };
+
+    const { rerender } = render(
+      <ResourceModelProvider dataset={initialDataset}>
+        <ProjectSettingsComponentsProbe />
+      </ResourceModelProvider>
+    );
+
+    expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+
+    rerender(
+      <ResourceModelProvider dataset={updatedDataset}>
+        <ProjectSettingsComponentsProbe />
+      </ResourceModelProvider>
+    );
+
+    expect(screen.getByTestId("components-heading")).toHaveTextContent("Gateway");
   });
 });

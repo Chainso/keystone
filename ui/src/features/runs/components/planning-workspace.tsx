@@ -24,17 +24,18 @@ function PlanningConversationPanel({
       </header>
 
       {conversationLocator ? (
-        <article className="message-card" aria-label="Conversation locator">
-          <p className="message-card-speaker">Agent class</p>
-          <p className="message-card-body">{conversationLocator.agentClass}</p>
-          <p className="message-card-speaker">Agent name</p>
-          <p className="message-card-body">{conversationLocator.agentName}</p>
+        <article className="message-card" aria-label="Conversation status">
+          <p className="message-card-speaker">Conversation status</p>
+          <p className="message-card-body">Conversation attached to this document.</p>
+          <p className="document-card-summary">
+            Live message history will resolve through the attached conversation when chat transport is added.
+          </p>
         </article>
       ) : (
-        <article className="message-card" aria-label="Conversation locator unavailable">
-          <p className="message-card-speaker">Conversation locator</p>
+        <article className="message-card" aria-label="Conversation status">
+          <p className="message-card-speaker">Conversation status</p>
           <p className="message-card-body">
-            No planner agent is attached to this document yet.
+            No conversation is attached to this document yet.
           </p>
         </article>
       )}

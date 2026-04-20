@@ -87,24 +87,24 @@ export function buildProjectConfigurationComponentDraft(
   return {
     componentId: `${mode}-component-${componentNumber}`,
     heading: `Component ${componentNumber}`,
-    displayName: mode === "new" ? `Repository ${componentNumber}` : `Background worker ${componentNumber}`,
+    displayName: mode === "new" ? `Repository ${componentNumber}` : `Service ${componentNumber}`,
     componentKey:
-      mode === "new" ? `repository-${componentNumber}` : `background-worker-${componentNumber}`,
+      mode === "new" ? `repository-${componentNumber}` : `service-${componentNumber}`,
     kind: kindId,
     sourceMode: "gitUrl",
     localPath: "",
     gitUrl:
       mode === "new"
         ? `https://github.com/keystone/repository-${componentNumber}.git`
-        : `https://github.com/keystone/background-worker-${componentNumber}.git`,
+        : `https://github.com/keystone/service-${componentNumber}.git`,
     defaultRef: "main",
     reviewInstructions:
       mode === "new"
         ? ["Focus on repository boundaries"]
-        : ["Focus on background worker changes"],
+        : ["Focus on service changes"],
     testInstructions:
       mode === "new"
-        ? ["Run the component test plan"]
-        : ["Run the worker test plan"]
+        ? ["Run targeted component tests"]
+        : ["Run targeted component tests"]
   };
 }
