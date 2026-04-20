@@ -55,6 +55,15 @@ Ultrakit execution is subagent-driven. Keep the stage logic in `.agents/skills/u
 
 Before making non-trivial changes, read the relevant docs in `.ultrakit/developer-docs/` for the subsystem you are touching. Treat them as the primary source for repo-specific architecture, runtime boundaries, contracts, and design rationale. If your change would make those docs materially inaccurate, update the relevant developer doc in the same change.
 
+## Execution Model Language
+
+Keep Ultrakit and other execution-framework vocabulary out of the shipped product code unless the product spec explicitly uses that vocabulary.
+
+- Do not let planning or orchestration terms such as execution-plan `phase`, `handoff`, `fix pass`, `review pass`, `worker`, `implementer`, `reviewer`, or similar delivery-process language bleed into product-facing models, component names, route labels, user-visible copy, CSS class names, or test descriptions. Product-defined run phases are allowed when they are part of the actual Keystone UI model.
+- Prefer the product/domain nouns from `design/` and `product-specs/`. If the UI is expressing run navigation, use the exact product concepts (`Specification`, `Architecture`, `Execution Plan`, `Execution`, `Runs`, `Documentation`, `Workstreams`) or neutral structural terms like `step`, `section`, `tab`, or `stage` when the spec does not define a noun.
+- When internal code needs a generic grouping or sequencing term, choose one that matches the product model rather than the delivery workflow. For example, prefer `step`, `stage`, `document kind`, or `destination` over `phase` unless the product model itself defines a run phase.
+- Archived execution plans may use execution-model language because they are process artifacts, but implementation code, durable developer docs, and shipped tests should describe the product, not the delivery machinery.
+
 ## Commit & Pull Request Guidelines
 
 Current history uses short imperative subjects such as `init`, `move`, and `remove`. Keep the imperative style, but make subjects more descriptive, for example `add Cloudflare worker scaffold`.
