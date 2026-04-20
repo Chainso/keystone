@@ -55,7 +55,7 @@ If Wrangler binds a different port because `8787` is already in use, export the 
 export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 ```
 
-If you are validating the full repo after UI changes, `npm run build` still needs a normal host shell on this machine. `vite build` completes in the sandbox, but Wrangler's dry-run deploy then needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`.
+If you are validating the full repo after UI changes, expect `npm run build` to hit the same sandbox limitation on this host: `vite build` completes, then Wrangler's dry-run deploy still needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`. Revalidated in the 2026-04-20 follow-up pass. Rerun from a normal host shell when you need the full `build` proof.
 
 ## Sanity Checks
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { uiScaffoldDataset } from "./scaffold-dataset";
 import { selectCurrentProjectSummary } from "./selectors";
@@ -36,16 +36,26 @@ export function ResourceModelProvider({
   dataset = uiScaffoldDataset,
   initialProjectId
 }: ResourceModelProviderProps) {
-  const [currentProjectId, setCurrentProjectId] = useState(
-    initialProjectId ?? dataset.meta.defaultProjectId
-  );
+  const resolvedProjectId = initialProjectId ?? dataset.meta.defaultProjectId;
+  const [currentProjectId, setCurrentProjectId] = useState(resolvedProjectId);
+  const effectiveProjectId = initialProjectId
+    ? initialProjectId
+    : dataset.projects.some((project) => project.projectId === currentProjectId)
+      ? currentProjectId
+      : resolvedProjectId;
+
+  useEffect(() => {
+    if (currentProjectId !== effectiveProjectId) {
+      setCurrentProjectId(effectiveProjectId);
+    }
+  }, [currentProjectId, effectiveProjectId]);
 
   return (
     <ResourceModelContext.Provider
       value={{
         state: {
           dataset,
-          currentProjectId
+          currentProjectId: effectiveProjectId
         },
         actions: {
           setCurrentProjectId

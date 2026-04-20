@@ -224,6 +224,23 @@ describe("Phase 3 destination scaffolds", () => {
     expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
   });
 
+  it("renders recorded artifact cards for execution tasks that include review output", async () => {
+    renderRoute("/runs/run-104/execution/tasks/task-033");
+
+    expect(await screen.findByRole("heading", { name: "Run-104 / TASK-033" })).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Conversation locator")).getByText("Execution router")).toBeInTheDocument();
+    const artifactCard = screen
+      .getByText("ui/src/features/execution/components/task-detail-workspace.tsx")
+      .closest("details");
+
+    expect(artifactCard).not.toBeNull();
+    expect(artifactCard).toHaveTextContent("Conversation and review split.");
+    expect(artifactCard).toHaveTextContent(
+      "+ render the task conversation beside the code review sidebar"
+    );
+    expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
+  });
+
   it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {
     const { container, router } = renderRoute("/projects/new");
 

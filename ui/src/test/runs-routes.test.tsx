@@ -164,7 +164,16 @@ describe("Phase 2 runs routes", () => {
     expect(screen.queryByLabelText("Execution summary")).not.toBeInTheDocument();
 
     const branchRow = container.querySelector(".execution-dag-row-branch");
+    const rows = [...container.querySelectorAll(".execution-dag-row")];
+
+    expect(rows).toHaveLength(5);
+    expect(within(rows[0] as HTMLElement).getByText("Specification outline")).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText("Architecture decisions")).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getByText("Execution plan")).toBeInTheDocument();
     expect(branchRow).not.toBeNull();
+    expect(within(branchRow as HTMLElement).getByText("Build shell")).toBeInTheDocument();
+    expect(within(branchRow as HTMLElement).getByText("Documentation alignment")).toBeInTheDocument();
+    expect(within(rows[4] as HTMLElement).getByText("DAG wiring")).toBeInTheDocument();
     expect(branchRow?.querySelectorAll(".execution-node .execution-dag-arrow")).toHaveLength(0);
   });
 
@@ -176,6 +185,19 @@ describe("Phase 2 runs routes", () => {
     expect(screen.getByRole("heading", { name: "Artifacts and review" })).toBeInTheDocument();
     expect(screen.getByText("Changed files")).toBeInTheDocument();
     expect(screen.getByText("TASK-031")).toBeInTheDocument();
+    const routeArtifactCard = screen
+      .getByText("ui/src/routes/runs/task-detail-route.tsx")
+      .closest("details");
+    const workspaceArtifactCard = screen
+      .getByText("ui/src/features/execution/components/execution-workspace.tsx")
+      .closest("details");
+
+    expect(routeArtifactCard).not.toBeNull();
+    expect(routeArtifactCard).toHaveTextContent("Task detail route shell.");
+    expect(routeArtifactCard).toHaveTextContent("+ keep task detail scoped to the selected run");
+    expect(workspaceArtifactCard).not.toBeNull();
+    expect(workspaceArtifactCard).toHaveTextContent("Workflow DAG surface.");
+    expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Steer this task" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to DAG" })).toHaveAttribute(
       "href",

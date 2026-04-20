@@ -361,9 +361,9 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
   - `design/workspace-spec.md`
   - `.ultrakit/developer-docs/m1-architecture.md`
   - `ui/src/routes/router.tsx`
-  - `ui/src/features/runs/run-scaffold.ts`
-  - `ui/src/features/documentation/documentation-scaffold.ts`
-  - `ui/src/features/workstreams/workstreams-scaffold.ts`
+  - `ui/src/features/runs/run-scaffold.ts` (historical planning input; removed in Phase 6)
+  - `ui/src/features/documentation/documentation-scaffold.ts` (historical planning input; removed in Phase 6)
+  - `ui/src/features/workstreams/workstreams-scaffold.ts` (historical planning input; removed in Phase 6)
   - `ui/src/features/projects/project-context.tsx`
 - **Files Expected To Change:**
   - `ui/src/features/resource-model/types.ts` (new)
@@ -472,7 +472,7 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
 - **Read First:**
   - `.ultrakit/exec-plans/completed/keystone-ui-target-model-scaffold.md`
   - `ui/src/features/resource-model/*`
-  - `ui/src/features/documentation/documentation-scaffold.ts`
+  - `ui/src/features/documentation/documentation-scaffold.ts` (historical planning reference; removed in Phase 6)
   - `ui/src/features/documentation/use-documentation-view-model.ts`
   - `ui/src/features/documentation/components/documentation-workspace.tsx`
   - `ui/src/routes/documentation/documentation-route.tsx`
@@ -545,13 +545,13 @@ Phase 6 closes the loop. It removes obsolete scaffold modules that were replaced
   - `ui/src/features/workstreams/workstreams-scaffold.ts` (delete or reduce to a compatibility shim)
   - `ui/src/test/*` as needed for final truthfulness
   - `.ultrakit/exec-plans/active/index.md` and archive paths when the plan completes
-- **Validation:** Run `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` in the sandbox. Run `rtk npm run build` from a host-permitted shell if the sandbox still blocks Wrangler/Docker home-directory writes. Success means the repo baseline passes, the docs no longer describe the UI as destination-local fake scaffolds, and there are no lingering barrel files or duplicate scaffold sources introduced by this plan.
+- **Validation:** Run `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` in the sandbox. Run `rtk npm run build` from a host-permitted shell when the Codex sandbox reproduces the Wrangler/Docker home-directory write failure; that limitation was revalidated in the 2026-04-20 follow-up pass. Success means the repo baseline passes, the docs no longer describe the UI as destination-local fake scaffolds, and there are no lingering barrel files or duplicate scaffold sources introduced by this plan.
 - **Plan / Docs To Update:** Update all living sections, then archive the plan when acceptance is met.
 - **Deliverables:** Clean scaffold source tree, updated developer docs, and final validation evidence recorded in the plan.
 - **Commit Expectation:** `Document target-model UI scaffold`
-- **Known Constraints / Baseline Failures:** `npm run build` may still require a host shell on this machine because Wrangler/Docker write outside the sandbox. Do not leave dead scaffold modules presenting a second source of truth.
-- **Completion Notes:** Deleted the dead destination-local scaffold modules at `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`; updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` to describe the shared `ui/src/features/resource-model/` scaffold truthfully; reran final validation; and then completed a final targeted fix pass that hides the `execution` step when no workflow graph can render and makes the project-configuration draft helper consume the selected `kindId` honestly. `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` passed again in the sandbox. `rtk npm run build` first failed in the sandbox with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity`, then passed from a host-permitted shell as expected.
-- **Next Starter Context:** Phase execution is complete, including the final targeted fix pass and comprehensive review. The plan has been archived under `.ultrakit/exec-plans/completed/`, and the remaining repo-level context is the documented host-only `build` caveat for this Codex environment.
+- **Known Constraints / Baseline Failures:** `wrangler dev` still requires a host shell on this machine, and `rtk npm run build` still reproduces the same sandbox `EROFS` failure under `~/.config/.wrangler` and `~/.docker/buildx/activity`. Do not leave dead scaffold modules presenting a second source of truth.
+- **Completion Notes:** Deleted the dead destination-local scaffold modules at `ui/src/features/runs/run-scaffold.ts`, `ui/src/features/documentation/documentation-scaffold.ts`, and `ui/src/features/workstreams/workstreams-scaffold.ts`; updated `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, and `.ultrakit/notes.md` to describe the shared `ui/src/features/resource-model/` scaffold truthfully; reran final validation; and then completed a final targeted fix pass that hides the `execution` step when no workflow graph can render and makes the project-configuration draft helper consume the selected `kindId` honestly. During the original 2026-04-19 execution pass, `rtk npm run lint`, `rtk npm run test`, and `rtk npm run typecheck` passed in the sandbox, while `rtk npm run build` first failed in the sandbox with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity` before passing from a host-permitted shell. The 2026-04-20 follow-up pass revalidated the same sandbox `build` failure, so the host-shell rerun remains the current requirement on this host.
+- **Next Starter Context:** Phase execution is complete, including the final targeted fix pass and comprehensive review. The plan has been archived under `.ultrakit/exec-plans/completed/`, `wrangler dev` still needs host execution on this machine, and the same host-only `build` caveat remains active for this Codex environment.
 
 ## Concrete Steps
 

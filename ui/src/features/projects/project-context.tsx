@@ -30,7 +30,10 @@ export function CurrentProjectProvider({
   }
 
   return (
-    <ResourceModelProvider dataset={createProjectOverrideDataset(project)}>
+    <ResourceModelProvider
+      dataset={createProjectOverrideDataset(project)}
+      initialProjectId={project.projectId}
+    >
       {children}
     </ResourceModelProvider>
   );

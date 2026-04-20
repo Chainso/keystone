@@ -6,6 +6,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 
 | Plan | Completed | Summary |
 |------|-----------|---------|
+| [keystone-ui-review-followups](./keystone-ui-review-followups.md) | 2026-04-20 | Fixed the final review follow-ups across provider state, execution coverage, stale CSS, and durable docs, then archived the corrective pass. |
 | [keystone-ui-target-model-scaffold](./keystone-ui-target-model-scaffold.md) | 2026-04-19 | Reworked the UI scaffold around the target model, closed the final review findings, and archived the completed plan. |
 | [keystone-project-model-foundation](./keystone-project-model-foundation.md) | 2026-04-17 | Delivered the project-backed backend model, durable docs, demo validation proof, and archived the plan. |
 | [keystone-think-live-full-workflow](./keystone-think-live-full-workflow.md) | 2026-04-17 | Validated the fixture-scoped live Think full-workflow demo, aligned durable docs, and archived the plan. |

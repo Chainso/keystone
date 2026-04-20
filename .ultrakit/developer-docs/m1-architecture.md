@@ -108,4 +108,4 @@ Two environment-specific constraints matter in this repo:
 
 - `wrangler dev` with container bindings must be run outside the Codex sandbox boundary on this host.
 - The local chat-completions backend is plain HTTP at `http://localhost:10531`, not HTTPS.
-- `npm run build` still needs a normal host shell on this machine because Wrangler's dry-run deploy writes under `~/.config/.wrangler` and `~/.docker`.
+- `npm run build` still needs a normal host shell on this machine when the sandbox reproduces Wrangler/Docker home-directory write failures under `~/.config/.wrangler` and `~/.docker`. Revalidated in the 2026-04-20 follow-up pass: the same `EROFS` failure still occurs inside Codex before the host rerun succeeds.

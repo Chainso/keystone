@@ -40,6 +40,17 @@ function CurrentProjectProbe() {
   return <span>{project.displayName}</span>;
 }
 
+function CurrentProjectDetailsProbe() {
+  const project = useCurrentProject();
+
+  return (
+    <>
+      <span data-testid="current-project-name">{project.displayName}</span>
+      <span data-testid="current-project-id">{project.projectId}</span>
+    </>
+  );
+}
+
 function ResourceModelProbe() {
   const { state, actions, meta } = useResourceModel();
   const project = useCurrentProject();
@@ -365,6 +376,39 @@ describe("resource-model selectors", () => {
     );
 
     expect(screen.getByText("Custom Project")).toBeInTheDocument();
+  });
+
+  it("resynchronizes the override current project when the provider project prop changes", () => {
+    const alphaProject: CurrentProject = {
+      projectId: "project-alpha",
+      projectKey: "alpha-project",
+      displayName: "Alpha Project",
+      description: "Alpha scaffold."
+    };
+    const betaProject: CurrentProject = {
+      projectId: "project-beta",
+      projectKey: "beta-project",
+      displayName: "Beta Project",
+      description: "Beta scaffold."
+    };
+
+    const { rerender } = render(
+      <CurrentProjectProvider project={alphaProject}>
+        <CurrentProjectDetailsProbe />
+      </CurrentProjectProvider>
+    );
+
+    expect(screen.getByTestId("current-project-name")).toHaveTextContent("Alpha Project");
+    expect(screen.getByTestId("current-project-id")).toHaveTextContent("project-alpha");
+
+    rerender(
+      <CurrentProjectProvider project={betaProject}>
+        <CurrentProjectDetailsProbe />
+      </CurrentProjectProvider>
+    );
+
+    expect(screen.getByTestId("current-project-name")).toHaveTextContent("Beta Project");
+    expect(screen.getByTestId("current-project-id")).toHaveTextContent("project-beta");
   });
 
   it("remaps project-scoped resources when overriding the current project scaffold", () => {
