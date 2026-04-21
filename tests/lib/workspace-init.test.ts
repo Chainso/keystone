@@ -32,8 +32,8 @@ describe("ensureWorkspaceMaterialized", () => {
 
     const workspace = await ensureWorkspaceMaterialized(session, {
       runId: "run-123",
-      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
       taskId: "task-1",
+      runTaskId: "run-task-123",
       source: {
         type: "git",
         repoUrl: "https://github.com/octocat/Hello-World.git"
@@ -43,13 +43,15 @@ describe("ensureWorkspaceMaterialized", () => {
     expect(session.gitCheckout).toHaveBeenCalledWith(
       "https://github.com/octocat/Hello-World.git",
       {
-        targetDir: "/workspace/runs/run-123-de305d54/repositories/repo"
+        targetDir: "/workspace/runs/run-123/repositories/repo"
       }
     );
     expect(workspace.repoRef).toBe("HEAD");
     expect(workspace.baseRef).toBe("HEAD");
     expect(workspace.defaultComponentKey).toBe("repo");
-    expect(workspace.worktreePath).toBe("/workspace/runs/run-123-de305d54/code/repo");
-    expect(workspace.defaultCwd).toBe("/workspace/runs/run-123-de305d54/code/repo");
+    expect(workspace.workspaceRoot).toBe("/workspace/runs/run-123");
+    expect(workspace.workspaceTargetPath).toBe("/workspace/runs/run-123/tasks/task-1-run-task");
+    expect(workspace.worktreePath).toBe("/workspace/runs/run-123/tasks/task-1-run-task/code/repo");
+    expect(workspace.defaultCwd).toBe("/workspace/runs/run-123/tasks/task-1-run-task/code/repo");
   });
 });

@@ -1,9 +1,7 @@
 import type { Context } from "hono";
 
 import type { AppEnv } from "../../../../env";
-import { listRunArtifacts } from "../../../../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../../../../lib/db/client";
-import { listRunEvents } from "../../../../lib/db/events";
 import {
   createProject,
   getProject,
@@ -11,10 +9,9 @@ import {
   listProjects,
   updateProject
 } from "../../../../lib/db/projects";
-import { listProjectRuns, listRunSessions } from "../../../../lib/db/runs";
+import { listProjectRuns } from "../../../../lib/db/runs";
 import { jsonErrorResponse, throwJsonHttpError } from "../../../../lib/http/errors";
 import { parseProjectListQuery, parseProjectWriteInput } from "../../../contracts/project-input";
-import { decisionPackageCollectionEnvelopeSchema } from "../decision-packages/contracts";
 import {
   projectCollectionEnvelopeSchema,
   projectDetailEnvelopeSchema,
@@ -22,7 +19,7 @@ import {
   serializeProjectResource
 } from "./contracts";
 import { runCollectionEnvelopeSchema } from "../runs/contracts";
-import { loadRunPlanSummary, projectRunResource } from "../runs/projections";
+import { projectRunResource } from "../runs/projections";
 
 function isUniqueViolation(error: unknown) {
   return (
@@ -31,20 +28,6 @@ function isUniqueViolation(error: unknown) {
     "code" in error &&
     error.code === "23505"
   );
-}
-
-function buildEmptyDecisionPackagesResponse() {
-  return decisionPackageCollectionEnvelopeSchema.parse({
-    data: {
-      items: [],
-      total: 0
-    },
-    meta: {
-      apiVersion: "v1",
-      envelope: "collection",
-      resourceType: "decision_package"
-    }
-  });
 }
 
 async function requireProject(
@@ -229,32 +212,6 @@ export async function updateProjectHandler(context: Context<AppEnv>) {
   }
 }
 
-export async function listProjectDecisionPackagesHandler(context: Context<AppEnv>) {
-  const projectId = context.req.param("projectId");
-
-  if (!projectId) {
-    throwJsonHttpError(400, "invalid_path", "Project ID is required.");
-  }
-
-  const client = createWorkerDatabaseClient(context.env);
-
-  try {
-    const project = await requireProject(context, client, projectId);
-
-    if (!project) {
-      return jsonErrorResponse(
-        "project_not_found",
-        `Project ${projectId} was not found.`,
-        404
-      );
-    }
-
-    return context.json(buildEmptyDecisionPackagesResponse());
-  } finally {
-    await client.close();
-  }
-}
-
 export async function listProjectRunsHandler(context: Context<AppEnv>) {
   const auth = context.get("auth");
   const projectId = context.req.param("projectId");
@@ -280,24 +237,7 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
       tenantId: auth.tenantId,
       projectId
     });
-    const [runSessions, runEvents, runArtifacts, runPlanSummaries] = await Promise.all([
-      Promise.all(runs.map((run) => listRunSessions(client, auth.tenantId, run.runId))),
-      Promise.all(runs.map((run) => listRunEvents(client, { tenantId: auth.tenantId, runId: run.runId }))),
-      Promise.all(runs.map((run) => listRunArtifacts(client, auth.tenantId, run.runId))),
-      Promise.all(runs.map((run) => loadRunPlanSummary(context.env, auth.tenantId, run.runId)))
-    ]);
-    const items = runs.map((run, index) =>
-      projectRunResource({
-        tenantId: auth.tenantId,
-        runId: run.runId,
-        runRecord: run,
-        sessions: runSessions[index] ?? [],
-        events: runEvents[index] ?? [],
-        artifacts: runArtifacts[index] ?? [],
-        liveSnapshot: null,
-        runPlanSummary: runPlanSummaries[index] ?? null
-      })
-    );
+    const items = runs.map((run) => projectRunResource({ run }));
 
     return context.json(
       runCollectionEnvelopeSchema.parse({

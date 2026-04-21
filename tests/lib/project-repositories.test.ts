@@ -12,7 +12,6 @@ import {
   getProjectByKey,
   listProjectComponents,
   listProjectEnvVars,
-  listProjectIntegrationBindings,
   listProjects,
   updateProject
 } from "../../src/lib/db/projects";
@@ -70,16 +69,10 @@ describeIfDatabase("project repositories", () => {
           kind: "git_repository" as const,
           config: {
             localPath: "./fixtures/demo-target",
-            defaultRef: "main"
+            ref: "main"
           },
           ruleOverride: {
-            testInstructions: ["Run targeted API integration tests."],
-            metadata: {
-              owner: "platform"
-            }
-          },
-          metadata: {
-            purpose: "service"
+            testInstructions: ["Run targeted API integration tests."]
           }
         },
         {
@@ -88,41 +81,20 @@ describeIfDatabase("project repositories", () => {
           kind: "git_repository" as const,
           config: {
             gitUrl: "https://github.com/example/docs.git",
-            defaultRef: "main"
-          },
-          metadata: {
-            purpose: "documentation"
+            ref: "main"
           }
         }
       ],
       envVars: [
         {
           name: "NODE_ENV",
-          value: "test",
-          metadata: {
-            scope: "project"
-          }
+          value: "test"
         }
-      ],
-      integrationBindings: [
-        {
-          bindingKey: "github-primary",
-          tenantIntegrationId: "tenant-int-github-primary",
-          overrides: {
-            repoOwner: "example"
-          },
-          metadata: {
-            channel: "default"
-          }
-        }
-      ],
-      metadata: {
-        source: "test"
-      }
+      ]
     };
   }
 
-  it("creates and loads a project with components, rules, env vars, and integration bindings", async () => {
+  it("creates and loads a project with components, rules, and env vars", async () => {
     const created = await createProject(client, {
       tenantId,
       config: buildProjectConfig("demo-project")
@@ -132,7 +104,6 @@ describeIfDatabase("project repositories", () => {
     expect(created.ruleSet.reviewInstructions).toEqual(["Require a code review summary."]);
     expect(created.components).toHaveLength(2);
     expect(created.envVars[0]?.name).toBe("NODE_ENV");
-    expect(created.integrationBindings[0]?.bindingKey).toBe("github-primary");
 
     const byId = await getProject(client, {
       tenantId,
@@ -158,14 +129,9 @@ describeIfDatabase("project repositories", () => {
       tenantId,
       projectId: created.projectId
     });
-    const integrationBindings = await listProjectIntegrationBindings(client, {
-      tenantId,
-      projectId: created.projectId
-    });
 
     expect(components.map((component) => component.componentKey)).toEqual(["api", "docs"]);
     expect(envVars.map((envVar) => envVar.name)).toEqual(["NODE_ENV"]);
-    expect(integrationBindings.map((binding) => binding.bindingKey)).toEqual(["github-primary"]);
   });
 
   it("replaces nested project configuration during update", async () => {
@@ -192,39 +158,19 @@ describeIfDatabase("project repositories", () => {
             kind: "git_repository",
             config: {
               localPath: "./fixtures/demo-target",
-              defaultRef: "feature/project-model"
+              ref: "feature/project-model"
             },
             ruleOverride: {
-              reviewInstructions: ["Attach UI screenshots in review."],
-              metadata: {
-                area: "ui"
-              }
-            },
-            metadata: {
-              purpose: "web"
+              reviewInstructions: ["Attach UI screenshots in review."]
             }
           }
         ],
         envVars: [
           {
             name: "FEATURE_FLAG_PROJECTS",
-            value: "1",
-            metadata: {}
+            value: "1"
           }
-        ],
-        integrationBindings: [
-          {
-            bindingKey: "slack-alerts",
-            tenantIntegrationId: "tenant-int-slack-alerts",
-            overrides: {
-              channel: "#shiproom"
-            },
-            metadata: {}
-          }
-        ],
-        metadata: {
-          source: "updated-test"
-        }
+        ]
       }
     });
 
@@ -232,9 +178,6 @@ describeIfDatabase("project repositories", () => {
     expect(updated.components).toHaveLength(1);
     expect(updated.components[0]?.componentKey).toBe("frontend");
     expect(updated.envVars.map((envVar) => envVar.name)).toEqual(["FEATURE_FLAG_PROJECTS"]);
-    expect(updated.integrationBindings.map((binding) => binding.bindingKey)).toEqual([
-      "slack-alerts"
-    ]);
 
     const projectList = await listProjects(client, {
       tenantId

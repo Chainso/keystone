@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createRunRecord, updateRunRecord } from "../../src/lib/db/runs";
+import { createRunRecord, ensureRunRecord, updateRunRecord } from "../../src/lib/db/runs";
 import { runs } from "../../src/lib/db/schema";
+import { buildRunSandboxId } from "../../src/lib/workspace/worktree";
 
 type CompileRevisionJoinRow = {
   documentRevisionId: string;
@@ -25,7 +26,7 @@ type RunRecordState = {
         projectId: string;
         workflowInstanceId: string;
         executionEngine: string;
-        sandboxId: string | null;
+        sandboxId: string;
         status: string;
         compiledSpecRevisionId: string | null;
         compiledArchitectureRevisionId: string | null;
@@ -41,6 +42,10 @@ type RunRecordState = {
 };
 
 function createRunRepositoryClient(stateOverrides: Partial<RunRecordState> = {}) {
+  const counters = {
+    inserts: 0,
+    updates: 0
+  };
   let state: RunRecordState = {
     project: {
       tenantId: "tenant-fixture",
@@ -102,13 +107,14 @@ function createRunRepositoryClient(stateOverrides: Partial<RunRecordState> = {})
             throw new Error("Unexpected table insert in run-record test.");
           }
 
+          counters.inserts += 1;
           state.run = {
             tenantId: value.tenantId as string,
             runId: value.runId as string,
             projectId: value.projectId as string,
             workflowInstanceId: value.workflowInstanceId as string,
             executionEngine: value.executionEngine as string,
-            sandboxId: (value.sandboxId as string | null | undefined) ?? null,
+            sandboxId: (value.sandboxId as string | undefined) ?? buildRunSandboxId("tenant-fixture", "run-123"),
             status: value.status as string,
             compiledSpecRevisionId:
               (value.compiledSpecRevisionId as string | null | undefined) ?? null,
@@ -135,6 +141,7 @@ function createRunRepositoryClient(stateOverrides: Partial<RunRecordState> = {})
               throw new Error("Unexpected table update in run-record test.");
             }
 
+            counters.updates += 1;
             state.run = {
               ...state.run,
               ...structuredClone(value)
@@ -153,7 +160,8 @@ function createRunRepositoryClient(stateOverrides: Partial<RunRecordState> = {})
       sql: {} as never,
       db
     },
-    getState: () => structuredClone(state)
+    getState: () => structuredClone(state),
+    getCounters: () => structuredClone(counters)
   };
 }
 
@@ -175,6 +183,7 @@ describe("run record persistence", () => {
       runId: "run-123",
       projectId: "project-fixture",
       executionEngine: "think",
+      sandboxId: buildRunSandboxId("tenant-fixture", "run-123"),
       status: "configured"
     });
 
@@ -205,6 +214,177 @@ describe("run record persistence", () => {
       compiledArchitectureRevisionId: "revision-architecture",
       compiledExecutionPlanRevisionId: "revision-execution-plan",
       compiledAt
+    });
+  });
+
+  it("repairs an existing same-project run row through ensureRunRecord", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-18T09:00:00.000Z"));
+
+    try {
+      const compiledAt = new Date("2026-04-18T08:30:00.000Z");
+      const { client, getCounters, getState } = createRunRepositoryClient({
+        run: {
+          tenantId: "tenant-fixture",
+          runId: "run-123",
+          projectId: "project-fixture",
+          workflowInstanceId: "workflow-stale",
+          executionEngine: "scripted",
+          sandboxId: buildRunSandboxId("tenant-fixture", "run-123"),
+          status: "configured",
+          compiledSpecRevisionId: null,
+          compiledArchitectureRevisionId: null,
+          compiledExecutionPlanRevisionId: null,
+          compiledAt: null,
+          startedAt: null,
+          endedAt: null,
+          createdAt: new Date("2026-04-17T00:00:00.000Z"),
+          updatedAt: new Date("2026-04-17T00:00:00.000Z")
+        }
+      });
+
+      const ensured = await ensureRunRecord(client as never, {
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        projectId: "project-fixture",
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think_live",
+        sandboxId: "sandbox-run-123",
+        status: "active",
+        compiledSpecRevisionId: "revision-spec",
+        compiledArchitectureRevisionId: "revision-architecture",
+        compiledExecutionPlanRevisionId: "revision-execution-plan",
+        compiledAt
+      });
+
+      expect(ensured).toMatchObject({
+        runId: "run-123",
+        projectId: "project-fixture",
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think_live",
+        sandboxId: "sandbox-run-123",
+        status: "active",
+        compiledSpecRevisionId: "revision-spec",
+        compiledArchitectureRevisionId: "revision-architecture",
+        compiledExecutionPlanRevisionId: "revision-execution-plan",
+        compiledAt,
+        startedAt: new Date("2026-04-18T09:00:00.000Z"),
+        endedAt: null
+      });
+      expect(getCounters()).toEqual({
+        inserts: 0,
+        updates: 1
+      });
+      expect(getState().run).toMatchObject({
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think_live",
+        sandboxId: "sandbox-run-123",
+        status: "active",
+        startedAt: new Date("2026-04-18T09:00:00.000Z"),
+        endedAt: null
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves startedAt and derives endedAt when ensureRunRecord repairs a terminal status", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-18T10:15:00.000Z"));
+
+    try {
+      const startedAt = new Date("2026-04-18T09:00:00.000Z");
+      const { client, getCounters, getState } = createRunRepositoryClient({
+        run: {
+          tenantId: "tenant-fixture",
+          runId: "run-123",
+          projectId: "project-fixture",
+          workflowInstanceId: "workflow-run-123",
+          executionEngine: "think_live",
+          sandboxId: "sandbox-run-123",
+          status: "active",
+          compiledSpecRevisionId: "revision-spec",
+          compiledArchitectureRevisionId: "revision-architecture",
+          compiledExecutionPlanRevisionId: "revision-execution-plan",
+          compiledAt: new Date("2026-04-18T08:30:00.000Z"),
+          startedAt,
+          endedAt: null,
+          createdAt: new Date("2026-04-17T00:00:00.000Z"),
+          updatedAt: new Date("2026-04-18T09:05:00.000Z")
+        }
+      });
+
+      const ensured = await ensureRunRecord(client as never, {
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        projectId: "project-fixture",
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think_live",
+        status: "failed"
+      });
+
+      expect(ensured).toMatchObject({
+        runId: "run-123",
+        status: "failed",
+        startedAt,
+        endedAt: new Date("2026-04-18T10:15:00.000Z")
+      });
+      expect(getCounters()).toEqual({
+        inserts: 0,
+        updates: 1
+      });
+      expect(getState().run).toMatchObject({
+        status: "failed",
+        startedAt,
+        endedAt: new Date("2026-04-18T10:15:00.000Z")
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects ensureRunRecord when the existing run belongs to a different project", async () => {
+    const { client, getCounters, getState } = createRunRepositoryClient({
+      run: {
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        projectId: "project-other",
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think_live",
+        sandboxId: buildRunSandboxId("tenant-fixture", "run-123"),
+        status: "configured",
+        compiledSpecRevisionId: null,
+        compiledArchitectureRevisionId: null,
+        compiledExecutionPlanRevisionId: null,
+        compiledAt: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date("2026-04-17T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-17T00:00:00.000Z")
+      }
+    });
+
+    await expect(
+      ensureRunRecord(client as never, {
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        projectId: "project-fixture",
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think_live",
+        status: "configured"
+      })
+    ).rejects.toThrow(
+      "Run run-123 already belongs to project project-other, not project-fixture."
+    );
+
+    expect(getCounters()).toEqual({
+      inserts: 0,
+      updates: 0
+    });
+    expect(getState().run).toMatchObject({
+      runId: "run-123",
+      projectId: "project-other",
+      status: "configured"
     });
   });
 });

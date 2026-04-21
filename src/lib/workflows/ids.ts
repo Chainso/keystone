@@ -37,5 +37,11 @@ export function buildRunWorkflowInstanceId(tenantId: string, runId: string) {
 }
 
 export function buildTaskWorkflowInstanceId(tenantId: string, runId: string, taskId: string) {
-  return `task-${slugify(taskId, 28)}-${slugify(runId, 20)}-${slugify(tenantId, 8)}`.slice(0, 63);
+  const taskIdentity = taskId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 36) || "task";
+
+  return `task-${taskIdentity}-${slugify(runId, 12)}-${slugify(tenantId, 8)}`.slice(0, 63);
+}
+
+export async function buildStableRunTaskId(tenantId: string, runId: string, taskId: string) {
+  return buildStableSessionId("run-task", tenantId, runId, taskId);
 }

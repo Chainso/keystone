@@ -1,21 +1,18 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 
-import { assertSessionStatusTransition, buildConfiguredSession } from "../../maestro/session";
-import type { SessionSpec, SessionStatus } from "../../maestro/contracts";
-import { resolveRunExecutionEngine } from "../runs/options";
-import { buildRunWorkflowInstanceId } from "../workflows/ids";
+import { buildStableRunTaskId } from "../workflows/ids";
+import { buildRunSandboxId } from "../workspace/worktree";
 import type { DatabaseClient } from "./client";
 import {
+  artifactRefs,
   documentRevisions,
   documents,
   projects,
   runTaskDependencies,
   runTasks,
   runs,
-  sessionEvents,
-  sessions,
   type RunRow,
-  type SessionRow
+  type RunTaskRow
 } from "./schema";
 
 interface RunLookupInput {
@@ -68,6 +65,7 @@ export interface UpdateRunTaskInput extends RunLookupInput {
   name?: string | undefined;
   description?: string | undefined;
   status?: string | undefined;
+  ifStatusIn?: string[] | undefined;
   conversationAgentClass?: string | null | undefined;
   conversationAgentName?: string | null | undefined;
   startedAt?: Date | null | undefined;
@@ -78,6 +76,51 @@ export interface CreateRunTaskDependencyInput extends RunLookupInput {
   runTaskDependencyId?: string | undefined;
   parentRunTaskId: string;
   childRunTaskId: string;
+}
+
+export interface PersistCompiledRunGraphTaskInput {
+  taskId: string;
+  runTaskId?: string | undefined;
+  name: string;
+  description: string;
+  dependsOn?: string[] | undefined;
+  status?: string | undefined;
+  conversationAgentClass?: string | null | undefined;
+  conversationAgentName?: string | null | undefined;
+}
+
+export interface PersistCompiledRunGraphInput extends RunLookupInput {
+  compiledSpecRevisionId?: string | null | undefined;
+  compiledArchitectureRevisionId?: string | null | undefined;
+  compiledExecutionPlanRevisionId?: string | null | undefined;
+  compiledAt?: Date | null | undefined;
+  tasks: PersistCompiledRunGraphTaskInput[];
+}
+
+export interface PersistCompiledRunGraphTaskRecord {
+  taskId: string;
+  runTaskId: string;
+  name: string;
+  description: string;
+  status: string;
+  conversationAgentClass: string | null;
+  conversationAgentName: string | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
+}
+
+export interface PersistCompiledRunGraphDependencyRecord {
+  runTaskDependencyId: string;
+  parentTaskId: string;
+  childTaskId: string;
+  parentRunTaskId: string;
+  childRunTaskId: string;
+}
+
+export interface PersistCompiledRunGraphResult {
+  run: RunRow;
+  tasks: PersistCompiledRunGraphTaskRecord[];
+  dependencies: PersistCompiledRunGraphDependencyRecord[];
 }
 
 const compileProvenanceRequirements = {
@@ -113,6 +156,33 @@ type CompileProvenanceInput = Pick<
     | "compiledExecutionPlanRevisionId"
   >;
 
+function hasCompileProvenanceValues(input: CompileProvenanceInput) {
+  return (
+    input.compiledSpecRevisionId !== undefined ||
+    input.compiledArchitectureRevisionId !== undefined ||
+    input.compiledExecutionPlanRevisionId !== undefined
+  );
+}
+
+function assertCompleteCompileProvenanceInput(input: CompileProvenanceInput) {
+  if (!hasCompileProvenanceValues(input)) {
+    return;
+  }
+
+  const values = [
+    input.compiledSpecRevisionId ?? null,
+    input.compiledArchitectureRevisionId ?? null,
+    input.compiledExecutionPlanRevisionId ?? null
+  ];
+  const presentCount = values.filter((value) => value !== null).length;
+
+  if (presentCount !== 0 && presentCount !== values.length) {
+    throw new Error(
+      "Compiled run graph persistence requires specification, architecture, and execution-plan revision ids together."
+    );
+  }
+}
+
 function requireReturnedRow<T>(row: T | undefined, message: string): T {
   if (!row) {
     throw new Error(message);
@@ -121,12 +191,48 @@ function requireReturnedRow<T>(row: T | undefined, message: string): T {
   return row;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+function normalizeDependencyIds(dependsOn: string[] | undefined) {
+  return [...new Set((dependsOn ?? []).map((dependency) => dependency.trim()).filter(Boolean))];
 }
 
-function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
+function deriveCompiledTaskInitialStatus(dependsOn: string[]) {
+  return dependsOn.length === 0 ? "ready" : "pending";
+}
+
+function assertAcyclicCompiledTaskGraph(
+  tasks: Array<{
+    taskId: string;
+    dependsOn: string[];
+  }>
+) {
+  const dependenciesByTaskId = new Map(tasks.map((task) => [task.taskId, task.dependsOn]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (taskId: string, lineage: string[]) => {
+    if (visited.has(taskId)) {
+      return;
+    }
+
+    if (visiting.has(taskId)) {
+      throw new Error(
+        `Compiled run graph must be acyclic; detected a dependency cycle involving ${[...lineage, taskId].join(" -> ")}.`
+      );
+    }
+
+    visiting.add(taskId);
+
+    for (const dependencyId of dependenciesByTaskId.get(taskId) ?? []) {
+      visit(dependencyId, [...lineage, taskId]);
+    }
+
+    visiting.delete(taskId);
+    visited.add(taskId);
+  };
+
+  for (const task of tasks) {
+    visit(task.taskId, []);
+  }
 }
 
 async function findProjectRecord(
@@ -185,7 +291,7 @@ function deriveRunLifecycleTimestamps(
   if (status === "active") {
     return {
       startedAt: existing?.startedAt ?? transitionAt,
-      endedAt: existing?.endedAt ?? null
+      endedAt: null
     };
   }
 
@@ -211,6 +317,8 @@ async function assertCompileProvenanceRevisions(
   },
   input: CompileProvenanceInput
 ) {
+  assertCompleteCompileProvenanceInput(input);
+
   const requestedRevisions = (
     Object.entries(compileProvenanceRequirements) as Array<
       [CompileProvenanceField, (typeof compileProvenanceRequirements)[CompileProvenanceField]]
@@ -289,6 +397,7 @@ async function assertCompileProvenanceRevisions(
 }
 
 async function insertRunRecord(db: RunDbExecutor, input: CreateRunRecordInput) {
+  const sandboxId = input.sandboxId ?? buildRunSandboxId(input.tenantId, input.runId);
   const [inserted] = await db
     .insert(runs)
     .values({
@@ -297,7 +406,7 @@ async function insertRunRecord(db: RunDbExecutor, input: CreateRunRecordInput) {
       projectId: input.projectId,
       workflowInstanceId: input.workflowInstanceId,
       executionEngine: input.executionEngine,
-      sandboxId: input.sandboxId ?? null,
+      sandboxId,
       status: input.status,
       compiledSpecRevisionId: input.compiledSpecRevisionId ?? null,
       compiledArchitectureRevisionId: input.compiledArchitectureRevisionId ?? null,
@@ -316,12 +425,13 @@ async function updateRunRecordRow(
   existing: RunRow,
   input: UpdateRunRecordInput
 ) {
+  const sandboxId = input.sandboxId ?? existing.sandboxId;
   const [updated] = await db
     .update(runs)
     .set({
       workflowInstanceId: input.workflowInstanceId ?? existing.workflowInstanceId,
       executionEngine: input.executionEngine ?? existing.executionEngine,
-      sandboxId: input.sandboxId === undefined ? existing.sandboxId : input.sandboxId,
+      sandboxId,
       status: input.status ?? existing.status,
       compiledSpecRevisionId:
         input.compiledSpecRevisionId === undefined
@@ -346,64 +456,94 @@ async function updateRunRecordRow(
   return requireReturnedRow(updated, `Run update returned no row for ${input.runId}.`);
 }
 
-async function findSessionRecord(
-  db: RunDbExecutor,
-  tenantId: string,
-  sessionId: string
-) {
-  return db.query.sessions.findFirst({
-    where: and(eq(sessions.tenantId, tenantId), eq(sessions.sessionId, sessionId))
-  });
-}
-
-async function insertSessionRecordRow(db: RunDbExecutor, session: ReturnType<typeof buildConfiguredSession>) {
+async function insertRunTaskRow(db: RunDbExecutor, input: CreateRunTaskInput) {
   const [inserted] = await db
-    .insert(sessions)
+    .insert(runTasks)
     .values({
-      tenantId: session.tenantId,
-      sessionId: session.sessionId,
-      runId: session.runId,
-      sessionType: session.sessionType,
-      status: session.status,
-      parentSessionId: session.parentSessionId ?? null,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      metadata: session.metadata
+      runTaskId: input.runTaskId ?? crypto.randomUUID(),
+      runId: input.runId,
+      name: input.name,
+      description: input.description,
+      status: input.status,
+      conversationAgentClass: input.conversationAgentClass ?? null,
+      conversationAgentName: input.conversationAgentName ?? null,
+      startedAt: input.startedAt ?? null,
+      endedAt: input.endedAt ?? null
     })
     .returning();
 
-  return requireReturnedRow(inserted, `Session insert returned no row for ${session.sessionId}.`);
+  return requireReturnedRow(
+    inserted,
+    `Run task insert returned no row for ${input.runTaskId ?? "generated task"}.`
+  );
 }
 
-function deriveRunSeedFromSession(
-  session: SessionRow,
-  status: SessionStatus,
-  metadata: Record<string, unknown>,
-  transitionAt: Date
-): CreateRunRecordInput | null {
-  const projectId = asString(asRecord(metadata.project)?.projectId);
+async function updateRunTaskRow(
+  db: RunDbExecutor,
+  existing: RunTaskRow,
+  input: UpdateRunTaskInput
+) {
+  const whereClauses = [
+    eq(runTasks.runId, input.runId),
+    eq(runTasks.runTaskId, input.runTaskId)
+  ];
 
-  if (!projectId) {
-    return null;
+  if (input.ifStatusIn && input.ifStatusIn.length > 0) {
+    whereClauses.push(inArray(runTasks.status, input.ifStatusIn));
   }
 
-  const lifecycleTimestamps = deriveRunLifecycleTimestamps(null, status, transitionAt);
+  const [updated] = await db
+    .update(runTasks)
+    .set({
+      name: input.name ?? existing.name,
+      description: input.description ?? existing.description,
+      status: input.status ?? existing.status,
+      conversationAgentClass:
+        input.conversationAgentClass === undefined
+          ? existing.conversationAgentClass
+          : input.conversationAgentClass,
+      conversationAgentName:
+        input.conversationAgentName === undefined
+          ? existing.conversationAgentName
+          : input.conversationAgentName,
+      startedAt: input.startedAt === undefined ? existing.startedAt : input.startedAt,
+      endedAt: input.endedAt === undefined ? existing.endedAt : input.endedAt,
+      updatedAt: new Date()
+    })
+    .where(and(...whereClauses))
+    .returning();
 
-  return {
-    tenantId: session.tenantId,
-    runId: session.runId,
-    projectId,
-    workflowInstanceId:
-      asString(metadata.workflowInstanceId) ??
-      buildRunWorkflowInstanceId(session.tenantId, session.runId),
-    executionEngine: resolveRunExecutionEngine(undefined, metadata),
-    status,
-    startedAt: lifecycleTimestamps.startedAt ?? null,
-    endedAt: lifecycleTimestamps.endedAt ?? null
-  };
+  if (updated) {
+    return updated;
+  }
+
+  const current = await db.query.runTasks.findFirst({
+    where: and(eq(runTasks.runId, input.runId), eq(runTasks.runTaskId, input.runTaskId))
+  });
+
+  return requireReturnedRow(current, `Run task update returned no row for ${input.runTaskId}.`);
+}
+
+async function insertRunTaskDependencyRow(db: RunDbExecutor, input: CreateRunTaskDependencyInput) {
+  const [inserted] = await db
+    .insert(runTaskDependencies)
+    .values({
+      runTaskDependencyId: input.runTaskDependencyId ?? crypto.randomUUID(),
+      runId: input.runId,
+      parentRunTaskId: input.parentRunTaskId,
+      childRunTaskId: input.childRunTaskId
+    })
+    .returning();
+
+  return requireReturnedRow(
+    inserted,
+    `Run task dependency insert returned no row for ${input.parentRunTaskId} -> ${input.childRunTaskId}.`
+  );
 }
 
 export async function createRunRecord(client: DatabaseClient, input: CreateRunRecordInput) {
+  const sandboxId = input.sandboxId ?? buildRunSandboxId(input.tenantId, input.runId);
+
   await assertProjectOwnership(client.db, {
     tenantId: input.tenantId,
     projectId: input.projectId
@@ -419,7 +559,10 @@ export async function createRunRecord(client: DatabaseClient, input: CreateRunRe
     input
   );
 
-  return insertRunRecord(client.db, input);
+  return insertRunRecord(client.db, {
+    ...input,
+    sandboxId
+  });
 }
 
 export async function getRunRecord(client: DatabaseClient, input: RunLookupInput) {
@@ -439,6 +582,12 @@ export async function ensureRunRecord(client: DatabaseClient, input: CreateRunRe
   if (existing.projectId !== input.projectId) {
     throw new Error(
       `Run ${input.runId} already belongs to project ${existing.projectId}, not ${input.projectId}.`
+    );
+  }
+
+  if (input.status === "active" && isTerminalRunStatus(existing.status)) {
+    throw new Error(
+      `Run ${input.runId} is already ${existing.status} and cannot transition back to active.`
     );
   }
 
@@ -491,28 +640,260 @@ export async function updateRunRecord(client: DatabaseClient, input: UpdateRunRe
   return updateRunRecordRow(client.db, existing, input);
 }
 
+export async function failRunAndCancelOutstandingTasks(
+  client: DatabaseClient,
+  input: RunLookupInput
+) {
+  return client.db.transaction(async (transaction) => {
+    const existingRun = await assertRunOwnership(transaction, input);
+    const transitionAt = new Date();
+    const existingTasks = await transaction.query.runTasks.findMany({
+      where: eq(runTasks.runId, input.runId)
+    });
+    const cancelledTasks: RunTaskRow[] = [];
+
+    for (const task of existingTasks) {
+      if (task.status === "completed" || task.status === "failed" || task.status === "cancelled") {
+        continue;
+      }
+
+      cancelledTasks.push(
+        await updateRunTaskRow(transaction, task, {
+          tenantId: input.tenantId,
+          runId: input.runId,
+          runTaskId: task.runTaskId,
+          status: "cancelled",
+          endedAt: task.endedAt ?? transitionAt
+        })
+      );
+    }
+
+    const lifecycleTimestamps = deriveRunLifecycleTimestamps(existingRun, "failed", transitionAt);
+    const run = await updateRunRecordRow(transaction, existingRun, {
+      tenantId: input.tenantId,
+      runId: input.runId,
+      status: "failed",
+      startedAt: lifecycleTimestamps.startedAt,
+      endedAt: lifecycleTimestamps.endedAt
+    });
+
+    return {
+      run,
+      cancelledTasks
+    };
+  });
+}
+
+export async function persistCompiledRunGraph(
+  client: DatabaseClient,
+  input: PersistCompiledRunGraphInput
+): Promise<PersistCompiledRunGraphResult> {
+  const compiledAt = input.compiledAt ?? new Date();
+  const normalizedTasks = await Promise.all(
+    input.tasks.map(async (task) => {
+      const taskId = task.taskId.trim();
+      const dependsOn = normalizeDependencyIds(task.dependsOn);
+      const runTaskId =
+        task.runTaskId ?? (await buildStableRunTaskId(input.tenantId, input.runId, taskId));
+
+      return {
+        taskId,
+        runTaskId,
+        name: task.name,
+        description: task.description,
+        status: task.status ?? deriveCompiledTaskInitialStatus(dependsOn),
+        conversationAgentClass: task.conversationAgentClass ?? null,
+        conversationAgentName: task.conversationAgentName ?? null,
+        dependsOn
+      };
+    })
+  );
+
+  const taskIds = new Set<string>();
+  const runTaskIds = new Set<string>();
+
+  for (const task of normalizedTasks) {
+    if (taskIds.has(task.taskId)) {
+      throw new Error(`Compiled run graph contains duplicate task id ${task.taskId}.`);
+    }
+
+    if (runTaskIds.has(task.runTaskId)) {
+      throw new Error(`Compiled run graph contains duplicate runTaskId ${task.runTaskId}.`);
+    }
+
+    taskIds.add(task.taskId);
+    runTaskIds.add(task.runTaskId);
+  }
+
+  for (const task of normalizedTasks) {
+    for (const dependencyId of task.dependsOn) {
+      if (dependencyId === task.taskId) {
+        throw new Error(
+          `Compiled run graph cannot make task ${task.taskId} depend on itself.`
+        );
+      }
+
+      if (!taskIds.has(dependencyId)) {
+        throw new Error(
+          `Compiled run graph for run ${input.runId} references unknown dependency ${dependencyId} from task ${task.taskId}.`
+        );
+      }
+    }
+  }
+
+  assertAcyclicCompiledTaskGraph(normalizedTasks);
+
+  return client.db.transaction(async (transaction) => {
+    const existingRun = await assertRunOwnership(transaction, input);
+
+    await assertCompileProvenanceRevisions(
+      transaction,
+      {
+        tenantId: existingRun.tenantId,
+        projectId: existingRun.projectId,
+        runId: existingRun.runId
+      },
+      input
+    );
+
+    const existingTasks = await transaction.query.runTasks.findMany({
+      where: eq(runTasks.runId, input.runId)
+    });
+    const existingTasksById = new Map(existingTasks.map((task) => [task.runTaskId, task]));
+    const desiredRunTaskIds = new Set(normalizedTasks.map((task) => task.runTaskId));
+
+    await transaction
+      .delete(runTaskDependencies)
+      .where(eq(runTaskDependencies.runId, input.runId));
+
+    for (const existingTask of existingTasks) {
+      if (desiredRunTaskIds.has(existingTask.runTaskId)) {
+        continue;
+      }
+
+      await transaction
+        .update(artifactRefs)
+        .set({
+          runTaskId: null
+        })
+        .where(
+          and(
+            eq(artifactRefs.runId, input.runId),
+            eq(artifactRefs.runTaskId, existingTask.runTaskId)
+          )
+        );
+
+      await transaction
+        .delete(runTasks)
+        .where(
+          and(eq(runTasks.runId, input.runId), eq(runTasks.runTaskId, existingTask.runTaskId))
+        );
+    }
+
+    const persistedTasks: PersistCompiledRunGraphTaskRecord[] = [];
+
+    for (const task of normalizedTasks) {
+      const existingTask = existingTasksById.get(task.runTaskId);
+      const persistedTask = existingTask
+        ? await updateRunTaskRow(transaction, existingTask, {
+            tenantId: input.tenantId,
+            runId: input.runId,
+            runTaskId: task.runTaskId,
+            name: task.name,
+            description: task.description,
+            status: task.status,
+            conversationAgentClass: task.conversationAgentClass,
+            conversationAgentName: task.conversationAgentName,
+            startedAt: null,
+            endedAt: null
+          })
+        : await insertRunTaskRow(transaction, {
+            tenantId: input.tenantId,
+            runId: input.runId,
+            runTaskId: task.runTaskId,
+            name: task.name,
+            description: task.description,
+            status: task.status,
+            conversationAgentClass: task.conversationAgentClass,
+            conversationAgentName: task.conversationAgentName,
+            startedAt: null,
+            endedAt: null
+          });
+
+      persistedTasks.push({
+        taskId: task.taskId,
+        runTaskId: persistedTask.runTaskId,
+        name: persistedTask.name,
+        description: persistedTask.description,
+        status: persistedTask.status,
+        conversationAgentClass: persistedTask.conversationAgentClass,
+        conversationAgentName: persistedTask.conversationAgentName,
+        startedAt: persistedTask.startedAt,
+        endedAt: persistedTask.endedAt
+      });
+    }
+
+    const persistedTaskIdsByLogicalId = new Map(
+      persistedTasks.map((task) => [task.taskId, task.runTaskId])
+    );
+    const persistedDependencies: PersistCompiledRunGraphDependencyRecord[] = [];
+
+    for (const task of normalizedTasks) {
+      const childRunTaskId = persistedTaskIdsByLogicalId.get(task.taskId);
+
+      if (!childRunTaskId) {
+        throw new Error(
+          `Compiled run graph persistence could not resolve run task id for ${task.taskId}.`
+        );
+      }
+
+      for (const dependencyId of task.dependsOn) {
+        const parentRunTaskId = persistedTaskIdsByLogicalId.get(dependencyId);
+
+        if (!parentRunTaskId) {
+          throw new Error(
+            `Compiled run graph persistence could not resolve parent task ${dependencyId}.`
+          );
+        }
+
+        const dependency = await insertRunTaskDependencyRow(transaction, {
+          tenantId: input.tenantId,
+          runId: input.runId,
+          parentRunTaskId,
+          childRunTaskId
+        });
+
+        persistedDependencies.push({
+          runTaskDependencyId: dependency.runTaskDependencyId,
+          parentTaskId: dependencyId,
+          childTaskId: task.taskId,
+          parentRunTaskId,
+          childRunTaskId
+        });
+      }
+    }
+
+    const run = await updateRunRecordRow(transaction, existingRun, {
+      tenantId: input.tenantId,
+      runId: input.runId,
+      compiledSpecRevisionId: input.compiledSpecRevisionId,
+      compiledArchitectureRevisionId: input.compiledArchitectureRevisionId,
+      compiledExecutionPlanRevisionId: input.compiledExecutionPlanRevisionId,
+      compiledAt
+    });
+
+    return {
+      run,
+      tasks: persistedTasks,
+      dependencies: persistedDependencies
+    };
+  });
+}
+
 export async function createRunTask(client: DatabaseClient, input: CreateRunTaskInput) {
   await assertRunOwnership(client.db, input);
 
-  const [inserted] = await client.db
-    .insert(runTasks)
-    .values({
-      runTaskId: input.runTaskId ?? crypto.randomUUID(),
-      runId: input.runId,
-      name: input.name,
-      description: input.description,
-      status: input.status,
-      conversationAgentClass: input.conversationAgentClass ?? null,
-      conversationAgentName: input.conversationAgentName ?? null,
-      startedAt: input.startedAt ?? null,
-      endedAt: input.endedAt ?? null
-    })
-    .returning();
-
-  return requireReturnedRow(
-    inserted,
-    `Run task insert returned no row for ${input.runTaskId ?? "generated task"}.`
-  );
+  return insertRunTaskRow(client.db, input);
 }
 
 export async function getRunTask(
@@ -544,28 +925,7 @@ export async function updateRunTask(client: DatabaseClient, input: UpdateRunTask
     throw new Error(`Run task ${input.runTaskId} was not found for run ${input.runId}.`);
   }
 
-  const [updated] = await client.db
-    .update(runTasks)
-    .set({
-      name: input.name ?? existing.name,
-      description: input.description ?? existing.description,
-      status: input.status ?? existing.status,
-      conversationAgentClass:
-        input.conversationAgentClass === undefined
-          ? existing.conversationAgentClass
-          : input.conversationAgentClass,
-      conversationAgentName:
-        input.conversationAgentName === undefined
-          ? existing.conversationAgentName
-          : input.conversationAgentName,
-      startedAt: input.startedAt === undefined ? existing.startedAt : input.startedAt,
-      endedAt: input.endedAt === undefined ? existing.endedAt : input.endedAt,
-      updatedAt: new Date()
-    })
-    .where(and(eq(runTasks.runId, input.runId), eq(runTasks.runTaskId, input.runTaskId)))
-    .returning();
-
-  return requireReturnedRow(updated, `Run task update returned no row for ${input.runTaskId}.`);
+  return updateRunTaskRow(client.db, existing, input);
 }
 
 export async function createRunTaskDependency(
@@ -578,20 +938,7 @@ export async function createRunTaskDependency(
     throw new Error("Run task dependencies cannot reference the same task on both ends.");
   }
 
-  const [inserted] = await client.db
-    .insert(runTaskDependencies)
-    .values({
-      runTaskDependencyId: input.runTaskDependencyId ?? crypto.randomUUID(),
-      runId: input.runId,
-      parentRunTaskId: input.parentRunTaskId,
-      childRunTaskId: input.childRunTaskId
-    })
-    .returning();
-
-  return requireReturnedRow(
-    inserted,
-    `Run task dependency insert returned no row for ${input.parentRunTaskId} -> ${input.childRunTaskId}.`
-  );
+  return insertRunTaskDependencyRow(client.db, input);
 }
 
 export async function listRunTaskDependencies(client: DatabaseClient, input: RunLookupInput) {
@@ -600,220 +947,5 @@ export async function listRunTaskDependencies(client: DatabaseClient, input: Run
   return client.db.query.runTaskDependencies.findMany({
     where: eq(runTaskDependencies.runId, input.runId),
     orderBy: [asc(runTaskDependencies.createdAt)]
-  });
-}
-
-export async function createSessionRecord(
-  client: DatabaseClient,
-  sessionSpec: SessionSpec,
-  overrides?: {
-    sessionId?: string | undefined;
-    status?: SessionStatus | undefined;
-  }
-) {
-  const session = buildConfiguredSession(sessionSpec, overrides);
-  return insertSessionRecordRow(client.db, session);
-}
-
-export async function getSessionRecord(
-  client: DatabaseClient,
-  tenantId: string,
-  sessionId: string
-) {
-  return findSessionRecord(client.db, tenantId, sessionId);
-}
-
-export async function createRunSessionMirror(
-  client: DatabaseClient,
-  input: {
-    sessionSpec: SessionSpec;
-    projectId: string;
-    workflowInstanceId: string;
-    executionEngine: string;
-    sessionId?: string | undefined;
-    status?: SessionStatus | undefined;
-  }
-) {
-  return client.db.transaction(async (transaction) => {
-    await assertProjectOwnership(transaction, {
-      tenantId: input.sessionSpec.tenantId,
-      projectId: input.projectId
-    });
-
-    const session = buildConfiguredSession(input.sessionSpec, {
-      sessionId: input.sessionId,
-      status: input.status
-    });
-    const insertedSession = await insertSessionRecordRow(transaction, session);
-    const lifecycleTimestamps = deriveRunLifecycleTimestamps(
-      null,
-      insertedSession.status as SessionStatus,
-      insertedSession.updatedAt
-    );
-    const runRecord = await insertRunRecord(transaction, {
-      tenantId: insertedSession.tenantId,
-      runId: insertedSession.runId,
-      projectId: input.projectId,
-      workflowInstanceId: input.workflowInstanceId,
-      executionEngine: input.executionEngine,
-      status: insertedSession.status,
-      startedAt: lifecycleTimestamps.startedAt ?? null,
-      endedAt: lifecycleTimestamps.endedAt ?? null
-    });
-
-    return {
-      session: insertedSession,
-      runRecord
-    };
-  });
-}
-
-export async function deleteRunSessionMirror(
-  client: DatabaseClient,
-  input: {
-    tenantId: string;
-    runId: string;
-    sessionId: string;
-  }
-) {
-  return client.db.transaction(async (transaction) => {
-    const deletedEvents = await transaction
-      .delete(sessionEvents)
-      .where(
-        and(
-          eq(sessionEvents.tenantId, input.tenantId),
-          eq(sessionEvents.runId, input.runId),
-          eq(sessionEvents.sessionId, input.sessionId)
-        )
-      )
-      .returning();
-
-    const deletedSessions = await transaction
-      .delete(sessions)
-      .where(
-        and(eq(sessions.tenantId, input.tenantId), eq(sessions.sessionId, input.sessionId))
-      )
-      .returning();
-
-    const deletedRuns = await transaction
-      .delete(runs)
-      .where(and(eq(runs.tenantId, input.tenantId), eq(runs.runId, input.runId)))
-      .returning();
-
-    return {
-      deletedEvents,
-      deletedSessions,
-      deletedRuns
-    };
-  });
-}
-
-export async function listRunSessions(
-  client: DatabaseClient,
-  tenantId: string,
-  runId: string
-) {
-  return client.db.query.sessions.findMany({
-    where: and(eq(sessions.tenantId, tenantId), eq(sessions.runId, runId)),
-    orderBy: [asc(sessions.createdAt)]
-  });
-}
-
-export async function listProjectRunSessions(
-  client: DatabaseClient,
-  input: {
-    tenantId: string;
-    projectId: string;
-  }
-) {
-  const projectRuns = await listProjectRuns(client, input);
-
-  if (projectRuns.length === 0) {
-    return [];
-  }
-
-  const runIds = new Set(projectRuns.map((run) => run.runId));
-
-  return client.db.query.sessions.findMany({
-    where: and(
-      eq(sessions.tenantId, input.tenantId),
-      eq(sessions.sessionType, "run")
-    ),
-    orderBy: [asc(sessions.createdAt)]
-  }).then((rows) => rows.filter((row) => runIds.has(row.runId)));
-}
-
-export async function updateSessionStatus(
-  client: DatabaseClient,
-  input: {
-    tenantId: string;
-    sessionId: string;
-    status: SessionStatus;
-    metadata?: Record<string, unknown> | undefined;
-  }
-) {
-  return client.db.transaction(async (transaction) => {
-    const existing = await findSessionRecord(transaction, input.tenantId, input.sessionId);
-
-    if (!existing) {
-      throw new Error(`Session ${input.sessionId} was not found for tenant ${input.tenantId}.`);
-    }
-
-    assertSessionStatusTransition(existing.status as SessionStatus, input.status);
-
-    const nextMetadata = input.metadata ?? existing.metadata;
-    const [updatedRow] = await transaction
-      .update(sessions)
-      .set({
-        status: input.status,
-        updatedAt: new Date(),
-        metadata: nextMetadata
-      })
-      .where(and(eq(sessions.tenantId, input.tenantId), eq(sessions.sessionId, input.sessionId)))
-      .returning();
-    const updated = requireReturnedRow(
-      updatedRow,
-      `Session update returned no row for ${input.sessionId}.`
-    );
-
-    if (existing.sessionType === "run") {
-      const run = await findRunRecord(transaction, {
-        tenantId: existing.tenantId,
-        runId: existing.runId
-      });
-
-      if (run) {
-        const lifecycleTimestamps = deriveRunLifecycleTimestamps(run, input.status, updated.updatedAt);
-
-        await updateRunRecordRow(transaction, run, {
-          tenantId: existing.tenantId,
-          runId: existing.runId,
-          status: input.status,
-          startedAt: lifecycleTimestamps.startedAt,
-          endedAt: lifecycleTimestamps.endedAt
-        });
-      } else {
-        const runSeed = deriveRunSeedFromSession(
-          existing,
-          input.status,
-          nextMetadata,
-          updated.updatedAt
-        );
-
-        if (!runSeed) {
-          throw new Error(
-            `Run ${existing.runId} is missing while updating run session ${existing.sessionId}, and the session metadata cannot reconstruct the mirror row.`
-          );
-        }
-
-        await assertProjectOwnership(transaction, {
-          tenantId: runSeed.tenantId,
-          projectId: runSeed.projectId
-        });
-        await insertRunRecord(transaction, runSeed);
-      }
-    }
-
-    return updated;
   });
 }

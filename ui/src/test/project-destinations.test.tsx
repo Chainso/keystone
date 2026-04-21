@@ -65,7 +65,7 @@ function expectWorkstreamLink(taskDisplayId: string, href: string) {
   expect(screen.getByRole("link", { name: taskDisplayId })).toHaveAttribute("href", href);
 }
 
-describe("Phase 3 destination scaffolds", () => {
+describe("project destinations", () => {
   it("renders the documentation tree shape and switches selection without the removed scaffold chrome", async () => {
     renderRoute("/documentation");
 
@@ -75,7 +75,7 @@ describe("Phase 3 destination scaffolds", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Doc tree" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Document viewer" })).toBeInTheDocument();
-    expect(screen.queryByText("Phase 3 scaffold")).not.toBeInTheDocument();
+    expect(screen.queryByText("Documentation scaffold")).not.toBeInTheDocument();
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
     expect(screen.queryByText("Deferred work")).not.toBeInTheDocument();
 

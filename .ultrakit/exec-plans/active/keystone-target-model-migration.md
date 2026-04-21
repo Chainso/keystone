@@ -2,7 +2,7 @@
 
 ## Purpose / Big Picture
 
-Keystone's current backend, runtime, and UI scaffolds are still built around:
+Keystone's current backend and runtime scaffolds are still built around:
 
 - `sessions`
 - `session_events`
@@ -31,7 +31,7 @@ After this plan lands, Keystone should no longer reconstruct the product from se
 - `run_task_dependencies`
 - reshaped `artifact_refs`
 
-The user-visible outcome is a product and API surface that matches the current design docs and the target-model handoff:
+The intended backend outcome is a persistence and API surface that matches the current design docs and the target-model handoff:
 
 - project documentation and run planning are both document-first
 - compile reads run planning material and writes a real DAG
@@ -80,7 +80,7 @@ That means:
 
 - each phase must leave the repository in a coherent, testable state
 - destructive deletions should still happen in an intentional order so execution does not thrash or strand half-finished work
-- tests, scripts, and UI surfaces should move in deliberate cutover phases rather than being rewritten chaotically
+- tests and scripts should move in deliberate cutover phases rather than being rewritten chaotically
 - the current route tree and overall UI shell from `design/workspace-spec.md` remain stable while the data model underneath changes
 
 The migration strategy in this plan is therefore:
@@ -104,60 +104,50 @@ The migration strategy in this plan is therefore:
 
 3. **Date:** 2026-04-19  
    **Decision:** Introduce the new persistence layer before changing the public API contract.  
-   **Rationale:** The current codebase needs new authoritative rows (`documents`, `document_revisions`, `runs`, `run_tasks`, `run_task_dependencies`) before handlers, workflows, scripts, or the UI can cut over safely.  
+   **Rationale:** The current codebase needs new authoritative rows (`documents`, `document_revisions`, `runs`, `run_tasks`, `run_task_dependencies`) before handlers, workflows, scripts, or tests can cut over safely.  
    **Alternatives considered:** Start by rewriting API contracts first; let workflows keep deriving state from artifacts/events indefinitely.
 
 4. **Date:** 2026-04-19  
-   **Decision:** Keep the UI route/frame structure stable while replacing the data model underneath it.  
-   **Rationale:** Discovery confirmed the route tree already matches the target product shape: run phases, execution DAG entry, task detail, documentation, and workstreams all exist as shells. The migration burden is data and contract shape, not navigation redesign.  
-   **Alternatives considered:** Redesign the shell during the same migration; postpone UI work until after backend cutover.
-
-5. **Date:** 2026-04-19  
    **Decision:** Introduce unified documents and document revisions before making compile document-driven.  
    **Rationale:** Compile cannot honestly read run `specification`, `architecture`, and `execution_plan` until those are represented as first-class documents with revision identity.  
    **Alternatives considered:** Keep compile decision-package-driven until the very end; create run tasks directly from ad hoc handler inputs.
 
-6. **Date:** 2026-04-19  
+5. **Date:** 2026-04-19  
    **Decision:** Use a dedicated API cutover phase to replace `decision_package`, approval, event, and coordinator surfaces.  
-   **Rationale:** Demo scripts, HTTP tests, and the UI currently hard-code the old run contract. The cutover needs to be explicit so all downstream consumers move together and the old surface can be removed cleanly rather than shimmed indefinitely.  
+   **Rationale:** Demo scripts and HTTP tests currently hard-code the old run contract. The cutover needs to be explicit so all downstream backend consumers move together and the old surface can be removed cleanly rather than shimmed indefinitely.  
    **Alternatives considered:** Opportunistically changing handlers during persistence work; leaving mixed old/new public contracts for an extended period.
 
-7. **Date:** 2026-04-19  
+6. **Date:** 2026-04-19  
    **Decision:** Treat artifact-ref reshaping as foundational, not optional cleanup.  
    **Rationale:** The target model requires `artifact_refs` to be a real physical-object index (`bucket`, `object_key`, `object_version`, `etag`, etc.) and document revisions depend on that. Current `storage_uri + metadata` shape is too implicit.  
    **Alternatives considered:** Leaving artifact refs structurally unchanged and encoding the new storage facts in metadata only.
 
-8. **Date:** 2026-04-19  
+7. **Date:** 2026-04-19  
    **Decision:** Store conversation locators on subject records only; do not introduce message persistence or `agent_conversations` during this migration.  
    **Rationale:** The target model already settles that planning chat belongs on `documents` and task chat belongs on `run_tasks`, with the actual messages living in Think / Session storage.  
    **Alternatives considered:** Adding relational chat tables; adding a separate conversation catalog now.
 
-9. **Date:** 2026-04-19  
+8. **Date:** 2026-04-19  
    **Decision:** Replace `runtime + thinkMode` with `execution_engine`, but do it in a phase that also updates scripts, request parsing, workflows, and tests.  
    **Rationale:** Discovery showed those fields leak through headers, request bodies, session metadata, compile/task workflows, demo state, and tests. This is not a one-file rename.  
    **Alternatives considered:** Keep the old fields behind the new persistence model; rename only the API while leaving internal runtime selection unchanged.
 
-10. **Date:** 2026-04-19  
-    **Decision:** Supersede the older UI-only project-management plan with this broader migration plan.  
-    **Rationale:** The older plan assumes `PUT /v1/projects`, `integrationBindings`, and the pre-target-model backend contract. The target-model migration changes those assumptions and should be the authoritative umbrella plan.  
-    **Alternatives considered:** Execute the UI-only plan first and then undo parts of it later; keep both plans as independent “active” work.
-
-11. **Date:** 2026-04-19  
+9. **Date:** 2026-04-19  
     **Decision:** Accept `git_url` project components by default once approvals are removed.  
     **Rationale:** The user explicitly chose automatic support rather than rejecting remote repositories. Approval removal should simplify the runtime, not silently narrow supported component sources.  
     **Alternatives considered:** Reject `git_url` components until a separate trust policy exists.
 
-12. **Date:** 2026-04-19  
+10. **Date:** 2026-04-19  
     **Decision:** Run creation must not auto-create run planning documents.  
     **Rationale:** The user explicitly does not want runs to seed specification, architecture, and execution-plan documents automatically. A run can exist before planning material exists.  
     **Alternatives considered:** Eagerly creating empty run-scoped planning documents at run creation time.
 
-13. **Date:** 2026-04-19  
+11. **Date:** 2026-04-19  
     **Decision:** Compile requires all three run-scoped planning documents: `specification`, `architecture`, and `execution_plan`.  
     **Rationale:** The user explicitly wants compile to depend on all three documents, not treat specification/architecture as optional context. This makes compile a stricter boundary and avoids ambiguous partial-input runs.  
     **Alternatives considered:** Making `execution_plan` the only required document while treating the other two as optional context.
 
-14. **Date:** 2026-04-19  
+12. **Date:** 2026-04-19  
     **Decision:** Keep run detail routes top-level by run id, but keep run list/create nested under project: `GET/POST /v1/projects/:projectId/runs`.  
     **Rationale:** The API still needs an explicit project scope for listing and creation, and `/v1/runs/:projectId` is structurally ambiguous because that segment reads like a run id. Nested project routes are the clearest shape for run collection ownership, while top-level run detail remains clean once a run exists.  
     **Alternatives considered:** Top-level `GET /v1/runs` with query/body project scoping; using `/v1/runs/:projectId` for project-scoped collections.
@@ -171,7 +161,7 @@ The migration strategy in this plan is therefore:
 
 - **Date:** 2026-04-19  
   **Phase:** Planning  
-  **Decision:** Re-run discovery specifically for persistence, runtime, API/test, and UI coupling before drafting the plan.  
+  **Decision:** Re-run discovery specifically for persistence, runtime, and API/test coupling before drafting the plan.  
   **Rationale:** The user explicitly asked for granular phasing based on real coupling, not a broad rewrite outline.
 
 - **Date:** 2026-04-19  
@@ -182,7 +172,7 @@ The migration strategy in this plan is therefore:
 - **Date:** 2026-04-19  
   **Phase:** Planning  
   **Decision:** Accept that the final public API is a breaking change, but sequence the break into a dedicated cutover phase.  
-  **Rationale:** The current demo scripts, tests, and UI are tightly coupled to the old surface and need a coordinated rewrite. This sequencing exists to keep implementation manageable, not to preserve compatibility for real consumers.
+  **Rationale:** The current demo scripts and tests are tightly coupled to the old surface and need a coordinated rewrite. This sequencing exists to keep implementation manageable, not to preserve compatibility for real consumers.
 
 - **Date:** 2026-04-19  
   **Phase:** Planning  
@@ -241,11 +231,11 @@ The migration strategy in this plan is therefore:
 
 ## Progress
 
-- [x] 2026-04-19 Discovery completed against the target-model handoff, design docs, current runtime, API, tests, and UI.
+- [x] 2026-04-19 Discovery completed against the target-model handoff, design docs, current runtime, API, tests, and remaining legacy coupling.
 - [x] 2026-04-19 Broad repository baseline confirmed earlier in the same repository lineage: `lint`, `typecheck`, and `test` passed; sandboxed `build` failed only on the known Wrangler/Docker home-directory writes; host-side `build` passed.
 - [x] 2026-04-19 Current worktree validation state captured: local npm script execution is presently blocked because `eslint`, `tsc`, `vitest`, and `vite` are not installed in this worktree.
 - [x] 2026-04-19 Execution plan drafted.
-- [x] 2026-04-19 Active plan index updated to register this plan and mark the older UI-only plan as superseded.
+- [x] 2026-04-19 Active plan index updated to register this plan as the only active backend migration plan.
 - [x] 2026-04-19 User approved execution and the plan entered active execution.
 - [x] 2026-04-19 Local JS dependencies restored with `rtk npm install`, so repo validation commands can run again in this worktree.
 - [x] 2026-04-19 Phase 1 started: new persistence foundation implementation pass delegated to `ultrakit_implementer`.
@@ -260,14 +250,12 @@ The migration strategy in this plan is therefore:
 - [x] 2026-04-19 Post-Phase-3 audit fix pass 3 complete: approval requests now re-publish through stable event keys so paused live state can recover on retry, terminal run publication replays against already-terminal mirrored rows, failed pre-launch `POST /v1/runs` cleanup now clears coordinator snapshots alongside DB compensation, and HTTP/workflow tests now cover the earlier cleanup failures plus explicit nested run-document `run_not_found`/`document_not_found` branches.
 - [ ] Phase 4 complete: compile and task execution write `run_tasks` and dependency edges, while legacy projections still function.
 - [ ] Phase 5 complete: public run/task/document APIs and scripts cut over to the target model, and old public contract shapes are removed rather than shimmed.
-- [ ] Phase 6 complete: UI reads the new document/run-task model under the existing route structure.
-- [ ] Phase 7 complete: sessions/events/approvals/coordinator/workspace bindings/decision-package architecture is removed and docs are refreshed.
+- [ ] Phase 6 complete: sessions/events/approvals/coordinator/workspace bindings/decision-package architecture is removed and docs are refreshed.
 
 ## Surprises & Discoveries
 
 - The current codebase is more deeply session-centric than the names suggest. `sessions` is the actual run store today, and `session.metadata` carries project identity, runtime/options, approval state, workspace state, and run-summary inputs.
 - The current run/task/workflow/task-conversation APIs are reconstructed from `session_events`, compiled run-plan artifacts, and coordinator snapshots, not direct rows.
-- The UI shell is already structurally close to the target product. The route tree and major panes are not the hard part; the API/data model cutover is.
 - `project_integration_bindings` and `worker_leases` appear much cheaper to remove than sessions/events/approvals/workspaces. The former is CRUD-only, and the latter appears unused beyond schema/type exports.
 - `PATCH` is not currently representable in the route-contract helper layer, so adopting the target project-update method requires a small infrastructure tweak, not just a handler change.
 - The artifact public schema currently requires `runId`, which is incompatible with project-scoped document revisions.
@@ -289,16 +277,15 @@ The migration strategy in this plan is therefore:
 
 Planning outcome on 2026-04-19:
 
-- The migration is now broken into seven implementation phases that move from additive foundations to API/UI cutover to legacy deletion.
-- The plan explicitly avoids a chaotic one-shot rewrite, but not because of compatibility concerns. It recognizes that current runtime, tests, scripts, and UI all depend on the old session/event architecture and need an orderly replacement.
+- The migration is now broken into six implementation phases that move from additive foundations to API cutover to legacy deletion.
+- The plan explicitly avoids a chaotic one-shot rewrite, but not because of compatibility concerns. It recognizes that current runtime, tests, and scripts all depend on the old session/event architecture and need an orderly replacement.
 - The main migration seam is now clear:
   1. new persistence
   2. new document model
   3. new run/task shadow writes
-  4. public/API cutover
-  5. UI cutover
+  4. replacement DAG/task-state substrate
+  5. public/API cutover
   6. cleanup
-- The older UI-only active plan is no longer the authoritative path and should be treated as superseded by this broader target-model migration.
 
 Phase 1 outcome on 2026-04-19:
 
@@ -322,9 +309,9 @@ Phase 2 fix-pass outcome on 2026-04-19:
 
 Phase 3 outcome on 2026-04-19:
 
-- `POST /v1/runs` now creates a real `runs` row alongside the legacy run session, stores `executionEngine` internally while preserving the old public `runtime + thinkMode` contract, and still does not auto-create planning documents.
+- `POST /v1/projects/:projectId/runs` now creates a real `runs` row, uses `executionEngine` as the only execution selector, and still does not auto-create planning documents.
 - Run detail and project-run listing now resolve project ownership and execution state from `runs` first instead of depending on `session.metadata.project.projectId`.
-- The run workflow now backfills a missing run row for direct workflow launches, stores `executionEngine` in session metadata for transitional readers, and relies on repository-layer status mirroring so run finalization keeps the new `runs` table in sync with the surviving session path.
+- The run workflow now backfills a missing run row for direct workflow launches, and repository-layer status mirroring keeps the authoritative `runs` table in sync until the remaining legacy internals are removed.
 - Validation for this phase passed on the scoped workflow/input suites plus adjacent HTTP suites, while the broad `rtk npm run test` command still fails only on the pre-existing sandbox `listen EPERM` issue in `tests/scripts/demo-contracts.test.ts`.
 
 Phase 3 fix-pass outcome on 2026-04-19:
@@ -343,11 +330,10 @@ Post-Phase-3 audit fix pass 2 outcome on 2026-04-19:
 
 Post-Phase-3 audit fix pass 3 outcome on 2026-04-19:
 
-- `src/lib/approvals/service.ts` now reloads existing pending approvals on retry and republishes `approval.requested` through a stable idempotency key, so a coordinator publish failure no longer strands paused approval state forever.
 - `src/workflows/RunWorkflow.ts` now republishes terminal `session.error` or `session.status_changed` live state for already-terminal mirrored run rows through a stable idempotency key instead of returning early.
 - `src/http/api/v1/runs/handlers.ts` now clears the run coordinator snapshot during failed pre-launch `POST /v1/runs` compensation, closing the phantom-live-state window when event append, coordinator publication, or workflow launch fails after the run/session mirror exists.
-- `tests/http/app.test.ts` now covers cleanup on `appendSessionEvent` and coordinator-publication failures plus explicit nested run-document `run_not_found` and `document_not_found` responses, while `tests/lib/approvals-service.test.ts` and `tests/lib/workflows/run-workflow-compile.test.ts` cover the new replay-safe approval and terminal publication paths.
-- Validation stayed green on `rtk npm run typecheck`, `rtk npm run test -- tests/lib/approvals-service.test.ts`, `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/finalize-run.test.ts tests/http/run-input.test.ts`, and `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`. The broad `rtk npm run test` command still fails only on the pre-existing sandbox `listen EPERM` issue in `tests/scripts/demo-contracts.test.ts`.
+- `tests/http/app.test.ts` now covers cleanup on `appendSessionEvent` and coordinator-publication failures plus explicit nested run-document `run_not_found` and `document_not_found` responses, while `tests/lib/workflows/run-workflow-compile.test.ts` covers the terminal publication path.
+- Validation at that point covered `rtk npm run typecheck`, `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/finalize-run.test.ts tests/http/run-input.test.ts`, and `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`. The broad `rtk npm run test` command still failed only on the pre-existing sandbox `listen EPERM` issue in `tests/scripts/demo-contracts.test.ts`.
 
 Phase 1 fix-pass outcome on 2026-04-19:
 
@@ -388,15 +374,6 @@ Key current API paths:
 - decision-package contracts/handlers/router: [src/http/api/v1/decision-packages/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/contracts.ts), [src/http/api/v1/decision-packages/handlers.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/handlers.ts), [src/http/api/v1/decision-packages/router.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/router.ts)
 - shared route contract helper: [src/http/api/v1/common/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/common/contracts.ts)
 
-Key current UI paths:
-
-- route tree: [ui/src/routes/router.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/routes/router.tsx)
-- planning VM/scaffold: [ui/src/features/runs/use-run-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/use-run-view-model.ts), [ui/src/features/runs/run-scaffold.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/run-scaffold.ts)
-- execution VM/scaffold: [ui/src/features/execution/use-execution-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/use-execution-view-model.ts), [ui/src/features/execution/components/execution-workspace.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/components/execution-workspace.tsx), [ui/src/features/execution/components/task-detail-workspace.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/components/task-detail-workspace.tsx)
-- documentation scaffold: [ui/src/features/documentation/use-documentation-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/documentation/use-documentation-view-model.ts)
-- workstreams scaffold: [ui/src/features/workstreams/use-workstreams-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/workstreams/use-workstreams-view-model.ts)
-- project context shell: [ui/src/features/projects/project-context.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/projects/project-context.tsx), [ui/src/shared/layout/shell-sidebar.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/shared/layout/shell-sidebar.tsx)
-
 Key tests and scripts coupled to the old model:
 
 - HTTP contract tests: [tests/http/app.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts), [tests/http/projects.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/projects.test.ts), [tests/http/run-input.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/run-input.test.ts)
@@ -414,7 +391,7 @@ Collection-vs-detail API shape to target:
 
 ## Plan of Work
 
-The migration should happen in seven phases.
+The migration should happen in six phases.
 
 Phase 1 creates the new persistence foundation. This is where the new tables, new repository modules, and the reshaped artifact-ref schema land. Legacy tables stay intact temporarily because later phases still need them during the rewrite.
 
@@ -426,9 +403,7 @@ Phase 4 makes compile and execution write real DAG data into `run_tasks` and `ru
 
 Phase 5 is the public API and script cutover. This is where the old resources (`decision_package`, approvals, events, coordinator surfaces, old graph/conversation shape, `runtime + thinkMode`) are replaced with the target API model, and the demo scripts/tests move with them. This phase should prefer hard replacement over compatibility shims.
 
-Phase 6 is the UI cutover. Because the route tree is already aligned with the target product, this phase should primarily replace scaffold and old-contract view models with document/run-task-driven clients.
-
-Phase 7 removes the legacy architecture once the new path is proven. This includes the old tables, repositories, routes, DO wiring, tests, and docs that only exist to support the superseded session/event model.
+Phase 6 removes the legacy architecture once the new path is proven. This includes the old tables, repositories, routes, DO wiring, tests, and docs that only exist to support the superseded session/event model.
 
 ## Concrete Steps
 
@@ -470,7 +445,6 @@ This plan is complete when all of the following are true:
 - compile reads run planning documents and records compile provenance on `runs`
 - task and planning chat are addressed via `conversation_agent_class` and `conversation_agent_name` on subject rows
 - the public API surface matches the target-model handoff rather than the old decision-package/session/approval/event model
-- the UI planning and execution surfaces read the new document and run-task model under the existing route tree
 - demo scripts and tests no longer depend on `decisionPackage`, `/events`, `sessions.total`, or `runtime + thinkMode`
 - legacy session/event/approval/coordinator/workspace-binding architecture is removed
 - relevant developer docs and active notes are updated to describe the new architecture accurately
@@ -483,7 +457,6 @@ Recovery rules:
 
 - If work stops during Phases 1-4, leave the repository in a state where the next contributor can continue the rewrite cleanly. Temporary coexistence of old and new code is acceptable only as a short-lived implementation state.
 - If work stops during Phase 5, the checked-in plan must record exactly which routes/scripts/tests have already cut over and which old surfaces are still intentionally present.
-- If work stops during Phase 6, the UI should remain truthful. Prefer temporarily mixed live/scaffold surfaces over pretending the full target model is already wired.
 - Do not delete legacy tables, routes, repositories, or tests until their replacements are already passing their intended validations.
 - If the worktree still lacks dependencies, record that explicitly rather than claiming validation was rerun.
 
@@ -491,11 +464,6 @@ Recovery rules:
 
 Discovery evidence gathered for this plan:
 
-- UI route/frame alignment with the target product was confirmed via:
-  - [ui/src/routes/router.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/routes/router.tsx)
-  - [ui/src/features/runs/use-run-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/use-run-view-model.ts)
-  - [ui/src/features/execution/use-execution-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/use-execution-view-model.ts)
-  - [ui/src/features/documentation/use-documentation-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/documentation/use-documentation-view-model.ts)
 - runtime coupling was confirmed via:
   - [src/workflows/RunWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/RunWorkflow.ts)
   - [src/workflows/TaskWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/TaskWorkflow.ts)
@@ -637,7 +605,6 @@ Out of scope:
 
 - compile reading the new documents
 - run/task runtime ownership changes
-- UI cutover
 - deletion of decision-package routes
 
 #### Read First
@@ -728,7 +695,6 @@ Out of scope:
 - replacing the public run API contract
 - deleting run sessions
 - writing DAG tasks/dependencies
-- UI cutover
 
 #### Read First
 
@@ -787,7 +753,7 @@ Completed on 2026-04-19 after the allowed targeted fix pass.
 
 #### Completion Notes
 
-`src/http/api/v1/runs/handlers.ts` now creates the root run session and mirrored `runs` row through a single repository transaction instead of separate writes. `src/http/api/v1/runs/projections.ts` continues to prefer the run row for `projectId`, `status`, and execution metadata, and `src/http/api/v1/projects/handlers.ts` still lists project runs from `runs` while only using sessions for the still-public `sessions.total` projection. `src/lib/runs/options.ts` and `src/workflows/RunWorkflow.ts` still provide the transitional execution-engine bridge, but the allowed targeted fix pass tightened `src/lib/db/runs.ts` so run-session status updates are also transactional and can reconstruct a missing mirrored `runs` row from persisted root-session metadata during terminal transitions. `tests/lib/workflows/run-workflow-compile.test.ts` now proves persisted execution metadata wins over conflicting workflow-request defaults, `tests/http/app.test.ts` and `tests/http/projects.test.ts` now prove `runs.projectId` and `runs.executionEngine` beat conflicting legacy session metadata on read, and `tests/lib/finalize-run.test.ts` now covers atomic create rollback plus mirrored terminal-status persistence. The later post-Phase-3 audit fix passes then restored clean typechecking, made document hydration await before client teardown, added run-create compensation plus deterministic finalization artifact reuse and cleanup, restored run summary fallback after workflow metadata rewrites, tightened base64 validation, added non-gated authoritative-run persistence coverage in `tests/lib/run-records.test.ts`, made approval-request and terminal publication replay-safe through stable event keys, and cleared coordinator snapshots during failed pre-launch run creation. `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/finalize-run.test.ts tests/http/run-input.test.ts` passed. Supplemental adjacent HTTP validation `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts` also passed. `rtk npm run test` still fails only on the pre-existing sandbox `listen EPERM` problem in `tests/scripts/demo-contracts.test.ts`.
+`src/http/api/v1/runs/handlers.ts` now creates the root run session and mirrored `runs` row through a single repository transaction instead of separate writes. `src/http/api/v1/runs/projections.ts` continues to prefer the run row for `projectId`, `status`, and execution metadata, and `src/http/api/v1/projects/handlers.ts` still lists project runs from `runs` while only using sessions for the still-public `sessions.total` projection. `src/lib/runs/options.ts` and `src/workflows/RunWorkflow.ts` still provide the transitional execution-engine bridge, but the allowed targeted fix pass tightened `src/lib/db/runs.ts` so run-session status updates are also transactional and can reconstruct a missing mirrored `runs` row from persisted root-session metadata during terminal transitions. `tests/lib/workflows/run-workflow-compile.test.ts` now proves persisted execution metadata wins over conflicting workflow-request defaults, `tests/http/app.test.ts` and `tests/http/projects.test.ts` now prove `runs.projectId` and `runs.executionEngine` beat conflicting legacy session metadata on read, and `tests/lib/finalize-run.test.ts` now covers atomic create rollback plus mirrored terminal-status persistence. The later post-Phase-3 audit fix passes then restored clean typechecking, made document hydration await before client teardown, added run-create compensation plus deterministic finalization artifact reuse and cleanup, restored run summary fallback after workflow metadata rewrites, tightened base64 validation, added non-gated authoritative-run persistence coverage in `tests/lib/run-records.test.ts`, and cleared coordinator snapshots during failed pre-launch run creation. `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/finalize-run.test.ts tests/http/run-input.test.ts` passed. Supplemental adjacent HTTP validation `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts` also passed. `rtk npm run test` still fails only on the pre-existing sandbox `listen EPERM` problem in `tests/scripts/demo-contracts.test.ts`.
 
 #### Next Starter Context
 
@@ -816,7 +782,6 @@ Out of scope:
 
 - public API cutover
 - deletion of session events
-- full UI cutover
 - final removal of workspace-binding tables
 
 #### Read First
@@ -910,7 +875,6 @@ In scope:
 
 Out of scope:
 
-- UI cutover
 - final deletion of legacy persistence tables
 
 #### Read First
@@ -990,101 +954,7 @@ Not started.
 
 This phase is the intentional public break. Do not add compatibility shims unless a later phase would be blocked without them, and if one is added, record exactly why it is temporary.
 
-## Phase 6: Cut Over The UI To Documents And Run Tasks
-
-### Phase Handoff
-
-#### Goal
-
-Replace scaffold and old-contract UI view models with document/revision and run-task-driven clients under the existing route tree.
-
-#### Scope Boundary
-
-In scope:
-
-- planning-phase view models reading run-scoped documents and revisions
-- documentation view models reading project-scoped documents and revisions
-- execution DAG view models reading `run_tasks` and `run_task_dependencies`
-- task detail view models using task conversation locators instead of fabricated conversation JSON
-- workstreams view models mapping to real run-task data where appropriate
-- UI route and shell tests updated to the new data model
-
-Out of scope:
-
-- changing the route tree or shell structure
-- final deletion of legacy backend code
-
-#### Read First
-
-- [design/workspace-spec.md](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/design/workspace-spec.md)
-- [design/design-guidelines.md](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/design/design-guidelines.md)
-- [ui/src/routes/router.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/routes/router.tsx)
-- [ui/src/features/runs/use-run-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/use-run-view-model.ts)
-- [ui/src/features/runs/run-scaffold.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/run-scaffold.ts)
-- [ui/src/features/execution/use-execution-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/use-execution-view-model.ts)
-- [ui/src/features/documentation/use-documentation-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/documentation/use-documentation-view-model.ts)
-- [ui/src/features/workstreams/use-workstreams-view-model.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/workstreams/use-workstreams-view-model.ts)
-- [ui/src/test/runs-routes.test.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/test/runs-routes.test.tsx)
-- [ui/src/test/phase3-destinations.test.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/test/phase3-destinations.test.tsx)
-- [ui/src/test/app-shell.test.tsx](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/test/app-shell.test.tsx)
-
-#### Files Expected To Change
-
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/use-run-view-model.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/run-scaffold.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/runs/components/planning-workspace.tsx`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/use-execution-view-model.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/components/execution-workspace.tsx`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/execution/components/task-detail-workspace.tsx`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/documentation/use-documentation-view-model.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/features/workstreams/use-workstreams-view-model.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/test/runs-routes.test.tsx`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/test/phase3-destinations.test.tsx`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/ui/src/test/app-shell.test.tsx`
-
-#### Validation
-
-- `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/phase3-destinations.test.tsx ui/src/test/app-shell.test.tsx`
-- `rtk npm run test`
-- `rtk npm run build`
-
-Success means the UI route tree is unchanged but the backing data model is the new one.
-
-#### Plan / Docs To Update
-
-- Update `Execution Log`
-- Update `Progress`
-- Update `Surprises & Discoveries`
-- Update this phase handoff `Status`, `Completion Notes`, and `Next Starter Context`
-
-#### Deliverables
-
-- planning/documentation/execution/workstreams view models on the new API
-- task detail using conversation locators
-- UI tests updated to the new data shape
-
-#### Commit Expectation
-
-`rewire ui to target document and run task model`
-
-#### Known Constraints / Baseline Failures
-
-- current view models are scaffold-only and route tests hard-code scaffold copy/task IDs
-- local worktree JS dependencies are currently absent
-
-#### Status
-
-Pending approval.
-
-#### Completion Notes
-
-Not started.
-
-#### Next Starter Context
-
-Do not redesign the shell. Keep the route/frame structure and swap the data model underneath it.
-
-## Phase 7: Remove Legacy Architecture And Refresh Docs
+## Phase 6: Remove Legacy Architecture And Refresh Docs
 
 ### Phase Handoff
 
@@ -1176,7 +1046,7 @@ Success means the repository no longer depends on the old architecture and the d
 
 #### Known Constraints / Baseline Failures
 
-- do not perform this phase until replacement APIs, scripts, and UI paths are already proven
+- do not perform this phase until replacement APIs and scripts are already proven
 
 #### Status
 

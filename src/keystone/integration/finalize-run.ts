@@ -2,24 +2,14 @@ import type { DatabaseClient } from "../../lib/db/client";
 import {
   createArtifactRef,
   deleteArtifactRef,
-  findArtifactRefByStorageUri,
-  getArtifactRef
+  findArtifactRefByObjectKey
 } from "../../lib/db/artifacts";
 import { deleteArtifactObject, putArtifactJson } from "../../lib/artifacts/r2";
 import { runSummaryArtifactKey } from "../../lib/artifacts/keys";
-import { appendAndPublishRunEvent } from "../../lib/events/publish";
-import { getSessionRecord, updateSessionStatus } from "../../lib/db/runs";
+import { getRunRecord, listRunTaskDependencies, listRunTasks, updateRunRecord } from "../../lib/db/runs";
 import type { WorkerBindings } from "../../env";
 
 const ARTIFACTS_BUCKET_NAME = "keystone-artifacts-dev";
-
-export interface FinalizeRunTaskResult {
-  taskId: string;
-  workflowStatus: string;
-  processStatus?: string | null | undefined;
-  exitCode?: number | null | undefined;
-  logArtifactRefId?: string | null | undefined;
-}
 
 export async function finalizeRun(
   env: WorkerBindings,
@@ -27,37 +17,68 @@ export async function finalizeRun(
   input: {
     tenantId: string;
     runId: string;
-    runSessionId: string;
-    taskResults: FinalizeRunTaskResult[];
   }
 ) {
-  const successfulTasks = input.taskResults.filter((result) => result.workflowStatus === "complete");
-  const failedTasks = input.taskResults.filter((result) => result.workflowStatus !== "complete");
+  const run = await getRunRecord(client, {
+    tenantId: input.tenantId,
+    runId: input.runId
+  });
+
+  if (!run) {
+    throw new Error(`Run ${input.runId} could not be loaded during finalization.`);
+  }
+
+  const [runTasks, dependencies] = await Promise.all([
+    listRunTasks(client, {
+      tenantId: input.tenantId,
+      runId: input.runId
+    }),
+    listRunTaskDependencies(client, {
+      tenantId: input.tenantId,
+      runId: input.runId
+    })
+  ]);
+  const dependsOnByTaskId = new Map<string, string[]>();
+
+  for (const dependency of dependencies) {
+    const dependsOn = dependsOnByTaskId.get(dependency.childRunTaskId) ?? [];
+    dependsOn.push(dependency.parentRunTaskId);
+    dependsOnByTaskId.set(dependency.childRunTaskId, dependsOn);
+  }
+
+  const successfulTasks = runTasks.filter((task) => task.status === "completed");
+  const failedTasks = runTasks.filter((task) => task.status !== "completed");
   const finalStatus = failedTasks.length === 0 ? "archived" : "failed";
   const summary = {
     runId: input.runId,
     successfulTasks: successfulTasks.length,
     failedTasks: failedTasks.length,
-    tasks: input.taskResults
+    tasks: runTasks.map((task) => ({
+      runTaskId: task.runTaskId,
+      name: task.name,
+      description: task.description,
+      status: task.status,
+      dependsOn: dependsOnByTaskId.get(task.runTaskId) ?? [],
+      conversation:
+        task.conversationAgentClass && task.conversationAgentName
+          ? {
+              agentClass: task.conversationAgentClass,
+              agentName: task.conversationAgentName
+            }
+          : null,
+      startedAt: task.startedAt?.toISOString() ?? null,
+      endedAt: task.endedAt?.toISOString() ?? null
+    }))
   };
-  const runSession = await getSessionRecord(client, input.tenantId, input.runSessionId);
 
-  if (!runSession) {
-    throw new Error(`Run session ${input.runSessionId} could not be loaded during finalization.`);
-  }
-
-  const existingMetadata =
-    runSession.metadata && typeof runSession.metadata === "object"
-      ? (runSession.metadata as Record<string, unknown>)
-      : {};
   const artifactKey = runSummaryArtifactKey(input.tenantId, input.runId);
-  const existingArtifactRefId =
-    typeof existingMetadata.runSummaryArtifactRefId === "string"
-      ? existingMetadata.runSummaryArtifactRefId
-      : null;
-  const existingArtifactRef = existingArtifactRefId
-    ? await getArtifactRef(client, input.tenantId, existingArtifactRefId)
-    : null;
+  const existingArtifactRef = (await findArtifactRefByObjectKey(client, {
+    tenantId: input.tenantId,
+    bucket: ARTIFACTS_BUCKET_NAME,
+    objectKey: artifactKey,
+    runId: input.runId,
+    artifactKind: "run_summary"
+  })) ?? null;
   const artifact = await putArtifactJson(
     env.ARTIFACTS_BUCKET,
     ARTIFACTS_BUCKET_NAME,
@@ -66,13 +87,12 @@ export async function finalizeRun(
   );
   const matchedArtifactRef =
     existingArtifactRef ??
-    (await findArtifactRefByStorageUri(client, {
+    (await findArtifactRefByObjectKey(client, {
       tenantId: input.tenantId,
+      bucket: ARTIFACTS_BUCKET_NAME,
+      objectKey: artifact.key,
       runId: input.runId,
-      storageUri: artifact.storageUri,
-      sessionId: input.runSessionId,
-      taskId: null,
-      kind: "run_summary"
+      artifactKind: "run_summary"
     }));
   const reusedExistingArtifactRef = Boolean(matchedArtifactRef);
   let artifactRef = matchedArtifactRef;
@@ -84,45 +104,27 @@ export async function finalizeRun(
       artifactRef = await createArtifactRef(client, {
         tenantId: input.tenantId,
         runId: input.runId,
-        sessionId: input.runSessionId,
-        kind: "run_summary",
+        projectId: run.projectId,
+        artifactKind: "run_summary",
         storageBackend: artifact.storageBackend,
-        storageUri: artifact.storageUri,
+        bucket: ARTIFACTS_BUCKET_NAME,
+        objectKey: artifact.key,
+        objectVersion: artifact.objectVersion,
+        etag: artifact.etag,
         contentType: "application/json; charset=utf-8",
-        sizeBytes: artifact.sizeBytes,
-        metadata: {
-          key: artifact.key,
-          etag: artifact.etag,
-          successfulTasks: successfulTasks.length,
-          failedTasks: failedTasks.length
-        }
+        sha256: artifact.sha256,
+        sizeBytes: artifact.sizeBytes
       });
       createdArtifactRefId = artifactRef.artifactRefId;
     }
 
-    await updateSessionStatus(client, {
-      tenantId: input.tenantId,
-      sessionId: input.runSessionId,
-      status: finalStatus,
-      metadata: {
-        ...existingMetadata,
-        runSummaryArtifactRefId: artifactRef.artifactRefId,
-        successfulTasks: successfulTasks.length,
-        failedTasks: failedTasks.length
-      }
-    });
-    statusPersisted = true;
-
-    await appendAndPublishRunEvent(client, env, {
+    await updateRunRecord(client, {
       tenantId: input.tenantId,
       runId: input.runId,
-      sessionId: input.runSessionId,
-      eventType: failedTasks.length === 0 ? "session.archived" : "session.error",
-      severity: failedTasks.length === 0 ? "info" : "error",
-      artifactRefId: artifactRef.artifactRefId,
-      payload: summary,
-      status: finalStatus
+      status: finalStatus,
+      endedAt: new Date()
     });
+    statusPersisted = true;
 
     return {
       finalStatus,

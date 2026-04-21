@@ -6,7 +6,6 @@ import type {
   DocumentRevisionRow,
   DocumentRow
 } from "./schema";
-import { buildProjectScopedArtifactRunId } from "./artifacts";
 import {
   type DocumentKind,
   type DocumentScopeType,
@@ -104,9 +103,7 @@ function assertRevisionArtifactBoundary(document: DocumentRow, artifact: Artifac
   }
 
   if (document.scopeType === "project") {
-    const expectedProjectScopedRunId = buildProjectScopedArtifactRunId(document.projectId);
-
-    if (artifact.runId !== expectedProjectScopedRunId) {
+    if (artifact.runId) {
       throw new Error(
         `Artifact ${artifact.artifactRefId} does not belong to the project-scoped document boundary for document ${document.documentId}.`
       );
@@ -123,15 +120,15 @@ function assertRevisionArtifactBoundary(document: DocumentRow, artifact: Artifac
     }
   }
 
-  if ((artifact.artifactKind ?? artifact.kind) !== DOCUMENT_REVISION_ARTIFACT_KIND) {
+  if (artifact.artifactKind !== DOCUMENT_REVISION_ARTIFACT_KIND) {
     throw new Error(
       `Artifact ${artifact.artifactRefId} is not a ${DOCUMENT_REVISION_ARTIFACT_KIND} artifact.`
     );
   }
 
-  if (artifact.sessionId || artifact.taskId || artifact.runTaskId) {
+  if (artifact.runTaskId) {
     throw new Error(
-      `Artifact ${artifact.artifactRefId} is task- or session-scoped and cannot back a document revision.`
+      `Artifact ${artifact.artifactRefId} is task-scoped and cannot back a document revision.`
     );
   }
 }
@@ -407,23 +404,24 @@ export async function listProjectDocumentsWithCurrentRevision(
   input: ProjectLookupInput
 ): Promise<DocumentWithCurrentRevision[]> {
   const projectDocuments = await listProjectDocuments(client, input);
+  const documentsWithRevisions: DocumentWithCurrentRevision[] = [];
 
-  return Promise.all(
-    projectDocuments.map(async (document) => {
-      const currentRevision = document.currentRevisionId
-        ? await getDocumentRevision(client, {
-            tenantId: input.tenantId,
-            documentId: document.documentId,
-            documentRevisionId: document.currentRevisionId
-          })
-        : null;
+  for (const document of projectDocuments) {
+    const currentRevision = document.currentRevisionId
+      ? await getDocumentRevision(client, {
+          tenantId: input.tenantId,
+          documentId: document.documentId,
+          documentRevisionId: document.currentRevisionId
+        })
+      : null;
 
-      return {
-        ...document,
-        currentRevision: currentRevision ?? null
-      };
-    })
-  );
+    documentsWithRevisions.push({
+      ...document,
+      currentRevision: currentRevision ?? null
+    });
+  }
+
+  return documentsWithRevisions;
 }
 
 export async function listRunDocumentsWithCurrentRevision(
@@ -431,21 +429,22 @@ export async function listRunDocumentsWithCurrentRevision(
   input: RunLookupInput
 ): Promise<DocumentWithCurrentRevision[]> {
   const scopedRunDocuments = await listRunDocuments(client, input);
+  const documentsWithRevisions: DocumentWithCurrentRevision[] = [];
 
-  return Promise.all(
-    scopedRunDocuments.map(async (document) => {
-      const currentRevision = document.currentRevisionId
-        ? await getDocumentRevision(client, {
-            tenantId: input.tenantId,
-            documentId: document.documentId,
-            documentRevisionId: document.currentRevisionId
-          })
-        : null;
+  for (const document of scopedRunDocuments) {
+    const currentRevision = document.currentRevisionId
+      ? await getDocumentRevision(client, {
+          tenantId: input.tenantId,
+          documentId: document.documentId,
+          documentRevisionId: document.currentRevisionId
+        })
+      : null;
 
-      return {
-        ...document,
-        currentRevision: currentRevision ?? null
-      };
-    })
-  );
+    documentsWithRevisions.push({
+      ...document,
+      currentRevision: currentRevision ?? null
+    });
+  }
+
+  return documentsWithRevisions;
 }

@@ -1,11 +1,10 @@
 import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 
 import type { ArtifactStorageBackend } from "../../maestro/contracts";
-import { parseR2Uri } from "../artifacts/r2";
+import { toR2Uri } from "../artifacts/r2";
 import type { DatabaseClient } from "./client";
-import { artifactRefs } from "./schema";
-
-const PROJECT_SCOPED_ARTIFACT_RUN_ID_PREFIX = "project:";
+import type { ArtifactRefRow } from "./schema";
+import { artifactRefs, projects, runs, runTasks } from "./schema";
 
 function requireInsertedRow<T>(row: T | undefined, message: string): T {
   if (!row) {
@@ -15,109 +14,170 @@ function requireInsertedRow<T>(row: T | undefined, message: string): T {
   return row;
 }
 
+function isUniqueViolation(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23505"
+  );
+}
+
+function sameNullableString(left: string | null | undefined, right: string | null | undefined) {
+  return (left ?? null) === (right ?? null);
+}
+
+function sameNullableNumber(left: number | null | undefined, right: number | null | undefined) {
+  return (left ?? null) === (right ?? null);
+}
+
+function assertArtifactRefOwnership(
+  existing: ArtifactRefRow,
+  input: CreateArtifactRefInput
+) {
+  if (
+    existing.projectId !== input.projectId ||
+    !sameNullableString(existing.runId, input.runId) ||
+    !sameNullableString(existing.runTaskId, input.runTaskId) ||
+    existing.artifactKind !== input.artifactKind ||
+    existing.storageBackend !== input.storageBackend ||
+    existing.contentType !== input.contentType ||
+    !sameNullableString(existing.objectVersion, input.objectVersion) ||
+    !sameNullableString(existing.etag, input.etag) ||
+    !sameNullableString(existing.sha256, input.sha256) ||
+    !sameNullableNumber(existing.sizeBytes, input.sizeBytes)
+  ) {
+    throw new Error(
+      `Artifact object ${input.bucket}/${input.objectKey} already exists with conflicting ownership, blob identity, or contract data.`
+    );
+  }
+}
+
+async function assertArtifactRefTargets(client: DatabaseClient, input: CreateArtifactRefInput) {
+  const project = await client.db.query.projects.findFirst({
+    where: and(eq(projects.projectId, input.projectId), eq(projects.tenantId, input.tenantId))
+  });
+
+  if (!project) {
+    throw new Error(
+      `Project ${input.projectId} was not found for tenant ${input.tenantId}.`
+    );
+  }
+
+  if (input.runTaskId && !input.runId) {
+    throw new Error("Artifact refs with a runTaskId must also include a runId.");
+  }
+
+  if (!input.runId) {
+    return;
+  }
+
+  const run = await client.db.query.runs.findFirst({
+    where: and(eq(runs.runId, input.runId), eq(runs.tenantId, input.tenantId))
+  });
+
+  if (!run) {
+    throw new Error(`Run ${input.runId} was not found for artifact ${input.objectKey}.`);
+  }
+
+  if (run.projectId !== input.projectId) {
+    throw new Error(
+      `Artifact ${input.objectKey} run ${input.runId} belongs to project ${run.projectId}, not ${input.projectId}.`
+    );
+  }
+
+  if (!input.runTaskId) {
+    return;
+  }
+
+  const runTask = await client.db.query.runTasks.findFirst({
+    where: and(eq(runTasks.runId, input.runId), eq(runTasks.runTaskId, input.runTaskId))
+  });
+
+  if (!runTask) {
+    throw new Error(
+      `Artifact ${input.objectKey} run task ${input.runTaskId} does not belong to run ${input.runId}.`
+    );
+  }
+}
+
 export interface CreateArtifactRefInput {
   tenantId: string;
+  projectId: string;
   runId?: string | null | undefined;
-  projectId?: string | null | undefined;
-  sessionId?: string | null | undefined;
-  taskId?: string | null | undefined;
   runTaskId?: string | null | undefined;
-  kind: string;
-  artifactKind?: string | null | undefined;
+  artifactKind: string;
   storageBackend: ArtifactStorageBackend;
-  storageUri: string;
-  bucket?: string | null | undefined;
-  objectKey?: string | null | undefined;
+  bucket: string;
+  objectKey: string;
   objectVersion?: string | null | undefined;
   etag?: string | null | undefined;
   contentType: string;
   sha256?: string | null | undefined;
   sizeBytes?: number | null | undefined;
-  metadata?: Record<string, unknown> | undefined;
 }
 
-export function buildProjectScopedArtifactRunId(projectId: string) {
-  return `${PROJECT_SCOPED_ARTIFACT_RUN_ID_PREFIX}${projectId}`;
-}
-
-export function isProjectScopedArtifactRunId(runId: string | null | undefined) {
-  return Boolean(runId?.startsWith(PROJECT_SCOPED_ARTIFACT_RUN_ID_PREFIX));
-}
-
-function resolvePhysicalObjectLocation(input: CreateArtifactRefInput) {
-  if (input.bucket || input.objectKey) {
-    return {
-      bucket: input.bucket ?? null,
-      objectKey: input.objectKey ?? null
-    };
+export function getArtifactStorageUri(
+  artifact: Pick<ArtifactRefRow, "storageBackend" | "bucket" | "objectKey">
+) {
+  if (artifact.storageBackend !== "r2") {
+    throw new Error(
+      `Artifact storage backend ${artifact.storageBackend} does not support URI derivation.`
+    );
   }
 
-  if (input.storageBackend !== "r2") {
-    return {
-      bucket: null,
-      objectKey: null
-    };
-  }
-
-  try {
-    const parsed = parseR2Uri(input.storageUri);
-
-    return {
-      bucket: parsed.bucketName,
-      objectKey: parsed.key
-    };
-  } catch {
-    return {
-      bucket: null,
-      objectKey: null
-    };
-  }
-}
-
-function resolveArtifactOwnershipRunId(input: CreateArtifactRefInput) {
-  if (input.runId) {
-    return input.runId;
-  }
-
-  if (input.projectId) {
-    return buildProjectScopedArtifactRunId(input.projectId);
-  }
-
-  throw new Error("Artifact refs require either a runId or projectId.");
+  return toR2Uri(artifact.bucket, artifact.objectKey);
 }
 
 export async function createArtifactRef(
   client: DatabaseClient,
   input: CreateArtifactRefInput
 ) {
-  const physicalLocation = resolvePhysicalObjectLocation(input);
-  const ownershipRunId = resolveArtifactOwnershipRunId(input);
-  const [inserted] = await client.db
-    .insert(artifactRefs)
-    .values({
-      tenantId: input.tenantId,
-      artifactRefId: crypto.randomUUID(),
-      projectId: input.projectId ?? null,
-      runId: ownershipRunId,
-      sessionId: input.sessionId ?? null,
-      taskId: input.taskId ?? null,
-      runTaskId: input.runTaskId ?? null,
-      kind: input.kind,
-      artifactKind: input.artifactKind ?? input.kind,
-      storageBackend: input.storageBackend,
-      storageUri: input.storageUri,
-      bucket: physicalLocation.bucket,
-      objectKey: physicalLocation.objectKey,
-      objectVersion: input.objectVersion ?? null,
-      etag: input.etag ?? null,
-      contentType: input.contentType,
-      sha256: input.sha256 ?? null,
-      sizeBytes: input.sizeBytes ?? null,
-      metadata: input.metadata ?? {}
-    })
-    .returning();
+  await assertArtifactRefTargets(client, input);
 
-  return requireInsertedRow(inserted, `Artifact ref insert returned no row for ${input.kind}.`);
+  try {
+    const [inserted] = await client.db
+      .insert(artifactRefs)
+      .values({
+        tenantId: input.tenantId,
+        artifactRefId: crypto.randomUUID(),
+        projectId: input.projectId,
+        runId: input.runId ?? null,
+        runTaskId: input.runTaskId ?? null,
+        artifactKind: input.artifactKind,
+        storageBackend: input.storageBackend,
+        bucket: input.bucket,
+        objectKey: input.objectKey,
+        objectVersion: input.objectVersion ?? null,
+        etag: input.etag ?? null,
+        contentType: input.contentType,
+        sha256: input.sha256 ?? null,
+        sizeBytes: input.sizeBytes ?? null
+      })
+      .returning();
+
+    return requireInsertedRow(
+      inserted,
+      `Artifact ref insert returned no row for ${input.artifactKind}.`
+    );
+  } catch (error) {
+    if (!isUniqueViolation(error)) {
+      throw error;
+    }
+
+    const existing = await findArtifactRefByObjectKey(client, {
+      tenantId: input.tenantId,
+      bucket: input.bucket,
+      objectKey: input.objectKey
+    });
+
+    if (existing) {
+      assertArtifactRefOwnership(existing, input);
+      return existing;
+    }
+
+    throw error;
+  }
 }
 
 export async function deleteArtifactRef(
@@ -153,33 +213,33 @@ export async function getArtifactRef(
   });
 }
 
-export async function findArtifactRefByStorageUri(
+export async function findArtifactRefByObjectKey(
   client: DatabaseClient,
   input: {
     tenantId: string;
-    runId: string;
-    storageUri: string;
-    sessionId?: string | null | undefined;
-    taskId?: string | null | undefined;
-    kind?: string | undefined;
+    bucket: string;
+    objectKey: string;
+    runId?: string | null | undefined;
+    runTaskId?: string | null | undefined;
+    artifactKind?: string | undefined;
   }
 ) {
   return client.db.query.artifactRefs.findFirst({
     where: and(
       eq(artifactRefs.tenantId, input.tenantId),
-      eq(artifactRefs.runId, input.runId),
-      eq(artifactRefs.storageUri, input.storageUri),
-      input.sessionId === undefined
+      eq(artifactRefs.bucket, input.bucket),
+      eq(artifactRefs.objectKey, input.objectKey),
+      input.runId === undefined
         ? undefined
-        : input.sessionId === null
-          ? isNull(artifactRefs.sessionId)
-          : eq(artifactRefs.sessionId, input.sessionId),
-      input.taskId === undefined
+        : input.runId === null
+          ? isNull(artifactRefs.runId)
+          : eq(artifactRefs.runId, input.runId),
+      input.runTaskId === undefined
         ? undefined
-        : input.taskId === null
-          ? isNull(artifactRefs.taskId)
-          : eq(artifactRefs.taskId, input.taskId),
-      input.kind ? eq(artifactRefs.kind, input.kind) : undefined
+        : input.runTaskId === null
+          ? isNull(artifactRefs.runTaskId)
+          : eq(artifactRefs.runTaskId, input.runTaskId),
+      input.artifactKind ? eq(artifactRefs.artifactKind, input.artifactKind) : undefined
     )
   });
 }
@@ -200,17 +260,17 @@ export async function listArtifactsForSandboxProjection(
   input: {
     tenantId: string;
     runId: string;
-    excludeSessionId?: string | undefined;
+    excludeRunTaskId?: string | undefined;
   }
 ) {
   const baseWhere = and(
     eq(artifactRefs.tenantId, input.tenantId),
     eq(artifactRefs.runId, input.runId)
   );
-  const where = input.excludeSessionId
+  const where = input.excludeRunTaskId
     ? and(
         baseWhere,
-        or(isNull(artifactRefs.sessionId), ne(artifactRefs.sessionId, input.excludeSessionId))
+        or(isNull(artifactRefs.runTaskId), ne(artifactRefs.runTaskId, input.excludeRunTaskId))
       )
     : baseWhere;
 

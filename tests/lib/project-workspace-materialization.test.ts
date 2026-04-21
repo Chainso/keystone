@@ -38,8 +38,8 @@ describe("project workspace materialization", () => {
 
     const workspace = await ensureWorkspaceMaterialized(session, {
       runId: "run-456",
-      sessionId: "de305d54-75b4-431b-adb2-eb6b9e546014",
       taskId: "task-2",
+      runTaskId: "run-task-456",
       components: [
         {
           type: "inline",
@@ -66,22 +66,33 @@ describe("project workspace materialization", () => {
       ]
     });
 
-    const workspaceRoot = "/workspace/runs/run-456-de305d54";
-    const codeRoot = buildWorkspaceCodeRoot(workspaceRoot);
+    const workspaceRoot = "/workspace/runs/run-456";
+    const codeRoot = "/workspace/runs/run-456/tasks/task-2-run-task/code";
     const webRepositoryPath = buildComponentRepositoryPath(workspaceRoot, "web-app");
-    const webWorktreePath = buildComponentWorktreePath(workspaceRoot, "web-app");
+    const webWorktreePath = buildComponentWorktreePath(
+      workspaceRoot,
+      "task-2",
+      "run-task-456",
+      "web-app"
+    );
     const apiRepositoryPath = buildComponentRepositoryPath(workspaceRoot, "api");
-    const apiWorktreePath = buildComponentWorktreePath(workspaceRoot, "api");
+    const apiWorktreePath = buildComponentWorktreePath(
+      workspaceRoot,
+      "task-2",
+      "run-task-456",
+      "api"
+    );
 
     expect(workspace.workspaceRoot).toBe(workspaceRoot);
+    expect(workspace.workspaceTargetPath).toBe("/workspace/runs/run-456/tasks/task-2-run-task");
     expect(workspace.codeRoot).toBe(codeRoot);
-    expect(workspace.defaultCwd).toBe(workspaceRoot);
+    expect(workspace.defaultCwd).toBe("/workspace/runs/run-456/tasks/task-2-run-task");
     expect(workspace.components).toEqual([
       expect.objectContaining({
         componentKey: "web-app",
         repositoryPath: webRepositoryPath,
         worktreePath: webWorktreePath,
-        branchName: "keystone/task-2"
+        branchName: "keystone/task-2-run-task"
       }),
       expect.objectContaining({
         componentKey: "api",
@@ -89,7 +100,7 @@ describe("project workspace materialization", () => {
         worktreePath: apiWorktreePath,
         repoRef: "HEAD",
         baseRef: "HEAD",
-        branchName: "keystone/task-2"
+        branchName: "keystone/task-2-run-task"
       })
     ]);
     expect(session.mkdir).toHaveBeenCalledWith(codeRoot, {
@@ -116,13 +127,17 @@ describe("project workspace materialization", () => {
       }
     );
     expect(session.exec).toHaveBeenCalledWith(
-      expect.stringContaining(`git worktree add --force -B 'keystone/task-2' '${webWorktreePath}' 'main'`),
+      expect.stringContaining(
+        `git worktree add --force -B 'keystone/task-2-run-task' '${webWorktreePath}' 'main'`
+      ),
       {
         cwd: webRepositoryPath
       }
     );
     expect(session.exec).toHaveBeenCalledWith(
-      expect.stringContaining(`git worktree add --force -B 'keystone/task-2' '${apiWorktreePath}' 'HEAD'`),
+      expect.stringContaining(
+        `git worktree add --force -B 'keystone/task-2-run-task' '${apiWorktreePath}' 'HEAD'`
+      ),
       {
         cwd: apiRepositoryPath
       }

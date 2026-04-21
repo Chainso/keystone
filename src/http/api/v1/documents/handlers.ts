@@ -266,21 +266,15 @@ async function writeDocumentRevision(
       tenantId: document.tenantId,
       projectId: document.projectId,
       runId: document.runId,
-      kind: "document_revision",
       artifactKind: "document_revision",
       storageBackend: storedArtifact.storageBackend,
-      storageUri: storedArtifact.storageUri,
       bucket: ARTIFACTS_BUCKET_NAME,
       objectKey: storedArtifact.key,
+      objectVersion: storedArtifact.objectVersion,
       etag: storedArtifact.etag,
       contentType: input.contentType,
-      sizeBytes: storedArtifact.sizeBytes,
-      metadata: {
-        ...input.metadata,
-        fileName: buildDocumentFileName(document.path, input.contentType),
-        documentId: document.documentId,
-        documentRevisionId
-      }
+      sha256: storedArtifact.sha256,
+      sizeBytes: storedArtifact.sizeBytes
     });
     createdArtifactRefId = artifact.artifactRefId;
     const revision = await createDocumentRevision(client, {
@@ -291,7 +285,7 @@ async function writeDocumentRevision(
       title: input.title
     });
 
-    return serializeDocumentRevisionResource(document, revision);
+    return serializeDocumentRevisionResource(revision);
   } catch (error) {
     const cleanupErrors: unknown[] = [];
 

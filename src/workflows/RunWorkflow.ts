@@ -7,87 +7,57 @@ import {
 import { NonRetryableError } from "cloudflare:workflows";
 
 import type { WorkerBindings } from "../env";
-import { getRunCoordinatorStub } from "../lib/auth/tenant";
-import { ensureApprovalRequest } from "../lib/approvals/service";
+import { listRunArtifacts } from "../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../lib/db/client";
 import { getProject } from "../lib/db/projects";
-import type { AgentRuntimeKind, SessionStatus } from "../maestro/contracts";
-import { ensureRunRecord, getSessionRecord, updateSessionStatus } from "../lib/db/runs";
-import { appendAndPublishRunEvent } from "../lib/events/publish";
-import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
+import {
+  ensureRunRecord,
+  failRunAndCancelOutstandingTasks,
+  getRunRecord,
+  listRunTaskDependencies,
+  listRunTasks,
+  persistCompiledRunGraph,
+  updateRunTask,
+} from "../lib/db/runs";
+import { loadRequiredRunPlanningDocuments } from "../lib/documents/runtime";
 import {
   buildProjectExecutionSnapshot,
   type ProjectExecutionSnapshot
 } from "../lib/projects/runtime";
-import type { RunExecutionOptions } from "../lib/runs/options";
+import type { ExecutionEngine } from "../lib/runs/options";
 import {
   isLiveThinkExecution,
   isMockThinkExecution,
-  resolveRunExecutionEngine,
-  resolveRunExecutionOptions
+  resolveRunExecutionEngine
 } from "../lib/runs/options";
-import { evaluateRepoSourcePolicy } from "../lib/security/policy";
 import {
   buildRunWorkflowInstanceId,
-  buildStableSessionId,
   buildTaskWorkflowInstanceId
 } from "../lib/workflows/ids";
-import {
-  ensureSessionRecord,
-  loadExistingRunPlan
-} from "../lib/workflows/idempotency";
+import { loadExistingRunPlan } from "../lib/workflows/idempotency";
+import { buildRunSandboxId } from "../lib/workspace/worktree";
 import {
   compileDemoFixtureRunPlan,
   compileRunPlan,
   type CompileRepoSource
 } from "../keystone/compile/plan-run";
-import { decisionPackageSchema, type DecisionPackage } from "../keystone/compile/contracts";
 import { finalizeRun } from "../keystone/integration/finalize-run";
 import {
-  assertFixtureScopedCompiledPlan,
-  loadCompiledRunPlanArtifact
+  assertCompiledPlanIsInternallyConsistent,
+  loadCompiledRunPlanArtifact,
+  loadTaskHandoffArtifact
 } from "../keystone/tasks/load-task-contracts";
-import { isTerminalWorkflowInstanceStatus } from "../keystone/tasks/task-status";
-
-export type RunWorkflowDecisionPackageInput =
-  | {
-      source: "payload";
-      payload: Record<string, unknown>;
-    }
-  | {
-      source: "localPath";
-      localPath: string;
-    };
 
 export interface RunWorkflowParams {
   tenantId: string;
   runId: string;
-  runSessionId?: string | undefined;
   projectId: string;
-  decisionPackage?: RunWorkflowDecisionPackageInput | undefined;
-  executionEngine?: AgentRuntimeKind | undefined;
-  runtime?: AgentRuntimeKind | undefined;
-  options?: RunExecutionOptions | undefined;
+  executionEngine?: ExecutionEngine | undefined;
+  preserveSandbox?: boolean | undefined;
 }
 
 const DEFAULT_MAX_TASK_POLL_ATTEMPTS = 20;
 const LIVE_THINK_MAX_TASK_POLL_ATTEMPTS = 120;
-
-interface TaskWorkflowOutput {
-  taskId: string;
-  taskSessionId: string;
-  processStatus: string;
-  exitCode: number | null;
-  logArtifactRefId: string | null;
-  workflowStatus: string;
-}
-
-interface TaskWorkflowStatusSnapshot {
-  taskInstanceId: string;
-  status: WorkflowInstanceStatus;
-  errorMessage: string | null;
-  output: TaskWorkflowOutput | null;
-}
 
 interface FinalizeRunSnapshot {
   finalStatus: string;
@@ -96,442 +66,534 @@ interface FinalizeRunSnapshot {
   failedTasks: number;
 }
 
-interface ApprovalResolutionPayload {
-  approvalId: string;
-  resolution: "approved" | "rejected" | "cancelled";
+interface TaskWorkflowFanoutEntry {
+  id: string;
+  params: {
+    tenantId: string;
+    runId: string;
+    sandboxId: string;
+    taskId: string;
+    runTaskId: string;
+    executionEngine: ExecutionEngine;
+    preserveSandbox: boolean;
+    project: {
+      projectId: string;
+      projectKey: string;
+      displayName: string;
+    };
+  };
 }
 
 interface RunContextSnapshot {
-  runSessionId: string;
   workflowInstanceId: string;
+  sandboxId: string;
   compileRepo: CompileRepoSource;
   projectExecution: ProjectExecutionSnapshot;
-  executionEngine: AgentRuntimeKind;
-  options: RunExecutionOptions;
+  executionEngine: ExecutionEngine;
+  preserveSandbox: boolean;
 }
 
-function isTerminalSessionStatus(status: string | null | undefined) {
-  return status === "archived" || status === "failed" || status === "cancelled";
+function isMissingWorkflowInstanceStatus(status: WorkflowInstanceStatus) {
+  return status === "unknown";
 }
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function persistTerminalRunStatus(
+type RunTaskRows = Awaited<ReturnType<typeof listRunTasks>>;
+type RunTaskDependencyRows = Awaited<ReturnType<typeof listRunTaskDependencies>>;
+type CompiledRunPlan = Awaited<ReturnType<typeof loadCompiledRunPlanArtifact>>;
+type CompiledRunPlanTask = CompiledRunPlan["tasks"][number];
+type PersistedCompiledRunPlanTask = Omit<CompiledRunPlanTask, "runTaskId"> & {
+  runTaskId: string;
+};
+type PersistedCompiledRunPlan = Omit<CompiledRunPlan, "tasks"> & {
+  tasks: PersistedCompiledRunPlanTask[];
+};
+
+async function getTaskWorkflowInstanceStatus(
+  workflow: WorkerBindings["TASK_WORKFLOW"],
+  instanceId: string
+) {
+  try {
+    const instance = await workflow.get(instanceId);
+    const status = await instance.status();
+
+    return status.status;
+  } catch {
+    return "unknown" as const;
+  }
+}
+
+async function ensureTaskWorkflowFanout(
+  workflow: WorkerBindings["TASK_WORKFLOW"],
+  batch: TaskWorkflowFanoutEntry[]
+) {
+  const instanceStatuses = await Promise.all(
+    batch.map(async (entry) => ({
+      entry,
+      status: await getTaskWorkflowInstanceStatus(workflow, entry.id)
+    }))
+  );
+  const missingEntries = instanceStatuses
+    .filter((entry) => isMissingWorkflowInstanceStatus(entry.status))
+    .map((entry) => entry.entry);
+
+  if (missingEntries.length === 0) {
+    return batch.map((entry) => entry.id);
+  }
+
+  try {
+    await workflow.createBatch(missingEntries);
+  } catch (error) {
+    const unresolvedEntries: string[] = [];
+
+    for (const entry of missingEntries) {
+      const status = await getTaskWorkflowInstanceStatus(workflow, entry.id);
+
+      if (isMissingWorkflowInstanceStatus(status)) {
+        unresolvedEntries.push(entry.id);
+      }
+    }
+
+    if (unresolvedEntries.length > 0) {
+      throw error;
+    }
+  }
+
+  return batch.map((entry) => entry.id);
+}
+
+function isTerminalRunTaskStatus(status: string) {
+  return status === "completed" || status === "failed" || status === "cancelled" || status === "archived";
+}
+
+function hasRecordedExecutionState(task: RunTaskRows[number]) {
+  return (
+    task.startedAt !== null ||
+    task.endedAt !== null ||
+    task.conversationAgentClass !== null ||
+    task.conversationAgentName !== null ||
+    task.status === "active" ||
+    task.status === "completed" ||
+    task.status === "failed" ||
+    task.status === "cancelled" ||
+    task.status === "archived"
+  );
+}
+
+function buildDependsOnIndex(dependencies: RunTaskDependencyRows) {
+  const dependsOnByTaskId = new Map<string, string[]>();
+
+  for (const dependency of dependencies) {
+    const existing = dependsOnByTaskId.get(dependency.childRunTaskId) ?? [];
+    existing.push(dependency.parentRunTaskId);
+    dependsOnByTaskId.set(dependency.childRunTaskId, existing);
+  }
+
+  return dependsOnByTaskId;
+}
+
+function isRunTaskReady(task: RunTaskRows[number], tasksById: Map<string, RunTaskRows[number]>, dependsOn: string[]) {
+  if (task.status === "ready") {
+    return true;
+  }
+
+  if (task.status !== "pending") {
+    return false;
+  }
+
+  return dependsOn.every((parentRunTaskId) => tasksById.get(parentRunTaskId)?.status === "completed");
+}
+
+function isRunTaskBlocked(
+  task: RunTaskRows[number],
+  tasksById: Map<string, RunTaskRows[number]>,
+  dependsOn: string[]
+) {
+  if (task.status !== "pending") {
+    return false;
+  }
+
+  return dependsOn.some((parentRunTaskId) => {
+    const parentStatus = tasksById.get(parentRunTaskId)?.status;
+
+    return parentStatus === "failed" || parentStatus === "cancelled";
+  });
+}
+
+function normalizeCompiledRunPlanForExecution(plan: CompiledRunPlan): PersistedCompiledRunPlan {
+  const seenRunTaskIds = new Set<string>();
+
+  return {
+    ...plan,
+    tasks: plan.tasks.map((task) => {
+      if (!task.runTaskId) {
+        throw new Error(`Compiled plan task ${task.taskId} is missing its persisted runTaskId.`);
+      }
+
+      if (seenRunTaskIds.has(task.runTaskId)) {
+        throw new Error(`Compiled plan contains duplicate runTaskId ${task.runTaskId}.`);
+      }
+
+      seenRunTaskIds.add(task.runTaskId);
+
+      return {
+        ...task,
+        runTaskId: task.runTaskId
+      };
+    })
+  };
+}
+
+function buildPlanTasksByRunTaskId(plan: PersistedCompiledRunPlan) {
+  return new Map(plan.tasks.map((task) => [task.runTaskId, task]));
+}
+
+function buildTaskWorkflowFanoutBatch(input: {
+  tenantId: string;
+  runId: string;
+  sandboxId: string;
+  executionEngine: ExecutionEngine;
+  preserveSandbox: boolean;
+  project: {
+    projectId: string;
+    projectKey: string;
+    displayName: string;
+  };
+  runTasks: RunTaskRows;
+  planTasksByRunTaskId: Map<string, PersistedCompiledRunPlanTask>;
+}) {
+  const activeTasks = input.runTasks.filter((task) => task.status === "active");
+  const readyTasks = input.runTasks.filter((task) => task.status === "ready");
+  const scheduledTasks =
+    activeTasks.length > 0 ? activeTasks : readyTasks.length > 0 ? [readyTasks[0]!] : [];
+
+  return scheduledTasks
+    .map((task) => {
+      const planTask = input.planTasksByRunTaskId.get(task.runTaskId);
+
+      if (!planTask) {
+        throw new Error(`Compiled plan task could not be resolved for run task ${task.runTaskId}.`);
+      }
+
+      return {
+        id: buildTaskWorkflowInstanceId(input.tenantId, input.runId, task.runTaskId),
+        params: {
+          tenantId: input.tenantId,
+          runId: input.runId,
+          sandboxId: input.sandboxId,
+          taskId: planTask.taskId,
+          runTaskId: task.runTaskId,
+          project: input.project,
+          executionEngine: input.executionEngine,
+          preserveSandbox: input.preserveSandbox
+        }
+      } satisfies TaskWorkflowFanoutEntry;
+    });
+}
+
+async function loadRunTaskGraph(
   env: WorkerBindings,
   input: {
     tenantId: string;
     runId: string;
-    runSessionId: string;
-    status: Extract<SessionStatus, "failed" | "cancelled">;
-    eventType: "session.error" | "session.status_changed";
-    severity: "error" | "warning";
-    phase: string;
-    error: unknown;
   }
 ) {
   const client = createWorkerDatabaseClient(env);
 
   try {
-    const session = await getSessionRecord(client, input.tenantId, input.runSessionId);
+    const [runTasks, dependencies] = await Promise.all([
+      listRunTasks(client, input),
+      listRunTaskDependencies(client, input)
+    ]);
 
-    if (!session) {
-      return session;
-    }
-
-    if (isTerminalSessionStatus(session.status) && session.status !== input.status) {
-      return session;
-    }
-
-    const terminalSession = isTerminalSessionStatus(session.status)
-      ? session
-      : await updateSessionStatus(client, {
-          tenantId: input.tenantId,
-          sessionId: input.runSessionId,
-          status: input.status,
-          metadata: {
-            ...(session.metadata && typeof session.metadata === "object"
-              ? (session.metadata as Record<string, unknown>)
-              : {}),
-            terminalPhase: input.phase,
-            terminalReason: getErrorMessage(input.error)
-          }
-        });
-
-    await appendAndPublishRunEvent(client, env, {
-      tenantId: input.tenantId,
-      runId: input.runId,
-      sessionId: input.runSessionId,
-      eventType: input.eventType,
-      severity: input.severity,
-      idempotencyKey: `run.terminal:${input.runSessionId}:${input.eventType}:${input.phase}:${input.status}`,
-      payload: {
-        status: terminalSession.status,
-        phase: input.phase,
-        message: getErrorMessage(input.error)
-      },
-      status: terminalSession.status as SessionStatus
-    });
-
-    return terminalSession;
+    return {
+      runTasks,
+      dependencies
+    };
   } finally {
     await client.close();
   }
 }
 
-function resolveDecisionPackage(
-  decisionPackageInput: RunWorkflowDecisionPackageInput | undefined
-): DecisionPackage {
-  if (!decisionPackageInput) {
-    return demoDecisionPackageFixture;
+async function promoteNewlyReadyRunTasks(
+  env: WorkerBindings,
+  input: {
+    tenantId: string;
+    runId: string;
   }
+) {
+  const client = createWorkerDatabaseClient(env);
 
-  if (decisionPackageInput.source === "payload") {
-    return decisionPackageSchema.parse(decisionPackageInput.payload);
+  try {
+    const [runTasks, dependencies] = await Promise.all([
+      listRunTasks(client, input),
+      listRunTaskDependencies(client, input)
+    ]);
+    const tasksById = new Map(runTasks.map((task) => [task.runTaskId, task]));
+    const dependsOnByTaskId = buildDependsOnIndex(dependencies);
+    const promoted: RunTaskRows = [];
+
+    for (const task of runTasks) {
+      const dependsOn = dependsOnByTaskId.get(task.runTaskId) ?? [];
+
+      if (!isRunTaskReady(task, tasksById, dependsOn)) {
+        continue;
+      }
+
+      if (task.status === "ready") {
+        promoted.push(task);
+        continue;
+      }
+
+      const updated = await updateRunTask(client, {
+        tenantId: input.tenantId,
+        runId: input.runId,
+        runTaskId: task.runTaskId,
+        status: "ready"
+      });
+      tasksById.set(updated.runTaskId, updated);
+      promoted.push(updated);
+    }
+
+    return promoted;
+  } finally {
+    await client.close();
   }
+}
 
-  if (decisionPackageInput.localPath.endsWith("fixtures/demo-decision-package/decision-package.json")) {
-    return demoDecisionPackageFixture;
+async function cancelBlockedRunTasks(
+  env: WorkerBindings,
+  input: {
+    tenantId: string;
+    runId: string;
   }
+) {
+  const client = createWorkerDatabaseClient(env);
 
-  throw new NonRetryableError(
-    "Only inline decision-package payloads and the committed demo fixture path are supported before broader repo ingestion lands."
-  );
+  try {
+    const [runTasks, dependencies] = await Promise.all([
+      listRunTasks(client, input),
+      listRunTaskDependencies(client, input)
+    ]);
+    const tasksById = new Map(runTasks.map((task) => [task.runTaskId, task]));
+    const dependsOnByTaskId = buildDependsOnIndex(dependencies);
+    const cancelled: RunTaskRows = [];
+
+    for (const task of runTasks) {
+      const dependsOn = dependsOnByTaskId.get(task.runTaskId) ?? [];
+
+      if (!isRunTaskBlocked(task, tasksById, dependsOn)) {
+        continue;
+      }
+
+      const updated = await updateRunTask(client, {
+        tenantId: input.tenantId,
+        runId: input.runId,
+        runTaskId: task.runTaskId,
+        status: "cancelled",
+        endedAt: task.endedAt ?? new Date()
+      });
+      tasksById.set(updated.runTaskId, updated);
+      cancelled.push(updated);
+    }
+
+    return cancelled;
+  } finally {
+    await client.close();
+  }
 }
 
 export function shouldUseFixtureCompileForRun(
   repo: CompileRepoSource,
-  decisionPackage: DecisionPackage,
-  runtime: AgentRuntimeKind,
-  options: RunExecutionOptions
+  executionEngine: ExecutionEngine
 ) {
   return (
-    isMockThinkExecution(runtime, options) &&
+    isMockThinkExecution(executionEngine) &&
     repo.source === "localPath" &&
-    repo.localPath.endsWith("fixtures/demo-target") &&
-    decisionPackage.decisionPackageId === "demo-greeting-update"
+    repo.localPath.endsWith("fixtures/demo-target")
   );
 }
 
 export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowParams> {
   async run(event: Readonly<WorkflowEvent<RunWorkflowParams>>, step: WorkflowStep) {
-    const decisionPackage = resolveDecisionPackage(event.payload.decisionPackage);
-    const runSessionId =
-      event.payload.runSessionId ??
-      (await buildStableSessionId("run-session", event.payload.tenantId, event.payload.runId));
     const workflowInstanceId = buildRunWorkflowInstanceId(event.payload.tenantId, event.payload.runId);
-
-    const runContext = (await step.do("load run context", async () => {
-      const client = createWorkerDatabaseClient(this.env);
-
-      try {
-        const project = await getProject(client, {
-          tenantId: event.payload.tenantId,
-          projectId: event.payload.projectId
-        });
-
-        if (!project) {
-          throw new NonRetryableError(
-            `Project ${event.payload.projectId} was not found for tenant ${event.payload.tenantId}.`
-          );
-        }
-
-        const projectExecution = buildProjectExecutionSnapshot(project, {
-          requireCompileTarget: true
-        });
-
-        if (!projectExecution.compileRepo) {
-          throw new Error(
-            `Project ${project.projectId} did not resolve a compile target after validation.`
-          );
-        }
-
-        const compileRepo = projectExecution.compileRepo;
-        const session = await ensureSessionRecord(
-          client,
-          {
-            tenantId: event.payload.tenantId,
-            runId: event.payload.runId,
-            sessionType: "run",
-            metadata: {
-              project: {
-                projectId: project.projectId,
-                projectKey: project.projectKey,
-                displayName: project.displayName
-              },
-              decisionPackageId: decisionPackage.decisionPackageId,
-              decisionPackageSummary: decisionPackage.summary,
-              workflowInstanceId
-            }
-          },
-          runSessionId
-        );
-
-        let currentSession =
-          session ?? (await getSessionRecord(client, event.payload.tenantId, runSessionId));
-
-        if (!currentSession) {
-          throw new Error(`Run session ${runSessionId} could not be loaded.`);
-        }
-
-        const executionEngine = resolveRunExecutionEngine(
-          event.payload.executionEngine ?? event.payload.runtime,
-          currentSession.metadata
-        );
-        const statusMetadata = {
-          project: {
-            projectId: project.projectId,
-            projectKey: project.projectKey,
-            displayName: project.displayName,
-            componentKeys: projectExecution.components.map((component) => component.componentKey),
-            envVarNames: Object.keys(projectExecution.environment),
-            ruleSet: projectExecution.ruleSet,
-            componentRuleOverrides: projectExecution.componentRuleOverrides
-          },
-          decisionPackageId: decisionPackage.decisionPackageId,
-          decisionPackageSummary: decisionPackage.summary,
-          workflowInstanceId,
-          executionEngine,
-          runtime: executionEngine,
-          options: resolveRunExecutionOptions(event.payload.options, currentSession.metadata)
-        };
-
-        await ensureRunRecord(client, {
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          projectId: project.projectId,
-          workflowInstanceId,
-          executionEngine,
-          status: currentSession.status
-        });
-
-        if (currentSession.status === "configured") {
-          currentSession = await updateSessionStatus(client, {
-            tenantId: event.payload.tenantId,
-            sessionId: runSessionId,
-            status: "provisioning",
-            metadata: statusMetadata
-          });
-        }
-
-        if (currentSession?.status === "provisioning") {
-          currentSession = await updateSessionStatus(client, {
-            tenantId: event.payload.tenantId,
-            sessionId: runSessionId,
-            status: "ready",
-            metadata: statusMetadata
-          });
-        }
-
-        const activatedThisRun = currentSession?.status === "ready";
-
-        if (activatedThisRun) {
-          currentSession = await updateSessionStatus(client, {
-            tenantId: event.payload.tenantId,
-            sessionId: runSessionId,
-            status: "active",
-            metadata: statusMetadata
-          });
-        }
-
-        if (!currentSession) {
-          throw new Error(`Run session ${runSessionId} did not resolve to a durable session row.`);
-        }
-
-        const coordinator = getRunCoordinatorStub(this.env, event.payload.tenantId, event.payload.runId);
-        await coordinator.initialize({
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          status: currentSession.status as "active" | "archived" | "cancelled" | "configured" | "failed" | "paused_for_approval" | "provisioning" | "ready"
-        });
-
-        if (activatedThisRun || currentSession.status === "active") {
-          await appendAndPublishRunEvent(client, this.env, {
-            tenantId: event.payload.tenantId,
-            runId: event.payload.runId,
-            sessionId: runSessionId,
-            eventType: "session.status_changed",
-            payload: {
-              status: "active",
-              phase: "run-workflow"
-            },
-            status: "active"
-          });
-        }
-
-        return {
-          runSessionId,
-          workflowInstanceId,
-          compileRepo,
-          projectExecution,
-          executionEngine,
-          options: statusMetadata.options
-        };
-      } finally {
-        await client.close();
-      }
-    })) as RunContextSnapshot;
-
-    const repoPolicyDecision = evaluateRepoSourcePolicy(runContext.compileRepo);
-
-    if (repoPolicyDecision.result === "deny") {
-      await step.do("cancel denied run", async () => {
-        const updated = await persistTerminalRunStatus(this.env, {
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          runSessionId,
-          status: "cancelled",
-          eventType: "session.status_changed",
-          severity: "warning",
-          phase: "repo-policy",
-          error: repoPolicyDecision.reason
-        });
-
-        return {
-          status: updated?.status ?? null
-        };
-      });
-      throw new NonRetryableError(repoPolicyDecision.reason);
-    }
-
-    if (repoPolicyDecision.result === "require_approval") {
-      const approvalRequest = await step.do("request repo approval", async () => {
-        const client = createWorkerDatabaseClient(this.env);
-
-        try {
-          return ensureApprovalRequest(client, this.env, {
-            tenantId: event.payload.tenantId,
-            runId: event.payload.runId,
-            sessionId: runSessionId,
-              approvalType: repoPolicyDecision.approvalType ?? "outbound_network",
-              reason: repoPolicyDecision.reason,
-              metadata: {
-                projectId: event.payload.projectId,
-                repo: runContext.compileRepo
-              }
-          });
-        } finally {
-          await client.close();
-        }
-      });
-
-      const approvalResolution = await step.waitForEvent<ApprovalResolutionPayload>(
-        "wait for repo approval",
-        {
-          type: approvalRequest.waitEventType
-        }
-      );
-
-      await step.do("apply repo approval resolution", async () => {
-        const client = createWorkerDatabaseClient(this.env);
-
-        try {
-          const resolution = approvalResolution.payload.resolution;
-          const session = await getSessionRecord(client, event.payload.tenantId, runSessionId);
-
-          if (!session) {
-            throw new Error(`Run session ${runSessionId} was not found while applying approval resolution.`);
-          }
-
-          if (resolution === "approved") {
-            const resumedSession =
-              session.status === "paused_for_approval"
-                ? await updateSessionStatus(client, {
-                    tenantId: event.payload.tenantId,
-                    sessionId: runSessionId,
-                    status: "active",
-                    metadata: {
-                      ...(session.metadata ?? {}),
-                      resumedFromApprovalId: approvalResolution.payload.approvalId
-                    }
-                  })
-                : session;
-
-            await appendAndPublishRunEvent(client, this.env, {
-              tenantId: event.payload.tenantId,
-              runId: event.payload.runId,
-              sessionId: runSessionId,
-              eventType: "session.status_changed",
-              payload: {
-                status: "active",
-                phase: "approval.resume"
-              },
-              status: resumedSession?.status === "active" ? "active" : undefined
-            });
-
-            return {
-              resolution
-            };
-          }
-
-          if (session.status === "paused_for_approval") {
-            await updateSessionStatus(client, {
-              tenantId: event.payload.tenantId,
-              sessionId: runSessionId,
-              status: "cancelled",
-              metadata: {
-                ...(session.metadata ?? {}),
-                cancelledByApprovalId: approvalResolution.payload.approvalId
-              }
-            });
-          }
-
-          throw new NonRetryableError(
-            `Repo access approval ${approvalResolution.payload.approvalId} resolved as ${resolution}.`
-          );
-        } finally {
-          await client.close();
-        }
-      });
-    }
-
+    let runContext!: RunContextSnapshot;
     let compileSummary!: {
       taskCount: number;
-      decisionPackageId: string;
     };
-    let taskInstanceIds!: string[];
-    let taskResults: TaskWorkflowOutput[] = [];
     let finalizedRun!: FinalizeRunSnapshot;
 
     try {
-      compileSummary = await step.do("compile plan", async () => {
-        const existingPlan = await loadExistingRunPlan(this.env, event.payload.tenantId, event.payload.runId);
-
-        if (existingPlan) {
-          return {
-            taskCount: existingPlan.tasks.length,
-            decisionPackageId: existingPlan.decisionPackageId
-          };
-        }
-
+      runContext = (await step.do("load run context", async () => {
         const client = createWorkerDatabaseClient(this.env);
-        const compileSessionId = await buildStableSessionId(
-          "compile-session",
-          event.payload.tenantId,
-          event.payload.runId
-        );
 
         try {
-          await ensureSessionRecord(
-            client,
-            {
-              tenantId: event.payload.tenantId,
-              runId: event.payload.runId,
-              sessionType: "compile",
-              parentSessionId: runSessionId,
-              metadata: {
-                workflowInstanceId
-              }
-            },
-            compileSessionId
+          const project = await getProject(client, {
+            tenantId: event.payload.tenantId,
+            projectId: event.payload.projectId
+          });
+
+          if (!project) {
+            throw new NonRetryableError(
+              `Project ${event.payload.projectId} was not found for tenant ${event.payload.tenantId}.`
+            );
+          }
+
+          const projectExecution = buildProjectExecutionSnapshot(project, {
+            requireCompileTarget: true
+          });
+
+          if (!projectExecution.compileRepo) {
+            throw new Error(
+              `Project ${project.projectId} did not resolve a compile target after validation.`
+            );
+          }
+
+          const compileRepo = projectExecution.compileRepo;
+          const existingRunRecord = await getRunRecord(client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId
+          });
+
+          if (
+            existingRunRecord &&
+            (existingRunRecord.status === "archived" ||
+              existingRunRecord.status === "failed" ||
+              existingRunRecord.status === "cancelled")
+          ) {
+            throw new NonRetryableError(
+              `Run ${event.payload.runId} is already ${existingRunRecord.status} and cannot be restarted.`
+            );
+          }
+
+          const sandboxId =
+            existingRunRecord?.sandboxId ?? buildRunSandboxId(event.payload.tenantId, event.payload.runId);
+          const executionEngine = resolveRunExecutionEngine(
+            event.payload.executionEngine,
+            existingRunRecord?.executionEngine
           );
+          const preserveSandbox = event.payload.preserveSandbox ?? false;
+
+          await ensureRunRecord(client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId,
+            projectId: project.projectId,
+            workflowInstanceId,
+            executionEngine,
+            sandboxId,
+            status: "active"
+          });
+
+          return {
+            workflowInstanceId,
+            sandboxId,
+            compileRepo,
+            projectExecution,
+            executionEngine,
+            preserveSandbox
+          };
+        } finally {
+          await client.close();
+        }
+      })) as RunContextSnapshot;
+
+      compileSummary = await step.do("compile plan", async () => {
+        const client = createWorkerDatabaseClient(this.env);
+
+        try {
+          const planningDocuments = await loadRequiredRunPlanningDocuments(this.env, client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId
+          });
+          const existingPlan = await loadExistingRunPlan(this.env, event.payload.tenantId, event.payload.runId);
+          const existingPlanMatchesCurrentDocuments =
+            existingPlan?.sourceRevisionIds.specification === planningDocuments.specification.revisionId &&
+            existingPlan?.sourceRevisionIds.architecture === planningDocuments.architecture.revisionId &&
+            existingPlan?.sourceRevisionIds.executionPlan === planningDocuments.executionPlan.revisionId;
+          const compilePlanIsComplete = async () => {
+            if (!existingPlan || !existingPlanMatchesCurrentDocuments) {
+              return false;
+            }
+
+            try {
+              const runArtifacts = await listRunArtifacts(client, event.payload.tenantId, event.payload.runId);
+              const planArtifact = runArtifacts.find(
+                (artifact) => artifact.artifactKind === "run_plan"
+              );
+              const handoffArtifacts = runArtifacts.filter(
+                (artifact) => artifact.artifactKind === "task_handoff"
+              );
+
+              if (!planArtifact || handoffArtifacts.length < existingPlan.tasks.length) {
+                return false;
+              }
+
+              for (const task of existingPlan.tasks) {
+                if (!task.runTaskId) {
+                  return false;
+                }
+
+                await loadTaskHandoffArtifact(
+                  this.env,
+                  event.payload.tenantId,
+                  event.payload.runId,
+                  task.runTaskId
+                );
+              }
+            } catch {
+              return false;
+            }
+
+            return true;
+          };
+
+          const persistedPlan = existingPlan && (await compilePlanIsComplete()) ? existingPlan : null;
+
+          if (persistedPlan) {
+            const existingRunTasks = await listRunTasks(client, {
+              tenantId: event.payload.tenantId,
+              runId: event.payload.runId
+            });
+            const existingRunTaskIds = new Set(existingRunTasks.map((task) => task.runTaskId));
+            const missingPersistedTasks = persistedPlan.tasks.filter(
+              (task) => !task.runTaskId || !existingRunTaskIds.has(task.runTaskId)
+            );
+            const hasExecutionState = existingRunTasks.some((task) => hasRecordedExecutionState(task));
+
+            if (hasExecutionState && missingPersistedTasks.length > 0) {
+              throw new NonRetryableError(
+                `Run ${event.payload.runId} is missing persisted task rows for its compiled plan after execution state was recorded.`
+              );
+            }
+
+            if (!hasExecutionState && missingPersistedTasks.length > 0) {
+              await persistCompiledRunGraph(client, {
+                tenantId: event.payload.tenantId,
+                runId: event.payload.runId,
+                compiledSpecRevisionId: persistedPlan.sourceRevisionIds.specification,
+                compiledArchitectureRevisionId: persistedPlan.sourceRevisionIds.architecture,
+                compiledExecutionPlanRevisionId: persistedPlan.sourceRevisionIds.executionPlan,
+                tasks: persistedPlan.tasks.map((task) => ({
+                  taskId: task.taskId,
+                  runTaskId: task.runTaskId,
+                  name: task.title,
+                  description: task.summary,
+                  dependsOn: task.dependsOn
+                }))
+              });
+            }
+
+            return {
+              taskCount: persistedPlan.tasks.length
+            };
+          }
 
           const compile = shouldUseFixtureCompileForRun(
             runContext.compileRepo,
-            decisionPackage,
-            runContext.executionEngine,
-            runContext.options
+            runContext.executionEngine
           )
             ? compileDemoFixtureRunPlan
             : compileRunPlan;
@@ -539,32 +601,42 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
             env: this.env,
             client,
             tenantId: event.payload.tenantId,
+            projectId: event.payload.projectId,
             runId: event.payload.runId,
-            runSessionId,
-            compileSessionId,
             repo: runContext.compileRepo,
-            decisionPackage
+            planningDocuments: {
+              specification: {
+                revisionId: planningDocuments.specification.revisionId,
+                path: planningDocuments.specification.document.path,
+                body: planningDocuments.specification.body
+              },
+              architecture: {
+                revisionId: planningDocuments.architecture.revisionId,
+                path: planningDocuments.architecture.document.path,
+                body: planningDocuments.architecture.body
+              },
+              executionPlan: {
+                revisionId: planningDocuments.executionPlan.revisionId,
+                path: planningDocuments.executionPlan.document.path,
+                body: planningDocuments.executionPlan.body
+              }
+            }
           });
 
           return {
-            taskCount: result.plan.tasks.length,
-            decisionPackageId: result.plan.decisionPackageId
+            taskCount: result.plan.tasks.length
           };
         } finally {
           await client.close();
         }
       });
 
-      taskInstanceIds = await step.do("fanout tasks", async () => {
+      const compiledPlan = (await step.do("load compiled task graph", async () => {
         const plan = await loadCompiledRunPlanArtifact(this.env, event.payload.tenantId, event.payload.runId);
 
-        if (isLiveThinkExecution(runContext.executionEngine, runContext.options)) {
+        if (isLiveThinkExecution(runContext.executionEngine)) {
           try {
-            assertFixtureScopedCompiledPlan(
-              plan,
-              decisionPackage,
-              "Persisted live Think plan"
-            );
+            assertCompiledPlanIsInternallyConsistent(plan, "Persisted live Think plan");
           } catch (error) {
             throw new NonRetryableError(
               error instanceof Error ? error.message : String(error)
@@ -572,75 +644,71 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           }
         }
 
-        const batch = plan.tasks.map((task) => ({
-          id: buildTaskWorkflowInstanceId(event.payload.tenantId, event.payload.runId, task.taskId),
-          params: {
-            tenantId: event.payload.tenantId,
-            runId: event.payload.runId,
-            runSessionId,
-            taskId: task.taskId,
-            project: {
-              projectId: runContext.projectExecution.projectId,
-              projectKey: runContext.projectExecution.projectKey,
-              displayName: runContext.projectExecution.displayName
-            },
-            runtime: runContext.executionEngine,
-            options: runContext.options
-          }
-        }));
+        return normalizeCompiledRunPlanForExecution(plan);
+      })) as PersistedCompiledRunPlan;
+      const planTasksByRunTaskId = buildPlanTasksByRunTaskId(compiledPlan);
 
-        await Promise.all(batch.map((entry) => this.env.TASK_WORKFLOW.create(entry)));
-
-        return batch.map((entry) => entry.id as string);
-      });
-
-      const maxTaskPollAttempts = isLiveThinkExecution(
-        runContext.executionEngine,
-        runContext.options
-      )
+      const maxTaskPollAttempts = isLiveThinkExecution(runContext.executionEngine)
         ? LIVE_THINK_MAX_TASK_POLL_ATTEMPTS
         : DEFAULT_MAX_TASK_POLL_ATTEMPTS;
 
       for (let attempt = 0; attempt < maxTaskPollAttempts; attempt += 1) {
-        const pollSnapshot: TaskWorkflowStatusSnapshot[] = await step.do(
-          `poll task workflows ${attempt}`,
+        const pollSnapshot = (await step.do(
+          `schedule and poll task workflows ${attempt}`,
           async () => {
-            const statuses = await Promise.all(
-              taskInstanceIds.map(async (taskInstanceId) => {
-                const instance = await this.env.TASK_WORKFLOW.get(taskInstanceId);
-                const status = await instance.status();
+            await cancelBlockedRunTasks(this.env, {
+              tenantId: event.payload.tenantId,
+              runId: event.payload.runId
+            });
+            await promoteNewlyReadyRunTasks(this.env, {
+              tenantId: event.payload.tenantId,
+              runId: event.payload.runId
+            });
 
-                return {
-                  taskInstanceId,
-                  status: status.status,
-                  errorMessage: status.error?.message ?? null,
-                  output: parseTaskWorkflowOutput(status.output)
-                };
-              })
-            );
+            const graph = await loadRunTaskGraph(this.env, {
+              tenantId: event.payload.tenantId,
+              runId: event.payload.runId
+            });
+            const batch = buildTaskWorkflowFanoutBatch({
+              tenantId: event.payload.tenantId,
+              runId: event.payload.runId,
+              sandboxId: runContext.sandboxId,
+              executionEngine: runContext.executionEngine,
+              preserveSandbox: runContext.preserveSandbox,
+              project: {
+                projectId: runContext.projectExecution.projectId,
+                projectKey: runContext.projectExecution.projectKey,
+                displayName: runContext.projectExecution.displayName
+              },
+              runTasks: graph.runTasks,
+              planTasksByRunTaskId
+            });
 
-            return statuses;
+            await ensureTaskWorkflowFanout(this.env.TASK_WORKFLOW, batch);
+
+            return {
+              runTasks: graph.runTasks
+            };
           }
-        );
+        )) as { runTasks: RunTaskRows };
 
-        if (pollSnapshot.every((status) => isTerminalWorkflowInstanceStatus(status.status))) {
-          taskResults = pollSnapshot.map((status) =>
-            status.output ?? {
-              taskId: status.taskInstanceId,
-              taskSessionId: "",
-              processStatus: status.status,
-              exitCode: null,
-              logArtifactRefId: null,
-              workflowStatus: status.status
-            }
-          );
+        if (pollSnapshot.runTasks.every((task) => isTerminalRunTaskStatus(task.status))) {
           break;
         }
 
         await step.sleep(`wait for task workflows ${attempt}`, "1 second");
       }
 
-      if (taskResults.length === 0) {
+      const finalizedRunTasks = (await step.do("load finalized run task graph", async () => {
+        const { runTasks } = await loadRunTaskGraph(this.env, {
+          tenantId: event.payload.tenantId,
+          runId: event.payload.runId
+        });
+
+        return runTasks;
+      })) as RunTaskRows;
+
+      if (!finalizedRunTasks.every((task) => isTerminalRunTaskStatus(task.status))) {
         throw new NonRetryableError("Task workflows did not reach a terminal state within the polling window.");
       }
 
@@ -650,9 +718,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         try {
           const result = await finalizeRun(this.env, client, {
             tenantId: event.payload.tenantId,
-            runId: event.payload.runId,
-            runSessionId,
-            taskResults
+            runId: event.payload.runId
           });
 
           return {
@@ -666,21 +732,22 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
         }
       });
     } catch (error) {
-      await step.do("fail run after compile or execution error", async () => {
-        const updated = await persistTerminalRunStatus(this.env, {
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          runSessionId,
-          status: "failed",
-          eventType: "session.error",
-          severity: "error",
-          phase: "run-execution",
-          error
-        });
+      await step.do("fail run and cancel outstanding tasks after error", async () => {
+        const client = createWorkerDatabaseClient(this.env);
 
-        return {
-          status: updated?.status ?? null
-        };
+        try {
+          const result = await failRunAndCancelOutstandingTasks(client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId
+          });
+
+          return {
+            status: result.run.status,
+            cancelledTasks: result.cancelledTasks.length
+          };
+        } finally {
+          await client.close();
+        }
       });
 
       throw error;
@@ -688,29 +755,10 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
 
     return {
       runId: event.payload.runId,
-      runSessionId,
       workflowInstanceId,
       taskCount: compileSummary.taskCount,
-      decisionPackageId: compileSummary.decisionPackageId,
       finalStatus: finalizedRun.finalStatus,
       runSummaryArtifactRefId: finalizedRun.runSummaryArtifactRefId
     };
   }
-}
-
-function parseTaskWorkflowOutput(value: unknown): TaskWorkflowOutput | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Record<string, unknown>;
-
-  return {
-    taskId: typeof candidate.taskId === "string" ? candidate.taskId : "",
-    taskSessionId: typeof candidate.taskSessionId === "string" ? candidate.taskSessionId : "",
-    processStatus: typeof candidate.processStatus === "string" ? candidate.processStatus : "unknown",
-    exitCode: typeof candidate.exitCode === "number" ? candidate.exitCode : null,
-    logArtifactRefId: typeof candidate.logArtifactRefId === "string" ? candidate.logArtifactRefId : null,
-    workflowStatus: typeof candidate.workflowStatus === "string" ? candidate.workflowStatus : "unknown"
-  };
 }

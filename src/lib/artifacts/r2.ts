@@ -2,7 +2,9 @@ export interface R2ArtifactPutResult {
   storageBackend: "r2";
   storageUri: string;
   key: string;
+  objectVersion: string | null;
   etag: string | null;
+  sha256: string | null;
   sizeBytes: number;
 }
 
@@ -10,7 +12,9 @@ export interface R2ArtifactGetResult {
   storageBackend: "r2";
   storageUri: string;
   key: string;
+  objectVersion: string | null;
   etag: string | null;
+  sha256: string | null;
   sizeBytes: number;
   body: ArrayBuffer;
   contentType: string | null;
@@ -42,6 +46,10 @@ export function parseR2Uri(storageUri: string) {
   };
 }
 
+function resolveR2Sha256(checksums: R2Checksums | undefined) {
+  return checksums?.toJSON().sha256 ?? null;
+}
+
 export async function putArtifactBytes(
   bucket: R2Bucket,
   bucketName: string,
@@ -59,7 +67,9 @@ export async function putArtifactBytes(
     storageBackend: "r2",
     storageUri: toR2Uri(bucketName, key),
     key,
+    objectVersion: object.version ?? null,
     etag: object.httpEtag ?? null,
+    sha256: resolveR2Sha256(object.checksums),
     sizeBytes: object.size
   };
 }
@@ -106,7 +116,9 @@ export async function getArtifactBytes(
     storageBackend: "r2",
     storageUri,
     key: parsed.key,
+    objectVersion: object.version ?? null,
     etag: object.httpEtag ?? null,
+    sha256: resolveR2Sha256(object.checksums),
     sizeBytes: object.size,
     body: await object.arrayBuffer(),
     contentType: object.httpMetadata?.contentType ?? null

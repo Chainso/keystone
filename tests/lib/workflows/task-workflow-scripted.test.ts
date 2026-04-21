@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
   const runTasks: Array<Record<string, unknown>> = [];
+  const artifacts: Array<Record<string, unknown>> = [];
   const taskSession = {
     initialize: vi.fn(async () => undefined),
-    ensureWorkspace: vi.fn(async (input: { env?: Record<string, string> }) => ({
+    ensureWorkspace: vi.fn(async () => ({
       sandboxId: "sandbox-123",
       workspace: {
-        workspaceId: "workspace-123",
+        workspaceId: "workspace-run-123",
         strategy: "worktree",
         defaultComponentKey: "repo",
         repoUrl: "fixture://demo-target",
@@ -49,7 +50,9 @@ const mocked = vi.hoisted(() => {
           },
           readOnlyRoots: ["/artifacts/in", "/keystone"],
           writableRoots: ["/workspace", "/artifacts/out"],
-          environment: input.env,
+          environment: {
+            KEYSTONE_FIXTURE_PROJECT: "1"
+          },
           controlFiles: {
             session: "/keystone/session.json",
             filesystem: "/keystone/filesystem.json",
@@ -59,11 +62,36 @@ const mocked = vi.hoisted(() => {
         }
       }
     })),
+    startProcess: vi.fn(async () => ({
+      processId: "task-process:task-session-run-task-123",
+      command: "npm test",
+      status: "running" as const
+    })),
+    pollProcess: vi.fn(async () => ({
+      activeProcess: {
+        processId: "task-process:task-session-run-task-123",
+        command: "npm test",
+        status: "completed" as const,
+        startedAt: "2026-04-19T00:00:00.000Z",
+        endedAt: "2026-04-19T00:05:00.000Z",
+        exitCode: 0
+      }
+    })),
+    getProcessLogs: vi.fn(async (): Promise<{
+      processId: string;
+      stdout: string;
+      stderr: string;
+    } | null> => ({
+      processId: "task-process:task-session-run-task-123",
+      stdout: "ok\n",
+      stderr: ""
+    })),
     preserveForInspection: vi.fn(async () => undefined),
     teardown: vi.fn(async () => undefined)
   };
 
   return {
+    artifacts,
     close,
     runTasks,
     taskSession,
@@ -74,37 +102,46 @@ const mocked = vi.hoisted(() => {
 
       return "stable-session-id";
     }),
-    createArtifactRef: vi.fn(async (_client, input) => ({
-      artifactRefId: "artifact-run-note-1",
-      tenantId: input.tenantId,
-      projectId: input.projectId,
-      runId: input.runId,
-      runTaskId: input.runTaskId ?? null,
-      artifactKind: input.artifactKind,
-      storageBackend: input.storageBackend,
-      bucket: input.bucket,
-      objectKey: input.objectKey,
-      objectVersion: input.objectVersion ?? null,
-      etag: input.etag ?? null,
-      contentType: input.contentType,
-      sha256: input.sha256 ?? null,
-      sizeBytes: input.sizeBytes ?? null,
-      createdAt: new Date("2026-04-19T00:00:00.000Z")
-    })),
-    createThinkSmokePlan: vi.fn(() => [{ step: "one" }, { step: "two" }]),
+    createArtifactRef: vi.fn(async (_client, input) => {
+      const artifactRef = {
+        artifactRefId: `artifact-${artifacts.length + 1}`,
+        tenantId: input.tenantId,
+        projectId: input.projectId,
+        runId: input.runId,
+        runTaskId: input.runTaskId ?? null,
+        artifactKind: input.artifactKind,
+        storageBackend: input.storageBackend,
+        bucket: input.bucket,
+        objectKey: input.objectKey,
+        objectVersion: input.objectVersion ?? null,
+        etag: input.etag ?? null,
+        contentType: input.contentType,
+        sha256: input.sha256 ?? null,
+        sizeBytes: input.sizeBytes ?? null,
+        createdAt: new Date("2026-04-19T00:00:00.000Z")
+      };
+
+      artifacts.push(artifactRef);
+      return artifactRef;
+    }),
     createWorkerDatabaseClient: vi.fn(() => ({
       close,
       db: {},
       sql: {}
     })),
-    decodeArtifactBody: vi.fn((content: string) => content),
-    ensureSandboxSession: vi.fn(async () => ({
-      session: {}
-    })),
-    findArtifactRefByObjectKey: vi.fn(async () => null),
-    getAgentByName: vi.fn(async () => ({
-      runImplementerTurn: mocked.runImplementerTurn
-    })),
+    findArtifactRefByObjectKey: vi.fn(async (_client, input) => {
+      return (
+        artifacts.find(
+          (artifact) =>
+            artifact.bucket === input.bucket &&
+            artifact.objectKey === input.objectKey &&
+            artifact.runId === input.runId &&
+            artifact.runTaskId === (input.runTaskId ?? null) &&
+            artifact.artifactKind === input.artifactKind
+        ) ?? null
+      );
+    }),
+    getArtifactBytes: vi.fn(async () => null),
     getProject: vi.fn(async () => ({
       tenantId: "tenant-fixture",
       projectId: "project-fixture",
@@ -112,8 +149,8 @@ const mocked = vi.hoisted(() => {
       displayName: "Fixture Demo Project",
       description: "Fixture project",
       ruleSet: {
-        reviewInstructions: ["Summarize the implementation result before handoff."],
-        testInstructions: ["Run the fixture demo tests before completing the task."]
+        reviewInstructions: [],
+        testInstructions: []
       },
       components: [
         {
@@ -124,10 +161,7 @@ const mocked = vi.hoisted(() => {
             localPath: "./fixtures/demo-target",
             ref: "main"
           },
-          ruleOverride: {
-            reviewInstructions: ["Focus on app code paths."],
-            testInstructions: ["Run demo-target tests first."]
-          }
+          ruleOverride: null
         }
       ],
       envVars: [
@@ -155,38 +189,40 @@ const mocked = vi.hoisted(() => {
         taskId: "task-live-implementation",
         runTaskId: "run-task-123",
         title: "Adjust the greeting implementation",
-        summary: "Use the compiled handoff as the Think task input.",
+        summary: "Use the compiled handoff as the scripted task input.",
         instructions: ["Edit the greeting implementation.", "Run the relevant checks."],
         acceptanceCriteria: ["Relevant checks pass."],
         dependsOn: [] as string[]
       }
     },
     loadTaskHandoffArtifact: vi.fn(async () => null),
-    putArtifactBytes: vi.fn(async (_bucket, _namespace, key) => ({
-      storageBackend: "r2",
+    putArtifactBytes: vi.fn(async (_bucket, _namespace, key, body) => ({
+      storageBackend: "r2" as const,
       storageUri: `r2://keystone-artifacts-dev/${key}`,
       key,
       etag: "etag-1",
-      sizeBytes: 50
-    })),
-    readSandboxAgentFile: vi.fn(async () => ({
-      content: "# Run Note\n\nImplemented the approved change.\n",
-      encoding: "utf-8" as const,
-      mimeType: "text/markdown; charset=utf-8",
-      isBinary: false,
-      size: 50
+      sizeBytes: typeof body === "string" ? body.length : 0
     })),
     reset() {
+      artifacts.length = 0;
       runTasks.length = 0;
       taskSession.initialize.mockClear();
       taskSession.ensureWorkspace.mockClear();
-      taskSession.preserveForInspection.mockClear();
+      taskSession.startProcess.mockClear();
+      taskSession.pollProcess.mockClear();
+      taskSession.getProcessLogs.mockClear();
+      taskSession.getProcessLogs.mockResolvedValue({
+        processId: "task-process:task-session-run-task-123",
+        stdout: "ok\n",
+        stderr: ""
+      });
       taskSession.teardown.mockClear();
+      taskSession.preserveForInspection.mockClear();
       runTasks.push({
         runTaskId: "run-task-123",
         runId: "run-123",
         name: "Adjust the greeting implementation",
-        description: "Use the compiled handoff as the Think task input.",
+        description: "Use the compiled handoff as the scripted task input.",
         status: "pending",
         conversationAgentClass: null,
         conversationAgentName: null,
@@ -196,43 +232,7 @@ const mocked = vi.hoisted(() => {
         updatedAt: new Date("2026-04-19T00:00:00.000Z")
       });
       this.loadTaskHandoffArtifact.mockResolvedValue(JSON.parse(JSON.stringify(this.handoff)));
-      this.runImplementerTurn.mockResolvedValue({
-        outcome: "completed",
-        stagedArtifacts: [
-          {
-            path: "/artifacts/out/compiled-handoff-note.md",
-            kind: "run_note",
-            contentType: "text/markdown; charset=utf-8",
-            metadata: {
-              fileName: "compiled-handoff-note.md"
-            }
-          }
-        ],
-        events: [],
-        summary: "Implemented the compiled handoff.",
-        metadata: {
-          modelId: "gpt-5.4"
-        }
-      });
     },
-    runImplementerTurn: vi.fn(async (): Promise<{
-      outcome: "completed" | "failed" | "cancelled";
-      stagedArtifacts: Array<{
-        path: string;
-        kind: string;
-        contentType: string;
-        metadata?: Record<string, string>;
-      }>;
-      events: unknown[];
-      summary: string | null;
-      metadata: Record<string, string>;
-    }> => ({
-      outcome: "completed",
-      stagedArtifacts: [],
-      events: [],
-      summary: null,
-      metadata: {}
-    })),
     updateRunTask: vi.fn(async (_client, input) => {
       const row = runTasks.find((task) => task.runTaskId === input.runTaskId);
 
@@ -283,7 +283,9 @@ vi.mock("cloudflare:workflows", () => ({
 }));
 
 vi.mock("agents", () => ({
-  getAgentByName: mocked.getAgentByName
+  getAgentByName: vi.fn(async () => {
+    throw new Error("Think agent should not be loaded during scripted task tests.");
+  })
 }));
 
 vi.mock("../../../src/lib/auth/tenant", () => ({
@@ -316,21 +318,25 @@ vi.mock("../../../src/keystone/tasks/load-task-contracts", async () => {
 });
 
 vi.mock("../../../src/keystone/agents/implementer/ImplementerAgent", () => ({
-  createThinkSmokePlan: mocked.createThinkSmokePlan
+  createThinkSmokePlan: vi.fn(() => [])
 }));
 
 vi.mock("../../../src/keystone/agents/tools/filesystem", () => ({
-  readSandboxAgentFile: mocked.readSandboxAgentFile
+  readSandboxAgentFile: vi.fn(async () => {
+    throw new Error("Sandbox artifact reads should not occur during scripted task tests.");
+  })
 }));
 
 vi.mock("../../../src/lib/sandbox/client", () => ({
-  ensureSandboxSession: mocked.ensureSandboxSession
+  ensureSandboxSession: vi.fn(async () => {
+    throw new Error("Sandbox session promotion should not occur during scripted task tests.");
+  })
 }));
 
 vi.mock("../../../src/lib/artifacts/r2", () => ({
-  getArtifactBytes: vi.fn(async () => null),
+  getArtifactBytes: mocked.getArtifactBytes,
   putArtifactBytes: mocked.putArtifactBytes,
-  decodeArtifactBody: mocked.decodeArtifactBody,
+  decodeArtifactBody: vi.fn((content: string) => content),
   toR2Uri: vi.fn((bucketName: string, key: string) => `r2://${bucketName}/${key}`)
 }));
 
@@ -353,22 +359,6 @@ vi.mock("../../../src/lib/workflows/ids", async () => {
 
 const { TaskWorkflow } = await import("../../../src/workflows/TaskWorkflow");
 
-type RunImplementerTurnCall = {
-  tenantId: string;
-  runId: string;
-  sessionId: string;
-  taskId: string;
-  sandboxId: string;
-  prompt: string;
-  agentBridge: {
-    environment?: Record<string, string> | undefined;
-    targets: {
-      workspaceRoot: string;
-    };
-  };
-  mockModelPlan?: unknown[] | undefined;
-};
-
 function createStep() {
   return {
     do: vi.fn(async (_name: string, configOrCallback: unknown, maybeCallback?: unknown) => {
@@ -386,7 +376,7 @@ function createStep() {
   };
 }
 
-function createWorkflowEvent(executionEngine: "think_live" | "think_mock") {
+function createWorkflowEvent() {
   return {
     payload: {
       tenantId: "tenant-fixture",
@@ -394,7 +384,7 @@ function createWorkflowEvent(executionEngine: "think_live" | "think_mock") {
       sandboxId: "sandbox-123",
       taskId: mocked.handoff.task.taskId,
       runTaskId: mocked.handoff.runTaskId,
-      executionEngine,
+      executionEngine: "scripted" as const,
       preserveSandbox: false,
       project: {
         projectId: "project-fixture",
@@ -417,19 +407,16 @@ function createEnv() {
   };
 }
 
-describe("TaskWorkflow Think runtime", () => {
+describe("TaskWorkflow scripted runtime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocked.reset();
   });
 
-  it("runs a live compiled handoff through Think and promotes artifacts under the runTaskId path", async () => {
+  it("runs the authoritative run task and persists task logs under the runTaskId path", async () => {
     const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
     const step = createStep();
-    const result = await workflow.run(createWorkflowEvent("think_live") as never, step as never);
-    const calls =
-      mocked.runImplementerTurn.mock.calls as unknown as Array<[RunImplementerTurnCall]>;
-    const call = calls[0]?.[0];
+    const result = await workflow.run(createWorkflowEvent() as never, step as never);
 
     expect(mocked.getTaskSessionStub).toHaveBeenCalledWith(
       expect.anything(),
@@ -438,24 +425,6 @@ describe("TaskWorkflow Think runtime", () => {
       "task-session-run-task-123",
       "run-task-123"
     );
-    expect(call).toMatchObject({
-      tenantId: "tenant-fixture",
-      runId: "run-123",
-      sessionId: "task-session-run-task-123",
-      taskId: "task-live-implementation",
-      sandboxId: "sandbox-123",
-        agentBridge: {
-          targets: {
-            workspaceRoot: "/workspace/runs/run-123/tasks/task-live-implementation-run-task"
-          },
-        environment: {
-          KEYSTONE_FIXTURE_PROJECT: "1"
-        }
-      }
-    });
-    expect(call?.prompt).toContain("Run task ID: run-task-123");
-    expect(call?.prompt).toContain("Project: Fixture Demo Project (fixture-demo-project)");
-    expect(call?.prompt).toContain("Projected run planning documents, run_plan, and task_handoff artifacts");
     expect(mocked.createArtifactRef).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -463,18 +432,18 @@ describe("TaskWorkflow Think runtime", () => {
         projectId: "project-fixture",
         runId: "run-123",
         runTaskId: "run-task-123",
-        artifactKind: "run_note",
+        artifactKind: "task_log",
         bucket: "keystone-artifacts-dev",
         objectKey:
-          "tenants/tenant-fixture/runs/run-123/tasks/run-task-123/artifacts/compiled-handoff-note.md"
+          "tenants/tenant-fixture/runs/run-123/tasks/run-task-123/logs/task-process%3Atask-session-run-task-123.jsonl"
       })
     );
     expect(mocked.runTasks).toEqual([
       expect.objectContaining({
         runTaskId: "run-task-123",
         status: "completed",
-        conversationAgentClass: "KeystoneThinkAgent",
-        conversationAgentName: "tenant:tenant-fixture:run:run-123:task:task-session-run-task-123",
+        conversationAgentClass: null,
+        conversationAgentName: null,
         startedAt: expect.any(Date),
         endedAt: expect.any(Date)
       })
@@ -488,89 +457,49 @@ describe("TaskWorkflow Think runtime", () => {
     });
   });
 
-  it("keeps think/mock deterministic for the fixture-scoped path", async () => {
-    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
-    const step = createStep();
-
-    await workflow.run(createWorkflowEvent("think_mock") as never, step as never);
-
-    const calls =
-      mocked.runImplementerTurn.mock.calls as unknown as Array<[RunImplementerTurnCall]>;
-    const call = calls[0]?.[0];
-
-    expect(Array.isArray(call?.mockModelPlan)).toBe(true);
-    expect(call?.mockModelPlan).toHaveLength(2);
-  });
-
-  it("marks the authoritative task failed when Think returns a non-success outcome", async () => {
-    mocked.runImplementerTurn.mockResolvedValueOnce({
-      outcome: "cancelled",
-      stagedArtifacts: [],
-      events: [],
-      summary: "Execution was cancelled.",
-      metadata: {}
-    });
-
-    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
-    const step = createStep();
-    const result = await workflow.run(createWorkflowEvent("think_live") as never, step as never);
-
-    expect(mocked.runTasks).toEqual([
-      expect.objectContaining({
-        runTaskId: "run-task-123",
-        status: "cancelled",
-        conversationAgentClass: "KeystoneThinkAgent",
-        conversationAgentName: "tenant:tenant-fixture:run:run-123:task:task-session-run-task-123",
-        startedAt: expect.any(Date),
-        endedAt: expect.any(Date)
-      })
-    ]);
-    expect(mocked.taskSession.teardown).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({
-      runTaskId: "run-task-123",
-      processStatus: "cancelled",
-      exitCode: 1,
-      workflowStatus: "cancelled"
-    });
-  });
-
-  it("tears down and marks the task failed when workspace setup fails before activation", async () => {
-    mocked.taskSession.ensureWorkspace.mockRejectedValueOnce(new Error("workspace setup failed"));
+  it("persists an empty task-log artifact when live logs are unavailable", async () => {
+    mocked.taskSession.getProcessLogs.mockResolvedValueOnce(null);
 
     const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
     const step = createStep();
 
-    await expect(workflow.run(createWorkflowEvent("think_live") as never, step as never)).rejects.toThrow(
-      /workspace setup failed/
+    await workflow.run(createWorkflowEvent() as never, step as never);
+
+    expect(mocked.putArtifactBytes).toHaveBeenCalledWith(
+      expect.anything(),
+      "keystone-artifacts-dev",
+      "tenants/tenant-fixture/runs/run-123/tasks/run-task-123/logs/task-process%3Atask-session-run-task-123.jsonl",
+      "",
+      expect.any(Object)
     );
+    expect(mocked.createArtifactRef).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        runTaskId: "run-task-123"
+      })
+    );
+  });
+
+  it("marks the authoritative task failed when the scripted process exits non-zero", async () => {
+    mocked.taskSession.pollProcess.mockResolvedValueOnce({
+      activeProcess: {
+        processId: "task-process:task-session-run-task-123",
+        command: "npm test",
+        status: "completed" as const,
+        startedAt: "2026-04-19T00:00:00.000Z",
+        endedAt: "2026-04-19T00:05:00.000Z",
+        exitCode: 1
+      }
+    });
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+    const result = await workflow.run(createWorkflowEvent() as never, step as never);
+
     expect(mocked.runTasks).toEqual([
       expect.objectContaining({
         runTaskId: "run-task-123",
         status: "failed",
-        conversationAgentClass: "KeystoneThinkAgent",
-        conversationAgentName: "tenant:tenant-fixture:run:run-123:task:task-session-run-task-123",
-        startedAt: expect.any(Date),
-        endedAt: expect.any(Date)
-      })
-    ]);
-    expect(mocked.taskSession.teardown).toHaveBeenCalledTimes(1);
-  });
-
-  it("allows dependent live handoffs on the fixture-scoped path", async () => {
-    mocked.handoff.task.dependsOn = ["task-other"];
-    mocked.loadTaskHandoffArtifact.mockResolvedValue(JSON.parse(JSON.stringify(mocked.handoff)));
-
-    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
-    const step = createStep();
-
-    const result = await workflow.run(createWorkflowEvent("think_live") as never, step as never);
-
-    expect(mocked.runTasks).toEqual([
-      expect.objectContaining({
-        runTaskId: "run-task-123",
-        status: "completed",
-        conversationAgentClass: "KeystoneThinkAgent",
-        conversationAgentName: "tenant:tenant-fixture:run:run-123:task:task-session-run-task-123",
         startedAt: expect.any(Date),
         endedAt: expect.any(Date)
       })
@@ -579,8 +508,8 @@ describe("TaskWorkflow Think runtime", () => {
     expect(result).toMatchObject({
       runTaskId: "run-task-123",
       processStatus: "completed",
-      exitCode: 0,
-      workflowStatus: "complete"
+      exitCode: 1,
+      workflowStatus: "errored"
     });
   });
 });

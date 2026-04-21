@@ -44,7 +44,7 @@ function resolveCompileRepo(component: ProjectComponent): CompileRepoSource {
     return {
       source: "gitUrl",
       gitUrl: component.config.gitUrl,
-      ref: component.config.defaultRef
+      ref: component.config.ref
     };
   }
 
@@ -52,7 +52,7 @@ function resolveCompileRepo(component: ProjectComponent): CompileRepoSource {
     return {
       source: "localPath",
       localPath: component.config.localPath,
-      ref: component.config.defaultRef
+      ref: component.config.ref
     };
   }
 
@@ -71,8 +71,8 @@ function resolveWorkspaceComponent(
       type: "git",
       componentKey: component.componentKey,
       repoUrl: component.config.gitUrl,
-      repoRef: component.config.defaultRef,
-      baseRef: component.config.defaultRef
+      repoRef: component.config.ref,
+      baseRef: component.config.ref
     };
   }
 
@@ -81,15 +81,23 @@ function resolveWorkspaceComponent(
       type: "inline",
       componentKey: component.componentKey,
       repoUrl: "fixture://demo-target",
-      repoRef: component.config.defaultRef ?? "main",
-      baseRef: component.config.defaultRef ?? "main",
+      repoRef: component.config.ref ?? "main",
+      baseRef: component.config.ref ?? "main",
       files: demoTargetFixtureFiles
     };
   }
 
-  throw new Error(
-    `Project component ${component.componentKey} uses localPath execution, but only the committed demo fixture localPath is currently supported in the runtime proof.`
-  );
+  if (component.config.localPath) {
+    return {
+      type: "git",
+      componentKey: component.componentKey,
+      repoUrl: component.config.localPath,
+      repoRef: component.config.ref,
+      baseRef: component.config.ref
+    };
+  }
+
+  throw new Error(`Project component ${component.componentKey} is missing a workspace source.`);
 }
 
 export function buildProjectExecutionSnapshot(
@@ -107,7 +115,7 @@ export function buildProjectExecutionSnapshot(
 
   if (options.requireCompileTarget && compileComponents.length > 1) {
     throw new Error(
-      `Project ${project.projectId} defines multiple executable components; Phase 4 compile routing requires exactly one compile target until explicit project compile selection exists.`
+      `Project ${project.projectId} defines multiple executable components; compile requires an explicit target component when more than one executable component exists.`
     );
   }
 

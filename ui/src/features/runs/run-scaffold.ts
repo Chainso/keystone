@@ -156,15 +156,15 @@ const planningCopy = {
     ]
   },
   "execution-plan": {
-    chatTitle: "Execution plan agent chat",
+    chatTitle: "Execution plan conversation",
     documentTitle: "Execution plan doc",
     documentName: "execution-plan.md",
-    documentLines: ["phases, deliverables,", "validation, risks"],
+    documentLines: ["tasks, deliverables,", "validation, risks"],
     composerText: "message composer......................",
     messages: [
       {
         speaker: "agent",
-        body: "phase the UI rollout"
+        body: "break the UI rollout into steps"
       },
       {
         speaker: "user",

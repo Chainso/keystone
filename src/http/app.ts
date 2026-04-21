@@ -22,6 +22,10 @@ app.onError((error: Error | HTTPResponseError) => {
     return error.getResponse();
   }
 
+  if (error instanceof SyntaxError) {
+    return jsonErrorResponse("invalid_request", "Request body must be valid JSON.", 400);
+  }
+
   console.error("Unhandled application error", error);
 
   return jsonErrorResponse("internal_error", "Unexpected application error.", 500);

@@ -19,7 +19,7 @@ export const artifactRouteMatrix = [
     path: "/v1/artifacts/:artifactId/content",
     family: "artifacts",
     resourceType: "artifact",
-    responseKind: "detail",
+    responseKind: "stream",
     implementation: "reused",
     availability: "implemented",
     note: "Content is streamed directly from the current R2-backed artifact storage."

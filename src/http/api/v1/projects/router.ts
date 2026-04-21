@@ -10,11 +10,11 @@ import {
 import {
   createProjectHandler,
   getProjectHandler,
-  listProjectDecisionPackagesHandler,
   listProjectRunsHandler,
   listProjectsHandler,
   updateProjectHandler
 } from "./handlers";
+import { createProjectRunHandler } from "../runs/handlers";
 import { requireDevAuth } from "../../../middleware/auth";
 import type { ApiRouteDefinition } from "../common/contracts";
 
@@ -47,7 +47,7 @@ export const projectRouteMatrix = [
     availability: "implemented"
   },
   {
-    method: "PUT",
+    method: "PATCH",
     path: "/v1/projects/:projectId",
     family: "projects",
     resourceType: "project",
@@ -93,23 +93,22 @@ export const projectRouteMatrix = [
   },
   {
     method: "GET",
-    path: "/v1/projects/:projectId/decision-packages",
-    family: "projects",
-    resourceType: "decision_package",
-    responseKind: "collection",
-    implementation: "stub",
-    availability: "implemented",
-    note: "Returns an empty typed stub collection until project-backed decision-package persistence lands."
-  },
-  {
-    method: "GET",
     path: "/v1/projects/:projectId/runs",
     family: "projects",
     resourceType: "run",
     responseKind: "collection",
     implementation: "projected",
     availability: "implemented",
-    note: "Projected from stored run sessions associated with the project."
+    note: "Project-scoped run collection backed by authoritative run rows."
+  },
+  {
+    method: "POST",
+    path: "/v1/projects/:projectId/runs",
+    family: "projects",
+    resourceType: "run",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented"
   }
 ] as const satisfies ApiRouteDefinition[];
 
@@ -117,7 +116,7 @@ export function registerProjectRoutes(router: Hono<AppEnv>) {
   router.get("/v1/projects", requireDevAuth, listProjectsHandler);
   router.post("/v1/projects", requireDevAuth, createProjectHandler);
   router.get("/v1/projects/:projectId", requireDevAuth, getProjectHandler);
-  router.put("/v1/projects/:projectId", requireDevAuth, updateProjectHandler);
+  router.patch("/v1/projects/:projectId", requireDevAuth, updateProjectHandler);
   router.get("/v1/projects/:projectId/documents", requireDevAuth, listProjectDocumentsHandler);
   router.post("/v1/projects/:projectId/documents", requireDevAuth, createProjectDocumentHandler);
   router.get(
@@ -130,10 +129,6 @@ export function registerProjectRoutes(router: Hono<AppEnv>) {
     requireDevAuth,
     createProjectDocumentRevisionHandler
   );
-  router.get(
-    "/v1/projects/:projectId/decision-packages",
-    requireDevAuth,
-    listProjectDecisionPackagesHandler
-  );
   router.get("/v1/projects/:projectId/runs", requireDevAuth, listProjectRunsHandler);
+  router.post("/v1/projects/:projectId/runs", requireDevAuth, createProjectRunHandler);
 }

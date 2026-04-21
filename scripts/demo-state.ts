@@ -4,8 +4,7 @@ import { dirname, resolve } from "node:path";
 export type PersistedDemoState = {
   baseUrl?: string;
   runId?: string;
-  runtime?: string;
-  thinkMode?: string;
+  executionEngine?: string;
   savedAt?: string;
 };
 

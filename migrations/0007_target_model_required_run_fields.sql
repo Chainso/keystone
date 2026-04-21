@@ -1,0 +1,8 @@
+ALTER TABLE runs
+  ALTER COLUMN sandbox_id SET NOT NULL;
+
+ALTER TABLE artifact_refs
+  ALTER COLUMN project_id SET NOT NULL,
+  ALTER COLUMN artifact_kind SET NOT NULL,
+  ALTER COLUMN bucket SET NOT NULL,
+  ALTER COLUMN object_key SET NOT NULL;

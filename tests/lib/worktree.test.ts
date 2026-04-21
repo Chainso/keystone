@@ -6,27 +6,35 @@ import {
   buildComponentWorktreePath,
   buildSandboxId,
   buildTaskBranchName,
+  buildTaskWorkspaceTargetPathWithIdentity,
   buildWorkspaceId,
-  buildWorkspaceCodeRoot,
+  buildWorkspaceCodeRootWithIdentity,
   buildWorkspaceRoot
 } from "../../src/lib/workspace/worktree";
 
 describe("workspace path helpers", () => {
   it("builds deterministic workspace identifiers and paths", () => {
     const runId = "Run/With Spaces";
-    const sessionId = "de305d54-75b4-431b-adb2-eb6b9e546014";
-    const workspaceRoot = buildWorkspaceRoot(runId, sessionId);
+    const taskId = "Task 42 / Demo";
+    const runTaskId = "run-task-123";
+    const workspaceRoot = buildWorkspaceRoot(runId);
+    const taskWorkspaceRoot = buildTaskWorkspaceTargetPathWithIdentity(
+      workspaceRoot,
+      taskId,
+      runTaskId
+    );
 
-    expect(buildWorkspaceId(runId, sessionId)).toBe("workspace-run-with-spaces-de305d54");
-    expect(workspaceRoot).toBe("/workspace/runs/run-with-spaces-de305d54");
-    expect(buildWorkspaceCodeRoot(workspaceRoot)).toBe(
-      "/workspace/runs/run-with-spaces-de305d54/code"
+    expect(buildWorkspaceId(runId)).toBe("workspace-run-with-spaces");
+    expect(workspaceRoot).toBe("/workspace/runs/run-with-spaces");
+    expect(taskWorkspaceRoot).toBe("/workspace/runs/run-with-spaces/tasks/task-42-demo-run-task");
+    expect(buildWorkspaceCodeRootWithIdentity(workspaceRoot, taskId, runTaskId)).toBe(
+      "/workspace/runs/run-with-spaces/tasks/task-42-demo-run-task/code"
     );
     expect(buildComponentRepositoryPath(workspaceRoot, "API Server")).toBe(
-      "/workspace/runs/run-with-spaces-de305d54/repositories/API%20Server"
+      "/workspace/runs/run-with-spaces/repositories/API%20Server"
     );
-    expect(buildComponentWorktreePath(workspaceRoot, "API Server")).toBe(
-      "/workspace/runs/run-with-spaces-de305d54/code/API%20Server"
+    expect(buildComponentWorktreePath(workspaceRoot, taskId, runTaskId, "API Server")).toBe(
+      "/workspace/runs/run-with-spaces/tasks/task-42-demo-run-task/code/API%20Server"
     );
   });
 
@@ -46,7 +54,9 @@ describe("workspace path helpers", () => {
     expect(sandboxId.length).toBeLessThanOrEqual(63);
     expect(sandboxId.startsWith("-")).toBe(false);
     expect(sandboxId.endsWith("-")).toBe(false);
-    expect(buildTaskBranchName("Task 42 / Demo")).toBe("keystone/task-42-demo");
+    expect(buildTaskBranchName("Task 42 / Demo", "run-task-123")).toBe(
+      "keystone/task-42-demo-run-task"
+    );
   });
 
   it("trims sandbox ids safely when the slug hits the DNS length limit", () => {

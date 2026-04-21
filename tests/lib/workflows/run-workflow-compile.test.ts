@@ -1,72 +1,174 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { demoDecisionPackageFixture } from "../../../src/lib/fixtures/demo-decision-package";
-import { buildRunRow, buildSessionRow, createMirrorClient } from "../run-session-mirror-fixture";
-
 const mocked = vi.hoisted(() => {
-  const livePlan = {
-    decisionPackageId: "demo-greeting-update",
-    summary: "Live compile produced a real implementation plan.",
-    tasks: [
-      {
-        taskId: "task-live-implementation",
-        title: "Adjust the greeting implementation",
-        summary: "Use the live compiler output as the task source.",
-        instructions: ["Implement the approved change.", "Run the relevant checks."],
-        acceptanceCriteria: ["Relevant checks pass."],
-        dependsOn: [] as string[]
-      }
-    ]
-  };
-  const persistedLivePlan = {
-    decisionPackageId: "demo-greeting-update",
-    summary: "Persisted live compile output was reloaded for the fixture-scoped happy path.",
-    tasks: [
-      {
-        taskId: "task-persisted-live-implementation",
-        title: "Adjust the greeting implementation",
-        summary: "Use the persisted compile artifact as the task source.",
-        instructions: ["Implement the approved change.", "Run the relevant checks."],
-        acceptanceCriteria: ["Relevant checks pass."],
-        dependsOn: [] as string[]
-      }
-    ]
-  };
-  const fixturePlan = {
-    decisionPackageId: "demo-greeting-update",
-    summary: "Compile smoke produced a single implementation task.",
-    tasks: [
-      {
-        taskId: "task-greeting-tone",
-        title: "Adjust the greeting implementation",
-        summary: "Change the greeting in a reviewable way.",
-        instructions: ["Edit the greeting implementation.", "Run the fixture tests."],
-        acceptanceCriteria: ["Fixture tests stay green."],
-        dependsOn: [] as string[]
-      }
-    ]
-  };
-  const state = {
-    compiledPlan: fixturePlan
-  };
   const close = vi.fn(async () => undefined);
+  const runTasks: Array<Record<string, unknown>> = [];
+  const dependencies: Array<Record<string, unknown>> = [];
+  const artifacts: Array<Record<string, unknown>> = [];
+  const runState = {
+    runRecord: null as Record<string, unknown> | null,
+    compiledPlan: {
+      summary: "Fixture compile emitted a two-node DAG.",
+      sourceRevisionIds: {
+        specification: "spec-rev-1",
+        architecture: "arch-rev-1",
+        executionPlan: "plan-rev-1"
+      },
+      tasks: [
+        {
+          taskId: "task-root",
+          runTaskId: "11111111-1111-4111-8111-111111111111",
+          title: "Implement the root change",
+          summary: "Apply the primary change in the repository.",
+          instructions: ["Edit the implementation.", "Run the checks."],
+          acceptanceCriteria: ["Root checks pass."],
+          dependsOn: [] as string[]
+        },
+        {
+          taskId: "task-child",
+          runTaskId: "22222222-2222-4222-8222-222222222222",
+          title: "Document the change",
+          summary: "Update documentation after the root task completes.",
+          instructions: ["Update docs."],
+          acceptanceCriteria: ["Docs are updated."],
+          dependsOn: ["task-root"]
+        }
+      ]
+    }
+  };
+
+  function clone<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+
+  function seedCompiledGraph(plan = runState.compiledPlan) {
+    runTasks.length = 0;
+    dependencies.length = 0;
+
+    for (const task of plan.tasks) {
+      runTasks.push({
+        runTaskId: task.runTaskId,
+        runId: "run-123",
+        name: task.title,
+        description: task.summary,
+        status: task.dependsOn.length === 0 ? "ready" : "pending",
+        conversationAgentClass: null,
+        conversationAgentName: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date("2026-04-19T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-19T00:00:00.000Z")
+      });
+    }
+
+    for (const task of plan.tasks) {
+      for (const dependencyId of task.dependsOn) {
+        const parent = plan.tasks.find((candidate) => candidate.taskId === dependencyId);
+
+        if (!parent) {
+          throw new Error(`Missing dependency ${dependencyId} for task ${task.taskId}.`);
+        }
+
+        dependencies.push({
+          runTaskDependencyId: crypto.randomUUID(),
+          runId: "run-123",
+          parentRunTaskId: parent.runTaskId,
+          childRunTaskId: task.runTaskId,
+          createdAt: new Date("2026-04-19T00:00:00.000Z")
+        });
+      }
+    }
+  }
 
   return {
+    artifacts,
     close,
-    livePlan,
-    persistedLivePlan,
-    fixturePlan,
-    state,
-    getRunCoordinatorStub: vi.fn(() => ({
-      initialize: vi.fn(async () => undefined),
-      publish: vi.fn(async () => undefined),
-      reset: vi.fn(async () => undefined)
-    })),
+    dependencies,
+    runTasks,
+    runState,
+    seedCompiledGraph,
+    compileDemoFixtureRunPlan: vi.fn(async () => {
+      seedCompiledGraph();
+      return {
+        plan: clone(runState.compiledPlan)
+      };
+    }),
+    compileRunPlan: vi.fn(async () => {
+      seedCompiledGraph();
+      return {
+        plan: clone(runState.compiledPlan)
+      };
+    }),
     createWorkerDatabaseClient: vi.fn(() => ({
       close,
       db: {},
       sql: {}
     })),
+    ensureRunRecord: vi.fn(async (_client, input) => {
+      const runRecord = {
+        tenantId: input.tenantId,
+        runId: input.runId,
+        projectId: input.projectId,
+        workflowInstanceId: input.workflowInstanceId,
+        executionEngine: input.executionEngine,
+        sandboxId: input.sandboxId ?? null,
+        status: input.status,
+        compiledSpecRevisionId: input.compiledSpecRevisionId ?? null,
+        compiledArchitectureRevisionId: input.compiledArchitectureRevisionId ?? null,
+        compiledExecutionPlanRevisionId: input.compiledExecutionPlanRevisionId ?? null,
+        compiledAt: input.compiledAt ?? null,
+        startedAt: input.startedAt ?? null,
+        endedAt: input.endedAt ?? null,
+        createdAt: new Date("2026-04-19T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-19T00:00:00.000Z")
+      };
+
+      runState.runRecord = runRecord;
+      return runRecord;
+    }),
+    failRunAndCancelOutstandingTasks: vi.fn(async (_client, input) => {
+      if (!runState.runRecord) {
+        throw new Error(`Run ${input.runId} was not found.`);
+      }
+
+      const cancelledTasks = runTasks
+        .filter((task) => !["completed", "failed", "cancelled"].includes(String(task.status)))
+        .map((task) => {
+          Object.assign(task, {
+            status: "cancelled",
+            endedAt: task.endedAt ?? new Date("2026-04-19T00:05:00.000Z")
+          });
+
+          return task;
+        });
+
+      Object.assign(runState.runRecord, {
+        status: "failed",
+        endedAt: runState.runRecord.endedAt ?? new Date("2026-04-19T00:05:00.000Z"),
+        updatedAt: new Date("2026-04-19T00:05:00.000Z")
+      });
+
+      return {
+        run: runState.runRecord,
+        cancelledTasks
+      };
+    }),
+    finalizeRun: vi.fn(async (_env, _client, input) => {
+      const failedTasks = mocked.runTasks.filter((task) => task.status !== "completed");
+      const finalStatus = failedTasks.length === 0 ? "archived" : "failed";
+
+      return {
+        finalStatus,
+        artifactRef: {
+          artifactRefId: "run-summary-1"
+        },
+        summary: {
+          successfulTasks: mocked.runTasks.length - failedTasks.length,
+          failedTasks: failedTasks.length,
+          tasks: mocked.runTasks
+        }
+      };
+    }),
     getProject: vi.fn(async () => ({
       tenantId: "tenant-fixture",
       projectId: "project-fixture",
@@ -74,8 +176,8 @@ const mocked = vi.hoisted(() => {
       displayName: "Fixture Demo Project",
       description: "Fixture project",
       ruleSet: {
-        reviewInstructions: ["Review the result."],
-        testInstructions: ["Run fixture tests."]
+        reviewInstructions: [],
+        testInstructions: []
       },
       components: [
         {
@@ -84,134 +186,195 @@ const mocked = vi.hoisted(() => {
           kind: "git_repository",
           config: {
             localPath: "./fixtures/demo-target",
-            defaultRef: "main"
+            ref: "main"
           },
-          metadata: {}
+          ruleOverride: null
         }
       ],
-      envVars: [
-        {
-          name: "KEYSTONE_FIXTURE_PROJECT",
-          value: "1",
-          metadata: {}
-        }
-      ],
-      integrationBindings: [],
-      metadata: {},
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+      envVars: [],
+      createdAt: new Date("2026-04-19T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-19T00:00:00.000Z")
     })),
-    getSessionRecord: vi.fn(async () => undefined),
-    ensureRunRecord: vi.fn(async (_client, input) => ({
-      tenantId: input.tenantId,
-      runId: input.runId,
-      projectId: input.projectId,
-      workflowInstanceId: input.workflowInstanceId,
-      executionEngine: input.executionEngine,
-      sandboxId: input.sandboxId ?? null,
-      status: input.status,
-      compiledSpecRevisionId: null,
-      compiledArchitectureRevisionId: null,
-      compiledExecutionPlanRevisionId: null,
-      compiledAt: null,
-      startedAt: null,
-      endedAt: null,
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    })),
-    updateSessionStatus: vi.fn(async (_client, input) => ({
-      tenantId: input.tenantId,
-      sessionId: input.sessionId,
-      runId: "run-123",
-      sessionType: "run",
-      status: input.status,
-      parentSessionId: null,
-      metadata: input.metadata ?? null,
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    })),
-    appendAndPublishRunEvent: vi.fn(async () => ({
-      eventId: crypto.randomUUID(),
-      ts: new Date("2026-04-17T00:00:00.000Z")
-    })),
-    ensureSessionRecord: vi.fn(async (_client, spec, sessionId) => ({
-      tenantId: spec.tenantId,
-      sessionId,
-      runId: spec.runId,
-      sessionType: spec.sessionType,
-      status: "configured",
-      parentSessionId: spec.parentSessionId ?? null,
-      metadata: null,
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    })),
+    getRunRecord: vi.fn(async () => runState.runRecord),
+    listRunArtifacts: vi.fn(async () => artifacts),
+    listRunTaskDependencies: vi.fn(async () => clone(dependencies)),
+    listRunTasks: vi.fn(async () => clone(runTasks)),
+    loadCompiledRunPlanArtifact: vi.fn(async () => clone(runState.compiledPlan)),
     loadExistingRunPlan: vi.fn(async () => null),
-    evaluateRepoSourcePolicy: vi.fn(() => ({
-      result: "allow"
-    })),
-    compileRunPlan: vi.fn(async () => {
-      state.compiledPlan = persistedLivePlan;
-
-      return {
-        plan: livePlan,
-        completion: {
-          id: "chatcmpl-live",
-          model: "gpt-5.4",
-          finishReason: "stop",
-          usage: {
-            totalTokens: 64
-          }
+    loadRequiredRunPlanningDocuments: vi.fn(async () => ({
+      specification: {
+        revisionId: "spec-rev-1",
+        document: {
+          path: "specification"
         },
-        decisionPackageArtifactRef: {
-          artifactRefId: "decision-package-live"
-        },
-        planArtifactRef: {
-          artifactRefId: "run-plan-live"
-        },
-        taskHandoffArtifactRefs: [
-          {
-            artifactRefId: "task-handoff-live"
-          }
-        ]
-      };
-    }),
-    compileDemoFixtureRunPlan: vi.fn(async () => {
-      state.compiledPlan = fixturePlan;
-
-      return {
-        plan: fixturePlan,
-        completion: {
-          id: "chatcmpl-fixture",
-          model: "fixture-compile",
-          finishReason: "stop",
-          usage: {
-            totalTokens: 0
-          }
-        },
-        decisionPackageArtifactRef: {
-          artifactRefId: "decision-package-fixture"
-        },
-        planArtifactRef: {
-          artifactRefId: "run-plan-fixture"
-        },
-        taskHandoffArtifactRefs: [
-          {
-            artifactRefId: "task-handoff-fixture"
-          }
-        ]
-      };
-    }),
-    loadCompiledRunPlanArtifact: vi.fn(async () => state.compiledPlan),
-    finalizeRun: vi.fn(async () => ({
-      finalStatus: "archived",
-      artifactRef: {
-        artifactRefId: "run-summary-artifact"
+        body: "# Run specification"
       },
-      summary: {
-        successfulTasks: 1,
-        failedTasks: 0
+      architecture: {
+        revisionId: "arch-rev-1",
+        document: {
+          path: "architecture"
+        },
+        body: "# Run architecture"
+      },
+      executionPlan: {
+        revisionId: "plan-rev-1",
+        document: {
+          path: "execution-plan"
+        },
+        body: "# Execution plan"
       }
-    }))
+    })),
+    loadTaskHandoffArtifact: vi.fn(async (_env, runTenantId: string, runId: string, runTaskId: string) => {
+      const task = runState.compiledPlan.tasks.find((entry) => entry.runTaskId === runTaskId);
+
+      if (!task) {
+        throw new Error(`Task handoff missing for ${runTaskId}`);
+      }
+
+      return {
+        runId,
+        runTaskId,
+        sourceRevisionIds: runState.compiledPlan.sourceRevisionIds,
+        task
+      };
+    }),
+    persistCompiledRunGraph: vi.fn(async (_client, input) => {
+      const plan = {
+        summary: runState.compiledPlan.summary,
+        sourceRevisionIds: {
+          specification: input.compiledSpecRevisionId ?? "spec-rev-1",
+          architecture: input.compiledArchitectureRevisionId ?? "arch-rev-1",
+          executionPlan: input.compiledExecutionPlanRevisionId ?? "plan-rev-1"
+        },
+        tasks: input.tasks.map((task: Record<string, unknown>) => ({
+          taskId: String(task.taskId),
+          runTaskId: String(task.runTaskId),
+          title: String(task.name),
+          summary: String(task.description),
+          instructions: ["Instruction"],
+          acceptanceCriteria: ["Criterion"],
+          dependsOn: Array.isArray(task.dependsOn) ? task.dependsOn : []
+        }))
+      };
+
+      runState.compiledPlan = plan;
+      seedCompiledGraph(plan);
+
+      return {
+        run: {
+          ...(runState.runRecord ?? {}),
+          runId: input.runId
+        },
+        tasks: plan.tasks.map((task: (typeof plan.tasks)[number]) => ({
+          taskId: task.taskId,
+          runTaskId: task.runTaskId,
+          name: task.title,
+          description: task.summary,
+          status: task.dependsOn.length === 0 ? "ready" : "pending",
+          conversationAgentClass: null,
+          conversationAgentName: null,
+          startedAt: null,
+          endedAt: null
+        })),
+        dependencies: dependencies.map((dependency) => ({
+          runTaskDependencyId: String(dependency.runTaskDependencyId),
+          parentTaskId:
+            plan.tasks.find((task: (typeof plan.tasks)[number]) => task.runTaskId === dependency.parentRunTaskId)?.taskId ?? "",
+          childTaskId:
+            plan.tasks.find((task: (typeof plan.tasks)[number]) => task.runTaskId === dependency.childRunTaskId)?.taskId ?? "",
+          parentRunTaskId: String(dependency.parentRunTaskId),
+          childRunTaskId: String(dependency.childRunTaskId)
+        }))
+      };
+    }),
+    reset() {
+      artifacts.length = 0;
+      runTasks.length = 0;
+      dependencies.length = 0;
+      runState.runRecord = null;
+      runState.compiledPlan = {
+        summary: "Fixture compile emitted a two-node DAG.",
+        sourceRevisionIds: {
+          specification: "spec-rev-1",
+          architecture: "arch-rev-1",
+          executionPlan: "plan-rev-1"
+        },
+        tasks: [
+          {
+            taskId: "task-root",
+            runTaskId: "11111111-1111-4111-8111-111111111111",
+            title: "Implement the root change",
+            summary: "Apply the primary change in the repository.",
+            instructions: ["Edit the implementation.", "Run the checks."],
+            acceptanceCriteria: ["Root checks pass."],
+            dependsOn: [] as string[]
+          },
+          {
+            taskId: "task-child",
+            runTaskId: "22222222-2222-4222-8222-222222222222",
+            title: "Document the change",
+            summary: "Update documentation after the root task completes.",
+            instructions: ["Update docs."],
+            acceptanceCriteria: ["Docs are updated."],
+            dependsOn: ["task-root"]
+          }
+        ]
+      };
+    },
+    updateRunTask: vi.fn(async (_client, input) => {
+      const row = runTasks.find((task) => task.runTaskId === input.runTaskId);
+
+      if (!row) {
+        throw new Error(`Run task ${input.runTaskId} was not found.`);
+      }
+
+      Object.assign(row, {
+        status: input.status ?? row.status,
+        startedAt: input.startedAt === undefined ? row.startedAt : input.startedAt,
+        endedAt: input.endedAt === undefined ? row.endedAt : input.endedAt,
+        conversationAgentClass:
+          input.conversationAgentClass === undefined
+            ? row.conversationAgentClass
+            : input.conversationAgentClass,
+        conversationAgentName:
+          input.conversationAgentName === undefined
+            ? row.conversationAgentName
+            : input.conversationAgentName,
+        updatedAt: new Date("2026-04-19T00:00:00.000Z")
+      });
+
+      return row;
+    }),
+    updateRunRecord: vi.fn(async (_client, input) => {
+      if (!runState.runRecord) {
+        throw new Error(`Run ${input.runId} was not found.`);
+      }
+
+      Object.assign(runState.runRecord, {
+        workflowInstanceId: input.workflowInstanceId ?? runState.runRecord.workflowInstanceId,
+        executionEngine: input.executionEngine ?? runState.runRecord.executionEngine,
+        sandboxId: input.sandboxId === undefined ? runState.runRecord.sandboxId : input.sandboxId,
+        status: input.status ?? runState.runRecord.status,
+        compiledSpecRevisionId:
+          input.compiledSpecRevisionId === undefined
+            ? runState.runRecord.compiledSpecRevisionId
+            : input.compiledSpecRevisionId,
+        compiledArchitectureRevisionId:
+          input.compiledArchitectureRevisionId === undefined
+            ? runState.runRecord.compiledArchitectureRevisionId
+            : input.compiledArchitectureRevisionId,
+        compiledExecutionPlanRevisionId:
+          input.compiledExecutionPlanRevisionId === undefined
+            ? runState.runRecord.compiledExecutionPlanRevisionId
+            : input.compiledExecutionPlanRevisionId,
+        compiledAt: input.compiledAt === undefined ? runState.runRecord.compiledAt : input.compiledAt,
+        startedAt: input.startedAt === undefined ? runState.runRecord.startedAt : input.startedAt,
+        endedAt: input.endedAt === undefined ? runState.runRecord.endedAt : input.endedAt,
+        updatedAt: new Date("2026-04-19T00:00:00.000Z")
+      });
+
+      return runState.runRecord;
+    })
   };
 });
 
@@ -235,10 +398,6 @@ vi.mock("cloudflare:workflows", () => ({
   NonRetryableError: class NonRetryableError extends Error {}
 }));
 
-vi.mock("../../../src/lib/auth/tenant", () => ({
-  getRunCoordinatorStub: mocked.getRunCoordinatorStub
-}));
-
 vi.mock("../../../src/lib/db/client", () => ({
   createWorkerDatabaseClient: mocked.createWorkerDatabaseClient
 }));
@@ -247,36 +406,36 @@ vi.mock("../../../src/lib/db/projects", () => ({
   getProject: mocked.getProject
 }));
 
+vi.mock("../../../src/lib/documents/runtime", () => ({
+  loadRequiredRunPlanningDocuments: mocked.loadRequiredRunPlanningDocuments
+}));
+
+vi.mock("../../../src/lib/db/artifacts", () => ({
+  listRunArtifacts: mocked.listRunArtifacts
+}));
+
 vi.mock("../../../src/lib/db/runs", () => ({
   ensureRunRecord: mocked.ensureRunRecord,
-  getSessionRecord: mocked.getSessionRecord,
-  updateSessionStatus: mocked.updateSessionStatus
+  failRunAndCancelOutstandingTasks: mocked.failRunAndCancelOutstandingTasks,
+  getRunRecord: mocked.getRunRecord,
+  listRunTaskDependencies: mocked.listRunTaskDependencies,
+  listRunTasks: mocked.listRunTasks,
+  persistCompiledRunGraph: mocked.persistCompiledRunGraph,
+  updateRunRecord: mocked.updateRunRecord,
+  updateRunTask: mocked.updateRunTask
 }));
 
-vi.mock("../../../src/lib/events/publish", () => ({
-  appendAndPublishRunEvent: mocked.appendAndPublishRunEvent
+vi.mock("../../../src/lib/workflows/idempotency", () => ({
+  loadExistingRunPlan: mocked.loadExistingRunPlan
 }));
-
-vi.mock("../../../src/lib/security/policy", () => ({
-  evaluateRepoSourcePolicy: mocked.evaluateRepoSourcePolicy
-}));
-
-vi.mock("../../../src/lib/workflows/idempotency", async () => {
-  const actual =
-    await vi.importActual<typeof import("../../../src/lib/workflows/idempotency")>(
-      "../../../src/lib/workflows/idempotency"
-    );
-
-  return {
-    ...actual,
-    ensureSessionRecord: mocked.ensureSessionRecord,
-    loadExistingRunPlan: mocked.loadExistingRunPlan
-  };
-});
 
 vi.mock("../../../src/keystone/compile/plan-run", () => ({
-  compileRunPlan: mocked.compileRunPlan,
-  compileDemoFixtureRunPlan: mocked.compileDemoFixtureRunPlan
+  compileDemoFixtureRunPlan: mocked.compileDemoFixtureRunPlan,
+  compileRunPlan: mocked.compileRunPlan
+}));
+
+vi.mock("../../../src/keystone/integration/finalize-run", () => ({
+  finalizeRun: mocked.finalizeRun
 }));
 
 vi.mock("../../../src/keystone/tasks/load-task-contracts", async () => {
@@ -287,33 +446,17 @@ vi.mock("../../../src/keystone/tasks/load-task-contracts", async () => {
 
   return {
     ...actual,
-    loadCompiledRunPlanArtifact: mocked.loadCompiledRunPlanArtifact
+    loadCompiledRunPlanArtifact: mocked.loadCompiledRunPlanArtifact,
+    loadTaskHandoffArtifact: mocked.loadTaskHandoffArtifact
   };
 });
 
-vi.mock("../../../src/keystone/integration/finalize-run", () => ({
-  finalizeRun: mocked.finalizeRun
-}));
-
 const { RunWorkflow } = await import("../../../src/workflows/RunWorkflow");
-const {
-  createSessionRecord: actualCreateSessionRecord,
-  ensureRunRecord: actualEnsureRunRecord,
-  getSessionRecord: actualGetSessionRecord,
-  updateSessionStatus: actualUpdateSessionStatus
-} = await vi.importActual<typeof import("../../../src/lib/db/runs")>(
-  "../../../src/lib/db/runs"
-);
-
-type ActualCreateSessionRecordInput = Parameters<typeof actualCreateSessionRecord>[1];
-type ActualEnsureRunRecordInput = Parameters<typeof actualEnsureRunRecord>[1];
-type ActualUpdateSessionStatusInput = Parameters<typeof actualUpdateSessionStatus>[1];
 
 function createStep() {
   return {
     do: vi.fn(async (_name: string, configOrCallback: unknown, maybeCallback?: unknown) => {
-      const callback =
-        typeof configOrCallback === "function" ? configOrCallback : maybeCallback;
+      const callback = typeof configOrCallback === "function" ? configOrCallback : maybeCallback;
 
       if (typeof callback !== "function") {
         throw new Error("Workflow step callback was not provided.");
@@ -323,713 +466,448 @@ function createStep() {
         attempt: 1
       });
     }),
-    sleep: vi.fn(async () => undefined),
-    waitForEvent: vi.fn(async () => ({
-      payload: {
-        approvalId: "approval-1",
-        resolution: "approved"
-      },
-      timestamp: new Date("2026-04-17T00:00:00.000Z"),
-      type: "approval.resolved.approval-1"
-    }))
+    sleep: vi.fn(async () => undefined)
   };
 }
 
-function createTaskWorkflowBinding() {
-  const batches = new Map<string, { params: { taskId: string } }>();
-
-  return {
-    create: vi.fn(async (entry: { id: string; params: { taskId: string } }) => {
-      batches.set(entry.id, entry);
-      return { id: entry.id };
-    }),
-    get: vi.fn(async (instanceId: string) => ({
-      status: vi.fn(async () => ({
-        status: "complete",
-        output: {
-          taskId: batches.get(instanceId)?.params.taskId ?? "unknown-task",
-          taskSessionId: `${instanceId}-session`,
-          processStatus: "completed",
-          exitCode: 0,
-          logArtifactRefId: null,
-          workflowStatus: "complete"
-        }
-      }))
-    }))
-  };
-}
-
-function createWorkflowEnv() {
-  return {
-    ARTIFACTS_BUCKET: {} as R2Bucket,
-    TASK_WORKFLOW: createTaskWorkflowBinding()
-  };
-}
-
-function createWorkflowEvent(thinkMode: "live" | "mock") {
+function createWorkflowEvent() {
   return {
     payload: {
       tenantId: "tenant-fixture",
       runId: "run-123",
-      runSessionId: "run-session-123",
       projectId: "project-fixture",
-      decisionPackage: {
-        source: "payload" as const,
-        payload: JSON.parse(JSON.stringify(demoDecisionPackageFixture))
-      },
-      runtime: "think" as const,
-      options: {
-        thinkMode,
-        preserveSandbox: false
-      }
+      executionEngine: "scripted" as const
     }
   };
 }
 
-function createWorkflowMirrorClient(options: Parameters<typeof createMirrorClient>[0] = {}) {
-  const mirror = createMirrorClient(options);
+function createTaskWorkflowNamespace(outcomes: Record<string, "complete" | "errored"> = {}) {
+  const entries = new Map<
+    string,
+    {
+      id: string;
+      params: {
+        taskId: string;
+        runTaskId: string;
+      };
+    }
+  >();
+  const createBatch = vi.fn(async (batch: Array<{ id: string; params: { taskId: string; runTaskId: string } }>) => {
+    for (const entry of batch) {
+      entries.set(entry.id, entry);
+    }
+  });
 
-  return {
-    client: {
-      ...mirror.client,
-      close: mocked.close
-    },
-    getState: mirror.getState
-  };
-}
+  const get = vi.fn(async (id: string) => ({
+    status: vi.fn(async () => {
+      const entry = entries.get(id);
 
-function useActualRunMirror(client: unknown) {
-  mocked.createWorkerDatabaseClient.mockImplementation(() => client as never);
-  mocked.ensureSessionRecord.mockImplementation(
-    (async (
-      dbClient: unknown,
-      spec: ActualCreateSessionRecordInput,
-      sessionId: string
-    ) => {
-      const existing = await actualGetSessionRecord(dbClient as never, spec.tenantId, sessionId);
-
-      if (existing) {
-        return existing;
+      if (!entry) {
+        return {
+          status: "unknown"
+        };
       }
 
-      return actualCreateSessionRecord(dbClient as never, spec, {
-        sessionId
+      const runTask = mocked.runTasks.find((task) => task.runTaskId === entry.params.runTaskId);
+      const outcome = outcomes[entry.params.runTaskId] ?? "complete";
+
+      if (!runTask) {
+        throw new Error(`Missing run task ${entry.params.runTaskId}.`);
+      }
+
+      if (outcome === "complete") {
+        Object.assign(runTask, {
+          status: "completed",
+          startedAt: runTask.startedAt ?? new Date("2026-04-19T00:00:00.000Z"),
+          endedAt: new Date("2026-04-19T00:05:00.000Z")
+        });
+
+        return {
+          status: "complete",
+          output: {
+            taskId: entry.params.taskId,
+            runTaskId: entry.params.runTaskId,
+            taskSessionId: `task-session-${entry.params.runTaskId}`,
+            processStatus: "completed",
+            exitCode: 0,
+            logArtifactRefId: null,
+            workflowStatus: "complete"
+          }
+        };
+      }
+
+      Object.assign(runTask, {
+        status: "failed",
+        startedAt: runTask.startedAt ?? new Date("2026-04-19T00:00:00.000Z"),
+        endedAt: new Date("2026-04-19T00:05:00.000Z")
       });
-    }) as never
-  );
-  mocked.ensureRunRecord.mockImplementation(
-    ((dbClient: unknown, input: ActualEnsureRunRecordInput) =>
-      actualEnsureRunRecord(dbClient as never, input)) as never
-  );
-  mocked.getSessionRecord.mockImplementation(
-    ((dbClient: unknown, tenantId: string, sessionId: string) =>
-      actualGetSessionRecord(dbClient as never, tenantId, sessionId)) as never
-  );
-  mocked.updateSessionStatus.mockImplementation(
-    ((dbClient: unknown, input: ActualUpdateSessionStatusInput) =>
-      actualUpdateSessionStatus(dbClient as never, input)) as never
-  );
-}
 
-function createLiveCompileResult() {
+      return {
+        status: "errored",
+        output: {
+          taskId: entry.params.taskId,
+          runTaskId: entry.params.runTaskId,
+          taskSessionId: `task-session-${entry.params.runTaskId}`,
+          processStatus: "failed",
+          exitCode: 1,
+          logArtifactRefId: null,
+          workflowStatus: "errored"
+        }
+      };
+    })
+  }));
+
   return {
-    plan: mocked.livePlan,
-    completion: {
-      id: "chatcmpl-live",
-      model: "gpt-5.4",
-      finishReason: "stop",
-      usage: {
-        totalTokens: 64
-      }
-    },
-    decisionPackageArtifactRef: {
-      artifactRefId: "decision-package-live"
-    },
-    planArtifactRef: {
-      artifactRefId: "run-plan-live"
-    },
-    taskHandoffArtifactRefs: [
-      {
-        artifactRefId: "task-handoff-live"
-      }
-    ]
+    createBatch,
+    get
   };
 }
 
-describe("RunWorkflow compile routing", () => {
+function createEnv(taskWorkflow = createTaskWorkflowNamespace()) {
+  return {
+    HYPERDRIVE: {
+      connectionString: "postgres://test"
+    } as Hyperdrive,
+    TASK_WORKFLOW: taskWorkflow,
+    ARTIFACTS_BUCKET: {} as R2Bucket
+  };
+}
+
+describe("RunWorkflow authoritative DAG scheduling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.state.compiledPlan = mocked.fixturePlan;
-    mocked.loadExistingRunPlan.mockResolvedValue(null);
-    mocked.evaluateRepoSourcePolicy.mockReturnValue({
-      result: "allow"
+    mocked.reset();
+  });
+
+  it("launches ready nodes first and promotes dependents only after their parents complete", async () => {
+    const taskWorkflow = createTaskWorkflowNamespace();
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
+    const step = createStep();
+
+    const result = await workflow.run(createWorkflowEvent() as never, step as never);
+
+    expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
+    expect(taskWorkflow.createBatch).toHaveBeenCalledTimes(2);
+    expect(taskWorkflow.createBatch.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: "task-root",
+          runTaskId: "11111111-1111-4111-8111-111111111111"
+        })
+      })
+    ]);
+    expect(taskWorkflow.createBatch.mock.calls[1]?.[0]).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: "task-child",
+          runTaskId: "22222222-2222-4222-8222-222222222222"
+        })
+      })
+    ]);
+    expect(mocked.finalizeRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: "run-123"
+      })
+    );
+    expect(mocked.runTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: "11111111-1111-4111-8111-111111111111",
+        status: "completed"
+      }),
+      expect.objectContaining({
+        runTaskId: "22222222-2222-4222-8222-222222222222",
+        status: "completed"
+      })
+    ]);
+    expect(result).toMatchObject({
+      runId: "run-123",
+      finalStatus: "archived",
+      runSummaryArtifactRefId: "run-summary-1"
     });
-    mocked.createWorkerDatabaseClient.mockImplementation(() => ({
-      close: mocked.close,
-      db: {},
-      sql: {}
-    }));
-    mocked.getSessionRecord.mockImplementation(async () => undefined);
-    mocked.ensureRunRecord.mockImplementation(async (_client, input) => ({
-      tenantId: input.tenantId,
-      runId: input.runId,
-      projectId: input.projectId,
-      workflowInstanceId: input.workflowInstanceId,
-      executionEngine: input.executionEngine,
-      sandboxId: input.sandboxId ?? null,
-      status: input.status,
+  });
+
+  it("serializes ready root task launches on the shared run sandbox", async () => {
+    mocked.runState.compiledPlan = {
+      summary: "Fixture compile emitted two independent roots.",
+      sourceRevisionIds: {
+        specification: "spec-rev-1",
+        architecture: "arch-rev-1",
+        executionPlan: "plan-rev-1"
+      },
+      tasks: [
+        {
+          taskId: "task-root-a",
+          runTaskId: "aaaaaaaa-1111-4111-8111-111111111111",
+          title: "Root task A",
+          summary: "First independent task.",
+          instructions: ["Do task A."],
+          acceptanceCriteria: ["Task A completes."],
+          dependsOn: []
+        },
+        {
+          taskId: "task-root-b",
+          runTaskId: "bbbbbbbb-2222-4222-8222-222222222222",
+          title: "Root task B",
+          summary: "Second independent task.",
+          instructions: ["Do task B."],
+          acceptanceCriteria: ["Task B completes."],
+          dependsOn: []
+        }
+      ]
+    };
+
+    const taskWorkflow = createTaskWorkflowNamespace();
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
+    const step = createStep();
+
+    await workflow.run(createWorkflowEvent() as never, step as never);
+
+    expect(taskWorkflow.createBatch).toHaveBeenCalledTimes(2);
+    expect(taskWorkflow.createBatch.mock.calls[0]?.[0]).toHaveLength(1);
+    expect(taskWorkflow.createBatch.mock.calls[0]?.[0]?.[0]).toEqual(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: "task-root-a",
+          runTaskId: "aaaaaaaa-1111-4111-8111-111111111111"
+        })
+      })
+    );
+    expect(taskWorkflow.createBatch.mock.calls[1]?.[0]).toHaveLength(1);
+    expect(taskWorkflow.createBatch.mock.calls[1]?.[0]?.[0]).toEqual(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: "task-root-b",
+          runTaskId: "bbbbbbbb-2222-4222-8222-222222222222"
+        })
+      })
+    );
+  });
+
+  it("cancels blocked dependents after an upstream task fails", async () => {
+    const taskWorkflow = createTaskWorkflowNamespace({
+      "11111111-1111-4111-8111-111111111111": "errored"
+    });
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
+    const step = createStep();
+
+    await workflow.run(createWorkflowEvent() as never, step as never);
+
+    expect(mocked.runTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: "11111111-1111-4111-8111-111111111111",
+        status: "failed"
+      }),
+      expect.objectContaining({
+        runTaskId: "22222222-2222-4222-8222-222222222222",
+        status: "cancelled"
+      })
+    ]);
+    expect(mocked.finalizeRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: "run-123"
+      })
+    );
+  });
+
+  it("replays a persisted compile artifact by loading task handoffs through runTaskId", async () => {
+    mocked.loadExistingRunPlan.mockResolvedValueOnce(JSON.parse(JSON.stringify(mocked.runState.compiledPlan)));
+    mocked.artifacts.push(
+      {
+        artifactRefId: "run-plan-artifact",
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        runId: "run-123",
+        runTaskId: null,
+        artifactKind: "run_plan",
+        storageBackend: "r2",
+        bucket: "keystone-artifacts-dev",
+        objectKey: "tenants/tenant-fixture/runs/run-123/plan/plan.json",
+        objectVersion: null,
+        etag: "etag-plan",
+        contentType: "application/json; charset=utf-8",
+        sha256: null,
+        sizeBytes: 256,
+        createdAt: new Date("2026-04-19T00:00:00.000Z")
+      },
+      {
+        artifactRefId: "handoff-root",
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        runId: "run-123",
+        runTaskId: "11111111-1111-4111-8111-111111111111",
+        artifactKind: "task_handoff",
+        storageBackend: "r2",
+        bucket: "keystone-artifacts-dev",
+        objectKey: "root-handoff",
+        objectVersion: null,
+        etag: "etag-root",
+        contentType: "application/json; charset=utf-8",
+        sha256: null,
+        sizeBytes: 128,
+        createdAt: new Date("2026-04-19T00:00:00.000Z")
+      },
+      {
+        artifactRefId: "handoff-child",
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        runId: "run-123",
+        runTaskId: "22222222-2222-4222-8222-222222222222",
+        artifactKind: "task_handoff",
+        storageBackend: "r2",
+        bucket: "keystone-artifacts-dev",
+        objectKey: "child-handoff",
+        objectVersion: null,
+        etag: "etag-child",
+        contentType: "application/json; charset=utf-8",
+        sha256: null,
+        sizeBytes: 128,
+        createdAt: new Date("2026-04-19T00:00:00.000Z")
+      }
+    );
+
+    const taskWorkflow = createTaskWorkflowNamespace();
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
+    const step = createStep();
+
+    await workflow.run(createWorkflowEvent() as never, step as never);
+
+    expect(mocked.compileRunPlan).not.toHaveBeenCalled();
+    expect(mocked.persistCompiledRunGraph).toHaveBeenCalledTimes(1);
+    expect(mocked.loadTaskHandoffArtifact).toHaveBeenCalledWith(
+      expect.anything(),
+      "tenant-fixture",
+      "run-123",
+      "11111111-1111-4111-8111-111111111111"
+    );
+    expect(mocked.loadTaskHandoffArtifact).toHaveBeenCalledWith(
+      expect.anything(),
+      "tenant-fixture",
+      "run-123",
+      "22222222-2222-4222-8222-222222222222"
+    );
+  });
+
+  it("recompiles when persisted plan revisions no longer match the current run documents", async () => {
+    mocked.loadExistingRunPlan.mockResolvedValueOnce({
+      ...JSON.parse(JSON.stringify(mocked.runState.compiledPlan)),
+      sourceRevisionIds: {
+        specification: "spec-rev-stale",
+        architecture: "arch-rev-1",
+        executionPlan: "plan-rev-1"
+      }
+    });
+
+    const taskWorkflow = createTaskWorkflowNamespace();
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
+    const step = createStep();
+
+    await workflow.run(createWorkflowEvent() as never, step as never);
+
+    expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
+    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
+  });
+
+  it("marks an existing run failed when context loading fails before execution starts", async () => {
+    mocked.runState.runRecord = {
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      projectId: "project-fixture",
+      workflowInstanceId: "run-workflow-run-123",
+      executionEngine: "scripted",
+      sandboxId: "sandbox-run-123",
+      status: "configured",
       compiledSpecRevisionId: null,
       compiledArchitectureRevisionId: null,
       compiledExecutionPlanRevisionId: null,
       compiledAt: null,
       startedAt: null,
       endedAt: null,
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    }));
-    mocked.updateSessionStatus.mockImplementation(async (_client, input) => ({
-      tenantId: input.tenantId,
-      sessionId: input.sessionId,
-      runId: "run-123",
-      sessionType: "run",
-      status: input.status,
-      parentSessionId: null,
-      metadata: input.metadata ?? null,
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    }));
-    mocked.ensureSessionRecord.mockImplementation(async (_client, spec, sessionId) => ({
-      tenantId: spec.tenantId,
-      sessionId,
-      runId: spec.runId,
-      sessionType: spec.sessionType,
-      status: "configured",
-      parentSessionId: spec.parentSessionId ?? null,
-      metadata: null,
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    }));
-    mocked.appendAndPublishRunEvent.mockImplementation(async () => ({
-      eventId: crypto.randomUUID(),
-      ts: new Date("2026-04-17T00:00:00.000Z")
-    }));
-    mocked.compileRunPlan.mockImplementation(async () => {
-      mocked.state.compiledPlan = mocked.persistedLivePlan;
-
-      return createLiveCompileResult();
-    });
-    mocked.compileDemoFixtureRunPlan.mockImplementation(async () => {
-      mocked.state.compiledPlan = mocked.fixturePlan;
-
-      return {
-        plan: mocked.fixturePlan,
-        completion: {
-          id: "chatcmpl-fixture",
-          model: "fixture-compile",
-          finishReason: "stop",
-          usage: {
-            totalTokens: 0
-          }
-        },
-        decisionPackageArtifactRef: {
-          artifactRefId: "decision-package-fixture"
-        },
-        planArtifactRef: {
-          artifactRefId: "run-plan-fixture"
-        },
-        taskHandoffArtifactRefs: [
-          {
-            artifactRefId: "task-handoff-fixture"
-          }
-        ]
-      };
-    });
-  });
-
-  it("uses the persisted compile artifact for think/live fanout", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const liveTask = mocked.livePlan.tasks[0];
-    const persistedTask = mocked.persistedLivePlan.tasks[0];
-
-    if (!liveTask || !persistedTask) {
-      throw new Error("Expected the live compile fixture to include a task.");
-    }
-
-    const result = await workflow.run(createWorkflowEvent("live") as never, step as never);
-    const [fanoutCall] = env.TASK_WORKFLOW.create.mock.calls[0] ?? [];
-
-    if (!fanoutCall) {
-      throw new Error("Expected the task fanout call to include one task.");
-    }
-
-    const statusMetadata = mocked.updateSessionStatus.mock.calls.at(-1)?.[1]?.metadata;
-
-    expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
-    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
-    expect(statusMetadata).toMatchObject({
-      project: {
-        projectId: "project-fixture",
-        projectKey: "fixture-demo-project",
-        displayName: "Fixture Demo Project",
-        componentKeys: ["demo-target"],
-        envVarNames: ["KEYSTONE_FIXTURE_PROJECT"],
-        ruleSet: {
-          reviewInstructions: ["Review the result."],
-          testInstructions: ["Run fixture tests."]
-        },
-        componentRuleOverrides: []
-      },
-      executionEngine: "think",
-      runtime: "think"
-    });
-    expect(mocked.ensureRunRecord).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        tenantId: "tenant-fixture",
-        runId: "run-123",
-        projectId: "project-fixture",
-        executionEngine: "think",
-        status: "configured"
-      })
-    );
-    expect(fanoutCall.params).toMatchObject({
-      taskId: persistedTask.taskId,
-      project: {
-        projectId: "project-fixture",
-        projectKey: "fixture-demo-project"
-      },
-      runtime: "think",
-      options: {
-        thinkMode: "live",
-        preserveSandbox: false
-      }
-    });
-    expect(fanoutCall.params.taskId).not.toBe(liveTask.taskId);
-    expect(mocked.loadCompiledRunPlanArtifact).toHaveBeenCalledWith(
-      env,
-      "tenant-fixture",
-      "run-123"
-    );
-    expect(result).toMatchObject({
-      runId: "run-123",
-      taskCount: mocked.livePlan.tasks.length,
-      decisionPackageId: mocked.livePlan.decisionPackageId,
-      finalStatus: "archived",
-      runSummaryArtifactRefId: "run-summary-artifact"
-    });
-  });
-
-  it("reuses persisted run-session execution metadata over a conflicting workflow request", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const persistedTask = mocked.persistedLivePlan.tasks[0];
-
-    if (!persistedTask) {
-      throw new Error("Expected the persisted live compile fixture to include a task.");
-    }
-
-    mocked.ensureSessionRecord.mockResolvedValueOnce({
-      tenantId: "tenant-fixture",
-      sessionId: "run-session-123",
-      runId: "run-123",
-      sessionType: "run",
-      status: "active",
-      parentSessionId: null,
-      metadata: {
-        project: {
-          projectId: "project-fixture",
-          projectKey: "fixture-demo-project",
-          displayName: "Fixture Demo Project"
-        },
-        decisionPackageId: "demo-greeting-update",
-        workflowInstanceId: "run-run-123-tenant-fixt",
-        executionEngine: "think",
-        runtime: "scripted",
-        options: {
-          thinkMode: "live",
-          preserveSandbox: true
-        }
-      },
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    } as never);
-
-    const result = await workflow.run(
-      {
-        payload: {
-          ...createWorkflowEvent("mock").payload,
-          executionEngine: "scripted",
-          runtime: "scripted",
-          options: {
-            thinkMode: "mock",
-            preserveSandbox: false
-          }
-        }
-      } as never,
-      step as never
-    );
-
-    expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
-    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
-    expect(mocked.ensureRunRecord).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        runId: "run-123",
-        executionEngine: "think",
-        status: "active"
-      })
-    );
-    expect(env.TASK_WORKFLOW.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        params: expect.objectContaining({
-          taskId: persistedTask.taskId,
-          runtime: "think",
-          options: {
-            thinkMode: "live",
-            preserveSandbox: true
-          }
-        })
-      })
-    );
-    expect(result).toMatchObject({
-      runId: "run-123",
-      finalStatus: "archived"
-    });
-  });
-
-  it("cancels the authoritative run row when repo policy denies execution", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const { client, getState } = createWorkflowMirrorClient();
-
-    useActualRunMirror(client);
-    mocked.evaluateRepoSourcePolicy.mockReturnValueOnce({
-      result: "deny",
-      reason: "Repo access is denied for this source."
-    } as never);
-
-    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
-      /Repo access is denied for this source/
-    );
-
-    expect(getState().session?.status).toBe("cancelled");
-    expect(getState().run?.status).toBe("cancelled");
-    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
-  });
-
-  it("fails the authoritative run row when compile throws before finalization", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const { client, getState } = createWorkflowMirrorClient();
-
-    useActualRunMirror(client);
-    mocked.compileDemoFixtureRunPlan.mockRejectedValueOnce(new Error("compile step failed"));
-
-    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
-      /compile step failed/
-    );
-
-    expect(getState().session?.status).toBe("failed");
-    expect(getState().run?.status).toBe("failed");
-  });
-
-  it("fails the authoritative run row when task polling times out", async () => {
-    const env = {
-      ARTIFACTS_BUCKET: {} as R2Bucket,
-      TASK_WORKFLOW: {
-        create: vi.fn(async (entry: { id: string }) => ({ id: entry.id })),
-        get: vi.fn(async () => ({
-          status: vi.fn(async () => ({
-            status: "running",
-            output: null
-          }))
-        }))
-      }
+      createdAt: new Date("2026-04-19T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-19T00:00:00.000Z")
     };
+    mocked.getProject.mockResolvedValueOnce(undefined as never);
+
+    const taskWorkflow = createTaskWorkflowNamespace();
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
     const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const { client, getState } = createWorkflowMirrorClient();
 
-    useActualRunMirror(client);
-
-    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
-      /did not reach a terminal state within the polling window/
+    await expect(workflow.run(createWorkflowEvent() as never, step as never)).rejects.toThrow(
+      /Project project-fixture was not found/
     );
-
-    expect(getState().session?.status).toBe("failed");
-    expect(getState().run?.status).toBe("failed");
+    expect(mocked.runState.runRecord).toMatchObject({
+      status: "failed",
+      endedAt: expect.any(Date)
+    });
   });
 
-  it("retries terminal publication after the failed run row already exists", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const { client, getState } = createWorkflowMirrorClient({
-      session: buildSessionRow({
-        status: "failed",
-        metadata: {
-          project: {
-            projectId: "project-fixture",
-            projectKey: "fixture-demo-project",
-            displayName: "Fixture Demo Project"
-          },
-          workflowInstanceId: "run-run-123-tenant-fixtu",
-          executionEngine: "think",
-          runtime: "think",
-          options: {
-            thinkMode: "mock",
-            preserveSandbox: false
-          }
-        },
-        updatedAt: new Date("2026-04-17T00:05:00.000Z")
-      }),
-      run: buildRunRow({
-        status: "failed",
-        endedAt: new Date("2026-04-17T00:05:00.000Z"),
-        updatedAt: new Date("2026-04-17T00:05:00.000Z")
-      })
-    });
-
-    useActualRunMirror(client);
-    mocked.compileDemoFixtureRunPlan.mockRejectedValue(new Error("compile step failed"));
-    mocked.appendAndPublishRunEvent.mockImplementation(async () => ({
-      eventId: crypto.randomUUID(),
-      ts: new Date("2026-04-17T00:00:00.000Z")
-    }));
-
-    await expect(workflow.run(createWorkflowEvent("mock") as never, step as never)).rejects.toThrow(
-      /compile step failed/
-    );
-
-    const terminalPublicationInputs = (
-      mocked.appendAndPublishRunEvent.mock.calls as Array<unknown[]>
-    )
-      .map(
-        (call) =>
-          call[2] as
-            | { eventType?: string; idempotencyKey?: string; status?: string }
-            | undefined
-      )
-      .filter(
-        (input): input is { eventType: string; idempotencyKey?: string; status?: string } =>
-          input?.eventType === "session.error"
-      );
-
-    expect(terminalPublicationInputs).toHaveLength(1);
-    expect(terminalPublicationInputs[0]).toMatchObject({
-      eventType: "session.error",
-      idempotencyKey: "run.terminal:run-session-123:session.error:run-execution:failed",
-      status: "failed"
-    });
-    expect(getState().session?.status).toBe("failed");
-    expect(getState().run?.status).toBe("failed");
-  });
-
-  it("fails clearly when multiple executable project components leave compile target selection ambiguous", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-
-    mocked.getProject.mockResolvedValueOnce({
-      tenantId: "tenant-fixture",
-      projectId: "project-fixture",
-      projectKey: "fixture-demo-project",
-      displayName: "Fixture Demo Project",
-      description: "Fixture project",
-      ruleSet: {
-        reviewInstructions: ["Review the result."],
-        testInstructions: ["Run fixture tests."]
+  it("cancels remaining run tasks when a top-level run failure aborts execution", async () => {
+    mocked.loadCompiledRunPlanArtifact.mockRejectedValueOnce(new Error("compiled plan missing"));
+    mocked.runTasks.splice(
+      0,
+      mocked.runTasks.length,
+      {
+        runTaskId: "11111111-1111-4111-8111-111111111111",
+        runId: "run-123",
+        name: "Implement the root change",
+        description: "Apply the primary change in the repository.",
+        status: "active",
+        conversationAgentClass: null,
+        conversationAgentName: null,
+        startedAt: new Date("2026-04-19T00:00:00.000Z"),
+        endedAt: null,
+        createdAt: new Date("2026-04-19T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-19T00:00:00.000Z")
       },
-      components: [
-        {
-          componentKey: "demo-target",
-          displayName: "Demo Target",
-          kind: "git_repository",
-          config: {
-            localPath: "./fixtures/demo-target",
-            defaultRef: "main"
-          },
-          metadata: {}
-        },
-        {
-          componentKey: "docs",
-          displayName: "Docs",
-          kind: "git_repository",
-          config: {
-            gitUrl: "https://github.com/example/docs.git",
-            defaultRef: "main"
-          },
-          metadata: {}
-        }
-      ],
-      envVars: [],
-      integrationBindings: [],
-      metadata: {},
-      createdAt: new Date("2026-04-17T00:00:00.000Z"),
-      updatedAt: new Date("2026-04-17T00:00:00.000Z")
-    } as never);
-
-    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
-      /requires exactly one compile target until explicit project compile selection exists/
+      {
+        runTaskId: "22222222-2222-4222-8222-222222222222",
+        runId: "run-123",
+        name: "Document the change",
+        description: "Update documentation after the root task completes.",
+        status: "ready",
+        conversationAgentClass: null,
+        conversationAgentName: null,
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date("2026-04-19T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-19T00:00:00.000Z")
+      }
     );
-    expect(mocked.compileRunPlan).not.toHaveBeenCalled();
-    expect(mocked.compileDemoFixtureRunPlan).not.toHaveBeenCalled();
-    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
-  });
 
-  it("rejects persisted live compile plans when the task no longer matches the approved fixture task shape", async () => {
-    const env = createWorkflowEnv();
+    const taskWorkflow = createTaskWorkflowNamespace();
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
     const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const liveTask = mocked.livePlan.tasks[0];
 
-    if (!liveTask) {
-      throw new Error("Expected the live compile fixture to include a task.");
-    }
-
-    mocked.compileRunPlan.mockImplementationOnce(async () => {
-      mocked.state.compiledPlan = {
-        ...mocked.livePlan,
-        tasks: [
-          {
-            ...liveTask,
-            title: "Unexpected task title"
-          }
-        ]
-      };
-
-      return createLiveCompileResult();
-    });
-
-    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
-      /could not reconcile task task-live-implementation \(Unexpected task title\) with the approved fixture decision package/
+    await expect(workflow.run(createWorkflowEvent() as never, step as never)).rejects.toThrow(
+      /compiled plan missing/
     );
-    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects persisted live compile plans when the task count falls outside the fixture-scoped happy path", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const persistedTask = mocked.persistedLivePlan.tasks[0];
-
-    if (!persistedTask) {
-      throw new Error("Expected the persisted live compile fixture to include a task.");
-    }
-
-    mocked.compileRunPlan.mockImplementationOnce(async () => {
-      mocked.state.compiledPlan = {
-        ...mocked.persistedLivePlan,
-        tasks: [
-          persistedTask,
-          {
-            ...persistedTask,
-            taskId: "task-extra",
-            title: "Extra unexpected task"
-          }
-        ]
-      };
-
-      return createLiveCompileResult();
-    });
-
-    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
-      /produced 2 tasks, expected 1/
-    );
-    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects persisted live compile plans when the decision package id falls outside the fixture-scoped happy path", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-
-    mocked.compileRunPlan.mockImplementationOnce(async () => {
-      mocked.state.compiledPlan = {
-        ...mocked.persistedLivePlan,
-        decisionPackageId: "unexpected-decision-package"
-      };
-
-      return createLiveCompileResult();
-    });
-
-    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
-      /produced decision package unexpected-decision-package, expected demo-greeting-update/
-    );
-    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects persisted live compile plans when dependsOn exceeds the fixture-scoped happy path", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const persistedTask = mocked.persistedLivePlan.tasks[0];
-
-    if (!persistedTask) {
-      throw new Error("Expected the persisted live compile fixture to include a task.");
-    }
-
-    mocked.compileRunPlan.mockImplementationOnce(async () => {
-      mocked.state.compiledPlan = {
-        ...mocked.persistedLivePlan,
-        tasks: [
-          {
-            ...persistedTask,
-            dependsOn: ["task-prep"]
-          }
-        ]
-      };
-
-      return createLiveCompileResult();
-    });
-
-    await expect(workflow.run(createWorkflowEvent("live") as never, step as never)).rejects.toThrow(
-      /returned unsupported dependsOn entries for task task-persisted-live-implementation/
-    );
-    expect(env.TASK_WORKFLOW.create).not.toHaveBeenCalled();
-  });
-
-  it("preserves the deterministic fixture compiler for think/mock runs", async () => {
-    const env = createWorkflowEnv();
-    const step = createStep();
-    const workflow = new RunWorkflow({} as ExecutionContext, env as never);
-    const fixtureTask = mocked.fixturePlan.tasks[0];
-
-    if (!fixtureTask) {
-      throw new Error("Expected the fixture compile plan to include a task.");
-    }
-
-    const result = await workflow.run(createWorkflowEvent("mock") as never, step as never);
-
-    expect(mocked.compileDemoFixtureRunPlan).toHaveBeenCalledTimes(1);
-    expect(mocked.compileRunPlan).not.toHaveBeenCalled();
-    expect(env.TASK_WORKFLOW.create).toHaveBeenCalledWith(
+    expect(mocked.runTasks).toEqual([
       expect.objectContaining({
-        params: expect.objectContaining({
-          taskId: fixtureTask.taskId,
-          project: expect.objectContaining({
-            projectId: "project-fixture",
-            projectKey: "fixture-demo-project"
-          }),
-          runtime: "think",
-          options: {
-            thinkMode: "mock",
-            preserveSandbox: false
-          }
-        })
+        runTaskId: "11111111-1111-4111-8111-111111111111",
+        status: "cancelled",
+        endedAt: expect.any(Date)
+      }),
+      expect.objectContaining({
+        runTaskId: "22222222-2222-4222-8222-222222222222",
+        status: "cancelled",
+        endedAt: expect.any(Date)
       })
-    );
-    expect(result).toMatchObject({
-      runId: "run-123",
-      taskCount: mocked.fixturePlan.tasks.length,
-      decisionPackageId: mocked.fixturePlan.decisionPackageId,
-      finalStatus: "archived",
-      runSummaryArtifactRefId: "run-summary-artifact"
+    ]);
+    expect(mocked.runState.runRecord).toMatchObject({
+      status: "failed",
+      endedAt: expect.any(Date)
     });
   });
 });

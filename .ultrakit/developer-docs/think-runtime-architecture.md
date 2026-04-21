@@ -2,94 +2,116 @@
 
 ## Scope
 
-This document covers the shipped Think-backed execution slice in this repository. It does not describe hypothetical multi-role expansion.
+This document covers the current Think-backed execution slice in Keystone.
+
+It describes:
+
+- how `think_mock` and `think_live` fit into the target model
+- how task workspaces are exposed to Think agents
+- where conversation history lives
+- which parts of execution remain authoritative in Keystone itself
 
 ## Runtime Boundary
 
-Keystone still owns orchestration, durable session state, event publication, and artifact promotion. Think only owns the inside of one implementer turn.
+Keystone owns:
 
-- `src/http/handlers/runs.ts` accepts `projectId`, accepts `X-Keystone-Agent-Runtime`, and persists the resolved runtime plus project identity onto the root run session metadata.
-- `src/workflows/RunWorkflow.ts` and `src/workflows/TaskWorkflow.ts` carry that runtime forward, defaulting to `scripted` when the header is absent.
-- `src/maestro/agent-runtime.ts` is the kernel-facing contract. It fixes the agent filesystem layout at `/workspace`, `/artifacts/in`, `/artifacts/out`, and `/keystone`.
+- run orchestration
+- compile
+- task graph persistence
+- sandbox lifecycle
+- artifact promotion into R2 plus `artifact_refs`
+- authoritative run/task state in Postgres
+
+Think owns:
+
+- the conversation and tool-call history for a specific planning or task conversation
+- the inside of one implementer turn
+
+Keystone does **not** use Think history as the authoritative source of run or task state.
+
+## Execution Engines
+
+The only authoritative execution selector is `executionEngine`:
+
+- `scripted`
+- `think_mock`
+- `think_live`
+
+`think_mock` is the deterministic Think-backed validation path.
+
+`think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend.
 
 ## Filesystem Contract
 
-`TaskSessionDO.ensureWorkspace()` materializes the task worktree and then builds an agent bridge with two layers:
+`TaskSessionDO.ensureWorkspace()` materializes task-specific worktrees inside the shared run sandbox and exposes a stable agent-facing layout:
 
-- layout: the stable agent-facing roots declared in `src/maestro/agent-runtime.ts`
-- targets: the real sandbox paths, with `/workspace` resolving onto the existing task workspace under `/workspace/runs/...`
+- `/workspace`
+- `/artifacts/in`
+- `/artifacts/out`
+- `/keystone`
 
-For project-backed runs, the workspace code surface now lives under `/workspace/code/<component-key>`.
+Important rules:
 
-The bridge also materializes three control files under `/keystone`:
-
-- `session.json`: tenant, run, task, and sandbox identifiers
-- `filesystem.json`: the effective bridge layout and writable/read-only roots
-- `artifacts.json`: projected upstream artifacts available under `/artifacts/in`
-
-Rules that matter for contributors:
-
+- one sandbox exists per run
+- task isolation comes from task-specific worktrees, not separate sandboxes
 - `/workspace` and `/artifacts/out` are writable
-- `/artifacts/in` and `/keystone` are treated as read-only inputs
+- `/artifacts/in` and `/keystone` are read-only inputs
 - staged files under `/artifacts/out` are not durable until `TaskWorkflow` promotes them into R2 and records `artifact_refs`
-- bridge re-materialization clears `/artifacts/out` so staged files do not leak across repeated `ensureWorkspace()` calls
+- task rematerialization excludes the current task's own prior artifacts from `/artifacts/in`
 
 ## Think Implementer Path
 
-The first delivered role is `implementer`.
+The current Think-backed task role is `implementer`.
 
-- `src/keystone/agents/base/KeystoneThinkAgent.ts` implements the `AgentRuntimeAdapter` contract for runtime `think`
-- `src/keystone/agents/implementer/ImplementerAgent.ts` defines the implementer prompt, bridge-backed tools, mock model plan helpers, and staged-artifact collection
-- the enabled capabilities are `read_file`, `list_files`, `write_file`, and `run_bash`
+- `src/keystone/agents/base/KeystoneThinkAgent.ts` implements the Think-backed adapter
+- `src/keystone/agents/implementer/ImplementerAgent.ts` defines the implementer prompt and bridge-backed tools
+- the main capabilities are filesystem reads/writes and shell execution against the task worktree
 
-The shipped validation split is now explicit:
+`TaskWorkflow` is responsible for:
 
-- `runtime=think` plus `thinkMode=mock` stays deterministic and fixture-backed
-- `runtime=think` plus `thinkMode=live` starts from `/v1/runs`, reloads the stored project, compiles a live `run_plan`, persists compiled `task_handoff` artifacts, and then executes that compiled handoff through the same implementer/runtime bridge
+- resolving the task handoff from the compiled plan
+- materializing the task workspace
+- invoking the Think implementer turn
+- promoting staged artifacts into R2
+- writing authoritative `run_tasks.status`
 
-For deterministic local fixture validation:
+## Conversation Model
 
-- `TaskWorkflow` injects `createThinkSmokePlan()` as `mockModelPlan`
-- when `mockModelPlan` is present, `KeystoneThinkAgent` runs `generateText(...)` directly with the existing toolset instead of entering Think's local chat queue
+Think conversation history stays in Think / Session storage.
 
-That local shortcut exists because the host-local Think queue crashed under `wrangler dev` for mock turns, but the runtime surface stays the same: `runImplementerTurn()` still produces events, staged artifacts, and a summary.
+Keystone only persists the conversation locator:
 
-For the live proof:
+- run planning document conversations live on `documents`
+- task conversations live on `run_tasks`
 
-- `RunWorkflow` persists the live `decision_package`, `run_plan`, and `task_handoff` artifacts before task fanout
-- `TaskWorkflow` accepts the compiled Think handoff only when it matches the approved fixture decision package and the compiled plan stays on the current single independent task shape
-- the live task handoff must keep `dependsOn` empty; dependent or multi-task compiled plans remain out of scope for this proof
-- the live compile path currently requires exactly one unambiguous executable project component; it fails clearly instead of choosing a compile target by component order
+The locator fields are:
 
-## Artifact and Event Flow
+- `conversation_agent_class`
+- `conversation_agent_name`
 
-The Think-backed task path is file-first all the way through:
+This lets the UI reconnect through `useAgent` / `useAgentChat` without duplicating the messages into relational tables.
 
-1. `KeystoneThinkAgent` emits `agent.turn.started`.
-2. Tool calls emit `agent.tool_*` events and, when text is produced, `agent.message`.
-3. Files discovered under `/artifacts/out` are collected as staged artifacts and emitted as `artifact.staged`.
-4. `TaskWorkflow` reads those staged files back through the sandbox bridge, uploads them into R2, inserts `artifact_refs`, and publishes canonical `artifact.put` events.
-5. `src/keystone/integration/finalize-run.ts` writes the final `run_summary` artifact and archives the run session when all task workflows succeed.
+## Artifact Flow
 
-Current artifact expectations:
+The Think-backed task path is file-first:
 
-- markdown files staged by the implementer are promoted as `run_note`
-- the run-level terminal proof remains `run_summary`
-- the scripted fallback path still promotes `task_log`
-- the live full-workflow Think proof archives `decision_package`, `run_plan`, `task_handoff`, `run_note`, and `run_summary`
+1. the agent reads and writes inside the task worktree
+2. durable outputs are staged under `/artifacts/out`
+3. `TaskWorkflow` reads those staged files back through the sandbox bridge
+4. Keystone uploads them into R2
+5. Keystone inserts canonical `artifact_refs`
 
-The live-model provider path now reuses the existing local OpenAI-compatible chat-completions backend:
+Current promoted artifact expectations:
 
-- `KeystoneThinkAgent` builds an AI SDK OpenAI chat model against `KEYSTONE_CHAT_COMPLETIONS_BASE_URL`
-- the configured `KEYSTONE_CHAT_COMPLETIONS_MODEL` is the default Think model id unless a turn overrides it explicitly
-- local Think validation no longer depends on a Cloudflare `AI` binding
+- markdown/text notes can be promoted as `run_note`
+- the scripted path still promotes `task_log`
+- finalization writes `run_summary`
 
-## Current Limitations
+## Current Limits
 
-These are current runtime facts, not future design goals:
+These are runtime facts, not future design goals:
 
-- `scripted` remains the default runtime
-- `runtime=think` plus `thinkMode=mock` remains the deterministic validation default
-- `runtime=think` plus `thinkMode=live` now proves live compile plus compiled Think task execution on the approved fixture path
-- the live proof stays fixture-scoped to the stored fixture project and committed decision package; arbitrary repo ingestion is not part of this contract
-- the compiled Think proof is still limited to the approved single independent task shape and rejects non-empty `dependsOn`
+- `scripted` remains the default execution engine
+- `think_mock` remains the deterministic Think validation path
+- `think_live` remains fixture-scoped in current demo coverage
+- compile still expects the three run planning documents to exist before execution

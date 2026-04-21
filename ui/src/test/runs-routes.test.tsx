@@ -9,7 +9,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Phase 2 runs routes", () => {
+describe("run routes", () => {
   it("redirects /runs/:runId to the run's current phase", async () => {
     const { router } = renderRoute("/runs/run-104");
 
@@ -72,7 +72,7 @@ describe("Phase 2 runs routes", () => {
     },
     {
       path: "/runs/run-104/execution-plan",
-      title: "Execution plan agent chat",
+      title: "Execution plan conversation",
       document: "Execution plan doc"
     }
   ])("renders the shared planning workspace for $path", async ({ path, title, document }) => {

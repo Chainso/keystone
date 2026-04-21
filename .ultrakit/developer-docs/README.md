@@ -4,6 +4,7 @@ Internal developer documentation for the project team. Covers architecture, runt
 
 ## Current Docs
 
+- [Target model handoff](./keystone-target-model-handoff.md)
 - [M1 architecture](./m1-architecture.md)
 - [M1 local runbook](./m1-local-runbook.md)
 - [Think runtime architecture](./think-runtime-architecture.md)

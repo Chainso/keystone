@@ -1,31 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateOutboundHttpPolicy, evaluateRepoSourcePolicy } from "../../src/lib/security/policy";
+import { evaluateOutboundHttpPolicy } from "../../src/lib/security/policy";
 
 describe("security policy", () => {
-  it("allows local path repo inputs without approval", () => {
-    expect(
-      evaluateRepoSourcePolicy({
-        source: "localPath",
-        localPath: "./fixtures/demo-target"
-      })
-    ).toMatchObject({
-      result: "allow"
-    });
-  });
-
-  it("requires approval for git url repo inputs", () => {
-    expect(
-      evaluateRepoSourcePolicy({
-        source: "gitUrl",
-        gitUrl: "https://github.com/octocat/Hello-World.git"
-      })
-    ).toMatchObject({
-      result: "require_approval",
-      approvalType: "outbound_network"
-    });
-  });
-
   it("allows the configured chat completions origin", () => {
     expect(
       evaluateOutboundHttpPolicy({

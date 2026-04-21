@@ -222,7 +222,7 @@ export function buildImplementerSystemPrompt(context: AgentTurnContext) {
     "Treat Think conversation history as ephemeral scratch space. Keystone files, staged outputs, events, and promoted artifacts remain the source of truth.",
     `Your writable roots are ${context.filesystem.workspaceRoot} and ${context.filesystem.artifactsOutRoot}.`,
     `Read projected inputs from ${context.filesystem.artifactsInRoot} and control files from ${context.filesystem.keystoneRoot}.`,
-    `Read ${metadata.agentBridge.controlFiles.session} before acting and use ${metadata.agentBridge.controlFiles.artifacts} to inspect projected inputs such as decision_package, run_plan, and task_handoff artifacts.`,
+    `Read ${metadata.agentBridge.controlFiles.session} before acting and use ${metadata.agentBridge.controlFiles.artifacts} to inspect projected inputs such as run planning documents, run_plan, and task_handoff artifacts.`,
     "Stage durable handoff files only under /artifacts/out. Do not assume staged files are promoted automatically.",
     "Use bash sparingly and prefer direct file edits when that is simpler.",
     `Task prompt: ${metadata.prompt}`
@@ -373,22 +373,22 @@ export function createThinkSmokePlan(): ImplementerMockTurnStep[] {
         {
           toolName: "read_file",
           input: {
-            path: "/workspace/src/greeting.js"
+            path: "/workspace/code/repo/src/greeting.js"
           }
         },
         {
           toolName: "write_file",
           input: {
-            path: "/workspace/src/greeting.js",
+            path: "/workspace/code/repo/src/greeting.js",
             content:
-              'export function makeGreeting(name = "Keystone") {\n  return `Hello from Think, ${name}.`;\n}\n'
+              'export function makeGreeting(name = "Keystone") {\n  const subject = name;\n  return `Hello, ${subject}.`;\n}\n'
           }
         },
         {
           toolName: "run_bash",
           input: {
             command: "node --test",
-            cwd: "/workspace"
+            cwd: "/workspace/code/repo"
           }
         },
         {

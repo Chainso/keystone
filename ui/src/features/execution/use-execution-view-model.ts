@@ -71,7 +71,7 @@ export function useTaskDetailViewModel(runId: string, taskId: string) {
               summary: "Task detail route shell.",
               diff: [
                 "+ keep task detail scoped to the selected run",
-                "+ preserve the Back to DAG handoff"
+                "+ preserve the Back to DAG link"
               ]
             },
             {

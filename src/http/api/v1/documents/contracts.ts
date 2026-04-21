@@ -5,7 +5,6 @@ import {
   buildDetailEnvelopeSchema,
   buildResourceSchema,
   isoTimestampSchema,
-  metadataSchema,
   resourceIdSchema
 } from "../common/contracts";
 import {
@@ -22,10 +21,6 @@ export const documentConversationSchema = z.object({
 });
 
 export const documentRevisionResourceSchema = buildResourceSchema("document_revision", {
-  tenantId: resourceIdSchema,
-  projectId: resourceIdSchema,
-  runId: resourceIdSchema.nullable(),
-  documentId: resourceIdSchema,
   documentRevisionId: resourceIdSchema,
   revisionNumber: z.number().int().positive(),
   title: z.string().trim().min(1),
@@ -34,9 +29,6 @@ export const documentRevisionResourceSchema = buildResourceSchema("document_revi
 });
 
 export const documentResourceSchema = buildResourceSchema("document", {
-  tenantId: resourceIdSchema,
-  projectId: resourceIdSchema,
-  runId: resourceIdSchema.nullable(),
   documentId: resourceIdSchema,
   scopeType: z.enum(documentScopeTypeValues),
   kind: z.enum(documentKindValues),
@@ -46,10 +38,7 @@ export const documentResourceSchema = buildResourceSchema("document", {
     .min(1)
     .transform((value) => validateDocumentPath(value)),
   currentRevisionId: resourceIdSchema.nullable(),
-  currentRevision: documentRevisionResourceSchema.nullable(),
   conversation: documentConversationSchema.nullable(),
-  createdAt: isoTimestampSchema,
-  updatedAt: isoTimestampSchema
 });
 
 export const documentCreateRequestSchema = z.object({
@@ -66,8 +55,7 @@ export const documentRevisionCreateRequestSchema = z.object({
   title: z.string().trim().min(1),
   body: z.string().min(1),
   contentType: z.string().trim().min(1).default("text/markdown; charset=utf-8"),
-  encoding: z.enum(["utf-8", "base64"]).optional(),
-  metadata: metadataSchema.default({})
+  encoding: z.enum(["utf-8", "base64"]).optional()
 });
 
 export const documentDetailEnvelopeSchema = buildDetailEnvelopeSchema(
@@ -89,7 +77,6 @@ export type DocumentCreateRequest = z.infer<typeof documentCreateRequestSchema>;
 export type DocumentRevisionCreateRequest = z.infer<typeof documentRevisionCreateRequestSchema>;
 
 export function serializeDocumentRevisionResource(
-  document: Pick<DocumentWithCurrentRevision, "tenantId" | "projectId" | "runId" | "documentId">,
   revision: DocumentRevisionRow
 ): DocumentRevisionResource {
   return documentRevisionResourceSchema.parse({
@@ -98,10 +85,6 @@ export function serializeDocumentRevisionResource(
       implementation: "reused",
       note: null
     },
-    tenantId: document.tenantId,
-    projectId: document.projectId,
-    runId: document.runId,
-    documentId: document.documentId,
     documentRevisionId: revision.documentRevisionId,
     revisionNumber: revision.revisionNumber,
     title: revision.title,
@@ -125,17 +108,12 @@ export function serializeDocumentResource(document: DocumentWithCurrentRevision)
     kind: document.kind,
     path: document.path,
     currentRevisionId: document.currentRevisionId,
-    currentRevision: document.currentRevision
-      ? serializeDocumentRevisionResource(document, document.currentRevision)
-      : null,
     conversation:
       document.conversationAgentClass && document.conversationAgentName
         ? {
             agentClass: document.conversationAgentClass,
             agentName: document.conversationAgentName
           }
-        : null,
-    createdAt: document.createdAt.toISOString(),
-    updatedAt: document.updatedAt.toISOString()
+        : null
   });
 }
