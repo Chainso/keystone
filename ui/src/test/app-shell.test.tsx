@@ -327,7 +327,7 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
-    expect(screen.getByText("run-104")).toBeInTheDocument();
+    expect(await screen.findByText("run-104")).toBeInTheDocument();
     expect(screen.getByText("wf-run-104")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");

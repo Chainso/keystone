@@ -2,7 +2,10 @@ import { startTransition, useEffect, useRef, useState } from "react";
 
 import type { ProjectTaskFilter } from "../../../../src/http/api/v1/projects/contracts";
 import { buildRunTaskPath } from "../../shared/navigation/run-phases";
-import { useCurrentProject, useProjectManagementApi } from "../projects/project-context";
+import {
+  useProjectManagement,
+  useProjectManagementApi
+} from "../projects/project-context";
 import type {
   ProjectTaskCollectionRecord,
   ProjectTaskRecord
@@ -42,6 +45,7 @@ const filterDefinitions: Array<{
 interface WorkstreamsSnapshot {
   errorMessage: string | null;
   page: ProjectTaskCollectionRecord | null;
+  requestKey: string | null;
   status: "loading" | "ready" | "empty" | "error";
 }
 
@@ -137,7 +141,22 @@ function formatTaskStatusLabel(value: string) {
   }
 }
 
-function resolveTaskDisplayId(logicalTaskId: string, taskId: string) {
+function buildWorkstreamSelectionKey(
+  projectId: string | null,
+  filterId: WorkstreamFilterId
+) {
+  return projectId ? `${projectId}:${filterId}` : null;
+}
+
+function buildWorkstreamRequestKey(
+  projectId: string,
+  filterId: WorkstreamFilterId,
+  page: number
+) {
+  return `${projectId}:${filterId}:${page}`;
+}
+
+export function resolveTaskDisplayId(logicalTaskId: string, taskId: string) {
   return logicalTaskId.trim().length > 0 ? logicalTaskId : taskId;
 }
 
@@ -160,7 +179,7 @@ function buildRangeLabel(page: ProjectTaskCollectionRecord | null) {
   return `Showing ${rangeStart}-${rangeEnd} of ${page.total} tasks`;
 }
 
-function buildEmptyState(
+export function buildEmptyState(
   filterId: WorkstreamFilterId,
   projectName: string
 ): WorkstreamsContentState {
@@ -191,28 +210,55 @@ function buildEmptyState(
 
 export function useWorkstreamsViewModel(): WorkstreamsViewModel {
   const api = useProjectManagementApi();
-  const currentProject = useCurrentProject();
+  const projectManagement = useProjectManagement();
+  const currentProject = projectManagement.state.currentProject;
   const requestIdRef = useRef(0);
   const [activeFilterId, setActiveFilterId] = useState<WorkstreamFilterId>(defaultFilterId);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [paginationState, setPaginationState] = useState<{
+    page: number;
+    selectionKey: string | null;
+  }>({
+    page: 1,
+    selectionKey: null
+  });
   const [snapshot, setSnapshot] = useState<WorkstreamsSnapshot>({
     errorMessage: null,
     page: null,
+    requestKey: null,
     status: "loading"
   });
+  const selectionKey = buildWorkstreamSelectionKey(currentProject?.projectId ?? null, activeFilterId);
+  const currentPage = paginationState.selectionKey === selectionKey ? paginationState.page : 1;
+  const currentRequestKey = currentProject
+    ? buildWorkstreamRequestKey(currentProject.projectId, activeFilterId, currentPage)
+    : null;
+  const isSnapshotCurrent = currentRequestKey !== null && snapshot.requestKey === currentRequestKey;
+  const visiblePage = isSnapshotCurrent ? snapshot.page : null;
+  const visibleStatus =
+    currentProject === null
+      ? projectManagement.meta.status === "error"
+        ? "error"
+        : projectManagement.meta.status === "empty"
+          ? "empty"
+          : "loading"
+      : isSnapshotCurrent
+        ? snapshot.status
+        : "loading";
 
-  function loadWorkstreams(page = currentPage, filter = activeFilterId) {
+  function loadWorkstreams(projectId: string, page = currentPage, filter = activeFilterId) {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
+    const requestKey = buildWorkstreamRequestKey(projectId, filter, page);
 
     setSnapshot({
       errorMessage: null,
       page: null,
+      requestKey,
       status: "loading"
     });
 
     void api
-      .listProjectTasks(currentProject.projectId, {
+      .listProjectTasks(projectId, {
         filter,
         page,
         pageSize
@@ -225,6 +271,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         setSnapshot({
           errorMessage: null,
           page: nextPage,
+          requestKey,
           status: nextPage.total === 0 ? "empty" : "ready"
         });
       })
@@ -236,24 +283,23 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         setSnapshot({
           errorMessage: getErrorMessage(error),
           page: null,
+          requestKey,
           status: "error"
         });
       });
   }
 
   useEffect(() => {
-    loadWorkstreams();
-  }, [api, currentProject.projectId, activeFilterId, currentPage]);
+    if (!currentProject) {
+      return;
+    }
 
-  useEffect(() => {
-    startTransition(() => {
-      setCurrentPage(1);
-    });
-  }, [currentProject.projectId]);
+    loadWorkstreams(currentProject.projectId, currentPage, activeFilterId);
+  }, [api, currentProject?.projectId, activeFilterId, currentPage]);
 
   const currentFilter =
     filterDefinitions.find((filter) => filter.filterId === activeFilterId) ?? filterDefinitions[0]!;
-  const rows = (snapshot.page?.items ?? []).map((task) => ({
+  const rows = (visiblePage?.items ?? []).map((task) => ({
     detailPath: buildRunTaskPath(task.runId, task.taskId),
     rowId: `${task.runId}-${task.taskId}`,
     runDisplayId: task.runId,
@@ -263,21 +309,32 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
     updatedLabel: formatTaskUpdatedLabel(task)
   }));
   const contentState =
-    snapshot.status === "loading"
+    visibleStatus === "loading"
       ? ({
           heading: "Loading workstreams",
           kind: "loading",
-          message: `Keystone is loading project tasks for ${currentProject.displayName}.`
+          message: currentProject
+            ? `Keystone is loading project tasks for ${currentProject.displayName}.`
+            : "Keystone is loading project tasks."
         } satisfies WorkstreamsContentState)
-      : snapshot.status === "error"
+      : visibleStatus === "error"
         ? ({
             actionLabel: "Retry",
             heading: "Unable to load workstreams",
             kind: "error",
-            message: snapshot.errorMessage ?? "Keystone could not load project tasks."
+            message:
+              snapshot.errorMessage ??
+              projectManagement.meta.errorMessage ??
+              "Keystone could not load project tasks."
           } satisfies WorkstreamsContentState)
-        : snapshot.status === "empty"
-          ? buildEmptyState(activeFilterId, currentProject.displayName)
+        : visibleStatus === "empty"
+          ? currentProject
+            ? buildEmptyState(activeFilterId, currentProject.displayName)
+            : ({
+                heading: "No projects yet",
+                kind: "empty",
+                message: "Create a project to start tracking workstreams."
+              } satisfies WorkstreamsContentState)
           : undefined;
 
   return {
@@ -288,12 +345,15 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       label: filter.label
     })),
     goToNextPage() {
-      if (!snapshot.page || currentPage >= snapshot.page.pageCount) {
+      if (!visiblePage || currentPage >= visiblePage.pageCount) {
         return;
       }
 
       startTransition(() => {
-        setCurrentPage((page) => page + 1);
+        setPaginationState({
+          page: currentPage + 1,
+          selectionKey
+        });
       });
     },
     goToPreviousPage() {
@@ -302,24 +362,35 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       }
 
       startTransition(() => {
-        setCurrentPage((page) => page - 1);
+        setPaginationState({
+          page: currentPage - 1,
+          selectionKey
+        });
       });
     },
     pagination: {
       currentPage,
-      hasNextPage: snapshot.page ? currentPage < snapshot.page.pageCount : false,
+      hasNextPage: visiblePage ? currentPage < visiblePage.pageCount : false,
       hasPreviousPage: currentPage > 1,
-      pageCount: snapshot.page?.pageCount ?? 1,
-      rangeLabel: buildRangeLabel(snapshot.page)
+      pageCount: visiblePage?.pageCount ?? 1,
+      rangeLabel: buildRangeLabel(visiblePage)
     },
     retry() {
-      loadWorkstreams();
+      if (currentProject) {
+        loadWorkstreams(currentProject.projectId, currentPage, activeFilterId);
+        return;
+      }
+
+      void projectManagement.actions.reloadProjects();
     },
     rows,
     setActiveFilter(filterId) {
       startTransition(() => {
         setActiveFilterId(filterId);
-        setCurrentPage(1);
+        setPaginationState({
+          page: 1,
+          selectionKey: buildWorkstreamSelectionKey(currentProject?.projectId ?? null, filterId)
+        });
       });
     },
     title: "Active and queued project work"
