@@ -167,6 +167,11 @@ Compatibility that **is** required:
   **Decision:** Treat `Execution` as available only when live workflow graph data exists, not merely when `run.compiledFrom` is present.
   **Rationale:** The workflow route is the truthful source for whether execution content exists. Gating default redirects and the stepper on `workflow.summary.totalTasks > 0` keeps `/runs/:runId` honest for runs that have provenance metadata but no compiled task graph yet.
 
+- **Date:** 2026-04-21
+  **Phase:** Phase 4 fix pass
+  **Decision:** Close the targeted review findings with explicit UI coverage for repeated `+ New run` activation during an in-flight create request and for `/runs/:runId` redirecting a truly brand-new zero-document run to `Specification`.
+  **Rationale:** The Phase 4 implementation already enforced the correct single-flight and first-incomplete-phase behavior, but review noted that neither branch was proven directly. The existing browser-backed app-shell tests and static route fixtures could cover both cases without widening product scope.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the run routes, current UI architecture, backend run/document/task/artifact contracts, the active design markdown files, and the relevant completed plans.
@@ -193,6 +198,7 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Phase 3 completed: added live planning empty/editor/viewer states, wired run document create/save mutations through the run-detail seam, updated the planning route tests for create/save/discard behavior across all three planning pages, updated `.ultrakit/developer-docs/m1-architecture.md` for the new live authoring boundary, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
 - [x] 2026-04-20 Phase 3 fix pass completed: made planning-document create/save mutations single-flight to block rapid repeat POSTs, reloaded authoritative planning-document state when create returned `document_path_conflict`, added focused route coverage for duplicate activation plus explicit `architecture` and `execution-plan` revision loads, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
 - [x] 2026-04-20 Phase 4 completed: wired `+ New run` through the live run API, added single-flight create-run mutation state on the runs index, routed successful creates directly into the new run's live `Specification` page without seeding planning documents, tightened `/runs/:runId` plus the phase stepper to require compiled workflow graph data before enabling `Execution`, updated `.ultrakit/developer-docs/m1-architecture.md`, and passed `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`.
+- [x] 2026-04-21 Phase 4 fix pass completed: added explicit app-shell coverage that repeated `+ New run` activation reuses the in-flight create request, added route coverage that a brand-new run with zero planning documents redirects from `/runs/:runId` to `/runs/:runId/specification`, reran `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`, and closed the remaining Phase 4 review findings.
 
 ## Surprises & Discoveries
 
@@ -681,9 +687,9 @@ Update `Progress`, `Execution Log`, and `Surprises & Discoveries`.
 
 **Status:** Completed
 
-**Completion Notes:** Added `createRun()` to the run-owned browser/static API seam, updated the runs-index view model and route so `+ New run` is a real single-flight mutation with visible pending/error state, routed successful creates directly to `/runs/:runId/specification` so the Phase 3 empty/editor flow handles brand-new runs without seeded planning documents, tightened the default-phase helper and phase stepper to require compiled workflow graph data before enabling `Execution`, updated focused browser/route coverage in `ui/src/test/app-shell.test.tsx` and `ui/src/test/runs-routes.test.tsx`, and refreshed `.ultrakit/developer-docs/m1-architecture.md` to record that live run creation is now shipped. Validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`.
+**Completion Notes:** Added `createRun()` to the run-owned browser/static API seam, updated the runs-index view model and route so `+ New run` is a real single-flight mutation with visible pending/error state, routed successful creates directly to `/runs/:runId/specification` so the Phase 3 empty/editor flow handles brand-new runs without seeded planning documents, tightened the default-phase helper and phase stepper to require compiled workflow graph data before enabling `Execution`, updated focused browser/route coverage in `ui/src/test/app-shell.test.tsx` and `ui/src/test/runs-routes.test.tsx`, and refreshed `.ultrakit/developer-docs/m1-architecture.md` to record that live run creation is now shipped. The targeted fix pass then added explicit coverage that repeated `+ New run` activation reuses the in-flight create request and that a truly brand-new zero-document run redirects through the first-incomplete-phase branch to `Specification`. Validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`.
 
-**Next Starter Context:** Phase 5 can assume new runs now arrive on the live `Specification` page with no seeded planning content, and that `/runs/:runId` plus the phase stepper only expose `Execution` when workflow graph data exists. The remaining execution cutover should therefore focus on explicit compile gating, post-compile refresh/routing, and richer task review behavior rather than reopening create-run or default-navigation ownership.
+**Next Starter Context:** Phase 5 can assume new runs now arrive on the live `Specification` page with no seeded planning content, that repeated `+ New run` activation stays single-flight while the create request is pending, and that `/runs/:runId` plus the phase stepper only expose `Execution` when workflow graph data exists. The remaining execution cutover should therefore focus on explicit compile gating, post-compile refresh/routing, and richer task review behavior rather than reopening create-run or default-navigation ownership.
 
 ## Phase 5: Compile Action And Live Execution Review
 

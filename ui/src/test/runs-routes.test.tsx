@@ -880,6 +880,17 @@ describe("Run routes", () => {
     expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
   });
 
+  it("redirects a brand-new run with no planning documents to specification", async () => {
+    const { router } = renderRunRoute("/runs/run-106");
+
+    expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-106/specification");
+    });
+
+    expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
+  });
+
   it("renders the loading state before the live run provider resolves", async () => {
     const deferredRun = createDeferred<StaticRunDetailRecord["run"]>();
     const runApi = createRunApi({

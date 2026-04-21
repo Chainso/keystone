@@ -682,6 +682,60 @@ describe("App shell", () => {
     );
   });
 
+  it("reuses the in-flight create-run request when + New run is activated again before completion", async () => {
+    const project: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const createdRun = createLiveRunFixture(project.projectId, {
+      runId: "run-202",
+      startedAt: null,
+      status: "configured",
+      workflowInstanceId: "wf-run-202"
+    });
+    const deferredCreateResponse = createDeferredResponse();
+    const { createRunBodies, fetchMock } = stubRunCreationFetch({
+      createRunResponses: [() => deferredCreateResponse.promise],
+      knownRunsById: {
+        [createdRun.runId]: createdRun
+      },
+      project
+    });
+    const { router } = renderRoute("/runs", { useBrowserProjectApi: true });
+
+    const createButton = await screen.findByRole("button", { name: "+ New run" });
+
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+
+    expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
+    expect(createRunBodies).toEqual([{ executionEngine: "scripted" }]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/v1/projects/${project.projectId}/runs`,
+      expect.objectContaining({
+        body: JSON.stringify({ executionEngine: "scripted" }),
+        method: "POST"
+      })
+    );
+    expect(
+      fetchMock.mock.calls.filter(([url, init]) => {
+        const requestUrl = typeof url === "string" ? url : url.toString();
+        const method = url instanceof Request ? url.method : init?.method ?? "GET";
+
+        return requestUrl === `/v1/projects/${project.projectId}/runs` && method === "POST";
+      })
+    ).toHaveLength(1);
+
+    deferredCreateResponse.resolve(createJsonResponse(buildRunDetailResponse(createdRun), 201));
+
+    expect(await screen.findByRole("heading", { name: "run-202" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-202/specification");
+    });
+  });
+
   it("surfaces create-run failures on the index and restores the button state", async () => {
     const project: CurrentProject = {
       projectId: "project-keystone-cloudflare",
