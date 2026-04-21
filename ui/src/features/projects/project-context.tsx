@@ -60,6 +60,7 @@ interface ProjectManagementSnapshot {
 }
 
 interface LoadProjectsOptions {
+  fallbackProject?: CurrentProject | undefined;
   preserveStatus?: boolean;
   preferredProjectId?: string | null;
 }
@@ -146,6 +147,23 @@ function buildProvidedSnapshot(project: CurrentProject): ProjectManagementSnapsh
   };
 }
 
+function upsertProjectRecord(
+  projects: CurrentProject[],
+  project: CurrentProject
+) {
+  const existingProjectIndex = projects.findIndex(
+    (candidate) => candidate.projectId === project.projectId
+  );
+
+  if (existingProjectIndex === -1) {
+    return [...projects, project];
+  }
+
+  return projects.map((candidate, index) =>
+    index === existingProjectIndex ? project : candidate
+  );
+}
+
 function ProjectManagementCompatibilityProvider({
   children,
   currentProjectId,
@@ -230,6 +248,21 @@ export function CurrentProjectProvider({
         return;
       }
 
+      if (options.fallbackProject) {
+        const fallbackProject = options.fallbackProject;
+
+        selectedProjectIdRef.current = fallbackProject.projectId;
+        writeStoredProjectId(fallbackProject.projectId);
+        setSnapshot((current) => ({
+          currentProjectId: fallbackProject.projectId,
+          errorMessage: null,
+          projects: upsertProjectRecord(current.projects, fallbackProject),
+          status: "ready"
+        }));
+
+        return;
+      }
+
       selectedProjectIdRef.current = null;
       setSnapshot({
         currentProjectId: null,
@@ -262,6 +295,7 @@ export function CurrentProjectProvider({
         const createdProject = await api.createProject(config);
         selectedProjectIdRef.current = createdProject.projectId;
         await loadProjects({
+          fallbackProject: createdProject,
           preferredProjectId: createdProject.projectId,
           preserveStatus: true
         });

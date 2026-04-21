@@ -169,6 +169,11 @@ Compatibility that **is** required:
   **Decision:** Build `New project` around a route-scoped draft provider plus shared form primitives, while keeping the actual create/list-refresh/switch-current-project mutation in the existing project-management provider seam.  
   **Rationale:** The create form needed persistent tab-to-tab draft state and canonical contract validation without pulling settings loading forward. A route-scoped draft provider kept the new-project semantics explicit, while reusing the existing live project provider for the real `POST /v1/projects` and refreshed current-project selection flow.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 3 Fix Pass  
+  **Decision:** Treat the `POST /v1/projects` detail response as authoritative if the immediate follow-up list refresh fails, and keep the newly created project selected in shell state instead of downgrading the entire flow into a retryable error.  
+  **Rationale:** The review round found that a transient refresh failure after a successful create could strand the operator on a false failure path and encourage duplicate submission. Falling back to the created project record keeps the UI honest without pulling settings or broader recovery work into this phase.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -209,6 +214,9 @@ Compatibility that **is** required:
   - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now support `POST /v1/projects` plus the required list refresh before switching the current project.
   - [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-component-card.tsx) and [ui/src/shared/forms/](../../ui/src/shared/forms/) now expose real editable overview, components, rules, and environment controls with honest field/list component names instead of `placeholder-*`.
   - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now covers live create success, validation failures, and the post-create `/runs` landing flow.
+- [x] 2026-04-20 Phase 3 targeted fix pass completed:
+  - [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now falls back to the project returned by `POST /v1/projects` when the immediate list refresh fails, preserving the new current-project selection instead of dropping the shell into an error state.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now proves the POST-success/refresh-failure recovery path, adds explicit required-project-key validation coverage, and exercises the new-project add/remove instruction controls directly.
 
 ## Surprises & Discoveries
 
@@ -232,6 +240,7 @@ Compatibility that **is** required:
 - Phase 2 did not need a deeper `ResourceModelProvider` rewrite after all. Using `useCurrentProject()` plus direct dataset membership checks in Documentation and Workstreams was enough to detect non-scaffold selections honestly without changing the scaffold provider contract again.
 - The first Phase 2 Workstreams empty-state branch was too coarse: treating every zero-row result like a global empty state accidentally hid the filter controls for filter-specific zero results. Keeping the filters outside that branch fixed the regression without changing the Workstreams view-model contract.
 - The canonical `ProjectConfig` schema treats `description` as nullable at the storage boundary but still rejects blank strings, so the create form has to keep description explicitly required instead of auto-normalizing empty input to `null`.
+- A successful create cannot rely on an immediate `/v1/projects` refresh being available. The `POST /v1/projects` detail response has to remain a trustworthy fallback source for current-project state or the UI can falsely look like the create failed and invite a duplicate retry.
 
 ## Outcomes & Retrospective
 
@@ -277,6 +286,12 @@ Phase 3 outcome on 2026-04-20:
 - Successful create now posts the canonical `ProjectConfig` payload shape, refreshes the live project list, switches the current project, and lands the operator on the new project's `Runs` state.
 - The shared project-form surface now uses honest `form-*` and `text-list-*` primitives instead of `placeholder-*`, while `Project settings` remains scaffold-backed and explicitly out of Phase 3's save/load scope.
 - The focused destination test command passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and the required repo `rtk npm run typecheck` command still fails only in the unrelated worker-binding test already recorded from earlier phases.
+
+Phase 3 targeted fix pass outcome on 2026-04-20:
+
+- The create flow now keeps the newly created project selected and routeable even if the immediate project-list refresh fails after `POST /v1/projects`.
+- The focused create-flow tests now cover the reviewer-called blind spots: refresh-failure recovery, required-project-key validation, and direct add/remove behavior for the list-editing controls.
+- The focused validation picture is unchanged aside from the new passing tests: `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and `rtk npm run typecheck` still fails only in the unrelated worker-binding test.
 
 ## Context and Orientation
 
@@ -784,6 +799,8 @@ Completed on 2026-04-20.
 - Added a route-scoped [ui/src/features/projects/new-project-context.tsx](../../ui/src/features/projects/new-project-context.tsx) provider for persistent new-project draft state, canonical client validation, and explicit cancel/create handlers.
 - Added `createProject()` support to the shared project-management seam so successful create requests refresh `/v1/projects` before selecting the new project and routing to `/runs`.
 - Replaced the `placeholder-*` shared form layer with [ui/src/shared/forms/form-field.tsx](../../ui/src/shared/forms/form-field.tsx) and [ui/src/shared/forms/text-list-field.tsx](../../ui/src/shared/forms/text-list-field.tsx), then rewired the project tabs and component cards around those real controls.
+- The targeted fix pass now keeps the project returned by `POST /v1/projects` selected if the follow-up refresh fails, so the create flow does not devolve into a duplicate-submit trap.
+- The targeted fix pass also extended focused create-flow coverage for refresh-failure recovery, required-project-key validation, and the add/remove instruction controls.
 - Validation results for this phase:
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` passes.
   - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes.
@@ -791,7 +808,8 @@ Completed on 2026-04-20.
 
 #### Next Starter Context
 
-- Phase 4 can reuse the new shared project-form/view-model surface, but it still needs a real settings seed from `GET /v1/projects/:projectId`, an explicit `PATCH` save action, and current-project summary refresh after save.
+- Phase 4 can reuse the new shared project-form/view-model surface, and it can assume create already preserves the POST-returned project if the follow-up list refresh fails.
+- Phase 4 still needs a real settings seed from `GET /v1/projects/:projectId`, an explicit `PATCH` save action, and current-project summary refresh after save.
 
 ## Phase 4: Real Project Settings Flow
 

@@ -18,6 +18,7 @@ const scaffoldProject: CurrentProject = {
   displayName: "Keystone Cloudflare",
   description: "Internal operator workspace for the Keystone Cloudflare project."
 };
+type ResponseFactory = () => Promise<Response> | Response;
 
 afterEach(() => {
   cleanup();
@@ -218,6 +219,7 @@ function stubProjectCreateFlowFetch(input: {
   };
   initialProjects?: CurrentProject[];
   refreshedProjects?: CurrentProject[];
+  refreshedProjectsResponse?: ResponseFactory;
 }) {
   const postedBodies: unknown[] = [];
   let projectListCallIndex = 0;
@@ -237,10 +239,14 @@ function stubProjectCreateFlowFetch(input: {
     const method = request instanceof Request ? request.method : init?.method ?? "GET";
 
     if (url === "/v1/projects" && method === "GET") {
-      const projects = projectListCallIndex === 0 ? initialProjects : refreshedProjects;
+      const responseFactory =
+        projectListCallIndex === 0
+          ? () => createJsonResponse(buildProjectsResponse(initialProjects))
+          : input.refreshedProjectsResponse ??
+            (() => createJsonResponse(buildProjectsResponse(refreshedProjects)));
       projectListCallIndex += 1;
 
-      return createJsonResponse(buildProjectsResponse(projects));
+      return await responseFactory();
     }
 
     if (url === "/v1/projects" && method === "POST") {
@@ -683,6 +689,57 @@ describe("Destination scaffolds", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the project rule add/remove list controls usable", async () => {
+    renderRoute("/projects/new/rules");
+
+    expect(await screen.findByRole("heading", { name: "Rules" })).toBeInTheDocument();
+
+    const reviewFieldset = screen.getByRole("group", {
+      name: "Project review instructions"
+    });
+    const testFieldset = screen.getByRole("group", {
+      name: "Project test instructions"
+    });
+
+    fireEvent.click(within(reviewFieldset).getByRole("button", { name: "Add review instruction" }));
+    fireEvent.click(within(testFieldset).getByRole("button", { name: "Add test instruction" }));
+
+    const newReviewInstruction = within(reviewFieldset).getByRole("textbox", {
+      name: "Project review instructions 3"
+    });
+    const newTestInstruction = within(testFieldset).getByRole("textbox", {
+      name: "Project test instructions 3"
+    });
+
+    fireEvent.change(newReviewInstruction, {
+      target: {
+        value: "Review the newly added instruction."
+      }
+    });
+    fireEvent.change(newTestInstruction, {
+      target: {
+        value: "Run the newly added test instruction."
+      }
+    });
+
+    expect(newReviewInstruction).toHaveValue("Review the newly added instruction.");
+    expect(newTestInstruction).toHaveValue("Run the newly added test instruction.");
+
+    fireEvent.click(within(reviewFieldset).getAllByRole("button", { name: "Remove" }).at(-1)!);
+    fireEvent.click(within(testFieldset).getAllByRole("button", { name: "Remove" }).at(-1)!);
+
+    expect(
+      within(reviewFieldset).queryByRole("textbox", {
+        name: "Project review instructions 3"
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      within(testFieldset).queryByRole("textbox", {
+        name: "Project test instructions 3"
+      })
+    ).not.toBeInTheDocument();
+  });
+
   it("shows overview validation errors before posting the new project", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -705,6 +762,11 @@ describe("Destination scaffolds", () => {
         value: ""
       }
     });
+    fireEvent.change(screen.getByRole("textbox", { name: "Project key" }), {
+      target: {
+        value: ""
+      }
+    });
     fireEvent.change(screen.getByRole("textbox", { name: "Description" }), {
       target: {
         value: ""
@@ -714,6 +776,7 @@ describe("Destination scaffolds", () => {
 
     expect(await screen.findByText("Fix the validation errors before creating the project.")).toBeInTheDocument();
     expect(screen.getByText("Project name is required.")).toBeInTheDocument();
+    expect(screen.getByText("Project key is required.")).toBeInTheDocument();
     expect(screen.getByText("Description is required.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(router.state.location.pathname).toBe("/projects/new/overview");
@@ -879,6 +942,110 @@ describe("Destination scaffolds", () => {
         envVars: createdProject.envVars
       }
     ]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps the created project selected when the list refresh after POST fails", async () => {
+    const createdProject = {
+      components: [
+        {
+          componentKey: "operator-console",
+          config: {
+            gitUrl: "https://github.com/keystone/operator-console.git",
+            ref: "main"
+          },
+          displayName: "Operator Console",
+          kind: "git_repository" as const
+        }
+      ],
+      description: "Live operator workspace for the Operator Console.",
+      displayName: "Operator Console",
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        },
+        {
+          name: "KEYSTONE_CHAT_COMPLETIONS_BASE_URL",
+          value: "http://localhost:10531"
+        },
+        {
+          name: "KEYSTONE_CHAT_COMPLETIONS_MODEL",
+          value: "gpt-5.4-mini"
+        }
+      ],
+      projectId: "project-operator-console",
+      projectKey: "operator-console",
+      ruleSet: {
+        reviewInstructions: ["Review the operator console boundaries."],
+        testInstructions: ["Run the operator console smoke test."]
+      }
+    };
+    const { fetchMock, postedBodies } = stubProjectCreateFlowFetch({
+      createdProject,
+      refreshedProjectsResponse: () =>
+        createJsonResponse(
+          {
+            error: {
+              code: "request_failed",
+              message: "Unable to load projects (503).",
+              details: null
+            }
+          },
+          503
+        )
+    });
+    const { router } = renderRoute("/projects/new/overview", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
+      target: {
+        value: createdProject.displayName
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Project key" }), {
+      target: {
+        value: createdProject.projectKey
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Description" }), {
+      target: {
+        value: createdProject.description
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Components" }));
+    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add component" }));
+    fireEvent.click(screen.getByRole("button", { name: "Git repository" }));
+
+    const newComponentCard = getComponentCard("Component 1");
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Name" }), {
+      target: {
+        value: createdProject.components[0]!.displayName
+      }
+    });
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Key" }), {
+      target: {
+        value: createdProject.components[0]!.componentKey
+      }
+    });
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Git URL" }), {
+      target: {
+        value: createdProject.components[0]!.config.gitUrl
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs");
+    });
+    expect(screen.getByRole("button", { name: /Operator Console/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Unable to load projects" })).not.toBeInTheDocument();
+    expect(postedBodies).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
