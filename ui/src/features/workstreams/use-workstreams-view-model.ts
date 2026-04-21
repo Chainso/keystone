@@ -1,10 +1,12 @@
 import { useState } from "react";
 
-import { useCurrentResourceProject, useResourceModel } from "../resource-model/context";
+import { useResourceModel } from "../resource-model/context";
 import {
+  getProject,
   listProjectWorkstreamTasks,
   type WorkstreamTaskSummary
 } from "../resource-model/selectors";
+import { useCurrentProject } from "../projects/project-context";
 
 export type WorkstreamFilterId = "all" | "running" | "queued" | "blocked";
 
@@ -60,6 +62,10 @@ export interface WorkstreamsPaginationViewModel {
 }
 
 export interface WorkstreamsViewModel {
+  compatibilityState?: {
+    heading: string;
+    message: string;
+  };
   title: string;
   filters: WorkstreamFilterViewModel[];
   rows: WorkstreamRowViewModel[];
@@ -72,12 +78,33 @@ function isVisibleWorkstream(row: WorkstreamTaskSummary) {
 }
 
 export function useWorkstreamsViewModel(): WorkstreamsViewModel {
-  const currentProject = useCurrentResourceProject();
+  const currentProject = useCurrentProject();
   const { state } = useResourceModel();
   const [activeFilterId, setActiveFilterId] = useState<WorkstreamFilterId>("all");
+  const scaffoldProject = getProject(currentProject.projectId, state.dataset);
 
   const activeFilter =
     filterDefinitions.find((filter) => filter.filterId === activeFilterId) ?? filterDefinitions[0]!;
+
+  if (!scaffoldProject) {
+    return {
+      compatibilityState: {
+        heading: "Workstreams are not available for this project yet",
+        message:
+          "Project workstreams still depend on scaffold-backed task data. Switch to a scaffold-backed project to use this screen."
+      },
+      title: "Active and queued project work",
+      filters: [],
+      rows: [],
+      pagination: {
+        currentPage: 1,
+        pageCount: 1,
+        rangeLabel: "Showing 0 of 0 tasks"
+      },
+      setActiveFilter() {}
+    };
+  }
+
   const projectRows = listProjectWorkstreamTasks(currentProject.projectId, state.dataset).filter(
     isVisibleWorkstream
   );

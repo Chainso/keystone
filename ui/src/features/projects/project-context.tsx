@@ -58,6 +58,7 @@ interface ProjectManagementSnapshot {
 }
 
 const browserProjectManagementApi = createBrowserProjectManagementApi();
+const ProjectManagementApiContext = createContext<ProjectManagementApi | null>(null);
 const ProjectManagementContext = createContext<ProjectManagementValue | null>(null);
 const scaffoldProject = selectCurrentProjectSummary();
 
@@ -279,14 +280,16 @@ export function CurrentProjectProvider({
   };
 
   return (
-    <ProjectManagementContext.Provider value={value}>
-      <ProjectManagementCompatibilityProvider
-        currentProjectId={value.state.currentProjectId}
-        {...(project ? { providedProject: project } : {})}
-      >
-        {children}
-      </ProjectManagementCompatibilityProvider>
-    </ProjectManagementContext.Provider>
+    <ProjectManagementApiContext.Provider value={api}>
+      <ProjectManagementContext.Provider value={value}>
+        <ProjectManagementCompatibilityProvider
+          currentProjectId={value.state.currentProjectId}
+          {...(project ? { providedProject: project } : {})}
+        >
+          {children}
+        </ProjectManagementCompatibilityProvider>
+      </ProjectManagementContext.Provider>
+    </ProjectManagementApiContext.Provider>
   );
 }
 
@@ -295,6 +298,16 @@ export function useProjectManagement() {
 
   if (!value) {
     throw new Error("useProjectManagement must be used within CurrentProjectProvider.");
+  }
+
+  return value;
+}
+
+export function useProjectManagementApi() {
+  const value = useContext(ProjectManagementApiContext);
+
+  if (!value) {
+    throw new Error("useProjectManagementApi must be used within CurrentProjectProvider.");
   }
 
   return value;

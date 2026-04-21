@@ -1,9 +1,11 @@
 import { useState } from "react";
 
 import {
+  getProject,
   getProjectDocumentationSelection
 } from "../resource-model/selectors";
 import { useResourceModel } from "../resource-model/context";
+import { useCurrentProject } from "../projects/project-context";
 
 export interface DocumentationTreeDocument {
   documentId: string;
@@ -28,23 +30,53 @@ export interface DocumentationSelectedDocument {
 }
 
 export interface DocumentationViewModel {
+  compatibilityState?: {
+    heading: string;
+    message: string;
+  };
   title: string;
   groups: DocumentationTreeGroup[];
-  selectedDocument: DocumentationSelectedDocument;
+  selectedDocument: DocumentationSelectedDocument | null;
   selectDocument: (documentId: string) => void;
 }
 
 export function useDocumentationViewModel(): DocumentationViewModel {
   const { state } = useResourceModel();
+  const project = useCurrentProject();
   const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
+  const scaffoldProject = getProject(project.projectId, state.dataset);
+
+  if (!scaffoldProject) {
+    return {
+      compatibilityState: {
+        heading: "Documentation is not available for this project yet",
+        message:
+          "Project documentation still depends on scaffold-backed data. Switch to a scaffold-backed project to use this screen."
+      },
+      title: "Project documentation",
+      groups: [],
+      selectedDocument: null,
+      selectDocument() {}
+    };
+  }
+
   const selection = getProjectDocumentationSelection(
-    state.currentProjectId,
+    project.projectId,
     selectedDocumentId,
     state.dataset
   );
 
   if (!selection) {
-    throw new Error(`Project "${state.currentProjectId}" is missing documentation scaffold data.`);
+    return {
+      compatibilityState: {
+        heading: "No project documentation yet",
+        message: `${project.displayName} does not have any project-scoped documentation in the scaffold dataset yet.`
+      },
+      title: "Project documentation",
+      groups: [],
+      selectedDocument: null,
+      selectDocument() {}
+    };
   }
 
   return {

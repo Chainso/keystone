@@ -1,12 +1,21 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
+import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { renderRoute } from "./render-route";
+import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
+
+const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  window.localStorage.clear();
 });
 
 function getComponentCard(name: string) {
@@ -63,6 +72,48 @@ function expectWorkstreamRows(expectedRows: string[][]) {
 
 function expectWorkstreamLink(taskDisplayId: string, href: string) {
   expect(screen.getByRole("link", { name: taskDisplayId })).toHaveAttribute("href", href);
+}
+
+function buildProjectsResponse(projects: CurrentProject[]) {
+  return {
+    data: {
+      items: projects.map((project) =>
+        serializeProjectListItem({
+          projectId: project.projectId,
+          projectKey: project.projectKey,
+          displayName: project.displayName,
+          description: project.description || null,
+          createdAt: defaultTimestamp,
+          updatedAt: defaultTimestamp
+        })
+      ),
+      total: projects.length
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "project" as const
+    }
+  };
+}
+
+function stubProjectListFetch(projects: CurrentProject[]) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+
+    if (url !== "/v1/projects") {
+      throw new Error(`Unexpected fetch request: ${url}`);
+    }
+
+    return new Response(JSON.stringify(buildProjectsResponse(projects)), {
+      status: 200,
+      headers: {
+        "content-type": "application/json"
+      }
+    });
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
 }
 
 describe("Destination scaffolds", () => {
@@ -143,6 +194,37 @@ describe("Destination scaffolds", () => {
     ).toHaveLength(1);
   });
 
+  it("renders a compatibility state for documentation on a non-scaffold live project", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+
+    window.localStorage.setItem(currentProjectStorageKey, "project-alt");
+    stubProjectListFetch(projects);
+
+    renderRoute("/documentation", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Documentation is not available for this project yet" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Project documentation still depends on scaffold-backed data\./i)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Documentation tree")).not.toBeInTheDocument();
+  });
+
   it("renders the canonical workstreams rows and filters them without the removed right rail", async () => {
     renderRoute("/workstreams");
 
@@ -186,6 +268,39 @@ describe("Destination scaffolds", () => {
       ["TASK-021", "Documentation curation", "Run-103", "Running", "9m ago"],
       ["TASK-019", "Blocked task visibility", "Run-101", "Blocked", "1h ago"]
     ]);
+  });
+
+  it("renders a compatibility state for workstreams on a non-scaffold live project", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+
+    window.localStorage.setItem(currentProjectStorageKey, "project-alt");
+    stubProjectListFetch(projects);
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(
+      await screen.findByRole("heading", { name: "Active and queued project work" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Workstreams are not available for this project yet" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Project workstreams still depend on scaffold-backed task data\./i)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("opens a workstream task when the user clicks the row body", async () => {
@@ -256,7 +371,7 @@ describe("Destination scaffolds", () => {
 
     const projectTabs = screen.getByRole("navigation", { name: "Project configuration tabs" });
 
-    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Keystone Cloudflare");
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue("Keystone Cloudflare");
     expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("keystone-cloudflare");
     expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
       "Internal operator workspace for the Keystone Cloudflare project."

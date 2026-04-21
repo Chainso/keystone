@@ -9,6 +9,24 @@ import { serializeProjectListItem } from "../../../src/http/api/v1/projects/cont
 
 const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
 
+interface LiveRunFixture {
+  compiledFrom: {
+    specificationRevisionId: string;
+    architectureRevisionId: string;
+    executionPlanRevisionId: string;
+    compiledAt: string;
+  } | null;
+  endedAt: string | null;
+  executionEngine: "scripted" | "think_mock" | "think_live";
+  projectId: string;
+  runId: string;
+  startedAt: string | null;
+  status: string;
+  workflowInstanceId: string;
+}
+
+type ResponseFactory = () => Promise<Response> | Response;
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -45,29 +63,59 @@ function buildProjectsResponse(projects: CurrentProject[]) {
   };
 }
 
-function stubProjectListFetch(projects: CurrentProject[]) {
-  return stubProjectListFetchSequence([
-    () =>
-      new Response(JSON.stringify(buildProjectsResponse(projects)), {
-        status: 200,
-        headers: {
-          "content-type": "application/json"
-        }
-      })
-  ]);
+function buildRunsResponse(runs: LiveRunFixture[]) {
+  return {
+    data: {
+      items: runs,
+      total: runs.length
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "run" as const
+    }
+  };
 }
 
-function stubProjectListFetchSequence(
-  responses: Array<() => Promise<Response> | Response>
-) {
+function createJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json"
+    }
+  });
+}
+
+function stubProjectManagementFetch(options: {
+  projectResponses: ResponseFactory[];
+  projectRunsByProjectId?: Record<string, ResponseFactory[]>;
+}) {
   let callIndex = 0;
+  const runCallIndexes = new Map<string, number>();
+
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
 
     if (url === "/v1/projects") {
       const responseFactory =
-        responses[Math.min(callIndex, responses.length - 1)];
+        options.projectResponses[Math.min(callIndex, options.projectResponses.length - 1)];
       callIndex += 1;
+
+      return await responseFactory!();
+    }
+
+    const runMatch = url.match(/^\/v1\/projects\/([^/]+)\/runs$/);
+
+    if (runMatch) {
+      const projectId = decodeURIComponent(runMatch[1]!);
+      const responseFactories = options.projectRunsByProjectId?.[projectId] ?? [
+        () => createJsonResponse(buildRunsResponse([]))
+      ];
+      const runCallIndex = runCallIndexes.get(projectId) ?? 0;
+      const responseFactory =
+        responseFactories[Math.min(runCallIndex, responseFactories.length - 1)];
+
+      runCallIndexes.set(projectId, runCallIndex + 1);
 
       return await responseFactory!();
     }
@@ -80,6 +128,36 @@ function stubProjectListFetchSequence(
   return fetchMock;
 }
 
+function stubProjectListFetch(
+  projects: CurrentProject[],
+  projectRunsByProjectId: Record<string, LiveRunFixture[]> = {}
+) {
+  return stubProjectManagementFetch({
+    projectResponses: [() => createJsonResponse(buildProjectsResponse(projects))],
+    projectRunsByProjectId: Object.fromEntries(
+      Object.entries(projectRunsByProjectId).map(([projectId, runs]) => [
+        projectId,
+        [() => createJsonResponse(buildRunsResponse(runs))]
+      ])
+    )
+  });
+}
+
+function stubProjectListFetchSequence(
+  responses: ResponseFactory[],
+  projectRunsByProjectId: Record<string, LiveRunFixture[]> = {}
+) {
+  return stubProjectManagementFetch({
+    projectResponses: responses,
+    projectRunsByProjectId: Object.fromEntries(
+      Object.entries(projectRunsByProjectId).map(([projectId, runs]) => [
+        projectId,
+        [() => createJsonResponse(buildRunsResponse(runs))]
+      ])
+    )
+  });
+}
+
 function createDeferredProjectsResponse(projects: CurrentProject[]) {
   let resolveResponse: ((response: Response) => void) | null = null;
   const promise = new Promise<Response>((resolve) => {
@@ -89,15 +167,25 @@ function createDeferredProjectsResponse(projects: CurrentProject[]) {
   return {
     promise,
     resolve() {
-      resolveResponse?.(
-        new Response(JSON.stringify(buildProjectsResponse(projects)), {
-          status: 200,
-          headers: {
-            "content-type": "application/json"
-          }
-        })
-      );
+      resolveResponse?.(createJsonResponse(buildProjectsResponse(projects)));
     }
+  };
+}
+
+function createLiveRunFixture(
+  projectId: string,
+  overrides: Partial<LiveRunFixture> = {}
+): LiveRunFixture {
+  return {
+    compiledFrom: null,
+    endedAt: null,
+    executionEngine: "scripted",
+    projectId,
+    runId: `${projectId}-run-001`,
+    startedAt: "2026-04-20T12:00:00.000Z",
+    status: "running",
+    workflowInstanceId: `${projectId}-workflow-001`,
+    ...overrides
   };
 }
 
@@ -109,8 +197,16 @@ describe("App shell", () => {
       displayName: "Keystone Cloudflare",
       description: "Internal operator workspace for the Keystone Cloudflare project."
     };
+    const liveRuns = [
+      createLiveRunFixture(scaffoldProject.projectId, {
+        runId: "run-104",
+        workflowInstanceId: "wf-run-104"
+      })
+    ];
 
-    stubProjectListFetch([scaffoldProject]);
+    stubProjectListFetch([scaffoldProject], {
+      [scaffoldProject.projectId]: liveRuns
+    });
 
     const { router } = renderRoute("/", { useBrowserProjectApi: true });
 
@@ -121,13 +217,18 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Run-104" })).toHaveAttribute("href", "/runs/run-104");
+    expect(screen.getByText("run-104")).toBeInTheDocument();
+    expect(screen.getByText("wf-run-104")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
     expectShellLinkTarget("Workstreams", "/workstreams");
     expectShellLinkTarget("New project", "/projects/new");
     expectShellLinkTarget("Project settings", "/settings");
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
+    expect(
+      screen.getByText(/Live runs are listed without deep links until the run-detail route can render API-backed run data truthfully\./i)
+    ).toBeInTheDocument();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/destination content is intentionally scaffold-only/i)
@@ -161,7 +262,12 @@ describe("App shell", () => {
     };
     const deferredResponse = createDeferredProjectsResponse([scaffoldProject]);
 
-    stubProjectListFetchSequence([() => deferredResponse.promise]);
+    stubProjectListFetchSequence(
+      [() => deferredResponse.promise],
+      {
+        [scaffoldProject.projectId]: [createLiveRunFixture(scaffoldProject.projectId, { runId: "run-104" })]
+      }
+    );
 
     renderRoute("/runs", { useBrowserProjectApi: true });
 
@@ -170,6 +276,7 @@ describe("App shell", () => {
     deferredResponse.resolve();
 
     expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104")).toBeInTheDocument();
   });
 
   it("renders the error state and recovers after retry", async () => {
@@ -183,14 +290,10 @@ describe("App shell", () => {
       async () => {
         throw new Error("Project list failed.");
       },
-      () =>
-        new Response(JSON.stringify(buildProjectsResponse([scaffoldProject])), {
-          status: 200,
-          headers: {
-            "content-type": "application/json"
-          }
-        })
-    ]);
+      () => createJsonResponse(buildProjectsResponse([scaffoldProject]))
+    ], {
+      [scaffoldProject.projectId]: [createLiveRunFixture(scaffoldProject.projectId, { runId: "run-104" })]
+    });
 
     renderRoute("/runs", { useBrowserProjectApi: true });
 
@@ -199,8 +302,8 @@ describe("App shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("run-104")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("rehydrates a valid stored project id on startup", async () => {
@@ -220,12 +323,18 @@ describe("App shell", () => {
     ];
 
     window.localStorage.setItem(currentProjectStorageKey, "project-alt");
-    stubProjectListFetch(projects);
+    stubProjectListFetch(projects, {
+      "project-keystone-cloudflare": [
+        createLiveRunFixture("project-keystone-cloudflare", { runId: "run-104" })
+      ],
+      "project-alt": []
+    });
 
     renderRoute("/runs", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(screen.getByText("Alt Project does not have any recorded runs yet.")).toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
 
@@ -238,7 +347,7 @@ describe("App shell", () => {
     expect(screen.queryByRole("heading", { name: "No projects yet" })).not.toBeInTheDocument();
   });
 
-  it("switches the current project from the live sidebar selector", async () => {
+  it("switches the current project from the live sidebar selector and reloads runs", async () => {
     const projects: CurrentProject[] = [
       {
         projectId: "project-keystone-cloudflare",
@@ -253,11 +362,27 @@ describe("App shell", () => {
         description: "Alternate operator workspace."
       }
     ];
+    const primaryRuns = [
+      createLiveRunFixture("project-keystone-cloudflare", {
+        runId: "run-104",
+        workflowInstanceId: "wf-run-104"
+      })
+    ];
+    const alternateRuns = [
+      createLiveRunFixture("project-alt", {
+        executionEngine: "think_live",
+        runId: "run-alt-301",
+        workflowInstanceId: "wf-run-alt-301"
+      })
+    ];
 
-    stubProjectListFetch(projects);
+    stubProjectListFetch(projects, {
+      "project-keystone-cloudflare": primaryRuns,
+      "project-alt": alternateRuns
+    });
     renderRoute("/runs", { useBrowserProjectApi: true });
 
-    await screen.findByRole("heading", { name: "Runs" });
+    await screen.findByText("run-104");
 
     fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
     fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
@@ -265,6 +390,8 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
     });
+    expect(await screen.findByText("run-alt-301")).toBeInTheDocument();
+    expect(screen.queryByText("run-104")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
 

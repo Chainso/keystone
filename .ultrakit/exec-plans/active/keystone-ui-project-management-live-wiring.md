@@ -154,6 +154,11 @@ Compatibility that **is** required:
   **Decision:** Relax the shell gate only for the zero-project `/projects/new` recovery route and add a parent-layout compatibility state for `/settings` when the selected live project has no scaffold-backed settings data.  
   **Rationale:** The review round found that the Phase 1 shell gate accidentally blocked the visible `New project` recovery path and that non-scaffold current projects could still crash `Project settings`. Both fixes belonged inside Phase 1’s shell/provider boundary and did not require pulling real settings APIs forward.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 2  
+  **Decision:** Keep one shared project-management API seam for both project lists and project-scoped runs, while letting the static route-test provider continue returning scaffold-backed run rows so existing scaffold run-detail routes stay truthful in tests.  
+  **Rationale:** The real app needed live `GET /v1/projects/:projectId/runs` behavior immediately, but the existing run-detail route and several non-Phase-2 tests still rely on scaffold-backed run records. Splitting the API by source instead of forcing one fake shape preserved truthful live behavior without breaking the scaffold route harness.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -180,6 +185,11 @@ Compatibility that **is** required:
   - `/projects/new` remains reachable when the live project list is empty.
   - `/settings` now renders an explicit compatibility state instead of throwing for non-scaffold live projects.
   - Focused shell tests now cover loading, error/retry recovery, valid stored-project rehydration, zero-project recovery routing, and non-scaffold settings safety.
+- [x] 2026-04-20 Phase 2 completed:
+  - [ui/src/features/runs/use-runs-index-view-model.ts](../../ui/src/features/runs/use-runs-index-view-model.ts) now loads `GET /v1/projects/:projectId/runs` through the shared project-management API seam, exposes loading/error/empty states, and keeps live rows free of broken run-detail links.
+  - [ui/src/routes/runs/runs-index-route.tsx](../../ui/src/routes/runs/runs-index-route.tsx) now renders truthful live run columns plus a visible no-detail limitation note, while preserving scaffold-backed run rows for the static test harness.
+  - [ui/src/features/documentation/use-documentation-view-model.ts](../../ui/src/features/documentation/use-documentation-view-model.ts) and [ui/src/features/workstreams/use-workstreams-view-model.ts](../../ui/src/features/workstreams/use-workstreams-view-model.ts) now render explicit compatibility states for non-scaffold projects instead of falling through to scaffold defaults or throwing.
+  - Focused shell and destination tests now prove stored-project rehydration into a no-runs state, sidebar-driven live run refresh, and non-scaffold safety for Documentation and Workstreams.
 
 ## Surprises & Discoveries
 
@@ -200,6 +210,7 @@ Compatibility that **is** required:
 - Phase 1 exposed a new repo-level validation mismatch: after restoring dependencies in this worktree, the exact required `rtk npm run typecheck` command now fails outside the UI scope in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`. The Phase 1 UI surface still compiles with `./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 - The first Phase 1 shell gate was too aggressive: it blocked the visible zero-project recovery route at `/projects/new`, which only showed up once the review pass exercised the route directly instead of just the empty shell CTA.
 - `Project settings` needed its own non-scaffold compatibility state even before live settings APIs exist, because the parent shell/provider seam alone does not stop the scaffold-only settings view models from throwing.
+- Phase 2 did not need a deeper `ResourceModelProvider` rewrite after all. Using `useCurrentProject()` plus direct dataset membership checks in Documentation and Workstreams was enough to detect non-scaffold selections honestly without changing the scaffold provider contract again.
 
 ## Outcomes & Retrospective
 
@@ -225,6 +236,13 @@ Phase 1 targeted fix pass outcome on 2026-04-20:
 - The zero-project shell now preserves the visible recovery route into `New project` instead of trapping the operator behind the empty shell state.
 - `Project settings` now fails honestly for non-scaffold live projects with a compatibility state instead of crashing through scaffold-only selectors.
 - The focused shell test suite now covers the missing loading, retry, valid rehydration, and non-scaffold settings cases that the review round called out.
+
+Phase 2 outcome on 2026-04-20:
+
+- The `Runs` index now follows the selected live project through `GET /v1/projects/:projectId/runs`, including honest loading, retry, and no-runs states.
+- Live run rows no longer advertise scaffold-only deep links, while scaffold-backed test runs still preserve the existing run-detail route behavior.
+- `Documentation` and `Workstreams` now stay stable for non-scaffold projects by rendering explicit compatibility states instead of crashing or silently falling back to the scaffold default project.
+- The required focused test command passes, while the repo-wide `rtk npm run typecheck` command remains blocked by the same unrelated worker-binding mismatch already recorded from Phase 1.
 
 ## Context and Orientation
 
@@ -614,15 +632,21 @@ Success means switching or creating a project leads to a truthful `Runs` page an
 
 #### Status
 
-Pending.
+Completed on 2026-04-20.
 
 #### Completion Notes
 
-- None yet.
+- Added project-scoped run loading to [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts), [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx), [ui/src/features/runs/use-runs-index-view-model.ts](../../ui/src/features/runs/use-runs-index-view-model.ts), and [ui/src/routes/runs/runs-index-route.tsx).
+- Updated [ui/src/features/documentation/use-documentation-view-model.ts](../../ui/src/features/documentation/use-documentation-view-model.ts), [ui/src/features/documentation/components/documentation-workspace.tsx](../../ui/src/features/documentation/components/documentation-workspace.tsx), [ui/src/features/workstreams/use-workstreams-view-model.ts](../../ui/src/features/workstreams/use-workstreams-view-model.ts), and [ui/src/features/workstreams/components/workstreams-board.tsx](../../ui/src/features/workstreams/components/workstreams-board.tsx) with explicit non-scaffold compatibility states.
+- Focused validation:
+  - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed.
+  - `rtk npm run typecheck` still fails outside Phase 2 scope in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
+  - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passed.
 
 #### Next Starter Context
 
-- Preserve the existing route tree and keep run-detail surfaces out of scope.
+- Phase 3 should keep reusing the shared project-management API/provider seam and replace the scaffold-only `New project` tabs with a real editable create flow.
+- The live `Runs` index is now project-scoped, so successful project creation should refresh the live project list, select the new project, and land back on `/runs` without reintroducing scaffold-only assumptions.
 
 ## Phase 3: Real New Project Flow
 
