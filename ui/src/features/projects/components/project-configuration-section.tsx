@@ -6,7 +6,11 @@ interface ProjectConfigurationSectionProps {
 }
 
 interface ProjectConfigurationActionsProps {
-  actions: string[];
+  actions: Array<{
+    disabled?: boolean | undefined;
+    label: string;
+    onPress?: (() => void) | undefined;
+  }>;
 }
 
 export function ProjectConfigurationSection({
@@ -32,8 +36,14 @@ export function ProjectConfigurationActions({
   return (
     <div className="project-form-actions">
       {actions.map((action) => (
-        <button key={action} type="button" className="ghost-button" disabled>
-          {action}
+        <button
+          key={action.label}
+          type="button"
+          className="ghost-button"
+          disabled={action.disabled}
+          onClick={action.onPress}
+        >
+          {action.label}
         </button>
       ))}
     </div>

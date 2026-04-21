@@ -1,4 +1,11 @@
-import { projectCollectionEnvelopeSchema } from "../../../../src/http/api/v1/projects/contracts";
+import {
+  projectConfigSchema,
+  type ProjectConfig
+} from "../../../../src/keystone/projects/contracts";
+import {
+  projectCollectionEnvelopeSchema,
+  projectDetailEnvelopeSchema
+} from "../../../../src/http/api/v1/projects/contracts";
 import { runCollectionEnvelopeSchema } from "../../../../src/http/api/v1/runs/contracts";
 import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 import { uiScaffoldDataset } from "../resource-model/scaffold-dataset";
@@ -43,7 +50,33 @@ export interface ScaffoldProjectRunRecord {
 
 export type ProjectRunRecord = ApiProjectRunRecord | ScaffoldProjectRunRecord;
 
+export interface ProjectValidationIssue {
+  code: string;
+  message: string;
+  path: Array<string | number>;
+}
+
+export class ProjectManagementApiError extends Error {
+  code: string;
+  issues: ProjectValidationIssue[];
+  status: number;
+
+  constructor(input: {
+    code: string;
+    issues?: ProjectValidationIssue[];
+    message: string;
+    status: number;
+  }) {
+    super(input.message);
+    this.name = "ProjectManagementApiError";
+    this.code = input.code;
+    this.issues = input.issues ?? [];
+    this.status = input.status;
+  }
+}
+
 export interface ProjectManagementApi {
+  createProject: (config: ProjectConfig) => Promise<CurrentProjectRecord>;
   listProjects: () => Promise<CurrentProjectRecord[]>;
   listProjectRuns: (projectId: string) => Promise<ProjectRunRecord[]>;
 }
@@ -62,6 +95,67 @@ function normalizeProjectRecord(project: {
     displayName: project.displayName,
     description: project.description ?? ""
   };
+}
+
+function normalizeValidationIssues(issues: unknown): ProjectValidationIssue[] {
+  if (!Array.isArray(issues)) {
+    return [];
+  }
+
+  return issues.flatMap((issue) => {
+    if (typeof issue !== "object" || issue === null) {
+      return [];
+    }
+
+    const path = "path" in issue && Array.isArray(issue.path) ? issue.path : [];
+    const code = "code" in issue && typeof issue.code === "string" ? issue.code : "invalid_request";
+    const message =
+      "message" in issue && typeof issue.message === "string"
+        ? issue.message
+        : "Project request validation failed.";
+
+    return [
+      {
+        code,
+        message,
+        path: path.filter((segment: unknown): segment is string | number =>
+          typeof segment === "string" || typeof segment === "number"
+        )
+      }
+    ];
+  });
+}
+
+async function buildApiError(
+  response: Response,
+  fallbackMessage: string
+): Promise<ProjectManagementApiError> {
+  const payload = await response.json().catch(() => null);
+  const error =
+    payload && typeof payload === "object" && "error" in payload && typeof payload.error === "object"
+      ? payload.error
+      : null;
+  const code =
+    error && error !== null && "code" in error && typeof error.code === "string"
+      ? error.code
+      : "request_failed";
+  const message =
+    error && error !== null && "message" in error && typeof error.message === "string"
+      ? error.message
+      : fallbackMessage;
+  const issues =
+    error && error !== null && "details" in error && typeof error.details === "object" && error.details
+      ? normalizeValidationIssues(
+          "issues" in error.details ? (error.details as { issues?: unknown }).issues : undefined
+        )
+      : [];
+
+  return new ProjectManagementApiError({
+    code,
+    issues,
+    message,
+    status: response.status
+  });
 }
 
 function normalizeRunRecord(run: {
@@ -96,6 +190,25 @@ export function createBrowserProjectManagementApi(
   fetchImplementation: typeof fetch = currentFetchImplementation
 ): ProjectManagementApi {
   return {
+    async createProject(config) {
+      const response = await fetchImplementation("/v1/projects", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        throw await buildApiError(response, `Unable to create project (${response.status}).`);
+      }
+
+      const payload = projectDetailEnvelopeSchema.parse(await response.json());
+
+      return normalizeProjectRecord(payload.data);
+    },
     async listProjects() {
       const response = await fetchImplementation("/v1/projects", {
         method: "GET",
@@ -137,9 +250,24 @@ export function createStaticProjectManagementApi(
   projects: CurrentProjectRecord[],
   dataset: ResourceModelDataset = uiScaffoldDataset
 ): ProjectManagementApi {
+  let currentProjects = [...projects];
+
   return {
+    async createProject(config) {
+      const parsedConfig = projectConfigSchema.parse(config);
+      const createdProject = {
+        projectId: `project-${parsedConfig.projectKey}`,
+        projectKey: parsedConfig.projectKey,
+        displayName: parsedConfig.displayName,
+        description: parsedConfig.description ?? ""
+      };
+
+      currentProjects = [...currentProjects, createdProject];
+
+      return createdProject;
+    },
     async listProjects() {
-      return projects;
+      return currentProjects;
     },
     async listProjectRuns(projectId) {
       return listRunSummaries(projectId, dataset).map((run) => ({

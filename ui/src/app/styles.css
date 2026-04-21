@@ -290,8 +290,8 @@ pre {
 
 .page-section,
 .workspace-panel,
-.placeholder-field,
-.placeholder-list-field,
+.form-field,
+.text-list-field,
 .type-picker-panel,
 .empty-state-card,
 .component-card,
@@ -319,7 +319,7 @@ pre {
 .workspace-panel-eyebrow,
 .hero-aside-title,
 .document-section-label,
-.placeholder-field-label {
+.form-field-label {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.75rem;
@@ -887,8 +887,8 @@ pre {
   grid-column: 1 / -1;
 }
 
-.placeholder-field,
-.placeholder-list-field,
+.form-field,
+.text-list-field,
 .type-picker-panel,
 .empty-state-card,
 .component-card,
@@ -901,7 +901,7 @@ pre {
   gap: 0.75rem;
 }
 
-.placeholder-field-input,
+.form-field-input,
 .environment-var-value {
   display: block;
   width: 100%;
@@ -914,20 +914,35 @@ pre {
   line-height: 1.55;
 }
 
-.placeholder-field-textarea {
+.form-field-textarea {
   min-height: 6rem;
   resize: vertical;
 }
 
-.placeholder-list-editor {
+.text-list-editor {
   display: grid;
   gap: 0.65rem;
   margin: 0;
   padding-left: 1.1rem;
 }
 
-.placeholder-list-item {
+.text-list-item {
   list-style-position: inside;
+}
+
+.text-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.form-field-error,
+.project-config-error {
+  margin: 0;
+  color: #9f4f43;
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 .type-picker-header,

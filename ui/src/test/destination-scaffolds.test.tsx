@@ -6,9 +6,18 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { WorkstreamsBoard } from "../features/workstreams/components/workstreams-board";
 import { renderRoute } from "./render-route";
-import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
+import {
+  serializeProjectListItem,
+  serializeProjectResource
+} from "../../../src/http/api/v1/projects/contracts";
 
 const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
+const scaffoldProject: CurrentProject = {
+  projectId: "project-keystone-cloudflare",
+  projectKey: "keystone-cloudflare",
+  displayName: "Keystone Cloudflare",
+  description: "Internal operator workspace for the Keystone Cloudflare project."
+};
 
 afterEach(() => {
   cleanup();
@@ -98,6 +107,68 @@ function buildProjectsResponse(projects: CurrentProject[]) {
   };
 }
 
+function buildProjectDetailResponse(project: {
+  components: Array<{
+    componentKey: string;
+    config:
+      | {
+          localPath: string;
+          ref?: string;
+        }
+      | {
+          gitUrl: string;
+          ref?: string;
+        };
+    displayName: string;
+    kind: "git_repository";
+    ruleOverride?: {
+      reviewInstructions?: string[];
+      testInstructions?: string[];
+    };
+  }>;
+  description: string | null;
+  displayName: string;
+  envVars: Array<{
+    name: string;
+    value: string;
+  }>;
+  projectId: string;
+  projectKey: string;
+  ruleSet: {
+    reviewInstructions: string[];
+    testInstructions: string[];
+  };
+}) {
+  return {
+    data: serializeProjectResource({
+      tenantId: "tenant-test",
+      projectId: project.projectId,
+      projectKey: project.projectKey,
+      displayName: project.displayName,
+      description: project.description,
+      ruleSet: project.ruleSet,
+      components: project.components,
+      envVars: project.envVars,
+      createdAt: defaultTimestamp,
+      updatedAt: defaultTimestamp
+    }),
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "project" as const
+    }
+  };
+}
+
+function createJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json"
+    }
+  });
+}
+
 function stubProjectListFetch(projects: CurrentProject[]) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
@@ -106,15 +177,104 @@ function stubProjectListFetch(projects: CurrentProject[]) {
       throw new Error(`Unexpected fetch request: ${url}`);
     }
 
-    return new Response(JSON.stringify(buildProjectsResponse(projects)), {
-      status: 200,
-      headers: {
-        "content-type": "application/json"
-      }
-    });
+    return createJsonResponse(buildProjectsResponse(projects));
   });
 
   vi.stubGlobal("fetch", fetchMock);
+}
+
+function stubProjectCreateFlowFetch(input: {
+  createdProject: {
+    components: Array<{
+      componentKey: string;
+      config:
+        | {
+            localPath: string;
+            ref?: string;
+          }
+        | {
+            gitUrl: string;
+            ref?: string;
+          };
+      displayName: string;
+      kind: "git_repository";
+      ruleOverride?: {
+        reviewInstructions?: string[];
+        testInstructions?: string[];
+      };
+    }>;
+    description: string | null;
+    displayName: string;
+    envVars: Array<{
+      name: string;
+      value: string;
+    }>;
+    projectId: string;
+    projectKey: string;
+    ruleSet: {
+      reviewInstructions: string[];
+      testInstructions: string[];
+    };
+  };
+  initialProjects?: CurrentProject[];
+  refreshedProjects?: CurrentProject[];
+}) {
+  const postedBodies: unknown[] = [];
+  let projectListCallIndex = 0;
+  const initialProjects = input.initialProjects ?? [scaffoldProject];
+  const refreshedProjects = input.refreshedProjects ?? [
+    ...initialProjects,
+    {
+      projectId: input.createdProject.projectId,
+      projectKey: input.createdProject.projectKey,
+      displayName: input.createdProject.displayName,
+      description: input.createdProject.description ?? ""
+    }
+  ];
+
+  const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof request === "string" ? request : request.toString();
+    const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+    if (url === "/v1/projects" && method === "GET") {
+      const projects = projectListCallIndex === 0 ? initialProjects : refreshedProjects;
+      projectListCallIndex += 1;
+
+      return createJsonResponse(buildProjectsResponse(projects));
+    }
+
+    if (url === "/v1/projects" && method === "POST") {
+      const bodyText =
+        request instanceof Request ? await request.text() : String(init?.body ?? "");
+
+      postedBodies.push(JSON.parse(bodyText));
+
+      return createJsonResponse(buildProjectDetailResponse(input.createdProject), 201);
+    }
+
+    if (url === `/v1/projects/${input.createdProject.projectId}/runs` && method === "GET") {
+      return createJsonResponse({
+        data: {
+          items: [],
+          total: 0
+        },
+        meta: {
+          apiVersion: "v1" as const,
+          envelope: "collection" as const,
+          resourceType: "run" as const
+        }
+      });
+    }
+
+    throw new Error(`Unexpected fetch request: ${method} ${url}`);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return {
+    fetchMock,
+    postedBodies
+  };
 }
 
 describe("Destination scaffolds", () => {
@@ -412,32 +572,36 @@ describe("Destination scaffolds", () => {
     expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
   });
 
-  it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {
+  it("redirects /projects/new to overview and keeps the tabbed create form live", async () => {
     const { container, router } = renderRoute("/projects/new");
 
     expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
-    expect(screen.queryByText("Current contract")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Draft" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
     expectProjectConfigurationChromeRemoved(container);
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/projects/new/overview");
     });
 
     const projectTabs = screen.getByRole("navigation", { name: "Project configuration tabs" });
+    const projectNameField = await screen.findByRole("textbox", { name: "Project name" });
 
-    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue("Keystone Cloudflare");
+    expect(projectNameField).toHaveValue("Keystone Cloudflare");
     expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("keystone-cloudflare");
     expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
       "Internal operator workspace for the Keystone Cloudflare project."
     );
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save Draft" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
 
-    const rulesTab = getLinkByHref(projectTabs, "/projects/new/rules");
-    expect(rulesTab).toHaveAttribute("href", "/projects/new/rules");
+    fireEvent.change(projectNameField, {
+      target: {
+        value: "Edge Control"
+      }
+    });
 
-    fireEvent.click(rulesTab);
+    fireEvent.click(getLinkByHref(projectTabs, "/projects/new/rules"));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/projects/new/rules");
     });
@@ -447,41 +611,38 @@ describe("Destination scaffolds", () => {
       "Keep route ownership explicit."
     );
 
-    const environmentTab = getLinkByHref(projectTabs, "/projects/new/environment");
-    expect(environmentTab).toHaveAttribute("href", "/projects/new/environment");
+    fireEvent.click(getLinkByHref(projectTabs, "/projects/new/overview"));
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
+      "Edge Control"
+    );
 
-    fireEvent.click(environmentTab);
+    fireEvent.click(getLinkByHref(projectTabs, "/projects/new/environment"));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/projects/new/environment");
     });
 
     expect(screen.getByRole("heading", { name: "Environment" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "KEYSTONE_AGENT_RUNTIME" })).toHaveValue("scripted");
+    const environmentNameFields = screen.getAllByRole("textbox", { name: "Name" });
+    const environmentValueFields = screen.getAllByRole("textbox", { name: "Value" });
+
+    expect(environmentNameFields[0]).toHaveValue("KEYSTONE_AGENT_RUNTIME");
+    expect(environmentValueFields[0]).toHaveValue("scripted");
   });
 
-  it("renders the new-project components board with the add-component control in the body", async () => {
+  it("shows component validation feedback and keeps the add-component form editable", async () => {
     const { container } = renderRoute("/projects/new/components");
 
     expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Components" })).toBeInTheDocument();
     expectProjectConfigurationChromeRemoved(container);
 
-    const componentsSection = screen.getByRole("heading", { name: "Components" }).closest("section");
-    expect(componentsSection).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
-    const addComponentButton = screen.getByRole("button", { name: "+ Add component" });
-    expect(addComponentButton).toHaveTextContent("+ Add component ▾");
-    expect(addComponentButton).toHaveAttribute("aria-expanded", "false");
     expect(
-      within(componentsSection as HTMLElement)
-        .getByText("Components")
-        .closest(".project-config-section-header")
-        ?.querySelector("button")
-    ).toBeNull();
-    expect(
-      screen.getByText("Add repository components before saving the project.")
+      await screen.findByText("Add at least one component before creating the project.")
     ).toBeInTheDocument();
 
+    const addComponentButton = screen.getByRole("button", { name: "+ Add component" });
     fireEvent.click(addComponentButton);
     expect(addComponentButton).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("heading", { name: "Add component menu" })).toBeInTheDocument();
@@ -498,23 +659,227 @@ describe("Destination scaffolds", () => {
     expect(newComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue(
       "repository-1"
     );
-    expect(newComponentCard.queries.getByRole("radio", { name: "Local path" })).not.toBeChecked();
     expect(newComponentCard.queries.getByRole("radio", { name: "Git URL" })).toBeChecked();
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue("");
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toBeDisabled();
     expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue(
       "https://github.com/keystone/repository-1.git"
     );
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Default ref" })).toHaveValue(
-      "main"
+    const componentActions = newComponentCard.card.querySelector(".project-form-actions");
+    expect(componentActions).not.toBeNull();
+    expect(
+      within(componentActions as HTMLElement).getByRole("button", { name: "Remove" })
+    ).toBeEnabled();
+
+    fireEvent.click(newComponentCard.queries.getByRole("radio", { name: "Local path" }));
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toBeEnabled();
+    expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toBeDisabled();
+
+    fireEvent.click(
+      within(componentActions as HTMLElement).getByRole("button", { name: "Remove" })
     );
-    expect(newComponentCard.queries.getByText("Optional rule override")).toBeInTheDocument();
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Review" })).toHaveValue(
-      "Focus on repository boundaries"
-    );
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Test" })).toHaveValue(
-      "Run targeted component tests"
-    );
-    expect(newComponentCard.queries.getByRole("button", { name: "Remove" })).toBeDisabled();
+
+    expect(
+      await screen.findByText("Add repository components before creating the project.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows overview validation errors before posting the new project", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url !== "/v1/projects") {
+        throw new Error(`Unexpected fetch request: ${url}`);
+      }
+
+      return createJsonResponse(buildProjectsResponse([scaffoldProject]));
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { router } = renderRoute("/projects/new/overview", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
+      target: {
+        value: ""
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Description" }), {
+      target: {
+        value: ""
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(await screen.findByText("Fix the validation errors before creating the project.")).toBeInTheDocument();
+    expect(screen.getByText("Project name is required.")).toBeInTheDocument();
+    expect(screen.getByText("Description is required.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(router.state.location.pathname).toBe("/projects/new/overview");
+  });
+
+  it("creates a real project, refreshes the live list, and lands on the new project's runs", async () => {
+    const createdProject = {
+      components: [
+        {
+          componentKey: "control-plane",
+          config: {
+            localPath: "./apps/control-plane",
+            ref: "main"
+          },
+          displayName: "Control Plane",
+          kind: "git_repository" as const,
+          ruleOverride: {
+            reviewInstructions: ["Focus on control plane changes"],
+            testInstructions: ["Run control plane tests"]
+          }
+        }
+      ],
+      description: "Live operator workspace for the Control Plane.",
+      displayName: "Operator Hub",
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        },
+        {
+          name: "KEYSTONE_CHAT_COMPLETIONS_BASE_URL",
+          value: "http://localhost:10531"
+        },
+        {
+          name: "KEYSTONE_CHAT_COMPLETIONS_MODEL",
+          value: "gpt-5.4-mini"
+        },
+        {
+          name: "KEYSTONE_FEATURE_FLAG",
+          value: "live"
+        }
+      ],
+      projectId: "project-operator-hub",
+      projectKey: "operator-hub",
+      ruleSet: {
+        reviewInstructions: [
+          "Review the orchestration boundaries.",
+          "Capture component-specific review focus when needed."
+        ],
+        testInstructions: [
+          "Run the operator smoke test.",
+          "Verify the project configuration tabs."
+        ]
+      }
+    };
+    const { fetchMock, postedBodies } = stubProjectCreateFlowFetch({
+      createdProject
+    });
+    const { router } = renderRoute("/projects/new/overview", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
+      target: {
+        value: createdProject.displayName
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Project key" }), {
+      target: {
+        value: createdProject.projectKey
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Description" }), {
+      target: {
+        value: createdProject.description
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Rules" }));
+    expect(await screen.findByRole("heading", { name: "Rules" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project review instructions 1" }), {
+      target: {
+        value: createdProject.ruleSet.reviewInstructions[0]
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Project test instructions 1" }), {
+      target: {
+        value: createdProject.ruleSet.testInstructions[0]
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Components" }));
+    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add component" }));
+    fireEvent.click(screen.getByRole("button", { name: "Git repository" }));
+
+    const newComponentCard = getComponentCard("Component 1");
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Name" }), {
+      target: {
+        value: createdProject.components[0]!.displayName
+      }
+    });
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Key" }), {
+      target: {
+        value: createdProject.components[0]!.componentKey
+      }
+    });
+    fireEvent.click(newComponentCard.queries.getByRole("radio", { name: "Local path" }));
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Local path" }), {
+      target: {
+        value: createdProject.components[0]!.config.localPath
+      }
+    });
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Default ref" }), {
+      target: {
+        value: createdProject.components[0]!.config.ref
+      }
+    });
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Review 1" }), {
+      target: {
+        value: createdProject.components[0]!.ruleOverride?.reviewInstructions?.[0]
+      }
+    });
+    fireEvent.change(newComponentCard.queries.getByRole("textbox", { name: "Test 1" }), {
+      target: {
+        value: createdProject.components[0]!.ruleOverride?.testInstructions?.[0]
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Environment" }));
+    expect(await screen.findByRole("heading", { name: "Environment" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add environment variable" }));
+    const environmentNameFields = screen.getAllByRole("textbox", { name: "Name" });
+    const environmentValueFields = screen.getAllByRole("textbox", { name: "Value" });
+    fireEvent.change(environmentNameFields.at(-1) as HTMLElement, {
+      target: {
+        value: createdProject.envVars[3]!.name
+      }
+    });
+    fireEvent.change(environmentValueFields.at(-1) as HTMLElement, {
+      target: {
+        value: createdProject.envVars[3]!.value
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs");
+    });
+    expect(screen.getByRole("button", { name: /Operator Hub/i })).toBeInTheDocument();
+    expect(postedBodies).toEqual([
+      {
+        projectKey: createdProject.projectKey,
+        displayName: createdProject.displayName,
+        description: createdProject.description,
+        ruleSet: createdProject.ruleSet,
+        components: createdProject.components,
+        envVars: createdProject.envVars
+      }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("redirects /settings to components, supports tab navigation, and models both git_repository source modes", async () => {
@@ -563,10 +928,10 @@ describe("Destination scaffolds", () => {
       "main"
     );
     expect(currentComponentCard.queries.getByText("Optional rule override")).toBeInTheDocument();
-    expect(currentComponentCard.queries.getByRole("textbox", { name: "Review" })).toHaveValue(
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Review 1" })).toHaveValue(
       "Focus on API changes"
     );
-    expect(currentComponentCard.queries.getByRole("textbox", { name: "Test" })).toHaveValue(
+    expect(currentComponentCard.queries.getByRole("textbox", { name: "Test 1" })).toHaveValue(
       "Run targeted API tests"
     );
     expect(currentComponentCard.queries.getByRole("button", { name: "Remove" })).toBeDisabled();

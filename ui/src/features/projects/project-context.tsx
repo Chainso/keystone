@@ -17,6 +17,7 @@ import {
   type CurrentProjectRecord,
   type ProjectManagementApi
 } from "./project-management-api";
+import type { ProjectConfig } from "../../../../src/keystone/projects/contracts";
 
 export type CurrentProject = CurrentProjectRecord;
 
@@ -27,6 +28,7 @@ export interface ProjectManagementState {
 }
 
 export interface ProjectManagementActions {
+  createProject: (config: ProjectConfig) => Promise<CurrentProject>;
   reloadProjects: () => Promise<void>;
   selectProject: (projectId: string) => void;
 }
@@ -55,6 +57,11 @@ interface ProjectManagementSnapshot {
   errorMessage: string | null;
   projects: CurrentProject[];
   status: ProjectManagementMeta["status"];
+}
+
+interface LoadProjectsOptions {
+  preserveStatus?: boolean;
+  preferredProjectId?: string | null;
 }
 
 const browserProjectManagementApi = createBrowserProjectManagementApi();
@@ -182,7 +189,7 @@ export function CurrentProjectProvider({
   const requestIdRef = useRef(0);
   const selectedProjectIdRef = useRef<string | null>(project?.projectId ?? null);
 
-  async function loadProjects() {
+  async function loadProjects(options: LoadProjectsOptions = {}) {
     if (project) {
       return;
     }
@@ -190,11 +197,13 @@ export function CurrentProjectProvider({
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
-    setSnapshot((current) => ({
-      ...current,
-      errorMessage: null,
-      status: "loading"
-    }));
+    if (!options.preserveStatus) {
+      setSnapshot((current) => ({
+        ...current,
+        errorMessage: null,
+        status: "loading"
+      }));
+    }
 
     try {
       const projects = await api.listProjects();
@@ -203,7 +212,8 @@ export function CurrentProjectProvider({
         return;
       }
 
-      const preferredProjectId = selectedProjectIdRef.current ?? readStoredProjectId();
+      const preferredProjectId =
+        options.preferredProjectId ?? selectedProjectIdRef.current ?? readStoredProjectId();
       const currentProject = resolveCurrentProject(projects, preferredProjectId);
       const nextProjectId = currentProject?.projectId ?? null;
 
@@ -248,6 +258,16 @@ export function CurrentProjectProvider({
       projects: snapshot.projects
     },
     actions: {
+      async createProject(config) {
+        const createdProject = await api.createProject(config);
+        selectedProjectIdRef.current = createdProject.projectId;
+        await loadProjects({
+          preferredProjectId: createdProject.projectId,
+          preserveStatus: true
+        });
+
+        return createdProject;
+      },
       async reloadProjects() {
         await loadProjects();
       },

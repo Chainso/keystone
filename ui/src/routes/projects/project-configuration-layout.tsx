@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import {
   type ProjectConfigurationMode
 } from "../../features/projects/project-configuration-scaffold";
+import { NewProjectConfigurationProvider } from "../../features/projects/new-project-context";
 import {
   useNewProjectConfigurationShellViewModel,
   useProjectSettingsConfigurationShellViewModel
@@ -17,9 +18,11 @@ function NewProjectConfigurationLayout() {
   const model = useNewProjectConfigurationShellViewModel();
 
   return (
-    <ProjectConfigurationScaffold title={model.title} tabs={model.tabs}>
-      <Outlet />
-    </ProjectConfigurationScaffold>
+    <NewProjectConfigurationProvider>
+      <ProjectConfigurationScaffold title={model.title} tabs={model.tabs}>
+        <Outlet />
+      </ProjectConfigurationScaffold>
+    </NewProjectConfigurationProvider>
   );
 }
 

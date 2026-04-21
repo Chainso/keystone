@@ -164,6 +164,11 @@ Compatibility that **is** required:
   **Decision:** Keep the Workstreams filter bar mounted independently from the zero-row state, and extend the live-runs shell tests to cover run-fetch retry plus every `Latest activity` branch.  
   **Rationale:** The review round found one behavioral regression in the new zero-row Workstreams branch and one testing gap in the live-runs path. Both fixes stayed inside the Phase 2 surface and did not require any run-detail or create/update work.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 3  
+  **Decision:** Build `New project` around a route-scoped draft provider plus shared form primitives, while keeping the actual create/list-refresh/switch-current-project mutation in the existing project-management provider seam.  
+  **Rationale:** The create form needed persistent tab-to-tab draft state and canonical contract validation without pulling settings loading forward. A route-scoped draft provider kept the new-project semantics explicit, while reusing the existing live project provider for the real `POST /v1/projects` and refreshed current-project selection flow.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -199,6 +204,11 @@ Compatibility that **is** required:
   - [ui/src/features/workstreams/components/workstreams-board.tsx](../../ui/src/features/workstreams/components/workstreams-board.tsx) now keeps the filter controls visible when an active filter yields zero rows and renders a filter-specific empty state instead of hiding the controls.
   - [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) now covers `/v1/projects/:projectId/runs` failure plus Retry recovery and asserts the `Latest activity` labels for ended, compiled-only, and idle live runs.
   - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now includes a direct zero-row Workstreams board test so the filter-bar regression stays covered without broadening the route surface.
+- [x] 2026-04-20 Phase 3 completed:
+  - [ui/src/features/projects/new-project-context.tsx](../../ui/src/features/projects/new-project-context.tsx) now owns the tab-persistent `New project` draft, client validation, and user-triggered create/cancel actions.
+  - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now support `POST /v1/projects` plus the required list refresh before switching the current project.
+  - [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-component-card.tsx) and [ui/src/shared/forms/](../../ui/src/shared/forms/) now expose real editable overview, components, rules, and environment controls with honest field/list component names instead of `placeholder-*`.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now covers live create success, validation failures, and the post-create `/runs` landing flow.
 
 ## Surprises & Discoveries
 
@@ -221,6 +231,7 @@ Compatibility that **is** required:
 - `Project settings` needed its own non-scaffold compatibility state even before live settings APIs exist, because the parent shell/provider seam alone does not stop the scaffold-only settings view models from throwing.
 - Phase 2 did not need a deeper `ResourceModelProvider` rewrite after all. Using `useCurrentProject()` plus direct dataset membership checks in Documentation and Workstreams was enough to detect non-scaffold selections honestly without changing the scaffold provider contract again.
 - The first Phase 2 Workstreams empty-state branch was too coarse: treating every zero-row result like a global empty state accidentally hid the filter controls for filter-specific zero results. Keeping the filters outside that branch fixed the regression without changing the Workstreams view-model contract.
+- The canonical `ProjectConfig` schema treats `description` as nullable at the storage boundary but still rejects blank strings, so the create form has to keep description explicitly required instead of auto-normalizing empty input to `null`.
 
 ## Outcomes & Retrospective
 
@@ -259,6 +270,13 @@ Phase 2 targeted fix pass outcome on 2026-04-20:
 - Workstreams now keeps its filter controls visible across zero-row results, so an operator can recover immediately from an empty filter selection.
 - The live-runs shell coverage now exercises the run-fetch retry path and all three previously untested `Latest activity` fallback branches.
 - The focused validation picture is unchanged aside from the new passing tests: `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and `rtk npm run typecheck` still fails only in the unrelated worker-binding test.
+
+Phase 3 outcome on 2026-04-20:
+
+- `New project` is now a real tabbed form with provider-owned draft state, editable overview/components/rules/environment fields, and no leftover `Save Draft` or `Next` stepper semantics.
+- Successful create now posts the canonical `ProjectConfig` payload shape, refreshes the live project list, switches the current project, and lands the operator on the new project's `Runs` state.
+- The shared project-form surface now uses honest `form-*` and `text-list-*` primitives instead of `placeholder-*`, while `Project settings` remains scaffold-backed and explicitly out of Phase 3's save/load scope.
+- The focused destination test command passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and the required repo `rtk npm run typecheck` command still fails only in the unrelated worker-binding test already recorded from earlier phases.
 
 ## Context and Orientation
 
@@ -759,15 +777,21 @@ Success means `New project` is a real form, submits the real payload shape, show
 
 #### Status
 
-Pending.
+Completed on 2026-04-20.
 
 #### Completion Notes
 
-- None yet.
+- Added a route-scoped [ui/src/features/projects/new-project-context.tsx](../../ui/src/features/projects/new-project-context.tsx) provider for persistent new-project draft state, canonical client validation, and explicit cancel/create handlers.
+- Added `createProject()` support to the shared project-management seam so successful create requests refresh `/v1/projects` before selecting the new project and routing to `/runs`.
+- Replaced the `placeholder-*` shared form layer with [ui/src/shared/forms/form-field.tsx](../../ui/src/shared/forms/form-field.tsx) and [ui/src/shared/forms/text-list-field.tsx](../../ui/src/shared/forms/text-list-field.tsx), then rewired the project tabs and component cards around those real controls.
+- Validation results for this phase:
+  - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` passes.
+  - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes.
+  - `rtk npm run typecheck` still fails outside this phase in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now requires `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
 
 #### Next Starter Context
 
-- Remove fake actions first, then wire the real submit path.
+- Phase 4 can reuse the new shared project-form/view-model surface, but it still needs a real settings seed from `GET /v1/projects/:projectId`, an explicit `PATCH` save action, and current-project summary refresh after save.
 
 ## Phase 4: Real Project Settings Flow
 
