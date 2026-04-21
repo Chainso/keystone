@@ -117,6 +117,12 @@ describeIfDatabase("project repositories", () => {
     expect(byId?.projectId).toBe(created.projectId);
     expect(byKey?.displayName).toBe("Demo Project");
     expect(
+      byId?.components.find((component) => component.componentKey === "api")?.config.ref
+    ).toBe("main");
+    expect(
+      byId?.components.find((component) => component.componentKey === "docs")?.config.ref
+    ).toBe("main");
+    expect(
       byId?.components.find((component) => component.componentKey === "api")?.ruleOverride
         ?.testInstructions
     ).toEqual(["Run targeted API integration tests."]);
@@ -177,6 +183,7 @@ describeIfDatabase("project repositories", () => {
     expect(updated.displayName).toBe("Demo Project v2");
     expect(updated.components).toHaveLength(1);
     expect(updated.components[0]?.componentKey).toBe("frontend");
+    expect(updated.components[0]?.config.ref).toBe("feature/project-model");
     expect(updated.envVars.map((envVar) => envVar.name)).toEqual(["FEATURE_FLAG_PROJECTS"]);
 
     const projectList = await listProjects(client, {
@@ -225,7 +232,11 @@ describeIfDatabase("project repositories", () => {
         tenantId,
         config
       })
-    ).rejects.toThrow(/duplicate key value|uq_projects_tenant_key/i);
+    ).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        code: "23505"
+      })
+    });
 
     const otherTenantProject = await createProject(client, {
       tenantId: otherTenantId,
