@@ -5,7 +5,10 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { renderRoute } from "./render-route";
-import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
+import {
+  serializeProjectListItem,
+  serializeProjectResource
+} from "../../../src/http/api/v1/projects/contracts";
 
 const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
 
@@ -77,6 +80,59 @@ function buildRunsResponse(runs: LiveRunFixture[]) {
   };
 }
 
+function buildProjectDetailResponse(project: {
+  components: Array<{
+    componentKey: string;
+    config:
+      | {
+          localPath: string;
+          ref?: string;
+        }
+      | {
+          gitUrl: string;
+          ref?: string;
+        };
+    displayName: string;
+    kind: "git_repository";
+    ruleOverride?: {
+      reviewInstructions?: string[];
+      testInstructions?: string[];
+    };
+  }>;
+  description: string | null;
+  displayName: string;
+  envVars: Array<{
+    name: string;
+    value: string;
+  }>;
+  projectId: string;
+  projectKey: string;
+  ruleSet: {
+    reviewInstructions: string[];
+    testInstructions: string[];
+  };
+}) {
+  return {
+    data: serializeProjectResource({
+      tenantId: "tenant-test",
+      projectId: project.projectId,
+      projectKey: project.projectKey,
+      displayName: project.displayName,
+      description: project.description,
+      ruleSet: project.ruleSet,
+      components: project.components,
+      envVars: project.envVars,
+      createdAt: defaultTimestamp,
+      updatedAt: defaultTimestamp
+    }),
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "project" as const
+    }
+  };
+}
+
 function createJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -88,15 +144,20 @@ function createJsonResponse(payload: unknown, status = 200) {
 
 function stubProjectManagementFetch(options: {
   projectResponses: ResponseFactory[];
+  projectDetailsByProjectId?: Record<string, ResponseFactory[]>;
   projectRunsByProjectId?: Record<string, ResponseFactory[]>;
+  projectUpdatesByProjectId?: Record<string, ResponseFactory[]>;
 }) {
   let callIndex = 0;
+  const detailCallIndexes = new Map<string, number>();
   const runCallIndexes = new Map<string, number>();
+  const updateCallIndexes = new Map<string, number>();
 
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
+    const method = input instanceof Request ? input.method : init?.method ?? "GET";
 
-    if (url === "/v1/projects") {
+    if (url === "/v1/projects" && method === "GET") {
       const responseFactory =
         options.projectResponses[Math.min(callIndex, options.projectResponses.length - 1)];
       callIndex += 1;
@@ -104,9 +165,28 @@ function stubProjectManagementFetch(options: {
       return await responseFactory!();
     }
 
+    const projectMatch = url.match(/^\/v1\/projects\/([^/]+)$/);
+
+    if (projectMatch && method === "GET") {
+      const projectId = decodeURIComponent(projectMatch[1]!);
+      const responseFactories = options.projectDetailsByProjectId?.[projectId];
+
+      if (!responseFactories) {
+        throw new Error(`Unexpected fetch request: ${method} ${url}`);
+      }
+
+      const detailCallIndex = detailCallIndexes.get(projectId) ?? 0;
+      const responseFactory =
+        responseFactories[Math.min(detailCallIndex, responseFactories.length - 1)];
+
+      detailCallIndexes.set(projectId, detailCallIndex + 1);
+
+      return await responseFactory!();
+    }
+
     const runMatch = url.match(/^\/v1\/projects\/([^/]+)\/runs$/);
 
-    if (runMatch) {
+    if (runMatch && method === "GET") {
       const projectId = decodeURIComponent(runMatch[1]!);
       const responseFactories = options.projectRunsByProjectId?.[projectId] ?? [
         () => createJsonResponse(buildRunsResponse([]))
@@ -120,7 +200,24 @@ function stubProjectManagementFetch(options: {
       return await responseFactory!();
     }
 
-    throw new Error(`Unexpected fetch request: ${url}`);
+    if (projectMatch && method === "PATCH") {
+      const projectId = decodeURIComponent(projectMatch[1]!);
+      const responseFactories = options.projectUpdatesByProjectId?.[projectId];
+
+      if (!responseFactories) {
+        throw new Error(`Unexpected fetch request: ${method} ${url}`);
+      }
+
+      const updateCallIndex = updateCallIndexes.get(projectId) ?? 0;
+      const responseFactory =
+        responseFactories[Math.min(updateCallIndex, responseFactories.length - 1)];
+
+      updateCallIndexes.set(projectId, updateCallIndex + 1);
+
+      return await responseFactory!();
+    }
+
+    throw new Error(`Unexpected fetch request: ${method} ${url}`);
   });
 
   vi.stubGlobal("fetch", fetchMock);
@@ -475,7 +572,7 @@ describe("App shell", () => {
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
 
-  it("renders a safe compatibility state for settings on a non-scaffold project", async () => {
+  it("renders the settings load error state and recovers after retry", async () => {
     const projects: CurrentProject[] = [
       {
         projectId: "project-keystone-cloudflare",
@@ -490,20 +587,60 @@ describe("App shell", () => {
         description: "Alternate operator workspace."
       }
     ];
+    const alternateProjectDetail = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Alternate operator workspace.",
+      ruleSet: {
+        reviewInstructions: ["Review the alternate project carefully."],
+        testInstructions: ["Run the alternate smoke test suite."]
+      },
+      components: [
+        {
+          componentKey: "alt-api",
+          displayName: "Alt API",
+          kind: "git_repository" as const,
+          config: {
+            gitUrl: "https://github.com/keystone/alt-api.git",
+            ref: "main"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "ALT_RUNTIME",
+          value: "workers"
+        }
+      ]
+    };
 
     window.localStorage.setItem(currentProjectStorageKey, "project-alt");
-    stubProjectListFetch(projects);
+    const fetchMock = stubProjectManagementFetch({
+      projectResponses: [() => createJsonResponse(buildProjectsResponse(projects))],
+      projectDetailsByProjectId: {
+        "project-alt": [
+          async () => {
+            throw new Error("Project settings failed.");
+          },
+          () => createJsonResponse(buildProjectDetailResponse(alternateProjectDetail))
+        ]
+      }
+    });
 
     renderRoute("/settings", { useBrowserProjectApi: true });
 
     expect(await screen.findByRole("heading", { name: "Project settings: Alt Project" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Settings are not available for this project yet" })
+      await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Project settings currently depend on scaffold-backed configuration data\./i)
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Project configuration tabs")).not.toBeInTheDocument();
+    expect(screen.getByText("Project settings failed.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it.each([
@@ -530,8 +667,46 @@ describe("App shell", () => {
       displayName: "Keystone Cloudflare",
       description: "Internal operator workspace for the Keystone Cloudflare project."
     };
+    const settingsProjectDetail = {
+      projectId: scaffoldProject.projectId,
+      projectKey: scaffoldProject.projectKey,
+      displayName: scaffoldProject.displayName,
+      description: scaffoldProject.description,
+      ruleSet: {
+        reviewInstructions: ["Keep route ownership explicit."],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository" as const,
+          config: {
+            localPath: "./services/api",
+            ref: "main"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        }
+      ]
+    };
 
-    stubProjectListFetch([scaffoldProject]);
+    if (path === "/settings") {
+      stubProjectManagementFetch({
+        projectResponses: [() => createJsonResponse(buildProjectsResponse([scaffoldProject]))],
+        projectDetailsByProjectId: {
+          [scaffoldProject.projectId]: [
+            () => createJsonResponse(buildProjectDetailResponse(settingsProjectDetail))
+          ]
+        }
+      });
+    } else {
+      stubProjectListFetch([scaffoldProject]);
+    }
 
     renderRoute(path, { useBrowserProjectApi: true });
 

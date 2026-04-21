@@ -1,16 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import {
-  getNewProjectConfiguration,
-  getProjectConfiguration
-} from "../resource-model/selectors";
-import { useResourceModel } from "../resource-model/context";
 import {
   projectComponentTypeOptions,
   projectConfigurationTabs,
   buildProjectConfigurationPath,
-  buildProjectConfigurationComponentDraft,
-  type ProjectComponentScaffold,
   type ProjectComponentKindId,
   type ProjectComponentTypeOption,
   type ProjectConfigurationMode,
@@ -18,6 +11,7 @@ import {
 } from "./project-configuration-scaffold";
 import { useCurrentProject } from "./project-context";
 import { useNewProjectConfiguration } from "./new-project-context";
+import { useProjectSettingsConfiguration } from "./project-settings-context";
 
 export interface ProjectConfigurationActionViewModel {
   disabled?: boolean | undefined;
@@ -64,9 +58,11 @@ export interface EditableProjectComponentViewModel {
 }
 
 interface ProjectConfigurationShellViewModel {
-  compatibilityState?: {
+  shellState?: {
+    actionLabel?: string | undefined;
     heading: string;
     message: string;
+    onAction?: (() => void) | undefined;
   } | undefined;
   title: string;
   tabs: Array<{
@@ -100,11 +96,13 @@ interface NewProjectComponentsViewModel {
 }
 
 interface ProjectSettingsComponentsViewModel {
-  components: ProjectComponentScaffold[];
+  components: EditableProjectComponentViewModel[];
+  emptyError?: string | undefined;
   emptyState: string;
   footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
   pickComponentType: (kindId: ProjectComponentTypeOption["kindId"]) => void;
+  submitError: string | null;
   toggleTypePicker: () => void;
   typeOptions: ProjectComponentTypeOption[];
   typePickerOpen: boolean;
@@ -134,11 +132,17 @@ interface NewProjectEnvironmentViewModel {
 }
 
 interface ProjectSettingsEnvironmentViewModel {
+  emptyMessage: string;
   envVars: Array<{
-    name: string;
-    value: string;
+    entryId: string;
+    nameField: ProjectConfigurationTextFieldViewModel;
+    onRemove: () => void;
+    valueField: ProjectConfigurationTextFieldViewModel;
   }>;
+  footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
+  submitError: string | null;
+  addEnvVar: () => void;
 }
 
 function buildProjectConfigurationTabs(mode: ProjectConfigurationMode) {
@@ -147,48 +151,6 @@ function buildProjectConfigurationTabs(mode: ProjectConfigurationMode) {
     label: tab.label,
     path: buildProjectConfigurationPath(mode, tab.tabId)
   }));
-}
-
-function useProjectConfigurationSeed(mode: ProjectConfigurationMode) {
-  const { state } = useResourceModel();
-  const project = useCurrentProject();
-
-  if (mode === "new") {
-    const configuration = getNewProjectConfiguration(state.dataset);
-
-    if (!configuration) {
-      throw new Error("New project configuration scaffold is missing.");
-    }
-
-    return {
-      configuration,
-      selectionKey: configuration.configurationId
-    };
-  }
-
-  const configuration = getProjectConfiguration(project.projectId, state.dataset);
-
-  if (!configuration) {
-    throw new Error(`Project configuration scaffold is missing for "${project.projectId}".`);
-  }
-
-  return {
-    configuration,
-    selectionKey: `${project.projectId}:${configuration.configurationId}`
-  };
-}
-
-function buildSettingsFooterActions() {
-  return [
-    {
-      disabled: true,
-      label: "Discard"
-    },
-    {
-      disabled: true,
-      label: "Save"
-    }
-  ];
 }
 
 function useNewProjectFooterActions(): ProjectConfigurationActionViewModel[] {
@@ -203,6 +165,49 @@ function useNewProjectFooterActions(): ProjectConfigurationActionViewModel[] {
     {
       disabled: meta.isSubmitting,
       label: meta.isSubmitting ? "Creating project..." : "Create project",
+      onPress() {
+        void actions.submit();
+      }
+    }
+  ];
+}
+
+function useReadyProjectSettings() {
+  const projectSettings = useProjectSettingsConfiguration();
+  const draft = projectSettings.state.draft;
+
+  if (projectSettings.meta.status !== "ready" || !draft) {
+    throw new Error(
+      "Project settings view models require a ready ProjectSettingsConfigurationProvider."
+    );
+  }
+
+  return {
+    ...projectSettings,
+    meta: {
+      ...projectSettings.meta,
+      status: "ready" as const
+    },
+    state: {
+      ...projectSettings.state,
+      draft
+    }
+  };
+}
+
+function useProjectSettingsFooterActions(): ProjectConfigurationActionViewModel[] {
+  const { actions, meta } = useProjectSettingsConfiguration();
+  const disabled = meta.status !== "ready" || !meta.hasUnsavedChanges || meta.isSubmitting;
+
+  return [
+    {
+      disabled,
+      label: "Discard changes",
+      onPress: actions.discardChanges
+    },
+    {
+      disabled,
+      label: meta.isSubmitting ? "Saving changes..." : "Save changes",
       onPress() {
         void actions.submit();
       }
@@ -232,28 +237,125 @@ function getListItemErrors(
 }
 
 function useProjectSettingsComponentsModel(): ProjectSettingsComponentsViewModel {
-  const { configuration, selectionKey } = useProjectConfigurationSeed("settings");
-  const serializedComponents = JSON.stringify(configuration.components);
+  const { actions, meta, state } = useReadyProjectSettings();
   const [typePickerOpen, setTypePickerOpen] = useState(false);
-  const [components, setComponents] = useState(configuration.components);
-
-  useEffect(() => {
-    setComponents(JSON.parse(serializedComponents) as ProjectComponentScaffold[]);
-    setTypePickerOpen(false);
-  }, [selectionKey, serializedComponents]);
+  const components = state.draft.components;
 
   return {
-    components,
+    components: components.map((component, index) => ({
+      componentId: component.componentId,
+      componentKeyField: {
+        errorMessage: state.fieldErrors[`components.${index}.componentKey`],
+        label: "Key",
+        onChange(value) {
+          actions.updateComponentField(component.componentId, "componentKey", value);
+        },
+        value: component.componentKey
+      },
+      defaultRefField: {
+        errorMessage: state.fieldErrors[`components.${index}.defaultRef`],
+        label: "Default ref",
+        onChange(value) {
+          actions.updateComponentField(component.componentId, "defaultRef", value);
+        },
+        value: component.defaultRef
+      },
+      displayNameField: {
+        errorMessage: state.fieldErrors[`components.${index}.displayName`],
+        label: "Name",
+        onChange(value) {
+          actions.updateComponentField(component.componentId, "displayName", value);
+        },
+        value: component.displayName
+      },
+      gitUrlField: {
+        disabled: component.sourceMode !== "gitUrl",
+        errorMessage: state.fieldErrors[`components.${index}.gitUrl`],
+        label: "Git URL",
+        onChange(value) {
+          actions.updateComponentField(component.componentId, "gitUrl", value);
+        },
+        value: component.gitUrl
+      },
+      heading: `Component ${index + 1}`,
+      kind: component.kind,
+      localPathField: {
+        disabled: component.sourceMode !== "localPath",
+        errorMessage: state.fieldErrors[`components.${index}.localPath`],
+        label: "Local path",
+        onChange(value) {
+          actions.updateComponentField(component.componentId, "localPath", value);
+        },
+        value: component.localPath
+      },
+      onRemove() {
+        actions.removeComponent(component.componentId);
+      },
+      reviewInstructions: {
+        addLabel: "Add review instruction",
+        items: component.reviewInstructions,
+        label: "Review",
+        onAdd() {
+          actions.addComponentRuleInstruction(component.componentId, "reviewInstructions");
+        },
+        onChange(itemIndex, value) {
+          actions.updateComponentRuleInstruction(
+            component.componentId,
+            "reviewInstructions",
+            itemIndex,
+            value
+          );
+        },
+        onRemove(itemIndex) {
+          actions.removeComponentRuleInstruction(
+            component.componentId,
+            "reviewInstructions",
+            itemIndex
+          );
+        },
+        rowErrors: getListItemErrors(
+          state.fieldErrors,
+          `components.${index}.reviewInstructions`
+        )
+      },
+      setSourceMode(sourceMode) {
+        actions.setComponentSourceMode(component.componentId, sourceMode);
+      },
+      sourceMode: component.sourceMode,
+      testInstructions: {
+        addLabel: "Add test instruction",
+        items: component.testInstructions,
+        label: "Test",
+        onAdd() {
+          actions.addComponentRuleInstruction(component.componentId, "testInstructions");
+        },
+        onChange(itemIndex, value) {
+          actions.updateComponentRuleInstruction(
+            component.componentId,
+            "testInstructions",
+            itemIndex,
+            value
+          );
+        },
+        onRemove(itemIndex) {
+          actions.removeComponentRuleInstruction(
+            component.componentId,
+            "testInstructions",
+            itemIndex
+          );
+        },
+        rowErrors: getListItemErrors(state.fieldErrors, `components.${index}.testInstructions`)
+      }
+    })),
+    emptyError: state.fieldErrors.components,
     emptyState: "No project components configured yet.",
-    footerActions: buildSettingsFooterActions(),
+    footerActions: useProjectSettingsFooterActions(),
     heading: "Components",
     pickComponentType(kindId) {
-      setComponents((currentComponents) => [
-        ...currentComponents,
-        buildProjectConfigurationComponentDraft("settings", currentComponents.length, kindId)
-      ]);
+      actions.addComponent(kindId);
       setTypePickerOpen(false);
     },
+    submitError: meta.submitError,
     toggleTypePicker() {
       setTypePickerOpen((currentValue) => !currentValue);
     },
@@ -264,54 +366,110 @@ function useProjectSettingsComponentsModel(): ProjectSettingsComponentsViewModel
 }
 
 function useProjectSettingsOverviewModel(): ProjectOverviewViewModel {
-  const { configuration } = useProjectConfigurationSeed("settings");
+  const { actions, meta, state } = useReadyProjectSettings();
 
   return {
     descriptionField: {
+      errorMessage: state.fieldErrors["overview.description"],
       label: "Description",
-      readOnly: true,
-      value: configuration.overview.description
+      onChange(value) {
+        actions.updateOverviewField("description", value);
+      },
+      value: state.draft.overview.description
     },
-    footerActions: buildSettingsFooterActions(),
+    footerActions: useProjectSettingsFooterActions(),
     heading: "Overview",
     keyField: {
+      errorMessage: state.fieldErrors["overview.projectKey"],
       label: "Project key",
-      readOnly: true,
-      value: configuration.overview.projectKey
+      onChange(value) {
+        actions.updateOverviewField("projectKey", value);
+      },
+      value: state.draft.overview.projectKey
     },
     nameField: {
+      errorMessage: state.fieldErrors["overview.displayName"],
       label: "Project name",
-      readOnly: true,
-      value: configuration.overview.displayName
+      onChange(value) {
+        actions.updateOverviewField("displayName", value);
+      },
+      value: state.draft.overview.displayName
     },
-    submitError: null
+    submitError: meta.submitError
   };
 }
 
 function useProjectSettingsRulesModel(): ProjectRulesViewModel {
-  const { configuration } = useProjectConfigurationSeed("settings");
+  const { actions, meta, state } = useReadyProjectSettings();
 
   return {
+    footerActions: useProjectSettingsFooterActions(),
     heading: "Rules",
     reviewInstructions: {
-      items: configuration.rules.reviewInstructions,
+      addLabel: "Add review instruction",
+      items: state.draft.ruleSet.reviewInstructions,
       label: "Project review instructions",
-      readOnly: true
+      onAdd() {
+        actions.addProjectRuleInstruction("reviewInstructions");
+      },
+      onChange(index, value) {
+        actions.updateProjectRuleInstruction("reviewInstructions", index, value);
+      },
+      onRemove(index) {
+        actions.removeProjectRuleInstruction("reviewInstructions", index);
+      },
+      rowErrors: getListItemErrors(state.fieldErrors, "rules.reviewInstructions")
     },
+    submitError: meta.submitError,
     testInstructions: {
-      items: configuration.rules.testInstructions,
+      addLabel: "Add test instruction",
+      items: state.draft.ruleSet.testInstructions,
       label: "Project test instructions",
-      readOnly: true
+      onAdd() {
+        actions.addProjectRuleInstruction("testInstructions");
+      },
+      onChange(index, value) {
+        actions.updateProjectRuleInstruction("testInstructions", index, value);
+      },
+      onRemove(index) {
+        actions.removeProjectRuleInstruction("testInstructions", index);
+      },
+      rowErrors: getListItemErrors(state.fieldErrors, "rules.testInstructions")
     }
   };
 }
 
 function useProjectSettingsEnvironmentModel(): ProjectSettingsEnvironmentViewModel {
-  const { configuration } = useProjectConfigurationSeed("settings");
+  const { actions, meta, state } = useReadyProjectSettings();
 
   return {
-    envVars: configuration.environmentVariables,
-    heading: "Environment"
+    addEnvVar: actions.addEnvVar,
+    emptyMessage: "No environment variables added yet.",
+    envVars: state.draft.envVars.map((envVar, index) => ({
+      entryId: envVar.entryId,
+      nameField: {
+        errorMessage: state.fieldErrors[`environment.${index}.name`],
+        label: "Name",
+        onChange(value) {
+          actions.updateEnvVar(envVar.entryId, "name", value);
+        },
+        value: envVar.name
+      },
+      onRemove() {
+        actions.removeEnvVar(envVar.entryId);
+      },
+      valueField: {
+        errorMessage: state.fieldErrors[`environment.${index}.value`],
+        label: "Value",
+        onChange(value) {
+          actions.updateEnvVar(envVar.entryId, "value", value);
+        },
+        value: envVar.value
+      }
+    })),
+    footerActions: useProjectSettingsFooterActions(),
+    heading: "Environment",
+    submitError: meta.submitError
   };
 }
 
@@ -323,22 +481,29 @@ export function useNewProjectConfigurationShellViewModel(): ProjectConfiguration
 }
 
 export function useProjectSettingsConfigurationShellViewModel(): ProjectConfigurationShellViewModel {
-  const { state } = useResourceModel();
+  const { actions, meta } = useProjectSettingsConfiguration();
   const project = useCurrentProject();
-  const hasScaffoldConfiguration = Boolean(getProjectConfiguration(project.projectId, state.dataset));
 
   return {
-    ...(hasScaffoldConfiguration
-      ? {}
-      : {
-          compatibilityState: {
-            heading: "Settings are not available for this project yet",
-            message:
-              "Project settings currently depend on scaffold-backed configuration data. Switch to a scaffold-backed project to use this screen."
-          }
-        }),
     title: `Project settings: ${project.displayName}`,
-    tabs: hasScaffoldConfiguration ? buildProjectConfigurationTabs("settings") : []
+    tabs: meta.status === "ready" ? buildProjectConfigurationTabs("settings") : [],
+    ...(meta.status === "loading"
+      ? {
+          shellState: {
+            heading: "Loading project settings",
+            message: "Keystone is loading the selected project's settings."
+          }
+        }
+      : meta.status === "error"
+        ? {
+            shellState: {
+              actionLabel: "Retry",
+              heading: "Unable to load project settings",
+              message: meta.loadError ?? "Keystone could not load the selected project's settings.",
+              onAction: actions.retryLoad
+            }
+          }
+        : {})
   };
 }
 

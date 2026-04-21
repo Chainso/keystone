@@ -9,7 +9,10 @@ import {
 import { runCollectionEnvelopeSchema } from "../../../../src/http/api/v1/runs/contracts";
 import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 import { uiScaffoldDataset } from "../resource-model/scaffold-dataset";
-import { listRunSummaries } from "../resource-model/selectors";
+import {
+  getProjectConfiguration,
+  listRunSummaries
+} from "../resource-model/selectors";
 import type { ResourceModelDataset } from "../resource-model/types";
 
 export interface CurrentProjectRecord {
@@ -17,6 +20,12 @@ export interface CurrentProjectRecord {
   projectKey: string;
   displayName: string;
   description: string;
+}
+
+export interface ProjectDetailRecord extends CurrentProjectRecord {
+  components: ProjectConfig["components"];
+  envVars: ProjectConfig["envVars"];
+  ruleSet: ProjectConfig["ruleSet"];
 }
 
 export interface ApiProjectRunRecord {
@@ -77,8 +86,10 @@ export class ProjectManagementApiError extends Error {
 
 export interface ProjectManagementApi {
   createProject: (config: ProjectConfig) => Promise<CurrentProjectRecord>;
+  getProject: (projectId: string) => Promise<ProjectDetailRecord>;
   listProjects: () => Promise<CurrentProjectRecord[]>;
   listProjectRuns: (projectId: string) => Promise<ProjectRunRecord[]>;
+  updateProject: (projectId: string, config: ProjectConfig) => Promise<ProjectDetailRecord>;
 }
 
 const currentFetchImplementation: typeof fetch = (...args) => fetch(...args);
@@ -88,12 +99,47 @@ function normalizeProjectRecord(project: {
   projectKey: string;
   displayName: string;
   description: string | null;
-}) {
+}): CurrentProjectRecord {
   return {
     projectId: project.projectId,
     projectKey: project.projectKey,
     displayName: project.displayName,
     description: project.description ?? ""
+  };
+}
+
+function normalizeProjectDetailRecord(project: {
+  projectId: string;
+  projectKey: string;
+  displayName: string;
+  description: string | null;
+  components: ProjectConfig["components"];
+  envVars: ProjectConfig["envVars"];
+  ruleSet: ProjectConfig["ruleSet"];
+}): ProjectDetailRecord {
+  return {
+    ...normalizeProjectRecord(project),
+    components: project.components.map((component) => ({
+      ...component,
+      config: { ...component.config },
+      ...(component.ruleOverride
+        ? {
+            ruleOverride: {
+              ...(component.ruleOverride.reviewInstructions
+                ? { reviewInstructions: [...component.ruleOverride.reviewInstructions] }
+                : {}),
+              ...(component.ruleOverride.testInstructions
+                ? { testInstructions: [...component.ruleOverride.testInstructions] }
+                : {})
+            }
+          }
+        : {})
+    })),
+    envVars: project.envVars.map((envVar) => ({ ...envVar })),
+    ruleSet: {
+      reviewInstructions: [...project.ruleSet.reviewInstructions],
+      testInstructions: [...project.ruleSet.testInstructions]
+    }
   };
 }
 
@@ -186,6 +232,59 @@ function normalizeRunRecord(run: {
   };
 }
 
+function buildStaticProjectDetail(
+  project: CurrentProjectRecord,
+  dataset: ResourceModelDataset
+): ProjectDetailRecord | null {
+  const configuration = getProjectConfiguration(project.projectId, dataset);
+
+  if (!configuration) {
+    return null;
+  }
+
+  return normalizeProjectDetailRecord({
+    projectId: project.projectId,
+    projectKey: project.projectKey,
+    displayName: project.displayName,
+    description: project.description,
+    ruleSet: {
+      reviewInstructions: [...configuration.rules.reviewInstructions],
+      testInstructions: [...configuration.rules.testInstructions]
+    },
+    components: configuration.components.map((component) => ({
+      componentKey: component.componentKey,
+      displayName: component.displayName,
+      kind: component.kind,
+      config:
+        component.sourceMode === "localPath"
+          ? {
+              ...(component.localPath ? { localPath: component.localPath } : {}),
+              ...(component.defaultRef ? { ref: component.defaultRef } : {})
+            }
+          : {
+              ...(component.gitUrl ? { gitUrl: component.gitUrl } : {}),
+              ...(component.defaultRef ? { ref: component.defaultRef } : {})
+            },
+      ...(component.reviewInstructions.length > 0 || component.testInstructions.length > 0
+        ? {
+            ruleOverride: {
+              ...(component.reviewInstructions.length > 0
+                ? { reviewInstructions: [...component.reviewInstructions] }
+                : {}),
+              ...(component.testInstructions.length > 0
+                ? { testInstructions: [...component.testInstructions] }
+                : {})
+            }
+          }
+        : {})
+    })),
+    envVars: configuration.environmentVariables.map((envVar) => ({
+      name: envVar.name,
+      value: envVar.value
+    }))
+  });
+}
+
 export function createBrowserProjectManagementApi(
   fetchImplementation: typeof fetch = currentFetchImplementation
 ): ProjectManagementApi {
@@ -208,6 +307,23 @@ export function createBrowserProjectManagementApi(
       const payload = projectDetailEnvelopeSchema.parse(await response.json());
 
       return normalizeProjectRecord(payload.data);
+    },
+    async getProject(projectId) {
+      const response = await fetchImplementation(`/v1/projects/${encodeURIComponent(projectId)}`, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        throw await buildApiError(response, `Unable to load project settings (${response.status}).`);
+      }
+
+      const payload = projectDetailEnvelopeSchema.parse(await response.json());
+
+      return normalizeProjectDetailRecord(payload.data);
     },
     async listProjects() {
       const response = await fetchImplementation("/v1/projects", {
@@ -242,6 +358,25 @@ export function createBrowserProjectManagementApi(
       const payload = runCollectionEnvelopeSchema.parse(await response.json());
 
       return payload.data.items.map(normalizeRunRecord);
+    },
+    async updateProject(projectId, config) {
+      const response = await fetchImplementation(`/v1/projects/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        throw await buildApiError(response, `Unable to save project settings (${response.status}).`);
+      }
+
+      const payload = projectDetailEnvelopeSchema.parse(await response.json());
+
+      return normalizeProjectDetailRecord(payload.data);
     }
   };
 }
@@ -251,20 +386,45 @@ export function createStaticProjectManagementApi(
   dataset: ResourceModelDataset = uiScaffoldDataset
 ): ProjectManagementApi {
   let currentProjects = [...projects];
+  const currentProjectDetails = new Map<string, ProjectDetailRecord>();
+
+  currentProjects.forEach((project) => {
+    const detail = buildStaticProjectDetail(project, dataset);
+
+    if (detail) {
+      currentProjectDetails.set(project.projectId, detail);
+    }
+  });
 
   return {
     async createProject(config) {
       const parsedConfig = projectConfigSchema.parse(config);
-      const createdProject = {
+      const createdProject: CurrentProjectRecord = {
         projectId: `project-${parsedConfig.projectKey}`,
         projectKey: parsedConfig.projectKey,
         displayName: parsedConfig.displayName,
         description: parsedConfig.description ?? ""
       };
+      const createdDetail = normalizeProjectDetailRecord({
+        ...createdProject,
+        components: parsedConfig.components,
+        envVars: parsedConfig.envVars,
+        ruleSet: parsedConfig.ruleSet
+      });
 
       currentProjects = [...currentProjects, createdProject];
+      currentProjectDetails.set(createdProject.projectId, createdDetail);
 
       return createdProject;
+    },
+    async getProject(projectId) {
+      const project = currentProjectDetails.get(projectId);
+
+      if (!project) {
+        throw new Error(`Project ${projectId} was not found.`);
+      }
+
+      return normalizeProjectDetailRecord(project);
     },
     async listProjects() {
       return currentProjects;
@@ -281,6 +441,31 @@ export function createStaticProjectManagementApi(
         updatedLabel: run.updatedLabel,
         detailPath: run.detailPath
       }));
+    },
+    async updateProject(projectId, config) {
+      const parsedConfig = projectConfigSchema.parse(config);
+      const existingProject = currentProjects.find((project) => project.projectId === projectId);
+
+      if (!existingProject) {
+        throw new Error(`Project ${projectId} was not found.`);
+      }
+
+      const updatedProject: ProjectDetailRecord = normalizeProjectDetailRecord({
+        projectId,
+        projectKey: parsedConfig.projectKey,
+        displayName: parsedConfig.displayName,
+        description: parsedConfig.description ?? "",
+        components: parsedConfig.components,
+        envVars: parsedConfig.envVars,
+        ruleSet: parsedConfig.ruleSet
+      });
+
+      currentProjects = currentProjects.map((project) =>
+        project.projectId === projectId ? normalizeProjectRecord(updatedProject) : project
+      );
+      currentProjectDetails.set(projectId, updatedProject);
+
+      return normalizeProjectDetailRecord(updatedProject);
     }
   };
 }

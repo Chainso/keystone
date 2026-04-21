@@ -4,6 +4,7 @@ import {
   type ProjectConfigurationMode
 } from "../../features/projects/project-configuration-scaffold";
 import { NewProjectConfigurationProvider } from "../../features/projects/new-project-context";
+import { ProjectSettingsConfigurationProvider } from "../../features/projects/project-settings-context";
 import {
   useNewProjectConfigurationShellViewModel,
   useProjectSettingsConfigurationShellViewModel
@@ -27,14 +28,31 @@ function NewProjectConfigurationLayout() {
 }
 
 function ProjectSettingsConfigurationLayout() {
+  return (
+    <ProjectSettingsConfigurationProvider>
+      <ProjectSettingsConfigurationShell />
+    </ProjectSettingsConfigurationProvider>
+  );
+}
+
+function ProjectSettingsConfigurationShell() {
   const model = useProjectSettingsConfigurationShellViewModel();
 
   return (
     <ProjectConfigurationScaffold title={model.title} tabs={model.tabs}>
-      {model.compatibilityState ? (
+      {model.shellState ? (
         <section className="empty-state-card">
-          <h2 className="document-card-title">{model.compatibilityState.heading}</h2>
-          <p className="document-card-summary">{model.compatibilityState.message}</p>
+          <h2 className="document-card-title">{model.shellState.heading}</h2>
+          <p className="document-card-summary">{model.shellState.message}</p>
+          {model.shellState.actionLabel && model.shellState.onAction ? (
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={model.shellState.onAction}
+            >
+              {model.shellState.actionLabel}
+            </button>
+          ) : null}
         </section>
       ) : (
         <Outlet />

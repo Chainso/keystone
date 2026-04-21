@@ -6,7 +6,10 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { AppProviders } from "../app/app-providers";
 import type { CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
-import { selectCurrentProjectSummary } from "../features/resource-model/selectors";
+import {
+  createProjectOverrideDataset,
+  selectCurrentProjectSummary
+} from "../features/resource-model/selectors";
 import { appRoutes } from "../routes/router";
 
 interface RenderRouteOptions {
@@ -18,7 +21,9 @@ export function renderRoute(initialEntry: string, options: RenderRouteOptions = 
   const router = createMemoryRouter(appRoutes, {
     initialEntries: [initialEntry]
   });
-  const defaultProjectApi = createStaticProjectManagementApi([selectCurrentProjectSummary()]);
+  const project = options.project ?? selectCurrentProjectSummary();
+  const dataset = options.project ? createProjectOverrideDataset(options.project) : undefined;
+  const defaultProjectApi = createStaticProjectManagementApi([project], dataset);
   const providerProps = options.useBrowserProjectApi
     ? {}
     : {

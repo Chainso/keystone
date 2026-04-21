@@ -174,6 +174,11 @@ Compatibility that **is** required:
   **Decision:** Treat the `POST /v1/projects` detail response as authoritative if the immediate follow-up list refresh fails, and keep the newly created project selected in shell state instead of downgrading the entire flow into a retryable error.  
   **Rationale:** The review round found that a transient refresh failure after a successful create could strand the operator on a false failure path and encourage duplicate submission. Falling back to the created project record keeps the UI honest without pulling settings or broader recovery work into this phase.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 4  
+  **Decision:** Keep `Project settings` explicit, but move its seed/load/save lifecycle into a dedicated route-scoped provider that reuses the shared draft helpers and the existing project-management seam for `GET` / `PATCH` calls.  
+  **Rationale:** The settings route needed live detail loading, retry, save-state, and shell summary refresh without collapsing create and settings into a generic mode-heavy component. A dedicated settings provider preserves explicit semantics while reusing the canonical draft serialization and validation helpers added in Phase 3.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -217,6 +222,11 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Phase 3 targeted fix pass completed:
   - [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now falls back to the project returned by `POST /v1/projects` when the immediate list refresh fails, preserving the new current-project selection instead of dropping the shell into an error state.
   - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now proves the POST-success/refresh-failure recovery path, adds explicit required-project-key validation coverage, and exercises the new-project add/remove instruction controls directly.
+- [x] 2026-04-20 Phase 4 completed:
+  - [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) now owns live settings detail loading, retry, shared draft state, save/discard actions, and save-state tracking for the current project.
+  - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now support `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`, then refresh the selected project summary in-place from the trusted `PATCH` response.
+  - [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-configuration-tabs.tsx), and [ui/src/routes/projects/project-configuration-layout.tsx](../../ui/src/routes/projects/project-configuration-layout.tsx) now render real editable settings tabs with loading/error/retry states instead of scaffold-only compatibility gating.
+  - Focused shell and destination tests now cover settings load retry, live settings save progress, and post-save shell summary refresh without route churn.
 
 ## Surprises & Discoveries
 
@@ -241,6 +251,7 @@ Compatibility that **is** required:
 - The first Phase 2 Workstreams empty-state branch was too coarse: treating every zero-row result like a global empty state accidentally hid the filter controls for filter-specific zero results. Keeping the filters outside that branch fixed the regression without changing the Workstreams view-model contract.
 - The canonical `ProjectConfig` schema treats `description` as nullable at the storage boundary but still rejects blank strings, so the create form has to keep description explicitly required instead of auto-normalizing empty input to `null`.
 - A successful create cannot rely on an immediate `/v1/projects` refresh being available. The `POST /v1/projects` detail response has to remain a trustworthy fallback source for current-project state or the UI can falsely look like the create failed and invite a duplicate retry.
+- Once `Project settings` stopped depending on scaffold selectors, the old `resource-model-selectors` settings probe tests were no longer valid as pure `ResourceModelProvider` tests. The static test harness needed to mount a real project-management provider plus the new settings provider to keep those probes truthful.
 
 ## Outcomes & Retrospective
 
@@ -292,6 +303,12 @@ Phase 3 targeted fix pass outcome on 2026-04-20:
 - The create flow now keeps the newly created project selected and routeable even if the immediate project-list refresh fails after `POST /v1/projects`.
 - The focused create-flow tests now cover the reviewer-called blind spots: refresh-failure recovery, required-project-key validation, and direct add/remove behavior for the list-editing controls.
 - The focused validation picture is unchanged aside from the new passing tests: `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and `rtk npm run typecheck` still fails only in the unrelated worker-binding test.
+
+Phase 4 outcome on 2026-04-20:
+
+- `Project settings` now seeds from `GET /v1/projects/:projectId`, stays explicit via a dedicated settings provider, and exposes honest loading, retry, and save-state behavior instead of scaffold compatibility placeholders.
+- Saving settings now `PATCH`es the canonical `ProjectConfig` shape and refreshes the selected project summary in the live shell from the returned project detail, so the sidebar switcher and settings header stay in sync without route churn.
+- The focused Phase 4 validation passes for the UI surface: `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passes and `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, while the required repo `rtk npm run typecheck` command still fails only in the pre-existing worker-binding test.
 
 ## Context and Orientation
 
@@ -891,15 +908,21 @@ Success means settings load the real selected project, save changes through `PAT
 
 #### Status
 
-Pending.
+Completed on 2026-04-20.
 
 #### Completion Notes
 
-- None yet.
+- Added [ui/src/features/projects/project-configuration-form.ts](../../ui/src/features/projects/project-configuration-form.ts) and [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) so settings can reuse the create-phase draft serialization/validation surface without becoming a generic mode-flag component.
+- [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) now exposes browser-safe `getProject()` / `updateProject()` helpers and matching static test-harness support for settings probes.
+- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) and [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now cover settings load retry, save progress, and post-save shell summary refresh.
+- Validation results for this phase:
+  - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passes.
+  - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes.
+  - `rtk npm run typecheck` still fails outside this phase in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now requires `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
 
 #### Next Starter Context
 
-- Reuse the create-phase shared form architecture instead of inventing a second settings-only form stack.
+- Phase 5 can treat the live project-management loop as complete across project list, runs, create, and settings. The remaining work is cleanup/doc truthfulness plus final validation, not more settings behavior.
 
 ## Phase 5: Cleanup, Docs, And Final Validation
 

@@ -1,22 +1,19 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode
 } from "react";
-import { useNavigate } from "react-router-dom";
 
+import { projectConfigSchema } from "../../../../src/keystone/projects/contracts";
 import {
-  projectConfigSchema
-} from "../../../../src/keystone/projects/contracts";
-import { useResourceModel } from "../resource-model/context";
-import { getNewProjectConfiguration } from "../resource-model/selectors";
-import {
-  buildNewProjectComponentDraft,
+  buildProjectConfigurationComponentDraft,
   type ProjectComponentSourceMode
 } from "./project-configuration-scaffold";
 import {
+  buildProjectConfigurationDraft,
   buildProjectConfigurationFieldErrors,
   removeStringListItem,
   serializeProjectConfigurationDraft,
@@ -25,23 +22,23 @@ import {
   type ProjectComponentKind,
   type ProjectConfigurationComponentDraft,
   type ProjectConfigurationDraft,
-  type ProjectConfigurationEnvVarDraft,
   type ProjectEnvVarField,
   type ProjectOverviewField,
   type ProjectRuleListKey
 } from "./project-configuration-form";
 import { ProjectManagementApiError } from "./project-management-api";
-import { useProjectManagement } from "./project-context";
-type NewProjectDraft = ProjectConfigurationDraft;
-type NewProjectComponentDraft = ProjectConfigurationComponentDraft;
-type NewProjectEnvVarDraft = ProjectConfigurationEnvVarDraft;
+import {
+  useCurrentProject,
+  useProjectManagement,
+  useProjectManagementApi
+} from "./project-context";
 
-export interface NewProjectConfigurationState {
-  draft: NewProjectDraft;
+export interface ProjectSettingsConfigurationState {
+  draft: ProjectConfigurationDraft | null;
   fieldErrors: Record<string, string>;
 }
 
-export interface NewProjectConfigurationActions {
+export interface ProjectSettingsConfigurationActions {
   addComponent: (kind: ProjectComponentKind) => void;
   addComponentRuleInstruction: (
     componentId: string,
@@ -49,7 +46,7 @@ export interface NewProjectConfigurationActions {
   ) => void;
   addEnvVar: () => void;
   addProjectRuleInstruction: (ruleList: ProjectRuleListKey) => void;
-  cancel: () => void;
+  discardChanges: () => void;
   removeComponent: (componentId: string) => void;
   removeComponentRuleInstruction: (
     componentId: string,
@@ -58,6 +55,7 @@ export interface NewProjectConfigurationActions {
   ) => void;
   removeEnvVar: (entryId: string) => void;
   removeProjectRuleInstruction: (ruleList: ProjectRuleListKey, index: number) => void;
+  retryLoad: () => void;
   setComponentSourceMode: (
     componentId: string,
     sourceMode: ProjectComponentSourceMode
@@ -83,58 +81,36 @@ export interface NewProjectConfigurationActions {
   ) => void;
 }
 
-export interface NewProjectConfigurationMeta {
+export interface ProjectSettingsConfigurationMeta {
+  hasUnsavedChanges: boolean;
   isSubmitting: boolean;
+  loadError: string | null;
+  status: "loading" | "ready" | "error";
   submitError: string | null;
 }
 
-export interface NewProjectConfigurationValue {
-  actions: NewProjectConfigurationActions;
-  meta: NewProjectConfigurationMeta;
-  state: NewProjectConfigurationState;
+export interface ProjectSettingsConfigurationValue {
+  actions: ProjectSettingsConfigurationActions;
+  meta: ProjectSettingsConfigurationMeta;
+  state: ProjectSettingsConfigurationState;
 }
 
-const NewProjectConfigurationContext = createContext<NewProjectConfigurationValue | null>(null);
+const ProjectSettingsConfigurationContext =
+  createContext<ProjectSettingsConfigurationValue | null>(null);
 
-function buildInitialDraft(dataset: ReturnType<typeof useResourceModel>["state"]["dataset"]): NewProjectDraft {
-  const configuration = getNewProjectConfiguration(dataset);
-
-  if (!configuration) {
-    throw new Error("New project configuration scaffold is missing.");
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
   }
 
-  return {
-    components: configuration.components.map((component) => ({
-      componentId: component.componentId,
-      componentKey: component.componentKey,
-      defaultRef: component.defaultRef,
-      displayName: component.displayName,
-      gitUrl: component.gitUrl,
-      kind: component.kind,
-      localPath: component.localPath,
-      reviewInstructions: [...component.reviewInstructions],
-      sourceMode: component.sourceMode,
-      testInstructions: [...component.testInstructions]
-    })),
-    envVars: configuration.environmentVariables.map((envVar, index) => ({
-      entryId: `env-var-${index + 1}`,
-      name: envVar.name,
-      value: envVar.value
-    })),
-    overview: {
-      description: configuration.overview.description,
-      displayName: configuration.overview.displayName,
-      projectKey: configuration.overview.projectKey
-    },
-    ruleSet: {
-      reviewInstructions: [...configuration.rules.reviewInstructions],
-      testInstructions: [...configuration.rules.testInstructions]
-    }
-  };
+  return "Unable to load project settings.";
 }
 
-function mapNewProjectComponentDraft(index: number, kind: ProjectComponentKind): NewProjectComponentDraft {
-  const draft = buildNewProjectComponentDraft(index, kind);
+function mapSettingsComponentDraft(
+  index: number,
+  kind: ProjectComponentKind
+): ProjectConfigurationComponentDraft {
+  const draft = buildProjectConfigurationComponentDraft("settings", index, kind);
 
   return {
     componentId: draft.componentId,
@@ -150,28 +126,105 @@ function mapNewProjectComponentDraft(index: number, kind: ProjectComponentKind):
   };
 }
 
-export function NewProjectConfigurationProvider({
+function areDraftsEqual(
+  currentDraft: ProjectConfigurationDraft | null,
+  loadedDraft: ProjectConfigurationDraft | null
+) {
+  if (!currentDraft || !loadedDraft) {
+    return true;
+  }
+
+  return (
+    JSON.stringify(serializeProjectConfigurationDraft(currentDraft)) ===
+    JSON.stringify(serializeProjectConfigurationDraft(loadedDraft))
+  );
+}
+
+export function ProjectSettingsConfigurationProvider({
   children
 }: {
   children: ReactNode;
 }) {
-  const { state } = useResourceModel();
-  const navigate = useNavigate();
+  const api = useProjectManagementApi();
+  const project = useCurrentProject();
   const projectManagement = useProjectManagement();
-  const [draft, setDraft] = useState<NewProjectDraft>(() => buildInitialDraft(state.dataset));
+  const [draft, setDraft] = useState<ProjectConfigurationDraft | null>(null);
+  const [loadedDraft, setLoadedDraft] = useState<ProjectConfigurationDraft | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState<ProjectSettingsConfigurationMeta["status"]>("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const nextComponentIndexRef = useRef(draft.components.length);
-  const nextEnvVarIndexRef = useRef(draft.envVars.length);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const nextComponentIndexRef = useRef(0);
+  const nextEnvVarIndexRef = useRef(0);
+  const requestIdRef = useRef(0);
 
-  function updateDraft(recipe: (currentDraft: NewProjectDraft) => NewProjectDraft) {
-    setDraft((currentDraft) => recipe(currentDraft));
+  function resetDraft(nextDraft: ProjectConfigurationDraft) {
+    nextComponentIndexRef.current = nextDraft.components.length;
+    nextEnvVarIndexRef.current = nextDraft.envVars.length;
+    setDraft(nextDraft);
+    setLoadedDraft(nextDraft);
     setFieldErrors({});
     setSubmitError(null);
   }
 
-  const value: NewProjectConfigurationValue = {
+  async function loadSettings(projectId: string) {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setStatus("loading");
+    setLoadError(null);
+
+    try {
+      const detail = await api.getProject(projectId);
+
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      resetDraft(
+        buildProjectConfigurationDraft({
+          projectKey: detail.projectKey,
+          displayName: detail.displayName,
+          description: detail.description,
+          ruleSet: detail.ruleSet,
+          components: detail.components,
+          envVars: detail.envVars
+        })
+      );
+      setStatus("ready");
+    } catch (error) {
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      setDraft(null);
+      setLoadedDraft(null);
+      setFieldErrors({});
+      setSubmitError(null);
+      setLoadError(getErrorMessage(error));
+      setStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    void loadSettings(project.projectId);
+  }, [api, project.projectId]);
+
+  function updateDraft(
+    recipe: (currentDraft: ProjectConfigurationDraft) => ProjectConfigurationDraft
+  ) {
+    setDraft((currentDraft) => {
+      if (!currentDraft) {
+        return currentDraft;
+      }
+
+      return recipe(currentDraft);
+    });
+    setFieldErrors({});
+    setSubmitError(null);
+  }
+
+  const value: ProjectSettingsConfigurationValue = {
     state: {
       draft,
       fieldErrors
@@ -186,7 +239,7 @@ export function NewProjectConfigurationProvider({
             ...currentDraft,
             components: [
               ...currentDraft.components,
-              mapNewProjectComponentDraft(componentIndex, kind)
+              mapSettingsComponentDraft(componentIndex, kind)
             ]
           };
         });
@@ -230,8 +283,12 @@ export function NewProjectConfigurationProvider({
           }
         }));
       },
-      cancel() {
-        navigate("/runs");
+      discardChanges() {
+        if (!loadedDraft) {
+          return;
+        }
+
+        resetDraft(loadedDraft);
       },
       removeComponent(componentId) {
         updateDraft((currentDraft) => ({
@@ -269,6 +326,9 @@ export function NewProjectConfigurationProvider({
           }
         }));
       },
+      retryLoad() {
+        void loadSettings(project.projectId);
+      },
       setComponentSourceMode(componentId, sourceMode) {
         updateDraft((currentDraft) => ({
           ...currentDraft,
@@ -283,7 +343,7 @@ export function NewProjectConfigurationProvider({
         }));
       },
       async submit() {
-        if (isSubmitting) {
+        if (isSubmitting || !draft) {
           return false;
         }
 
@@ -304,7 +364,7 @@ export function NewProjectConfigurationProvider({
               }))
             )
           );
-          setSubmitError("Fix the validation errors before creating the project.");
+          setSubmitError("Fix the validation errors before saving project settings.");
 
           return false;
         }
@@ -314,8 +374,21 @@ export function NewProjectConfigurationProvider({
         setIsSubmitting(true);
 
         try {
-          await projectManagement.actions.createProject(validation.data);
-          navigate("/runs");
+          const updatedProject = await projectManagement.actions.updateProject(
+            project.projectId,
+            validation.data
+          );
+
+          resetDraft(
+            buildProjectConfigurationDraft({
+              projectKey: updatedProject.projectKey,
+              displayName: updatedProject.displayName,
+              description: updatedProject.description,
+              ruleSet: updatedProject.ruleSet,
+              components: updatedProject.components,
+              envVars: updatedProject.envVars
+            })
+          );
 
           return true;
         } catch (error) {
@@ -332,7 +405,7 @@ export function NewProjectConfigurationProvider({
           setSubmitError(
             error instanceof Error && error.message
               ? error.message
-              : "Unable to create the project."
+              : "Unable to save project settings."
           );
 
           return false;
@@ -399,24 +472,27 @@ export function NewProjectConfigurationProvider({
       }
     },
     meta: {
+      hasUnsavedChanges: !areDraftsEqual(draft, loadedDraft),
       isSubmitting,
+      loadError,
+      status,
       submitError
     }
   };
 
   return (
-    <NewProjectConfigurationContext.Provider value={value}>
+    <ProjectSettingsConfigurationContext.Provider value={value}>
       {children}
-    </NewProjectConfigurationContext.Provider>
+    </ProjectSettingsConfigurationContext.Provider>
   );
 }
 
-export function useNewProjectConfiguration() {
-  const value = useContext(NewProjectConfigurationContext);
+export function useProjectSettingsConfiguration() {
+  const value = useContext(ProjectSettingsConfigurationContext);
 
   if (!value) {
     throw new Error(
-      "useNewProjectConfiguration must be used within NewProjectConfigurationProvider."
+      "useProjectSettingsConfiguration must be used within ProjectSettingsConfigurationProvider."
     );
   }
 

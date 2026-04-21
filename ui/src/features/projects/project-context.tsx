@@ -15,6 +15,7 @@ import {
 import {
   createBrowserProjectManagementApi,
   type CurrentProjectRecord,
+  type ProjectDetailRecord,
   type ProjectManagementApi
 } from "./project-management-api";
 import type { ProjectConfig } from "../../../../src/keystone/projects/contracts";
@@ -31,6 +32,7 @@ export interface ProjectManagementActions {
   createProject: (config: ProjectConfig) => Promise<CurrentProject>;
   reloadProjects: () => Promise<void>;
   selectProject: (projectId: string) => void;
+  updateProject: (projectId: string, config: ProjectConfig) => Promise<ProjectDetailRecord>;
 }
 
 export interface ProjectManagementMeta {
@@ -162,6 +164,18 @@ function upsertProjectRecord(
   return projects.map((candidate, index) =>
     index === existingProjectIndex ? project : candidate
   );
+}
+
+function syncProjectSnapshot(
+  snapshot: ProjectManagementSnapshot,
+  project: CurrentProject
+): ProjectManagementSnapshot {
+  return {
+    currentProjectId: project.projectId,
+    errorMessage: null,
+    projects: upsertProjectRecord(snapshot.projects, project),
+    status: "ready"
+  };
 }
 
 function ProjectManagementCompatibilityProvider({
@@ -323,6 +337,21 @@ export function CurrentProjectProvider({
             status: "ready"
           };
         });
+      },
+      async updateProject(projectId, config) {
+        const updatedProject = await api.updateProject(projectId, config);
+        const nextProject = {
+          projectId: updatedProject.projectId,
+          projectKey: updatedProject.projectKey,
+          displayName: updatedProject.displayName,
+          description: updatedProject.description
+        };
+
+        selectedProjectIdRef.current = nextProject.projectId;
+        writeStoredProjectId(nextProject.projectId);
+        setSnapshot((current) => syncProjectSnapshot(current, nextProject));
+
+        return updatedProject;
       }
     },
     meta: {

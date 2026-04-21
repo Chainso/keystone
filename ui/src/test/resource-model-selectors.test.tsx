@@ -13,6 +13,8 @@ import {
   type CurrentProject
 } from "../features/projects/project-context";
 import { buildProjectConfigurationComponentDraft } from "../features/projects/project-configuration-scaffold";
+import { ProjectSettingsConfigurationProvider } from "../features/projects/project-settings-context";
+import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
 import { useProjectSettingsComponentsViewModel } from "../features/projects/use-project-configuration-view-model";
 import {
   ResourceModelProvider,
@@ -105,15 +107,15 @@ function ResourceModelProbe() {
 }
 
 function ProjectSettingsComponentsProbe() {
-  const { actions } = useResourceModel();
+  const { actions } = useProjectManagement();
   const viewModel = useProjectSettingsComponentsViewModel();
 
   return (
     <>
       <span data-testid="components-heading">
-        {viewModel.components.map((component) => component.displayName).join(",")}
+        {viewModel.components.map((component) => component.displayNameField.value).join(",")}
       </span>
-      <button type="button" onClick={() => actions.setCurrentProjectId("project-alt")}>
+      <button type="button" onClick={() => actions.selectProject("project-alt")}>
         Switch settings project
       </button>
     </>
@@ -141,6 +143,24 @@ function buildProjectsResponse(projects: CurrentProject[]) {
       resourceType: "project" as const
     }
   };
+}
+
+function renderProjectSettingsComponents(dataset: ResourceModelDataset) {
+  const projects = dataset.projects.map((project) => ({
+    projectId: project.projectId,
+    projectKey: project.projectKey,
+    displayName: project.displayName,
+    description: project.description
+  }));
+  const projectApi = createStaticProjectManagementApi(projects, dataset);
+
+  return render(
+    <CurrentProjectProvider api={projectApi}>
+      <ProjectSettingsConfigurationProvider>
+        <ProjectSettingsComponentsProbe />
+      </ProjectSettingsConfigurationProvider>
+    </CurrentProjectProvider>
+  );
 }
 
 function stubProjectListFetch(projects: CurrentProject[]) {
@@ -607,7 +627,7 @@ describe("resource-model selectors", () => {
     expect(screen.getByTestId("run-count")).toHaveTextContent("1");
   });
 
-  it("resynchronizes settings components when the current project changes", () => {
+  it("resynchronizes settings components when the current project changes", async () => {
     const dataset: ResourceModelDataset = {
       ...uiScaffoldDataset,
       projects: [
@@ -654,20 +674,20 @@ describe("resource-model selectors", () => {
       ]
     };
 
-    render(
-      <ResourceModelProvider dataset={dataset}>
-        <ProjectSettingsComponentsProbe />
-      </ResourceModelProvider>
-    );
+    renderProjectSettingsComponents(dataset);
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Switch settings project" }));
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("Alt Service");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("Alt Service");
+    });
   });
 
-  it("resynchronizes settings components when the backing configuration changes for the same project", () => {
+  it("resynchronizes settings components when the backing configuration changes for the same project", async () => {
     const initialDataset: ResourceModelDataset = uiScaffoldDataset;
     const updatedDataset: ResourceModelDataset = {
       ...uiScaffoldDataset,
@@ -697,20 +717,34 @@ describe("resource-model selectors", () => {
       })
     };
 
+    const projects = initialDataset.projects.map((project) => ({
+      projectId: project.projectId,
+      projectKey: project.projectKey,
+      displayName: project.displayName,
+      description: project.description
+    }));
     const { rerender } = render(
-      <ResourceModelProvider dataset={initialDataset}>
-        <ProjectSettingsComponentsProbe />
-      </ResourceModelProvider>
+      <CurrentProjectProvider api={createStaticProjectManagementApi(projects, initialDataset)}>
+        <ProjectSettingsConfigurationProvider>
+          <ProjectSettingsComponentsProbe />
+        </ProjectSettingsConfigurationProvider>
+      </CurrentProjectProvider>
     );
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    });
 
     rerender(
-      <ResourceModelProvider dataset={updatedDataset}>
-        <ProjectSettingsComponentsProbe />
-      </ResourceModelProvider>
+      <CurrentProjectProvider api={createStaticProjectManagementApi(projects, updatedDataset)}>
+        <ProjectSettingsConfigurationProvider>
+          <ProjectSettingsComponentsProbe />
+        </ProjectSettingsConfigurationProvider>
+      </CurrentProjectProvider>
     );
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("Gateway");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("Gateway");
+    });
   });
 });

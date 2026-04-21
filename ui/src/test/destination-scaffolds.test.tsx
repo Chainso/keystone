@@ -161,6 +161,8 @@ function buildProjectDetailResponse(project: {
   };
 }
 
+type ProjectDetailFixture = Parameters<typeof buildProjectDetailResponse>[0];
+
 function createJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -185,38 +187,7 @@ function stubProjectListFetch(projects: CurrentProject[]) {
 }
 
 function stubProjectCreateFlowFetch(input: {
-  createdProject: {
-    components: Array<{
-      componentKey: string;
-      config:
-        | {
-            localPath: string;
-            ref?: string;
-          }
-        | {
-            gitUrl: string;
-            ref?: string;
-          };
-      displayName: string;
-      kind: "git_repository";
-      ruleOverride?: {
-        reviewInstructions?: string[];
-        testInstructions?: string[];
-      };
-    }>;
-    description: string | null;
-    displayName: string;
-    envVars: Array<{
-      name: string;
-      value: string;
-    }>;
-    projectId: string;
-    projectKey: string;
-    ruleSet: {
-      reviewInstructions: string[];
-      testInstructions: string[];
-    };
-  };
+  createdProject: ProjectDetailFixture;
   initialProjects?: CurrentProject[];
   refreshedProjects?: CurrentProject[];
   refreshedProjectsResponse?: ResponseFactory;
@@ -270,6 +241,65 @@ function stubProjectCreateFlowFetch(input: {
           resourceType: "run" as const
         }
       });
+    }
+
+    throw new Error(`Unexpected fetch request: ${method} ${url}`);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return {
+    fetchMock,
+    postedBodies
+  };
+}
+
+function stubProjectSettingsFlowFetch(input: {
+  detailResponses: ResponseFactory[];
+  initialProjects?: CurrentProject[];
+  patchResponses?: ResponseFactory[];
+  project: ProjectDetailFixture;
+}) {
+  const initialProjects = input.initialProjects ?? [
+    {
+      projectId: input.project.projectId,
+      projectKey: input.project.projectKey,
+      displayName: input.project.displayName,
+      description: input.project.description ?? ""
+    }
+  ];
+  const postedBodies: unknown[] = [];
+  let detailCallIndex = 0;
+  let patchCallIndex = 0;
+
+  const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof request === "string" ? request : request.toString();
+    const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+    if (url === "/v1/projects" && method === "GET") {
+      return createJsonResponse(buildProjectsResponse(initialProjects));
+    }
+
+    if (url === `/v1/projects/${input.project.projectId}` && method === "GET") {
+      const responseFactory =
+        input.detailResponses[Math.min(detailCallIndex, input.detailResponses.length - 1)];
+      detailCallIndex += 1;
+
+      return await responseFactory!();
+    }
+
+    if (url === `/v1/projects/${input.project.projectId}` && method === "PATCH") {
+      const bodyText =
+        request instanceof Request ? await request.text() : String(init?.body ?? "");
+
+      postedBodies.push(JSON.parse(bodyText));
+
+      const responseFactory =
+        input.patchResponses?.[Math.min(patchCallIndex, input.patchResponses.length - 1)] ??
+        (() => createJsonResponse(buildProjectDetailResponse(input.project)));
+      patchCallIndex += 1;
+
+      return await responseFactory();
     }
 
     throw new Error(`Unexpected fetch request: ${method} ${url}`);
@@ -1049,88 +1079,85 @@ describe("Destination scaffolds", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("redirects /settings to components, supports tab navigation, and models both git_repository source modes", async () => {
-    const { container, router } = renderRoute("/settings");
+  it("loads live project settings, redirects to components, and keeps the tabs editable", async () => {
+    const liveProjectDetail: ProjectDetailFixture = {
+      projectId: scaffoldProject.projectId,
+      projectKey: scaffoldProject.projectKey,
+      displayName: scaffoldProject.displayName,
+      description: "Internal operator workspace for runs, documentation, and workstreams.",
+      ruleSet: {
+        reviewInstructions: ["Keep route ownership explicit."],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository",
+          config: {
+            localPath: "./services/api",
+            ref: "main"
+          },
+          ruleOverride: {
+            reviewInstructions: ["Focus on API changes"],
+            testInstructions: ["Run targeted API tests"]
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        }
+      ]
+    };
+
+    stubProjectSettingsFlowFetch({
+      project: liveProjectDetail,
+      detailResponses: [() => createJsonResponse(buildProjectDetailResponse(liveProjectDetail))]
+    });
+
+    const { container, router } = renderRoute("/settings", { useBrowserProjectApi: true });
 
     expect(
       await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
     ).toBeInTheDocument();
-    expect(screen.queryByText("Current contract")).not.toBeInTheDocument();
-    expect(screen.queryByText("Still intentionally placeholder-only")).not.toBeInTheDocument();
     expectProjectConfigurationChromeRemoved(container);
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/settings/components");
     });
 
     const projectTabs = screen.getByRole("navigation", { name: "Project configuration tabs" });
-    const environmentTab = getLinkByHref(projectTabs, "/settings/environment");
-    expect(environmentTab).toHaveAttribute("href", "/settings/environment");
-
-    fireEvent.click(environmentTab);
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/settings/environment");
-    });
-
-    expect(screen.getByRole("heading", { name: "Environment" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "KEYSTONE_AGENT_RUNTIME" })).toHaveValue("scripted");
-
-    fireEvent.click(getLinkByHref(projectTabs, "/settings/components"));
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/settings/components");
-    });
-
     const currentComponentCard = getComponentCard("Component 1");
+
     expect(currentComponentCard.queries.getByRole("combobox", { name: "Type" })).toHaveValue(
       "Git repository"
     );
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue("API");
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue("api");
     expect(currentComponentCard.queries.getByRole("radio", { name: "Local path" })).toBeChecked();
-    expect(currentComponentCard.queries.getByRole("radio", { name: "Git URL" })).not.toBeChecked();
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue(
       "./services/api"
     );
-    expect(currentComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue("");
-    expect(currentComponentCard.queries.getByRole("textbox", { name: "Default ref" })).toHaveValue(
-      "main"
-    );
-    expect(currentComponentCard.queries.getByText("Optional rule override")).toBeInTheDocument();
-    expect(currentComponentCard.queries.getByRole("textbox", { name: "Review 1" })).toHaveValue(
-      "Focus on API changes"
-    );
-    expect(currentComponentCard.queries.getByRole("textbox", { name: "Test 1" })).toHaveValue(
-      "Run targeted API tests"
-    );
-    expect(currentComponentCard.queries.getByRole("button", { name: "Remove" })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "+ Add component" }));
-    expect(screen.getByRole("heading", { name: "Add component menu" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Git repository/i }));
-
-    const newComponentCard = getComponentCard("Component 2");
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue(
-      "Service 2"
-    );
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue(
-      "service-2"
-    );
-    expect(newComponentCard.queries.getByRole("radio", { name: "Local path" })).not.toBeChecked();
-    expect(newComponentCard.queries.getByRole("radio", { name: "Git URL" })).toBeChecked();
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue("");
-    expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue(
-      "https://github.com/keystone/service-2.git"
-    );
-  });
-
-  it("renders the settings overview board explicitly instead of relying on the components redirect", async () => {
-    const { container } = renderRoute("/settings/overview");
-
     expect(
-      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
-    ).toBeInTheDocument();
+      currentComponentCard.queries.getAllByRole("button", { name: "Remove" }).at(-1)
+    ).toBeEnabled();
+
+    fireEvent.click(getLinkByHref(projectTabs, "/settings/environment"));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/settings/environment");
+    });
+
+    expect(screen.getByRole("heading", { name: "Environment" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("KEYSTONE_AGENT_RUNTIME");
+    expect(screen.getByRole("textbox", { name: "Value" })).toHaveValue("scripted");
+
+    fireEvent.click(getLinkByHref(projectTabs, "/settings/overview"));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/settings/overview");
+    });
+
     expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expectProjectConfigurationChromeRemoved(container);
     expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue(
       "Keystone Cloudflare"
     );
@@ -1138,39 +1165,209 @@ describe("Destination scaffolds", () => {
     expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
       "Internal operator workspace for runs, documentation, and workstreams."
     );
-    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Discard changes" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
   });
 
-  it("reflects a non-default current project across the settings shell and configuration tabs", async () => {
-    const customProject = {
-      projectId: "project-custom",
-      projectKey: "custom-project",
-      displayName: "Custom Project",
-      description: "Custom project settings scaffold."
+  it("saves live project settings, shows save progress, and refreshes the shell summary", async () => {
+    const initialProjectDetail: ProjectDetailFixture = {
+      projectId: scaffoldProject.projectId,
+      projectKey: scaffoldProject.projectKey,
+      displayName: scaffoldProject.displayName,
+      description: "Internal operator workspace for runs, documentation, and workstreams.",
+      ruleSet: {
+        reviewInstructions: ["Keep route ownership explicit."],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository",
+          config: {
+            localPath: "./services/api",
+            ref: "main"
+          },
+          ruleOverride: {
+            reviewInstructions: ["Focus on API changes"],
+            testInstructions: ["Run targeted API tests"]
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        }
+      ]
     };
+    const updatedProjectDetail: ProjectDetailFixture = {
+      ...initialProjectDetail,
+      projectKey: "keystone-edge-control",
+      displayName: "Keystone Edge Control",
+      description: "Updated operator workspace for live project settings.",
+      ruleSet: {
+        reviewInstructions: [
+          "Keep route ownership explicit.",
+          "Audit the new edge control flow."
+        ],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          ...initialProjectDetail.components[0]!,
+          componentKey: "edge-api",
+          displayName: "Edge API"
+        }
+      ],
+      envVars: [
+        ...initialProjectDetail.envVars,
+        {
+          name: "EDGE_MODE",
+          value: "enabled"
+        }
+      ]
+    };
+    let resolvePatchResponse: ((response: Response) => void) | null = null;
+    const patchResponse = new Promise<Response>((resolve) => {
+      resolvePatchResponse = resolve;
+    });
 
-    renderRoute("/settings/overview", { project: customProject });
+    const { fetchMock, postedBodies } = stubProjectSettingsFlowFetch({
+      project: initialProjectDetail,
+      detailResponses: [() => createJsonResponse(buildProjectDetailResponse(initialProjectDetail))],
+      patchResponses: [() => patchResponse]
+    });
+
+    const { router } = renderRoute("/settings/overview", { useBrowserProjectApi: true });
 
     expect(
-      await screen.findByRole("heading", { name: "Project settings: Custom Project" })
+      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Custom Project");
-    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("custom-project");
-    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
-      "Custom project settings scaffold."
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
+      target: {
+        value: updatedProjectDetail.displayName
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Project key" }), {
+      target: {
+        value: updatedProjectDetail.projectKey
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Description" }), {
+      target: {
+        value: updatedProjectDetail.description
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Rules" }));
+    expect(await screen.findByRole("heading", { name: "Rules" })).toBeInTheDocument();
+
+    const reviewFieldset = screen.getByRole("group", {
+      name: "Project review instructions"
+    });
+    fireEvent.click(within(reviewFieldset).getByRole("button", { name: "Add review instruction" }));
+    fireEvent.change(
+      within(reviewFieldset).getByRole("textbox", {
+        name: "Project review instructions 2"
+      }),
+      {
+        target: {
+          value: "Audit the new edge control flow."
+        }
+      }
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Components" }));
+    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
+    fireEvent.change(getComponentCard("Component 1").queries.getByRole("textbox", { name: "Name" }), {
+      target: {
+        value: "Edge API"
+      }
+    });
+    fireEvent.change(getComponentCard("Component 1").queries.getByRole("textbox", { name: "Key" }), {
+      target: {
+        value: "edge-api"
+      }
+    });
 
-    const currentComponentCard = await screen.findByRole("heading", { name: "Component 1" });
-    const componentCard = currentComponentCard.closest("article");
+    fireEvent.click(screen.getByRole("link", { name: "Environment" }));
+    expect(await screen.findByRole("heading", { name: "Environment" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add environment variable" }));
+    const environmentNameFields = screen.getAllByRole("textbox", { name: "Name" });
+    const environmentValueFields = screen.getAllByRole("textbox", { name: "Value" });
 
-    expect(componentCard).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Project settings: Custom Project" })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Description" })).not.toBeInTheDocument();
-    expect(within(componentCard as HTMLElement).getByRole("textbox", { name: "Name" })).toHaveValue(
-      "API"
-    );
+    fireEvent.change(environmentNameFields[1]!, {
+      target: {
+        value: "EDGE_MODE"
+      }
+    });
+    fireEvent.change(environmentValueFields[1]!, {
+      target: {
+        value: "enabled"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
+
+    expect(resolvePatchResponse).not.toBeNull();
+    resolvePatchResponse!(createJsonResponse(buildProjectDetailResponse(updatedProjectDetail)));
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Keystone Edge Control" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Keystone Edge Control/i })).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("textbox", { name: "Name" })
+        .map((input) => (input as HTMLInputElement).value)
+    ).toEqual(["KEYSTONE_AGENT_RUNTIME", "EDGE_MODE"]);
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Discard changes" })).toBeDisabled();
+    expect(postedBodies).toEqual([
+      {
+        projectKey: "keystone-edge-control",
+        displayName: "Keystone Edge Control",
+        description: "Updated operator workspace for live project settings.",
+        ruleSet: {
+          reviewInstructions: [
+            "Keep route ownership explicit.",
+            "Audit the new edge control flow."
+          ],
+          testInstructions: ["Run the focused shell tests."]
+        },
+        components: [
+          {
+            componentKey: "edge-api",
+            displayName: "Edge API",
+            kind: "git_repository",
+            config: {
+              localPath: "./services/api",
+              ref: "main"
+            },
+            ruleOverride: {
+              reviewInstructions: ["Focus on API changes"],
+              testInstructions: ["Run targeted API tests"]
+            }
+          }
+        ],
+        envVars: [
+          {
+            name: "KEYSTONE_AGENT_RUNTIME",
+            value: "scripted"
+          },
+          {
+            name: "EDGE_MODE",
+            value: "enabled"
+          }
+        ]
+      }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(router.state.location.pathname).toBe("/settings/environment");
   });
 });
