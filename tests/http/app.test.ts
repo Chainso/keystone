@@ -685,6 +685,34 @@ describe("app", () => {
     );
   });
 
+  it("creates the workflow when local workflow lookup reports instance.not_found", async () => {
+    mocked.createWorkerDatabaseClient.mockImplementationOnce(() =>
+      createDocumentRepositoryClient(buildRunDocumentRepositoryFixture(true), mocked.close)
+    );
+    mocked.runWorkflowGet.mockRejectedValueOnce(new Error("instance.not_found"));
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/compile",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({})
+      },
+      env
+    );
+
+    expect(response.status).toBe(202);
+    expect(mocked.runWorkflowCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "run-workflow-instance"
+      })
+    );
+  });
+
   it("returns an authoritative run detail from runs, run tasks, and artifacts", async () => {
     mocked.listRunArtifacts.mockResolvedValueOnce([runArtifactFixture] as never);
 

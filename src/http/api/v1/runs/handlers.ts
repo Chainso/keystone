@@ -165,6 +165,10 @@ function requireTaskId(context: Context<AppEnv>) {
   return taskId;
 }
 
+function isWorkflowInstanceNotFound(error: unknown) {
+  return error instanceof Error && error.message === "instance.not_found";
+}
+
 export async function createProjectRunHandler(context: Context<AppEnv>) {
   const auth = context.get("auth");
   const projectId = requireProjectId(context);
@@ -254,10 +258,21 @@ export async function compileRunHandler(context: Context<AppEnv>) {
       );
     }
 
-    const existingInstance = await context.env.RUN_WORKFLOW.get(state.run.workflowInstanceId);
-    const workflowStatus = await existingInstance.status();
+    let shouldCreateWorkflow = false;
 
-    if (workflowStatus.status === "unknown") {
+    try {
+      const existingInstance = await context.env.RUN_WORKFLOW.get(state.run.workflowInstanceId);
+      const workflowStatus = await existingInstance.status();
+      shouldCreateWorkflow = workflowStatus.status === "unknown";
+    } catch (error) {
+      if (!isWorkflowInstanceNotFound(error)) {
+        throw error;
+      }
+
+      shouldCreateWorkflow = true;
+    }
+
+    if (shouldCreateWorkflow) {
       await context.env.RUN_WORKFLOW.create({
         id: state.run.workflowInstanceId,
         params: {

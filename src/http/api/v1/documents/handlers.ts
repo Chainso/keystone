@@ -103,6 +103,7 @@ function resolveDocumentError(error: unknown) {
   }
 
   if (error instanceof Error) {
+    console.error("Document persistence failed", error);
     return jsonErrorResponse("internal_error", "Document persistence failed.", 500);
   }
 

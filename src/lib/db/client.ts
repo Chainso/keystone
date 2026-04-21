@@ -71,12 +71,31 @@ export function createDatabaseClientFromSource(
   return createDatabaseClient(resolveDatabaseConnectionString(source), options);
 }
 
-export function createWorkerDatabaseClient(env: Pick<WorkerBindings, "HYPERDRIVE">) {
-  return createDatabaseClientFromSource({
-    HYPERDRIVE: env.HYPERDRIVE
-  }, {
-    // Hyperdrive owns the underlying pool. Ending the client per request can
-    // race later awaited queries and trigger CONNECTION_ENDED in Workers.
-    endOnClose: false
-  });
+export function createWorkerDatabaseClient(
+  env: Pick<
+    WorkerBindings,
+    "HYPERDRIVE" | "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE"
+  >
+) {
+  if (env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE) {
+    // Local Wrangler dev exposes a plain Postgres connection string. Close the
+    // request-scoped client so iterative demo traffic does not exhaust local DB
+    // connections across requests.
+    return createDatabaseClientFromSource({
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:
+        env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+    });
+  }
+
+  return createDatabaseClientFromSource(
+    {
+      HYPERDRIVE: env.HYPERDRIVE
+    },
+    {
+      // Hyperdrive owns the underlying pool in deployed Workers. Ending the
+      // client per request can race later awaited queries and trigger
+      // CONNECTION_ENDED in that environment.
+      endOnClose: false
+    }
+  );
 }
