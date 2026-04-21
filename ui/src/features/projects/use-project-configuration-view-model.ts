@@ -76,6 +76,7 @@ interface ProjectOverviewViewModel {
   descriptionField: ProjectConfigurationTextFieldViewModel;
   footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
+  isSubmitting?: boolean | undefined;
   keyField: ProjectConfigurationTextFieldViewModel;
   nameField: ProjectConfigurationTextFieldViewModel;
   submitError: string | null;
@@ -101,6 +102,7 @@ interface ProjectSettingsComponentsViewModel {
   emptyState: string;
   footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
+  isSubmitting: boolean;
   pickComponentType: (kindId: ProjectComponentTypeOption["kindId"]) => void;
   submitError: string | null;
   toggleTypePicker: () => void;
@@ -112,6 +114,7 @@ interface ProjectSettingsComponentsViewModel {
 interface ProjectRulesViewModel {
   footerActions?: ProjectConfigurationActionViewModel[] | undefined;
   heading: string;
+  isSubmitting?: boolean | undefined;
   reviewInstructions: ProjectConfigurationListFieldViewModel;
   submitError?: string | null | undefined;
   testInstructions: ProjectConfigurationListFieldViewModel;
@@ -141,6 +144,7 @@ interface ProjectSettingsEnvironmentViewModel {
   }>;
   footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
+  isSubmitting: boolean;
   submitError: string | null;
   addEnvVar: () => void;
 }
@@ -177,9 +181,7 @@ function useReadyProjectSettings() {
   const draft = projectSettings.state.draft;
 
   if (projectSettings.meta.status !== "ready" || !draft) {
-    throw new Error(
-      "Project settings view models require a ready ProjectSettingsConfigurationProvider."
-    );
+    return null;
   }
 
   return {
@@ -237,8 +239,27 @@ function getListItemErrors(
 }
 
 function useProjectSettingsComponentsModel(): ProjectSettingsComponentsViewModel {
-  const { actions, meta, state } = useReadyProjectSettings();
+  const footerActions = useProjectSettingsFooterActions();
   const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const projectSettings = useReadyProjectSettings();
+
+  if (!projectSettings) {
+    return {
+      components: [],
+      emptyState: "Keystone is loading the selected project's components.",
+      footerActions,
+      heading: "Components",
+      isSubmitting: false,
+      pickComponentType() {},
+      submitError: null,
+      toggleTypePicker() {},
+      typeOptions: projectComponentTypeOptions,
+      typePickerOpen: false,
+      typePickerTitle: "Add component menu"
+    };
+  }
+
+  const { actions, meta, state } = projectSettings;
   const components = state.draft.components;
 
   return {
@@ -349,8 +370,9 @@ function useProjectSettingsComponentsModel(): ProjectSettingsComponentsViewModel
     })),
     emptyError: state.fieldErrors.components,
     emptyState: "No project components configured yet.",
-    footerActions: useProjectSettingsFooterActions(),
+    footerActions,
     heading: "Components",
+    isSubmitting: meta.isSubmitting,
     pickComponentType(kindId) {
       actions.addComponent(kindId);
       setTypePickerOpen(false);
@@ -366,7 +388,31 @@ function useProjectSettingsComponentsModel(): ProjectSettingsComponentsViewModel
 }
 
 function useProjectSettingsOverviewModel(): ProjectOverviewViewModel {
-  const { actions, meta, state } = useReadyProjectSettings();
+  const footerActions = useProjectSettingsFooterActions();
+  const projectSettings = useReadyProjectSettings();
+
+  if (!projectSettings) {
+    return {
+      descriptionField: {
+        label: "Description",
+        value: ""
+      },
+      footerActions,
+      heading: "Overview",
+      isSubmitting: false,
+      keyField: {
+        label: "Project key",
+        value: ""
+      },
+      nameField: {
+        label: "Project name",
+        value: ""
+      },
+      submitError: null
+    };
+  }
+
+  const { actions, meta, state } = projectSettings;
 
   return {
     descriptionField: {
@@ -377,8 +423,9 @@ function useProjectSettingsOverviewModel(): ProjectOverviewViewModel {
       },
       value: state.draft.overview.description
     },
-    footerActions: useProjectSettingsFooterActions(),
+    footerActions,
     heading: "Overview",
+    isSubmitting: meta.isSubmitting,
     keyField: {
       errorMessage: state.fieldErrors["overview.projectKey"],
       label: "Project key",
@@ -400,11 +447,32 @@ function useProjectSettingsOverviewModel(): ProjectOverviewViewModel {
 }
 
 function useProjectSettingsRulesModel(): ProjectRulesViewModel {
-  const { actions, meta, state } = useReadyProjectSettings();
+  const footerActions = useProjectSettingsFooterActions();
+  const projectSettings = useReadyProjectSettings();
+
+  if (!projectSettings) {
+    return {
+      footerActions,
+      heading: "Rules",
+      isSubmitting: false,
+      reviewInstructions: {
+        items: [],
+        label: "Project review instructions"
+      },
+      submitError: null,
+      testInstructions: {
+        items: [],
+        label: "Project test instructions"
+      }
+    };
+  }
+
+  const { actions, meta, state } = projectSettings;
 
   return {
-    footerActions: useProjectSettingsFooterActions(),
+    footerActions,
     heading: "Rules",
+    isSubmitting: meta.isSubmitting,
     reviewInstructions: {
       addLabel: "Add review instruction",
       items: state.draft.ruleSet.reviewInstructions,
@@ -440,7 +508,22 @@ function useProjectSettingsRulesModel(): ProjectRulesViewModel {
 }
 
 function useProjectSettingsEnvironmentModel(): ProjectSettingsEnvironmentViewModel {
-  const { actions, meta, state } = useReadyProjectSettings();
+  const footerActions = useProjectSettingsFooterActions();
+  const projectSettings = useReadyProjectSettings();
+
+  if (!projectSettings) {
+    return {
+      addEnvVar() {},
+      emptyMessage: "No environment variables added yet.",
+      envVars: [],
+      footerActions,
+      heading: "Environment",
+      isSubmitting: false,
+      submitError: null
+    };
+  }
+
+  const { actions, meta, state } = projectSettings;
 
   return {
     addEnvVar: actions.addEnvVar,
@@ -467,8 +550,9 @@ function useProjectSettingsEnvironmentModel(): ProjectSettingsEnvironmentViewMod
         value: envVar.value
       }
     })),
-    footerActions: useProjectSettingsFooterActions(),
+    footerActions,
     heading: "Environment",
+    isSubmitting: meta.isSubmitting,
     submitError: meta.submitError
   };
 }

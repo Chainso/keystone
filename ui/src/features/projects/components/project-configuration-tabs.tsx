@@ -72,30 +72,32 @@ function ProjectSettingsOverviewTab() {
 
   return (
     <ProjectConfigurationSection title={model.heading}>
-      <ProjectConfigurationError message={model.submitError} />
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
 
-      <div className="project-form-grid">
-        <FormTextField
-          label={model.nameField.label}
-          value={model.nameField.value}
-          onChange={(event) => model.nameField.onChange?.(event.currentTarget.value)}
-          errorMessage={model.nameField.errorMessage}
-        />
-        <FormTextField
-          label={model.keyField.label}
-          value={model.keyField.value}
-          onChange={(event) => model.keyField.onChange?.(event.currentTarget.value)}
-          errorMessage={model.keyField.errorMessage}
-        />
-        <FormTextAreaField
-          label={model.descriptionField.label}
-          value={model.descriptionField.value}
-          onChange={(event) => model.descriptionField.onChange?.(event.currentTarget.value)}
-          errorMessage={model.descriptionField.errorMessage}
-        />
-      </div>
+        <div className="project-form-grid">
+          <FormTextField
+            label={model.nameField.label}
+            value={model.nameField.value}
+            onChange={(event) => model.nameField.onChange?.(event.currentTarget.value)}
+            errorMessage={model.nameField.errorMessage}
+          />
+          <FormTextField
+            label={model.keyField.label}
+            value={model.keyField.value}
+            onChange={(event) => model.keyField.onChange?.(event.currentTarget.value)}
+            errorMessage={model.keyField.errorMessage}
+          />
+          <FormTextAreaField
+            label={model.descriptionField.label}
+            value={model.descriptionField.value}
+            onChange={(event) => model.descriptionField.onChange?.(event.currentTarget.value)}
+            errorMessage={model.descriptionField.errorMessage}
+          />
+        </div>
 
-      <ProjectConfigurationActions actions={model.footerActions} />
+        <ProjectConfigurationActions actions={model.footerActions} />
+      </fieldset>
     </ProjectConfigurationSection>
   );
 }
@@ -150,42 +152,44 @@ function ProjectSettingsComponentsTab() {
 
   return (
     <ProjectConfigurationSection title={model.heading}>
-      <ProjectConfigurationError message={model.submitError} />
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
 
-      <div className="project-config-section-actions">
-        <button
-          type="button"
-          className="ghost-button"
-          aria-expanded={model.typePickerOpen}
-          onClick={model.toggleTypePicker}
-        >
-          <span>+ Add component{" "}</span>
-          <span aria-hidden="true">▾</span>
-        </button>
-      </div>
-
-      {model.typePickerOpen ? (
-        <ComponentTypePicker
-          title={model.typePickerTitle}
-          options={model.typeOptions}
-          onSelect={model.pickComponentType}
-        />
-      ) : null}
-
-      {model.components.length === 0 ? (
-        <section className="empty-state-card">
-          <p className="document-line">{model.emptyState}</p>
-          {model.emptyError ? <ProjectConfigurationError message={model.emptyError} /> : null}
-        </section>
-      ) : (
-        <div className="component-card-stack">
-          {model.components.map((component) => (
-            <EditableProjectComponentCard key={component.componentId} component={component} />
-          ))}
+        <div className="project-config-section-actions">
+          <button
+            type="button"
+            className="ghost-button"
+            aria-expanded={model.typePickerOpen}
+            onClick={model.toggleTypePicker}
+          >
+            <span>+ Add component{" "}</span>
+            <span aria-hidden="true">▾</span>
+          </button>
         </div>
-      )}
 
-      <ProjectConfigurationActions actions={model.footerActions} />
+        {model.typePickerOpen ? (
+          <ComponentTypePicker
+            title={model.typePickerTitle}
+            options={model.typeOptions}
+            onSelect={model.pickComponentType}
+          />
+        ) : null}
+
+        {model.components.length === 0 ? (
+          <section className="empty-state-card">
+            <p className="document-line">{model.emptyState}</p>
+            {model.emptyError ? <ProjectConfigurationError message={model.emptyError} /> : null}
+          </section>
+        ) : (
+          <div className="component-card-stack">
+            {model.components.map((component) => (
+              <EditableProjectComponentCard key={component.componentId} component={component} />
+            ))}
+          </div>
+        )}
+
+        <ProjectConfigurationActions actions={model.footerActions} />
+      </fieldset>
     </ProjectConfigurationSection>
   );
 }
@@ -230,32 +234,34 @@ function ProjectSettingsRulesTab() {
 
   return (
     <ProjectConfigurationSection title={model.heading}>
-      <ProjectConfigurationError message={model.submitError} />
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
 
-      <div className="project-rule-grid">
-        <TextListField
-          label={model.reviewInstructions.label}
-          items={model.reviewInstructions.items}
-          addLabel={model.reviewInstructions.addLabel}
-          onAdd={model.reviewInstructions.onAdd}
-          onChange={model.reviewInstructions.onChange}
-          onRemove={model.reviewInstructions.onRemove}
-          rowErrors={model.reviewInstructions.rowErrors}
-          emptyMessage="No project review instructions added."
-        />
-        <TextListField
-          label={model.testInstructions.label}
-          items={model.testInstructions.items}
-          addLabel={model.testInstructions.addLabel}
-          onAdd={model.testInstructions.onAdd}
-          onChange={model.testInstructions.onChange}
-          onRemove={model.testInstructions.onRemove}
-          rowErrors={model.testInstructions.rowErrors}
-          emptyMessage="No project test instructions added."
-        />
-      </div>
+        <div className="project-rule-grid">
+          <TextListField
+            label={model.reviewInstructions.label}
+            items={model.reviewInstructions.items}
+            addLabel={model.reviewInstructions.addLabel}
+            onAdd={model.reviewInstructions.onAdd}
+            onChange={model.reviewInstructions.onChange}
+            onRemove={model.reviewInstructions.onRemove}
+            rowErrors={model.reviewInstructions.rowErrors}
+            emptyMessage="No project review instructions added."
+          />
+          <TextListField
+            label={model.testInstructions.label}
+            items={model.testInstructions.items}
+            addLabel={model.testInstructions.addLabel}
+            onAdd={model.testInstructions.onAdd}
+            onChange={model.testInstructions.onChange}
+            onRemove={model.testInstructions.onRemove}
+            rowErrors={model.testInstructions.rowErrors}
+            emptyMessage="No project test instructions added."
+          />
+        </div>
 
-      {model.footerActions ? <ProjectConfigurationActions actions={model.footerActions} /> : null}
+        {model.footerActions ? <ProjectConfigurationActions actions={model.footerActions} /> : null}
+      </fieldset>
     </ProjectConfigurationSection>
   );
 }
@@ -317,49 +323,51 @@ function ProjectSettingsEnvironmentTab() {
 
   return (
     <ProjectConfigurationSection title={model.heading}>
-      <ProjectConfigurationError message={model.submitError} />
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
 
-      {model.envVars.length === 0 ? (
-        <section className="empty-state-card">
-          <p className="document-line">{model.emptyMessage}</p>
-        </section>
-      ) : (
-        <div className="project-environment-stack">
-          {model.envVars.map((envVar) => (
-            <article key={envVar.entryId} className="environment-var-card">
-              <div className="environment-var-heading">
-                <h3 className="page-section-title">Environment variable</h3>
-                <button type="button" className="ghost-button" onClick={envVar.onRemove}>
-                  Remove
-                </button>
-              </div>
+        {model.envVars.length === 0 ? (
+          <section className="empty-state-card">
+            <p className="document-line">{model.emptyMessage}</p>
+          </section>
+        ) : (
+          <div className="project-environment-stack">
+            {model.envVars.map((envVar) => (
+              <article key={envVar.entryId} className="environment-var-card">
+                <div className="environment-var-heading">
+                  <h3 className="page-section-title">Environment variable</h3>
+                  <button type="button" className="ghost-button" onClick={envVar.onRemove}>
+                    Remove
+                  </button>
+                </div>
 
-              <div className="project-form-grid">
-                <FormTextField
-                  label={envVar.nameField.label}
-                  value={envVar.nameField.value}
-                  onChange={(event) => envVar.nameField.onChange?.(event.currentTarget.value)}
-                  errorMessage={envVar.nameField.errorMessage}
-                />
-                <FormTextField
-                  label={envVar.valueField.label}
-                  value={envVar.valueField.value}
-                  onChange={(event) => envVar.valueField.onChange?.(event.currentTarget.value)}
-                  errorMessage={envVar.valueField.errorMessage}
-                />
-              </div>
-            </article>
-          ))}
+                <div className="project-form-grid">
+                  <FormTextField
+                    label={envVar.nameField.label}
+                    value={envVar.nameField.value}
+                    onChange={(event) => envVar.nameField.onChange?.(event.currentTarget.value)}
+                    errorMessage={envVar.nameField.errorMessage}
+                  />
+                  <FormTextField
+                    label={envVar.valueField.label}
+                    value={envVar.valueField.value}
+                    onChange={(event) => envVar.valueField.onChange?.(event.currentTarget.value)}
+                    errorMessage={envVar.valueField.errorMessage}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        <div className="project-config-section-actions">
+          <button type="button" className="ghost-button" onClick={model.addEnvVar}>
+            + Add environment variable
+          </button>
         </div>
-      )}
 
-      <div className="project-config-section-actions">
-        <button type="button" className="ghost-button" onClick={model.addEnvVar}>
-          + Add environment variable
-        </button>
-      </div>
-
-      <ProjectConfigurationActions actions={model.footerActions} />
+        <ProjectConfigurationActions actions={model.footerActions} />
+      </fieldset>
     </ProjectConfigurationSection>
   );
 }

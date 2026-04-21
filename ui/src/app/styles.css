@@ -945,6 +945,13 @@ pre {
   line-height: 1.45;
 }
 
+.project-config-form-frame {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
 .type-picker-header,
 .component-card-header {
   display: flex;

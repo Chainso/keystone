@@ -22,7 +22,9 @@ export interface CurrentProjectRecord {
   description: string;
 }
 
-export interface ProjectDetailRecord extends CurrentProjectRecord {
+export interface ProjectDetailRecord
+  extends Omit<CurrentProjectRecord, "description"> {
+  description: string | null;
   components: ProjectConfig["components"];
   envVars: ProjectConfig["envVars"];
   ruleSet: ProjectConfig["ruleSet"];
@@ -93,6 +95,41 @@ export interface ProjectManagementApi {
 }
 
 const currentFetchImplementation: typeof fetch = (...args) => fetch(...args);
+const defaultBrowserDevAuth = {
+  token: "change-me-local-token",
+  tenantId: "tenant-dev-local"
+} as const;
+
+declare global {
+  interface Window {
+    __KESTONE_UI_DEV_AUTH__?:
+      | {
+          token?: string;
+          tenantId?: string;
+        }
+      | undefined;
+  }
+}
+
+function resolveBrowserDevAuth() {
+  const providedAuth =
+    typeof window === "undefined" ? undefined : window.__KESTONE_UI_DEV_AUTH__;
+
+  return {
+    token: providedAuth?.token?.trim() || defaultBrowserDevAuth.token,
+    tenantId: providedAuth?.tenantId?.trim() || defaultBrowserDevAuth.tenantId
+  };
+}
+
+function buildProtectedBrowserHeaders(headers?: HeadersInit) {
+  const nextHeaders = new Headers(headers);
+  const auth = resolveBrowserDevAuth();
+
+  nextHeaders.set("Authorization", `Bearer ${auth.token}`);
+  nextHeaders.set("X-Keystone-Tenant-Id", auth.tenantId);
+
+  return nextHeaders;
+}
 
 function normalizeProjectRecord(project: {
   projectId: string;
@@ -118,7 +155,10 @@ function normalizeProjectDetailRecord(project: {
   ruleSet: ProjectConfig["ruleSet"];
 }): ProjectDetailRecord {
   return {
-    ...normalizeProjectRecord(project),
+    projectId: project.projectId,
+    projectKey: project.projectKey,
+    displayName: project.displayName,
+    description: project.description,
     components: project.components.map((component) => ({
       ...component,
       config: { ...component.config },
@@ -293,10 +333,10 @@ export function createBrowserProjectManagementApi(
       const response = await fetchImplementation("/v1/projects", {
         method: "POST",
         credentials: "same-origin",
-        headers: {
+        headers: buildProtectedBrowserHeaders({
           accept: "application/json",
           "content-type": "application/json"
-        },
+        }),
         body: JSON.stringify(config)
       });
 
@@ -312,9 +352,9 @@ export function createBrowserProjectManagementApi(
       const response = await fetchImplementation(`/v1/projects/${encodeURIComponent(projectId)}`, {
         method: "GET",
         credentials: "same-origin",
-        headers: {
+        headers: buildProtectedBrowserHeaders({
           accept: "application/json"
-        }
+        })
       });
 
       if (!response.ok) {
@@ -329,9 +369,9 @@ export function createBrowserProjectManagementApi(
       const response = await fetchImplementation("/v1/projects", {
         method: "GET",
         credentials: "same-origin",
-        headers: {
+        headers: buildProtectedBrowserHeaders({
           accept: "application/json"
-        }
+        })
       });
 
       if (!response.ok) {
@@ -346,9 +386,9 @@ export function createBrowserProjectManagementApi(
       const response = await fetchImplementation(`/v1/projects/${encodeURIComponent(projectId)}/runs`, {
         method: "GET",
         credentials: "same-origin",
-        headers: {
+        headers: buildProtectedBrowserHeaders({
           accept: "application/json"
-        }
+        })
       });
 
       if (!response.ok) {
@@ -363,10 +403,10 @@ export function createBrowserProjectManagementApi(
       const response = await fetchImplementation(`/v1/projects/${encodeURIComponent(projectId)}`, {
         method: "PATCH",
         credentials: "same-origin",
-        headers: {
+        headers: buildProtectedBrowserHeaders({
           accept: "application/json",
           "content-type": "application/json"
-        },
+        }),
         body: JSON.stringify(config)
       });
 

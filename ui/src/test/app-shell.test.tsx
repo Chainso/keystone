@@ -142,6 +142,17 @@ function createJsonResponse(payload: unknown, status = 200) {
   });
 }
 
+function getRequestHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  return request instanceof Request ? request.headers : new Headers(init?.headers);
+}
+
+function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  const headers = getRequestHeaders(request, init);
+
+  expect(headers.get("authorization")).toBe("Bearer change-me-local-token");
+  expect(headers.get("x-keystone-tenant-id")).toBe("tenant-dev-local");
+}
+
 function stubProjectManagementFetch(options: {
   projectResponses: ResponseFactory[];
   projectDetailsByProjectId?: Record<string, ResponseFactory[]>;
@@ -156,6 +167,8 @@ function stubProjectManagementFetch(options: {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const method = input instanceof Request ? input.method : init?.method ?? "GET";
+
+    expectDevAuthHeaders(input, init);
 
     if (url === "/v1/projects" && method === "GET") {
       const responseFactory =
@@ -641,6 +654,89 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the settings route safe when a switched project detail is missing", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const alternateProject: CurrentProject = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Secondary workspace"
+    };
+    const settingsProjectDetail = {
+      projectId: scaffoldProject.projectId,
+      projectKey: scaffoldProject.projectKey,
+      displayName: scaffoldProject.displayName,
+      description: scaffoldProject.description,
+      ruleSet: {
+        reviewInstructions: ["Keep route ownership explicit."],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository" as const,
+          config: {
+            localPath: "./services/api",
+            ref: "main"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        }
+      ]
+    };
+
+    stubProjectManagementFetch({
+      projectResponses: [
+        () => createJsonResponse(buildProjectsResponse([scaffoldProject, alternateProject]))
+      ],
+      projectDetailsByProjectId: {
+        [scaffoldProject.projectId]: [
+          () => createJsonResponse(buildProjectDetailResponse(settingsProjectDetail))
+        ],
+        [alternateProject.projectId]: [
+          () =>
+            createJsonResponse(
+              {
+                error: {
+                  code: "project_not_found",
+                  message: "Project settings are no longer available."
+                }
+              },
+              404
+            )
+        ]
+      }
+    });
+
+    renderRoute("/settings/overview", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
+      "Keystone Cloudflare"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
+    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Unable to load project settings" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Project settings are no longer available.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
   });
 
   it.each([

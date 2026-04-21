@@ -179,6 +179,11 @@ Compatibility that **is** required:
   **Decision:** Keep `Project settings` explicit, but move its seed/load/save lifecycle into a dedicated route-scoped provider that reuses the shared draft helpers and the existing project-management seam for `GET` / `PATCH` calls.  
   **Rationale:** The settings route needed live detail loading, retry, save-state, and shell summary refresh without collapsing create and settings into a generic mode-heavy component. A dedicated settings provider preserves explicit semantics while reusing the canonical draft serialization and validation helpers added in Phase 3.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 4 Fix Pass  
+  **Decision:** Move local dev auth headers into the shared browser API seam and make the settings provider treat project identity as part of the draft/save contract, so project switches and late saves cannot keep stale forms interactive or snap shell selection backward.  
+  **Rationale:** The review round exposed two linked gaps: browser requests were missing the repo's required dev auth headers, and the first settings-save implementation still assumed the selected project would stay stable during load/save. Both fixes belonged in the provider/API seam, not in route-level conditionals.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -227,6 +232,11 @@ Compatibility that **is** required:
   - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now support `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`, then refresh the selected project summary in-place from the trusted `PATCH` response.
   - [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-configuration-tabs.tsx), and [ui/src/routes/projects/project-configuration-layout.tsx](../../ui/src/routes/projects/project-configuration-layout.tsx) now render real editable settings tabs with loading/error/retry states instead of scaffold-only compatibility gating.
   - Focused shell and destination tests now cover settings load retry, live settings save progress, and post-save shell summary refresh without route churn.
+- [x] 2026-04-20 Phase 4 targeted fix pass completed:
+  - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) now injects the required local dev auth headers from one shared browser seam, with checked-in defaults that match `.dev.vars.example`.
+  - [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) and [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts) now treat project identity as part of the settings draft contract, clear stale drafts on project switches, keep fields non-interactive during save, and preserve nullable description round-tripping.
+  - [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now updates saved project list entries without forcing late `PATCH` responses to re-select a project the operator has already left.
+  - Focused settings tests now cover the switched-project not-found path, stale-save race handling, sidebar option refresh after save, and the shared dev-auth headers on browser API requests.
 
 ## Surprises & Discoveries
 
@@ -252,6 +262,8 @@ Compatibility that **is** required:
 - The canonical `ProjectConfig` schema treats `description` as nullable at the storage boundary but still rejects blank strings, so the create form has to keep description explicitly required instead of auto-normalizing empty input to `null`.
 - A successful create cannot rely on an immediate `/v1/projects` refresh being available. The `POST /v1/projects` detail response has to remain a trustworthy fallback source for current-project state or the UI can falsely look like the create failed and invite a duplicate retry.
 - Once `Project settings` stopped depending on scaffold selectors, the old `resource-model-selectors` settings probe tests were no longer valid as pure `ResourceModelProvider` tests. The static test harness needed to mount a real project-management provider plus the new settings provider to keep those probes truthful.
+- The local UI can no longer treat dev auth as a backend-only concern. Even in the current prototype, the shared browser API seam has to send `Authorization: Bearer <KEYSTONE_DEV_TOKEN>` and `X-Keystone-Tenant-Id: <tenant-id>` on protected project-management requests or local settings flows are not truthful.
+- `Project settings` needed project-aware draft ownership, not just route-aware loading. Without tracking which project a draft/save belongs to, a project switch can leave the old form interactive for one more frame and let a late `PATCH` response overwrite the live shell selection.
 
 ## Outcomes & Retrospective
 
@@ -309,6 +321,12 @@ Phase 4 outcome on 2026-04-20:
 - `Project settings` now seeds from `GET /v1/projects/:projectId`, stays explicit via a dedicated settings provider, and exposes honest loading, retry, and save-state behavior instead of scaffold compatibility placeholders.
 - Saving settings now `PATCH`es the canonical `ProjectConfig` shape and refreshes the selected project summary in the live shell from the returned project detail, so the sidebar switcher and settings header stay in sync without route churn.
 - The focused Phase 4 validation passes for the UI surface: `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passes and `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, while the required repo `rtk npm run typecheck` command still fails only in the pre-existing worker-binding test.
+
+Phase 4 targeted fix pass outcome on 2026-04-20:
+
+- The shared browser API seam now sends the repo's local dev auth headers automatically, so the live settings and project-management flows work out of the box in local UI development without scattering auth logic across callers.
+- `Project settings` now clears stale drafts on project switches, disables in-flight saves coherently, preserves `description: null` when re-saving untouched nullable descriptions, and ignores late save responses when the operator has already switched to another project.
+- The focused validation picture remains the same aside from the expanded passing coverage: `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and `rtk npm run typecheck` still fails only in the unrelated worker-binding test.
 
 ## Context and Orientation
 
@@ -914,7 +932,9 @@ Completed on 2026-04-20.
 
 - Added [ui/src/features/projects/project-configuration-form.ts](../../ui/src/features/projects/project-configuration-form.ts) and [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) so settings can reuse the create-phase draft serialization/validation surface without becoming a generic mode-flag component.
 - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) now exposes browser-safe `getProject()` / `updateProject()` helpers and matching static test-harness support for settings probes.
-- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) and [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now cover settings load retry, save progress, and post-save shell summary refresh.
+- The shared browser API seam now sends the local dev auth headers automatically for protected project-management requests, using the repo defaults `change-me-local-token` and `tenant-dev-local`.
+- [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now avoid stale draft interaction across project switches, prevent late `PATCH` responses from re-selecting an old project, and keep nullable descriptions honest across load/save.
+- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) and [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now cover settings load retry, switched-project not-found safety, save progress, stale-save race handling, nullable description round-tripping, and sidebar option refresh after save.
 - Validation results for this phase:
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passes.
   - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes.
@@ -922,7 +942,7 @@ Completed on 2026-04-20.
 
 #### Next Starter Context
 
-- Phase 5 can treat the live project-management loop as complete across project list, runs, create, and settings. The remaining work is cleanup/doc truthfulness plus final validation, not more settings behavior.
+- Phase 5 can treat the live project-management loop as complete across project list, runs, create, and settings. The remaining work is cleanup/doc truthfulness plus final validation, including the new shared dev-auth header requirement already captured in the README, runbook, and Phase 4 notes.
 
 ## Phase 5: Cleanup, Docs, And Final Validation
 

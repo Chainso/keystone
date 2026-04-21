@@ -123,6 +123,7 @@ function buildInitialDraft(dataset: ReturnType<typeof useResourceModel>["state"]
     })),
     overview: {
       description: configuration.overview.description,
+      descriptionWasNull: false,
       displayName: configuration.overview.displayName,
       projectKey: configuration.overview.projectKey
     },

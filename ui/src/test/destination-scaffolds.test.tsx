@@ -172,9 +172,22 @@ function createJsonResponse(payload: unknown, status = 200) {
   });
 }
 
+function getRequestHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  return request instanceof Request ? request.headers : new Headers(init?.headers);
+}
+
+function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  const headers = getRequestHeaders(request, init);
+
+  expect(headers.get("authorization")).toBe("Bearer change-me-local-token");
+  expect(headers.get("x-keystone-tenant-id")).toBe("tenant-dev-local");
+}
+
 function stubProjectListFetch(projects: CurrentProject[]) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
+
+    expectDevAuthHeaders(input, init);
 
     if (url !== "/v1/projects") {
       throw new Error(`Unexpected fetch request: ${url}`);
@@ -208,6 +221,8 @@ function stubProjectCreateFlowFetch(input: {
   const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof request === "string" ? request : request.toString();
     const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+    expectDevAuthHeaders(request, init);
 
     if (url === "/v1/projects" && method === "GET") {
       const responseFactory =
@@ -275,6 +290,8 @@ function stubProjectSettingsFlowFetch(input: {
   const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof request === "string" ? request : request.toString();
     const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+    expectDevAuthHeaders(request, init);
 
     if (url === "/v1/projects" && method === "GET") {
       return createJsonResponse(buildProjectsResponse(initialProjects));
@@ -1369,5 +1386,208 @@ describe("Destination scaffolds", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(router.state.location.pathname).toBe("/settings/environment");
+  });
+
+  it("keeps switched settings safe during save, preserves null descriptions, and refreshes sidebar project options", async () => {
+    const alternateProject: CurrentProject = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Secondary workspace"
+    };
+    const initialProjectDetail: ProjectDetailFixture = {
+      projectId: scaffoldProject.projectId,
+      projectKey: scaffoldProject.projectKey,
+      displayName: scaffoldProject.displayName,
+      description: null,
+      ruleSet: {
+        reviewInstructions: ["Keep route ownership explicit."],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository",
+          config: {
+            localPath: "./services/api",
+            ref: "main"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        }
+      ]
+    };
+    const savedProjectDetail: ProjectDetailFixture = {
+      ...initialProjectDetail,
+      projectKey: "keystone-edge-control",
+      displayName: "Keystone Edge Control"
+    };
+    const alternateProjectDetail: ProjectDetailFixture = {
+      projectId: alternateProject.projectId,
+      projectKey: alternateProject.projectKey,
+      displayName: alternateProject.displayName,
+      description: "Secondary workspace",
+      ruleSet: {
+        reviewInstructions: ["Audit the alternate tenant flow."],
+        testInstructions: ["Run the focused alt shell tests."]
+      },
+      components: [
+        {
+          componentKey: "alt-api",
+          displayName: "Alt API",
+          kind: "git_repository",
+          config: {
+            gitUrl: "https://github.com/keystone/alt-api.git",
+            ref: "main"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "ALT_RUNTIME",
+          value: "workers"
+        }
+      ]
+    };
+    const postedBodies: unknown[] = [];
+    let resolvePatchResponse: ((response: Response) => void) | null = null;
+    let resolveAltDetailResponse: ((response: Response) => void) | null = null;
+    const patchResponse = new Promise<Response>((resolve) => {
+      resolvePatchResponse = resolve;
+    });
+    const altDetailResponse = new Promise<Response>((resolve) => {
+      resolveAltDetailResponse = resolve;
+    });
+    const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+      expectDevAuthHeaders(request, init);
+
+      const url = typeof request === "string" ? request : request.toString();
+      const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+      if (url === "/v1/projects" && method === "GET") {
+        return createJsonResponse(buildProjectsResponse([scaffoldProject, alternateProject]));
+      }
+
+      if (url === `/v1/projects/${scaffoldProject.projectId}` && method === "GET") {
+        return createJsonResponse(buildProjectDetailResponse(initialProjectDetail));
+      }
+
+      if (url === `/v1/projects/${alternateProject.projectId}` && method === "GET") {
+        return await altDetailResponse;
+      }
+
+      if (url === `/v1/projects/${scaffoldProject.projectId}` && method === "PATCH") {
+        const bodyText =
+          request instanceof Request ? await request.text() : String(init?.body ?? "");
+
+        postedBodies.push(JSON.parse(bodyText));
+
+        return await patchResponse;
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/settings/overview", { useBrowserProjectApi: true });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
+      "Keystone Cloudflare"
+    );
+    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue(
+      "keystone-cloudflare"
+    );
+    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue("");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
+      target: {
+        value: savedProjectDetail.displayName
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Project key" }), {
+      target: {
+        value: savedProjectDetail.projectKey
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Project key" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Description" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
+    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Loading project settings" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
+
+    expect(resolveAltDetailResponse).not.toBeNull();
+    resolveAltDetailResponse!(createJsonResponse(buildProjectDetailResponse(alternateProjectDetail)));
+
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue("Alt Project");
+    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("alt-project");
+
+    expect(resolvePatchResponse).not.toBeNull();
+    resolvePatchResponse!(createJsonResponse(buildProjectDetailResponse(savedProjectDetail)));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Alt Project");
+
+    fireEvent.click(screen.getByRole("button", { name: /Alt Project/i }));
+
+    const updatedPrimaryOption = screen.getByRole("option", { name: /Keystone Edge Control/i });
+
+    expect(updatedPrimaryOption).toHaveAttribute("aria-selected", "false");
+    expect(within(updatedPrimaryOption).getByText("keystone-edge-control")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Alt Project/i })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(postedBodies).toEqual([
+      {
+        projectKey: "keystone-edge-control",
+        displayName: "Keystone Edge Control",
+        description: null,
+        ruleSet: {
+          reviewInstructions: ["Keep route ownership explicit."],
+          testInstructions: ["Run the focused shell tests."]
+        },
+        components: [
+          {
+            componentKey: "api",
+            displayName: "API",
+            kind: "git_repository",
+            config: {
+              localPath: "./services/api",
+              ref: "main"
+            }
+          }
+        ],
+        envVars: [
+          {
+            name: "KEYSTONE_AGENT_RUNTIME",
+            value: "scripted"
+          }
+        ]
+      }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });

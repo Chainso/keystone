@@ -36,6 +36,7 @@ import {
 export interface ProjectSettingsConfigurationState {
   draft: ProjectConfigurationDraft | null;
   fieldErrors: Record<string, string>;
+  projectId: string | null;
 }
 
 export interface ProjectSettingsConfigurationActions {
@@ -149,21 +150,30 @@ export function ProjectSettingsConfigurationProvider({
   const project = useCurrentProject();
   const projectManagement = useProjectManagement();
   const [draft, setDraft] = useState<ProjectConfigurationDraft | null>(null);
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [loadedDraft, setLoadedDraft] = useState<ProjectConfigurationDraft | null>(null);
+  const [loadedDraftProjectId, setLoadedDraftProjectId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<ProjectSettingsConfigurationMeta["status"]>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingProjectId, setSubmittingProjectId] = useState<string | null>(null);
   const nextComponentIndexRef = useRef(0);
   const nextEnvVarIndexRef = useRef(0);
   const requestIdRef = useRef(0);
+  const submitRequestIdRef = useRef(0);
+  const currentProjectIdRef = useRef(project.projectId);
 
-  function resetDraft(nextDraft: ProjectConfigurationDraft) {
+  currentProjectIdRef.current = project.projectId;
+
+  function resetDraft(nextDraft: ProjectConfigurationDraft, projectId: string) {
     nextComponentIndexRef.current = nextDraft.components.length;
     nextEnvVarIndexRef.current = nextDraft.envVars.length;
     setDraft(nextDraft);
+    setDraftProjectId(projectId);
     setLoadedDraft(nextDraft);
+    setLoadedDraftProjectId(projectId);
     setFieldErrors({});
     setSubmitError(null);
   }
@@ -173,6 +183,12 @@ export function ProjectSettingsConfigurationProvider({
     requestIdRef.current = requestId;
     setStatus("loading");
     setLoadError(null);
+    setDraft(null);
+    setDraftProjectId(null);
+    setLoadedDraft(null);
+    setLoadedDraftProjectId(null);
+    setFieldErrors({});
+    setSubmitError(null);
 
     try {
       const detail = await api.getProject(projectId);
@@ -189,7 +205,8 @@ export function ProjectSettingsConfigurationProvider({
           ruleSet: detail.ruleSet,
           components: detail.components,
           envVars: detail.envVars
-        })
+        }),
+        projectId
       );
       setStatus("ready");
     } catch (error) {
@@ -198,7 +215,9 @@ export function ProjectSettingsConfigurationProvider({
       }
 
       setDraft(null);
+      setDraftProjectId(null);
       setLoadedDraft(null);
+      setLoadedDraftProjectId(null);
       setFieldErrors({});
       setSubmitError(null);
       setLoadError(getErrorMessage(error));
@@ -214,7 +233,10 @@ export function ProjectSettingsConfigurationProvider({
     recipe: (currentDraft: ProjectConfigurationDraft) => ProjectConfigurationDraft
   ) {
     setDraft((currentDraft) => {
-      if (!currentDraft) {
+      const isCurrentProjectSubmitting =
+        isSubmitting && submittingProjectId === currentProjectIdRef.current;
+
+      if (!currentDraft || draftProjectId !== currentProjectIdRef.current || isCurrentProjectSubmitting) {
         return currentDraft;
       }
 
@@ -224,10 +246,19 @@ export function ProjectSettingsConfigurationProvider({
     setSubmitError(null);
   }
 
+  const currentDraft = draftProjectId === project.projectId ? draft : null;
+  const currentLoadedDraft = loadedDraftProjectId === project.projectId ? loadedDraft : null;
+  const effectiveStatus =
+    status === "ready" && !currentDraft ? "loading" : status;
+  const effectiveSubmitError =
+    submittingProjectId === null || submittingProjectId === project.projectId ? submitError : null;
+  const effectiveIsSubmitting = isSubmitting && submittingProjectId === project.projectId;
+
   const value: ProjectSettingsConfigurationValue = {
     state: {
-      draft,
-      fieldErrors
+      draft: currentDraft,
+      fieldErrors,
+      projectId: currentDraft ? project.projectId : null
     },
     actions: {
       addComponent(kind) {
@@ -284,11 +315,11 @@ export function ProjectSettingsConfigurationProvider({
         }));
       },
       discardChanges() {
-        if (!loadedDraft) {
+        if (!currentLoadedDraft || effectiveIsSubmitting) {
           return;
         }
 
-        resetDraft(loadedDraft);
+        resetDraft(currentLoadedDraft, project.projectId);
       },
       removeComponent(componentId) {
         updateDraft((currentDraft) => ({
@@ -343,12 +374,15 @@ export function ProjectSettingsConfigurationProvider({
         }));
       },
       async submit() {
-        if (isSubmitting || !draft) {
+        const activeProjectId = currentProjectIdRef.current;
+        const draftToSubmit = draftProjectId === activeProjectId ? draft : null;
+
+        if (effectiveIsSubmitting || !draftToSubmit) {
           return false;
         }
 
         const validation = projectConfigSchema.safeParse(
-          serializeProjectConfigurationDraft(draft)
+          serializeProjectConfigurationDraft(draftToSubmit)
         );
 
         if (!validation.success) {
@@ -372,23 +406,34 @@ export function ProjectSettingsConfigurationProvider({
         setFieldErrors({});
         setSubmitError(null);
         setIsSubmitting(true);
+        setSubmittingProjectId(activeProjectId);
+        const submitRequestId = submitRequestIdRef.current + 1;
+        submitRequestIdRef.current = submitRequestId;
 
         try {
           const updatedProject = await projectManagement.actions.updateProject(
-            project.projectId,
+            activeProjectId,
             validation.data
           );
 
-          resetDraft(
-            buildProjectConfigurationDraft({
-              projectKey: updatedProject.projectKey,
-              displayName: updatedProject.displayName,
-              description: updatedProject.description,
-              ruleSet: updatedProject.ruleSet,
-              components: updatedProject.components,
-              envVars: updatedProject.envVars
-            })
-          );
+          if (submitRequestIdRef.current !== submitRequestId) {
+            return false;
+          }
+
+          if (currentProjectIdRef.current === activeProjectId) {
+            resetDraft(
+              buildProjectConfigurationDraft({
+                projectKey: updatedProject.projectKey,
+                displayName: updatedProject.displayName,
+                description: updatedProject.description,
+                ruleSet: updatedProject.ruleSet,
+                components: updatedProject.components,
+                envVars: updatedProject.envVars
+              }),
+              activeProjectId
+            );
+            setStatus("ready");
+          }
 
           return true;
         } catch (error) {
@@ -410,7 +455,10 @@ export function ProjectSettingsConfigurationProvider({
 
           return false;
         } finally {
-          setIsSubmitting(false);
+          if (submitRequestIdRef.current === submitRequestId) {
+            setIsSubmitting(false);
+            setSubmittingProjectId(null);
+          }
         }
       },
       updateComponentField(componentId, field, value) {
@@ -457,7 +505,15 @@ export function ProjectSettingsConfigurationProvider({
           ...currentDraft,
           overview: {
             ...currentDraft.overview,
-            [field]: value
+            ...(field === "description"
+              ? {
+                  description: value,
+                  descriptionWasNull:
+                    value === "" ? currentDraft.overview.descriptionWasNull : false
+                }
+              : {
+                  [field]: value
+                })
           }
         }));
       },
@@ -472,11 +528,11 @@ export function ProjectSettingsConfigurationProvider({
       }
     },
     meta: {
-      hasUnsavedChanges: !areDraftsEqual(draft, loadedDraft),
-      isSubmitting,
+      hasUnsavedChanges: !areDraftsEqual(currentDraft, currentLoadedDraft),
+      isSubmitting: effectiveIsSubmitting,
       loadError,
-      status,
-      submitError
+      status: effectiveStatus,
+      submitError: effectiveSubmitError
     }
   };
 

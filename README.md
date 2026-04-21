@@ -230,6 +230,11 @@ Local dev auth uses:
 - `Authorization: Bearer <KEYSTONE_DEV_TOKEN>`
 - `X-Keystone-Tenant-Id: <tenant-id>`
 
+The shared browser API seam now sends these headers automatically for protected UI requests. Local UI defaults match this repo's checked-in dev values:
+
+- `KEYSTONE_DEV_TOKEN=change-me-local-token`
+- `KEYSTONE_DEV_TENANT_ID=tenant-dev-local`
+
 Start from `.dev.vars.example` and keep local overrides in `.dev.vars`.
 
 ## Additional Docs

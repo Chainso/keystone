@@ -47,6 +47,15 @@ If Wrangler binds a non-default port, export it before running helper scripts:
 export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 ```
 
+The UI's shared browser API seam sends the local dev auth headers automatically on protected project and run requests. The default local values are:
+
+```bash
+KEYSTONE_DEV_TOKEN=change-me-local-token
+KEYSTONE_DEV_TENANT_ID=tenant-dev-local
+```
+
+Keep host-side overrides in `.dev.vars` when you need different local credentials.
+
 If you are validating the full repo after UI changes, expect `npm run build` to hit the same sandbox limitation on this host: `vite build` completes, then Wrangler's dry-run deploy still needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`. Rerun from a normal host shell when you need the full `build` proof.
 
 ## Sanity Checks

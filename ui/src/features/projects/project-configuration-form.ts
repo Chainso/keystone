@@ -39,6 +39,7 @@ export interface ProjectConfigurationDraft {
   envVars: ProjectConfigurationEnvVarDraft[];
   overview: {
     description: string;
+    descriptionWasNull: boolean;
     displayName: string;
     projectKey: string;
   };
@@ -71,6 +72,7 @@ export function buildProjectConfigurationDraft(
     })),
     overview: {
       description: config.description ?? "",
+      descriptionWasNull: config.description === null,
       displayName: config.displayName,
       projectKey: config.projectKey
     },
@@ -87,7 +89,10 @@ export function serializeProjectConfigurationDraft(
   return {
     projectKey: draft.overview.projectKey,
     displayName: draft.overview.displayName,
-    description: draft.overview.description,
+    description:
+      draft.overview.description === "" && draft.overview.descriptionWasNull
+        ? null
+        : draft.overview.description,
     ruleSet: {
       reviewInstructions: draft.ruleSet.reviewInstructions,
       testInstructions: draft.ruleSet.testInstructions

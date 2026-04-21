@@ -178,6 +178,17 @@ function syncProjectSnapshot(
   };
 }
 
+function deriveSnapshotStatus(
+  projects: CurrentProject[],
+  currentProjectId: string | null
+): ProjectManagementMeta["status"] {
+  if (projects.length === 0) {
+    return "empty";
+  }
+
+  return resolveCurrentProject(projects, currentProjectId) ? "ready" : "ready";
+}
+
 function ProjectManagementCompatibilityProvider({
   children,
   currentProjectId,
@@ -344,12 +355,27 @@ export function CurrentProjectProvider({
           projectId: updatedProject.projectId,
           projectKey: updatedProject.projectKey,
           displayName: updatedProject.displayName,
-          description: updatedProject.description
+          description: updatedProject.description ?? ""
         };
+        const shouldKeepProjectSelected = selectedProjectIdRef.current === nextProject.projectId;
 
-        selectedProjectIdRef.current = nextProject.projectId;
-        writeStoredProjectId(nextProject.projectId);
-        setSnapshot((current) => syncProjectSnapshot(current, nextProject));
+        setSnapshot((current) => {
+          const nextProjects = upsertProjectRecord(current.projects, nextProject);
+
+          if (shouldKeepProjectSelected) {
+            selectedProjectIdRef.current = nextProject.projectId;
+            writeStoredProjectId(nextProject.projectId);
+
+            return syncProjectSnapshot(current, nextProject);
+          }
+
+          return {
+            currentProjectId: current.currentProjectId,
+            errorMessage: current.errorMessage,
+            projects: nextProjects,
+            status: deriveSnapshotStatus(nextProjects, current.currentProjectId)
+          };
+        });
 
         return updatedProject;
       }
