@@ -98,6 +98,7 @@ The current operator-facing backend surface is:
 - `GET /v1/runs/:runId/workflow`
 - `GET /v1/runs/:runId/tasks`
 - `GET /v1/runs/:runId/tasks/:taskId`
+- `GET /v1/runs/:runId/tasks/:taskId/artifacts`
 - `GET /v1/artifacts/:artifactId`
 - `GET /v1/artifacts/:artifactId/content`
 

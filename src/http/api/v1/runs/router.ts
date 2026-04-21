@@ -14,6 +14,7 @@ import {
   getRunHandler,
   getRunWorkflowGraphHandler,
   getTaskHandler,
+  listTaskArtifactsHandler,
   listRunTasksHandler,
 } from "./handlers";
 
@@ -100,6 +101,15 @@ export const runRouteMatrix = [
     implementation: "reused",
     availability: "implemented"
   },
+  {
+    method: "GET",
+    path: "/v1/runs/:runId/tasks/:taskId/artifacts",
+    family: "runs",
+    resourceType: "artifact",
+    responseKind: "collection",
+    implementation: "reused",
+    availability: "implemented"
+  },
 ] as const satisfies ApiRouteDefinition[];
 
 export function registerRunRoutes(router: Hono<AppEnv>) {
@@ -116,4 +126,5 @@ export function registerRunRoutes(router: Hono<AppEnv>) {
   router.get("/v1/runs/:runId/workflow", requireDevAuth, getRunWorkflowGraphHandler);
   router.get("/v1/runs/:runId/tasks", requireDevAuth, listRunTasksHandler);
   router.get("/v1/runs/:runId/tasks/:taskId", requireDevAuth, getTaskHandler);
+  router.get("/v1/runs/:runId/tasks/:taskId/artifacts", requireDevAuth, listTaskArtifactsHandler);
 }

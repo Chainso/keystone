@@ -40,7 +40,13 @@ interface LiveExecutionSnapshot {
   status: "idle" | "loading" | "ready" | "empty" | "error";
 }
 
+interface ArtifactPanelState {
+  message: string | null;
+  status: "loading" | "ready" | "empty" | "error";
+}
+
 interface LiveTaskDetailSnapshot {
+  artifactState: ArtifactPanelState;
   artifactNotice: string | null;
   artifacts: TaskArtifactViewModel[];
   errorMessage: string | null;
@@ -88,7 +94,7 @@ export interface TaskDependencyViewModel {
 }
 
 export interface TaskDetailViewModel {
-  artifactEmptyMessage: string;
+  artifactState: ArtifactPanelState;
   artifactNotice: string | null;
   artifactSectionLabel: string;
   artifacts: TaskArtifactViewModel[];
@@ -169,6 +175,14 @@ function getTaskStatusTone(status: string): ExecutionNodeTone {
   }
 }
 
+function resolveTaskDisplayId(logicalTaskId: string | null | undefined, taskId: string) {
+  if (typeof logicalTaskId === "string" && logicalTaskId.trim().length > 0) {
+    return logicalTaskId;
+  }
+
+  return taskId;
+}
+
 function buildBlockedByIndex(tasks: Array<Pick<ExecutionTaskRecord, "dependsOn" | "taskId">>) {
   const blockedByIndex = new Map<string, string[]>();
 
@@ -184,7 +198,7 @@ function buildBlockedByIndex(tasks: Array<Pick<ExecutionTaskRecord, "dependsOn" 
   return blockedByIndex;
 }
 
-function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[]) {
+function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[], errorContext = "Workflow graph") {
   const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
   const depthByTaskId = new Map<string, number>();
 
@@ -198,7 +212,7 @@ function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[]) {
     const task = tasksById.get(taskId);
 
     if (!task) {
-      return 0;
+      throw new Error(`${errorContext} references missing dependency task "${taskId}".`);
     }
 
     const depth =
@@ -228,8 +242,8 @@ function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[]) {
   }, new Map());
 }
 
-function buildExecutionRows(tasks: ExecutionTaskRecord[]) {
-  const rowsByDepth = groupTaskIdsByDepth(tasks);
+function buildExecutionRows(tasks: ExecutionTaskRecord[], errorContext?: string) {
+  const rowsByDepth = groupTaskIdsByDepth(tasks, errorContext);
 
   return [...rowsByDepth.entries()]
     .sort(([left], [right]) => left - right)
@@ -301,7 +315,7 @@ function buildLiveExecutionTaskRecords(
       blockedBy: [],
       conversationLocator: task?.conversation ?? null,
       dependsOn: [...node.dependsOn],
-      displayId: task?.logicalTaskId ?? node.taskId,
+      displayId: resolveTaskDisplayId(task?.logicalTaskId, node.taskId),
       runId,
       status: task?.status ?? node.status,
       taskId: node.taskId,
@@ -382,7 +396,10 @@ function useLiveRunExecutionSnapshot(runId: string) {
           return;
         }
 
-        const rows = buildExecutionRows(buildLiveExecutionTaskRecords(runId, workflow, tasks));
+        const rows = buildExecutionRows(
+          buildLiveExecutionTaskRecords(runId, workflow, tasks),
+          `Workflow graph for run "${runId}"`
+        );
 
         setSnapshot({
           errorMessage: null,
@@ -426,6 +443,10 @@ function useLiveTaskDetailSnapshot(runId: string, taskId: string) {
   const api = useOptionalRunExecutionApi();
   const requestIdRef = useRef(0);
   const [snapshot, setSnapshot] = useState<LiveTaskDetailSnapshot>({
+    artifactState: {
+      message: "Loading task artifacts.",
+      status: "loading"
+    },
     artifactNotice: null,
     artifacts: [],
     errorMessage: null,
@@ -443,6 +464,10 @@ function useLiveTaskDetailSnapshot(runId: string, taskId: string) {
     requestIdRef.current = requestId;
 
     setSnapshot({
+      artifactState: {
+        message: "Loading task artifacts.",
+        status: "loading"
+      },
       artifactNotice: null,
       artifacts: [],
       errorMessage: null,
@@ -453,13 +478,34 @@ function useLiveTaskDetailSnapshot(runId: string, taskId: string) {
 
     const artifactsPromise = api
       .listRunTaskArtifacts(runId, taskId)
-      .then((artifacts) => ({
-        artifactNotice:
-          "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead.",
-        artifacts: artifacts.map(toLiveArtifactViewModel)
-      }))
+      .then((artifacts) => {
+        if (artifacts.length === 0) {
+          return {
+            artifactNotice: null,
+            artifactState: {
+              message: "No artifacts recorded for this task yet.",
+              status: "empty" as const
+            },
+            artifacts: [] as TaskArtifactViewModel[]
+          };
+        }
+
+        return {
+          artifactNotice:
+            "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead.",
+          artifactState: {
+            message: null,
+            status: "ready" as const
+          },
+          artifacts: artifacts.map(toLiveArtifactViewModel)
+        };
+      })
       .catch(() => ({
-        artifactNotice: "Task artifacts are unavailable right now.",
+        artifactNotice: null,
+        artifactState: {
+          message: "Unable to load task artifacts.",
+          status: "error" as const
+        },
         artifacts: [] as TaskArtifactViewModel[]
       }));
 
@@ -470,6 +516,7 @@ function useLiveTaskDetailSnapshot(runId: string, taskId: string) {
         }
 
         setSnapshot({
+          artifactState: artifactResult.artifactState,
           artifactNotice: artifactResult.artifactNotice,
           artifacts: artifactResult.artifacts,
           errorMessage: null,
@@ -484,6 +531,10 @@ function useLiveTaskDetailSnapshot(runId: string, taskId: string) {
         }
 
         setSnapshot({
+          artifactState: {
+            message: "Task artifacts are unavailable until task detail loads.",
+            status: "error"
+          },
           artifactNotice: null,
           artifacts: [],
           errorMessage: getErrorMessage(error),
@@ -497,6 +548,10 @@ function useLiveTaskDetailSnapshot(runId: string, taskId: string) {
   useEffect(() => {
     if (!api) {
       setSnapshot({
+        artifactState: {
+          message: "Loading task artifacts.",
+          status: "loading"
+        },
         artifactNotice: null,
         artifacts: [],
         errorMessage: null,
@@ -580,7 +635,7 @@ export function useRunExecutionViewModel(runId: string): RunExecutionViewModel {
 
   return {
     retry() {},
-    rows: buildExecutionRows(tasks)
+    rows: buildExecutionRows(tasks, `Workflow graph for run "${runId}"`)
   };
 }
 
@@ -593,7 +648,10 @@ export function useTaskDetailViewModel(runId: string, taskId: string): TaskDetai
   if (liveApi) {
     if (live.snapshot.status === "loading") {
       return {
-        artifactEmptyMessage: "No artifacts recorded for this task yet.",
+        artifactState: {
+          message: "Loading task artifacts.",
+          status: "loading"
+        },
         artifactNotice: null,
         artifactSectionLabel: "Execution artifacts",
         artifacts: [],
@@ -615,7 +673,7 @@ export function useTaskDetailViewModel(runId: string, taskId: string): TaskDetai
 
     if (live.snapshot.status === "error" || !live.snapshot.task) {
       return {
-        artifactEmptyMessage: "No artifacts recorded for this task yet.",
+        artifactState: live.snapshot.artifactState,
         artifactNotice: null,
         artifactSectionLabel: "Execution artifacts",
         artifacts: [],
@@ -640,7 +698,7 @@ export function useTaskDetailViewModel(runId: string, taskId: string): TaskDetai
       blockedBy: [],
       conversationLocator: task.conversation ?? null,
       dependsOn: [...task.dependsOn],
-      displayId: task.logicalTaskId,
+      displayId: resolveTaskDisplayId(task.logicalTaskId, task.taskId),
       runId: task.runId,
       status: task.status,
       taskId: task.taskId,
@@ -661,7 +719,10 @@ export function useTaskDetailViewModel(runId: string, taskId: string): TaskDetai
         blockedBy: blockedByIndex.get(live.snapshot.task.taskId) ?? [],
         conversationLocator: live.snapshot.task.conversation ?? null,
         dependsOn: [...live.snapshot.task.dependsOn],
-        displayId: live.snapshot.task.logicalTaskId,
+        displayId: resolveTaskDisplayId(
+          live.snapshot.task.logicalTaskId,
+          live.snapshot.task.taskId
+        ),
         runId: live.snapshot.task.runId,
         status: live.snapshot.task.status,
         taskId: live.snapshot.task.taskId,
@@ -669,7 +730,7 @@ export function useTaskDetailViewModel(runId: string, taskId: string): TaskDetai
       };
 
     return {
-      artifactEmptyMessage: "No artifacts recorded for this task yet.",
+      artifactState: live.snapshot.artifactState,
       artifactNotice: live.snapshot.artifactNotice,
       artifactSectionLabel: "Execution artifacts",
       artifacts: live.snapshot.artifacts,
@@ -707,7 +768,11 @@ export function useTaskDetailViewModel(runId: string, taskId: string): TaskDetai
   const runTasksById = new Map(runTasks.map((candidate) => [candidate.taskId, candidate]));
 
   return {
-    artifactEmptyMessage: "No artifacts recorded for this task yet.",
+    artifactState: {
+      message:
+        task.artifactIds.length === 0 ? "No artifacts recorded for this task yet." : null,
+      status: task.artifactIds.length === 0 ? "empty" : "ready"
+    },
     artifactNotice: null,
     artifactSectionLabel: "Changed files",
     artifacts: getTaskArtifacts(task.taskId, state.dataset).map(toScaffoldArtifactViewModel),

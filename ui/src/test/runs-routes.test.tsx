@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
+import type { RunExecutionApi } from "../features/execution/execution-api";
 import { renderRoute } from "./render-route";
 
 const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
@@ -357,6 +358,81 @@ function stubLiveRunRouteFetch(input: {
   vi.stubGlobal("fetch", fetchMock);
 
   return fetchMock;
+}
+
+function createExecutionApiStub(input: {
+  artifactsByTaskId?: Record<string, Error | LiveArtifactFixture[]>;
+  run?: Error | ReturnType<typeof buildRunResource>;
+  taskDetailsByTaskId?: Record<string, Error | unknown>;
+  tasks?: Error | unknown[];
+  workflow?: Error | ReturnType<typeof buildWorkflowResource>;
+}): RunExecutionApi {
+  const run =
+    input.run ??
+    buildRunResource(createLiveRunFixture());
+  const tasks = input.tasks ?? [];
+  const workflow =
+    input.workflow ??
+    buildWorkflowResource(
+      run instanceof Error ? "run-live-201" : run.runId,
+      []
+    );
+
+  return {
+    async getRun() {
+      if (run instanceof Error) {
+        throw run;
+      }
+
+      return run;
+    },
+    async getRunTask(_runId, taskId) {
+      const value =
+        input.taskDetailsByTaskId?.[taskId] ??
+        (Array.isArray(tasks)
+          ? tasks.find(
+              (candidate): candidate is { taskId: string } =>
+                typeof candidate === "object" &&
+                candidate !== null &&
+                "taskId" in candidate &&
+                candidate.taskId === taskId
+            )
+          : undefined);
+
+      if (value instanceof Error) {
+        throw value;
+      }
+
+      if (!value) {
+        throw new Error(`Task ${taskId} was not found.`);
+      }
+
+      return value as never;
+    },
+    async getRunWorkflow() {
+      if (workflow instanceof Error) {
+        throw workflow;
+      }
+
+      return workflow;
+    },
+    async listRunTaskArtifacts(_runId, taskId) {
+      const value = input.artifactsByTaskId?.[taskId] ?? [];
+
+      if (value instanceof Error) {
+        throw value;
+      }
+
+      return value.map(buildArtifactResource);
+    },
+    async listRunTasks() {
+      if (tasks instanceof Error) {
+        throw tasks;
+      }
+
+      return tasks as never;
+    }
+  };
 }
 
 describe("Run routes", () => {
@@ -744,5 +820,265 @@ describe("Run routes", () => {
       "href",
       "/v1/artifacts/artifact-task-log-1/content"
     );
+  });
+
+  it("falls back to taskId in live task detail headings and dependency rows", async () => {
+    const liveRun = createLiveRunFixture();
+    const dependencyTask = {
+      ...buildTaskResource(
+        liveRun.runId,
+        createLiveTaskFixture({
+          logicalTaskId: "TASK-LIVE-001",
+          name: "Compile execution context",
+          status: "completed",
+          taskId: "task-live-001"
+        })
+      ),
+      logicalTaskId: undefined
+    };
+    const currentTask = {
+      ...buildTaskResource(
+        liveRun.runId,
+        createLiveTaskFixture({
+          dependsOn: ["task-live-001"],
+          logicalTaskId: "TASK-LIVE-002",
+          name: "Run execution shell",
+          status: "active",
+          taskId: "task-live-002"
+        })
+      ),
+      logicalTaskId: undefined
+    };
+    const blockedTask = {
+      ...buildTaskResource(
+        liveRun.runId,
+        createLiveTaskFixture({
+          dependsOn: ["task-live-002"],
+          logicalTaskId: "TASK-LIVE-003",
+          name: "Task detail drill-in",
+          status: "blocked",
+          taskId: "task-live-003"
+        })
+      ),
+      logicalTaskId: undefined
+    };
+
+    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-002`, {
+      executionApi: createExecutionApiStub({
+        run: buildRunResource(liveRun),
+        taskDetailsByTaskId: {
+          "task-live-002": currentTask
+        },
+        tasks: [dependencyTask, currentTask, blockedTask]
+      }),
+      project: liveProject
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: `${liveRun.runId} / task-live-002` })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Depends on")).toHaveTextContent("task-live-001");
+    expect(screen.getByLabelText("Blocked by")).toHaveTextContent("task-live-003");
+  });
+
+  it("renders an empty live execution state when the workflow has no tasks", async () => {
+    const liveRun = createLiveRunFixture();
+
+    renderRoute(`/runs/${liveRun.runId}/execution`, {
+      executionApi: createExecutionApiStub({
+        run: buildRunResource(liveRun),
+        tasks: [],
+        workflow: buildWorkflowResource(liveRun.runId, [])
+      }),
+      project: liveProject
+    });
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(await screen.findByText("No execution tasks yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(`${liveRun.runId} does not have any execution tasks to render yet.`)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Execution workflow graph")).not.toBeInTheDocument();
+  });
+
+  it("surfaces live run-task loading failures in the execution compatibility state", async () => {
+    const liveRun = createLiveRunFixture();
+
+    renderRoute(`/runs/${liveRun.runId}/execution`, {
+      executionApi: createExecutionApiStub({
+        run: buildRunResource(liveRun),
+        tasks: new Error("Unable to load run tasks."),
+        workflow: buildWorkflowResource(liveRun.runId, [])
+      }),
+      project: liveProject
+    });
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(await screen.findByText("Unable to load execution")).toBeInTheDocument();
+    expect(screen.getByText("Unable to load run tasks.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("surfaces inconsistent live workflow dependencies instead of flattening them into the graph", async () => {
+    const liveRun = createLiveRunFixture();
+    const task = buildTaskResource(
+      liveRun.runId,
+      createLiveTaskFixture({
+        dependsOn: ["task-live-missing"],
+        logicalTaskId: "TASK-LIVE-002",
+        name: "Run execution shell",
+        status: "active",
+        taskId: "task-live-002"
+      })
+    );
+
+    renderRoute(`/runs/${liveRun.runId}/execution`, {
+      executionApi: createExecutionApiStub({
+        run: buildRunResource(liveRun),
+        tasks: [task],
+        workflow: {
+          resourceType: "workflow_graph",
+          scaffold: {
+            implementation: "projected",
+            note: "Projected from run_tasks and run_task_dependencies."
+          },
+          nodes: [
+            {
+              dependsOn: ["task-live-missing"],
+              name: "Run execution shell",
+              status: "active",
+              taskId: "task-live-002"
+            }
+          ],
+          edges: [
+            {
+              fromTaskId: "task-live-missing",
+              toTaskId: "task-live-002"
+            }
+          ],
+          summary: {
+            activeTasks: 1,
+            cancelledTasks: 0,
+            completedTasks: 0,
+            failedTasks: 0,
+            pendingTasks: 0,
+            readyTasks: 0,
+            totalTasks: 1
+          }
+        }
+      }),
+      project: liveProject
+    });
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(await screen.findByText("Unable to load execution")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        `Workflow graph for run "${liveRun.runId}" references missing dependency task "task-live-missing".`
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Execution workflow graph")).not.toBeInTheDocument();
+  });
+
+  it("renders a distinct empty-artifacts state for live task detail", async () => {
+    const liveRun = createLiveRunFixture();
+    const liveTasks = [
+      buildTaskResource(
+        liveRun.runId,
+        createLiveTaskFixture({
+          logicalTaskId: "TASK-LIVE-001",
+          name: "Compile execution context",
+          status: "completed",
+          taskId: "task-live-001"
+        })
+      ),
+      buildTaskResource(
+        liveRun.runId,
+        createLiveTaskFixture({
+          dependsOn: ["task-live-001"],
+          logicalTaskId: "TASK-LIVE-002",
+          name: "Run execution shell",
+          status: "active",
+          taskId: "task-live-002"
+        })
+      )
+    ];
+
+    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-002`, {
+      executionApi: createExecutionApiStub({
+        artifactsByTaskId: {
+          "task-live-002": []
+        },
+        run: buildRunResource(liveRun),
+        taskDetailsByTaskId: {
+          "task-live-002": liveTasks[1]
+        },
+        tasks: liveTasks
+      }),
+      project: liveProject
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: `${liveRun.runId} / TASK-LIVE-002` })
+    ).toBeInTheDocument();
+    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load task artifacts.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead."
+      )
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open raw artifact" })).not.toBeInTheDocument();
+  });
+
+  it("renders a distinct artifact error state for live task detail", async () => {
+    const liveRun = createLiveRunFixture();
+    const liveTasks = [
+      buildTaskResource(
+        liveRun.runId,
+        createLiveTaskFixture({
+          logicalTaskId: "TASK-LIVE-001",
+          name: "Compile execution context",
+          status: "completed",
+          taskId: "task-live-001"
+        })
+      ),
+      buildTaskResource(
+        liveRun.runId,
+        createLiveTaskFixture({
+          dependsOn: ["task-live-001"],
+          logicalTaskId: "TASK-LIVE-002",
+          name: "Run execution shell",
+          status: "active",
+          taskId: "task-live-002"
+        })
+      )
+    ];
+
+    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-002`, {
+      executionApi: createExecutionApiStub({
+        artifactsByTaskId: {
+          "task-live-002": new Error("artifact fetch failed")
+        },
+        run: buildRunResource(liveRun),
+        taskDetailsByTaskId: {
+          "task-live-002": liveTasks[1]
+        },
+        tasks: liveTasks
+      }),
+      project: liveProject
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: `${liveRun.runId} / TASK-LIVE-002` })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Unable to load task artifacts.")).toBeInTheDocument();
+    expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead."
+      )
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open raw artifact" })).not.toBeInTheDocument();
   });
 });

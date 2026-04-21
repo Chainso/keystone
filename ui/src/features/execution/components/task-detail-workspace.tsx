@@ -128,14 +128,14 @@ export function TaskDetailWorkspace({ model }: TaskDetailWorkspaceProps) {
           <p className="review-sidebar-label">{model.artifactSectionLabel}</p>
           {model.artifactNotice ? <p className="document-card-summary">{model.artifactNotice}</p> : null}
 
-          {model.artifacts.length === 0 ? (
-            <p className="document-card-summary">{model.artifactEmptyMessage}</p>
-          ) : (
+          {model.artifactState.status === "ready" ? (
             <div className="review-file-stack">
               {model.artifacts.map((artifact, index) => (
                 <TaskArtifactCard key={artifact.artifactId} artifact={artifact} open={index === 0} />
               ))}
             </div>
+          ) : (
+            <p className="document-card-summary">{model.artifactState.message}</p>
           )}
         </section>
       </div>
