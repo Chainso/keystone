@@ -145,6 +145,12 @@ The same project configuration screen should be used in two modes:
 
 The difference is mostly framing and button labels.
 
+Action model:
+
+- `New project` should use direct create semantics such as `[ Cancel ] [ Create project ]`.
+- `Project settings` should use direct save semantics such as `[ Discard ] [ Save changes ]`.
+- Do not treat project configuration tabs like a draft workflow or a next-step wizard.
+
 ### Overview
 
 `Overview` should capture:
@@ -373,7 +379,7 @@ KESTONE UI BOARD
 │                            │  │ Description                                                             │  │
 │                            │  │ [ Internal operator workspace...................................... ]  │  │
 │                            │  │                                                                         │  │
-│                            │  │                                        [ Cancel ] [ Save Draft ] [ Next ]│ │
+│                            │  │                                             [ Cancel ] [ Create project ]│ │
 │                            │  └─────────────────────────────────────────────────────────────────────────┘  │
 └────────────────────────────┴───────────────────────────────────────────────────────────────────────────────┘
 
@@ -409,7 +415,7 @@ KESTONE UI BOARD
 │                            │  │                                                                         │  │
 │                            │  │                                                      [ Remove ]       │  │
 │                            │  │                                                                         │  │
-│                            │  │                                                     [ Discard ] [ Save ]│ │
+│                            │  │                                            [ Discard ] [ Save changes ]│ │
 │                            │  └─────────────────────────────────────────────────────────────────────────┘  │
 └────────────────────────────┴───────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -437,4 +443,3 @@ For the first UI iterations:
 - treat `Execution` as two connected states: graph and task detail
 - design the `Documentation` tree around the current canonical documents, not around version history
 - include the project configuration surfaces early because project selection and creation are part of the normal workflow
-

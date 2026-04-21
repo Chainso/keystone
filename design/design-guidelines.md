@@ -198,6 +198,7 @@ Every new mockup should keep these stable unless there is a deliberate design ch
 - same planning-phase split layout
 - same execution graph-to-task-detail handoff
 - same project settings tab set
+- same direct project-configuration action model: create for `New project`, save for `Project settings`, no draft/next wizard controls
 - same right-sidebar role for document or review detail
 - same status vocabulary
 - same accent color family

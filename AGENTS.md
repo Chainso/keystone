@@ -51,6 +51,8 @@ When working in this repo, load the matching local skill before making changes i
 
 Use these skills as decision support and current-platform guidance, especially where Cloudflare APIs or React architecture choices may drift over time.
 
+For UI work, do not preserve the existing route tree, layout split, or component boundaries mechanically just because they already exist. Prefer the structure that yields the clearest ownership, most consistent behavior, and best long-term patterns. Preserve product-defined concepts and terminology from `design/` and `product-specs/`, treat the current implementation structure as negotiable, and consult both `design/workspace-spec.md` and `design/design-guidelines.md` when making UI architecture or UX decisions.
+
 Ultrakit execution is subagent-driven. Keep the stage logic in `.agents/skills/ultrakit-orchestrator-*`, and keep the execution-role instructions in `.codex/agents/ultrakit_implementer.toml` and `.codex/agents/ultrakit_reviewer.toml`. If the ultrakit execution model changes, update both the orchestrator skills and these project-scoped subagent configs in the same change.
 
 Before making non-trivial changes, read the relevant docs in `.ultrakit/developer-docs/` for the subsystem you are touching. Treat them as the primary source for repo-specific architecture, runtime boundaries, contracts, and design rationale. If your change would make those docs materially inaccurate, update the relevant developer doc in the same change.
