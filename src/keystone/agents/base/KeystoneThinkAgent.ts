@@ -36,6 +36,27 @@ type ActiveTurnState = {
 
 const thinkActor = "keystone-think-implementer";
 
+function logAgentEvent(
+  severity: "info" | "warning" | "error",
+  entry: {
+    actor: string;
+    runtime: AgentTurnContext["runtime"];
+    role: AgentTurnContext["role"];
+    tenantId: string;
+    runId: string;
+    sessionId: string;
+    taskId?: string | undefined;
+    sandboxId?: string | undefined;
+    eventType: string;
+    payload: Record<string, unknown>;
+  }
+) {
+  const logger =
+    severity === "error" ? console.error : severity === "warning" ? console.warn : console.info;
+
+  logger("[keystone-agent]", entry);
+}
+
 function createLocalChatCompletionsModel(
   env: Pick<WorkerBindings, "KEYSTONE_CHAT_COMPLETIONS_BASE_URL" | "KEYSTONE_CHAT_COMPLETIONS_MODEL">,
   modelId: string
@@ -313,19 +334,34 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
   private async recordTurnEvent(
     eventType: string,
     payload: Record<string, unknown>,
-    _severity: "info" | "warning" | "error" = "info",
+    severity: "info" | "warning" | "error" = "info",
     status = this.activeTurn ? "active" : undefined
   ) {
     if (!this.activeTurn) {
       return;
     }
 
+    const eventPayload = {
+      ...payload,
+      ...(status ? { status } : {})
+    };
+
+    logAgentEvent(severity, {
+      actor: thinkActor,
+      runtime: this.activeTurn.context.runtime,
+      role: this.activeTurn.context.role,
+      tenantId: this.activeTurn.context.tenantId,
+      runId: this.activeTurn.context.runId,
+      sessionId: this.activeTurn.context.sessionId,
+      taskId: this.activeTurn.context.taskId,
+      sandboxId: this.activeTurn.metadata.sandboxId,
+      eventType,
+      payload: eventPayload
+    });
+
     this.activeTurn.events.push({
       eventType,
-      payload: {
-        ...payload,
-        ...(status ? { status } : {})
-      }
+      payload: eventPayload
     });
   }
 }

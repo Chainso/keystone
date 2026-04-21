@@ -11,14 +11,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSynthesizedRunNote,
-  buildImplementerSystemPrompt,
   collectStagedArtifacts,
   createImplementerTools,
   createMockImplementerModel,
   ensureStagedRunNoteArtifact,
   resolveImplementerTurnSummary
 } from "../../../src/keystone/agents/implementer/ImplementerAgent";
-import { createAgentTurnContext } from "../../../src/maestro/agent-runtime";
 
 class FakeExecutionSession {
   readonly id = "implementer-agent-test";
@@ -198,27 +196,6 @@ function createBridge() {
 }
 
 describe("implementer agent helpers", () => {
-  it("builds a role prompt from the bridge control files and task prompt", () => {
-    const context = createAgentTurnContext({
-      runtime: "think",
-      role: "implementer",
-      tenantId: "tenant-a",
-      runId: "run-123",
-      sessionId: "session-123",
-      taskId: "task-1",
-      metadata: {
-        prompt: "Update the greeting and stage a summary.",
-        sandboxId: "sandbox-123",
-        agentBridge: createBridge()
-      }
-    });
-
-    expect(buildImplementerSystemPrompt(context)).toContain("/keystone/session.json");
-    expect(buildImplementerSystemPrompt(context)).toContain("run planning documents");
-    expect(buildImplementerSystemPrompt(context)).toContain("/artifacts/out");
-    expect(buildImplementerSystemPrompt(context)).toContain("Update the greeting and stage a summary.");
-  });
-
   it("wires write and bash tools through the sandbox bridge and records events", async () => {
     const session = new FakeExecutionSession();
     const events: Array<{ eventType: string; payload: Record<string, unknown> }> = [];

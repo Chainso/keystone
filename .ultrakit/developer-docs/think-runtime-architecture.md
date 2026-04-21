@@ -66,6 +66,7 @@ The current Think-backed task role is `implementer`.
 - `src/keystone/agents/base/KeystoneThinkAgent.ts` implements the Think-backed adapter
 - `src/keystone/agents/implementer/ImplementerAgent.ts` defines the implementer prompt and bridge-backed tools
 - the main capabilities are filesystem reads/writes and shell execution against the task worktree
+- the current implementer prompt expects the agent to commit workspace changes in the task worktree before staging its handoff note
 
 `TaskWorkflow` is responsible for:
 
@@ -106,6 +107,8 @@ Current promoted artifact expectations:
 - markdown/text notes can be promoted as `run_note`
 - the scripted path still promotes `task_log`
 - finalization writes `run_summary`
+
+Git commits made inside the task worktree are useful workspace state, but `TaskWorkflow` does not currently promote commit metadata into Keystone's durable task record.
 
 ## Current Limits
 

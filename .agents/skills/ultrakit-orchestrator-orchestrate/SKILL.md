@@ -74,9 +74,10 @@ When stage skills spawn agents, use the appropriate capability tier:
 1. The plan is the source of truth for execution state.
 2. `.ultrakit/notes.md` is for durable project or user preferences, not task-state.
 3. Product and architectural decisions belong in discovery and planning, not execution.
-4. Every execution phase gets one review round after implementation; if that review finds blocking issues, run at most one targeted fix pass, then close or escalate.
-5. One phase at a time unless the plan explicitly authorizes safe parallel work.
-6. During execution, the orchestrator delegates the phase work to `ultrakit_implementer`, then waits patiently for that subagent to finish before advancing the phase.
+4. When planning, decompose the work into junior-engineer-sized iterations: small, low-ambiguity phases with one obvious goal, one clear validation story, and minimal cross-cutting coordination.
+5. Every execution phase gets one review round after implementation; if that review finds blocking issues, run at most one targeted fix pass, then close or escalate.
+6. One phase at a time unless the plan explicitly authorizes safe parallel work.
+7. During execution, the orchestrator delegates the phase work to `ultrakit_implementer`, then waits patiently for that subagent to finish before advancing the phase.
 
 ## Plan Contract
 
