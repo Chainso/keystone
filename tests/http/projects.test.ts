@@ -990,7 +990,8 @@ describe("project API", () => {
         documentRevisionId: expect.any(String),
         revisionNumber: 2,
         title: "Project Specification v2",
-        artifactId: "artifact-project-spec-v2"
+        artifactId: "artifact-project-spec-v2",
+        contentUrl: "/v1/artifacts/artifact-project-spec-v2/content"
       },
       meta: {
         resourceType: "document_revision"

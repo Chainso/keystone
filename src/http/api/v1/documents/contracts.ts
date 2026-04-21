@@ -25,6 +25,7 @@ export const documentRevisionResourceSchema = buildResourceSchema("document_revi
   revisionNumber: z.number().int().positive(),
   title: z.string().trim().min(1),
   artifactId: resourceIdSchema,
+  contentUrl: z.string().trim().min(1),
   createdAt: isoTimestampSchema
 });
 
@@ -89,6 +90,7 @@ export function serializeDocumentRevisionResource(
     revisionNumber: revision.revisionNumber,
     title: revision.title,
     artifactId: revision.artifactRefId,
+    contentUrl: `/v1/artifacts/${revision.artifactRefId}/content`,
     createdAt: revision.createdAt.toISOString()
   });
 }

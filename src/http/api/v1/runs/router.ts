@@ -12,9 +12,11 @@ import type { ApiRouteDefinition } from "../common/contracts";
 import {
   compileRunHandler,
   getRunHandler,
+  getRunDocumentRevisionHandler,
   getRunWorkflowGraphHandler,
   getTaskHandler,
   listRunTasksHandler,
+  listTaskArtifactsHandler,
 } from "./handlers";
 
 export const runRouteMatrix = [
@@ -65,6 +67,16 @@ export const runRouteMatrix = [
     availability: "implemented"
   },
   {
+    method: "GET",
+    path: "/v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId",
+    family: "runs",
+    resourceType: "document_revision",
+    responseKind: "detail",
+    implementation: "reused",
+    availability: "implemented",
+    note: "Revision metadata is read here; the body remains at the revision artifact content URL."
+  },
+  {
     method: "POST",
     path: "/v1/runs/:runId/documents/:documentId/revisions",
     family: "runs",
@@ -100,6 +112,15 @@ export const runRouteMatrix = [
     implementation: "reused",
     availability: "implemented"
   },
+  {
+    method: "GET",
+    path: "/v1/runs/:runId/tasks/:taskId/artifacts",
+    family: "runs",
+    resourceType: "artifact",
+    responseKind: "collection",
+    implementation: "reused",
+    availability: "implemented"
+  },
 ] as const satisfies ApiRouteDefinition[];
 
 export function registerRunRoutes(router: Hono<AppEnv>) {
@@ -108,6 +129,11 @@ export function registerRunRoutes(router: Hono<AppEnv>) {
   router.get("/v1/runs/:runId/documents", requireDevAuth, listRunDocumentsHandler);
   router.post("/v1/runs/:runId/documents", requireDevAuth, createRunDocumentHandler);
   router.get("/v1/runs/:runId/documents/:documentId", requireDevAuth, getRunDocumentHandler);
+  router.get(
+    "/v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId",
+    requireDevAuth,
+    getRunDocumentRevisionHandler
+  );
   router.post(
     "/v1/runs/:runId/documents/:documentId/revisions",
     requireDevAuth,
@@ -115,5 +141,6 @@ export function registerRunRoutes(router: Hono<AppEnv>) {
   );
   router.get("/v1/runs/:runId/workflow", requireDevAuth, getRunWorkflowGraphHandler);
   router.get("/v1/runs/:runId/tasks", requireDevAuth, listRunTasksHandler);
+  router.get("/v1/runs/:runId/tasks/:taskId/artifacts", requireDevAuth, listTaskArtifactsHandler);
   router.get("/v1/runs/:runId/tasks/:taskId", requireDevAuth, getTaskHandler);
 }

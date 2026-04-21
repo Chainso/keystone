@@ -862,6 +862,33 @@ describe("app", () => {
     });
   });
 
+  it("returns a run document revision detail with a public contentUrl", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan/revisions/revision-run-plan-v1",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        documentRevisionId: "revision-run-plan-v1",
+        revisionNumber: 1,
+        title: "Execution Plan v1",
+        artifactId: "artifact-run-plan-v1",
+        contentUrl: "/v1/artifacts/artifact-run-plan-v1/content"
+      },
+      meta: {
+        resourceType: "document_revision"
+      }
+    });
+  });
+
   it("returns run_not_found for nested run-document routes when the run is missing", async () => {
     mocked.getRunRecord.mockResolvedValueOnce(undefined as never);
 
@@ -1100,6 +1127,48 @@ describe("app", () => {
     });
 
     expect(conversationResponse.status).toBe(404);
+  });
+
+  it("lists task-scoped artifact resources for a run task", async () => {
+    mocked.listRunArtifacts.mockResolvedValueOnce(
+      [
+        runArtifactFixture,
+        {
+          ...runArtifactFixture,
+          artifactRefId: "artifact-run-summary",
+          runTaskId: null,
+          artifactKind: "run_summary"
+        }
+      ] as never
+    );
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/tasks/run-task-implementation/artifacts",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        items: [
+          {
+            artifactId: "artifact-implementer-note",
+            kind: "run_note",
+            contentUrl: "/v1/artifacts/artifact-implementer-note/content"
+          }
+        ]
+      },
+      meta: {
+        resourceType: "artifact"
+      }
+    });
   });
 
   it("returns 404 for removed approval, event, coordinator, and decision-package surfaces", async () => {
