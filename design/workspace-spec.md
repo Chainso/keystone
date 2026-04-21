@@ -122,7 +122,19 @@ The top-level document categories are:
 
 ### Workstreams is a live operational list
 
-`Workstreams` is a project-wide list of active and queued work. Rows should be clickable and route into the corresponding task view under `Runs > Execution`.
+`Workstreams` is a project-wide task list. It should support these filters:
+
+- `All`
+- `Active`
+- `Running`
+- `Queued`
+- `Blocked`
+
+`Active` is the operator-focused filter and should include running, queued, and blocked work. `All` includes terminal task states too.
+
+Rows should be clickable and route into the corresponding task view under `Runs > Execution`.
+
+The first live implementation should use server-side filtering and pagination with a default page size of `25`.
 
 ## Backend-Informed Constraints
 
@@ -343,9 +355,9 @@ KESTONE UI BOARD
 ┌────────────────────────────┬───────────────────────────────────────────────────────────────────────────────┐
 │ GLOBAL SIDEBAR             │ WORKSTREAMS                                                                   │
 │                            │                                                                               │
-│  [ Keystone Cloudflare ▾ ] │  Active and queued project work                                               │
+│  [ Keystone Cloudflare ▾ ] │  Project work across runs                                                     │
 │                    [+] [⚙] │                                                                               │
-│                            │  Filters: [ All ] [ Running ] [ Queued ] [ Blocked ]                        │
+│                            │  Filters: [ All ] [ Active ] [ Running ] [ Queued ] [ Blocked ]             │
 │    Runs                    │                                                                               │
 │    Documentation           │  ┌──────────┬──────────────────────┬──────────────┬──────────────┬─────────┐ │
 │  > Workstreams             │  │ Task ID    │ Title                │ Run          │ Status       │ Updated │ │
