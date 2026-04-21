@@ -182,6 +182,16 @@ Compatibility that **is** required:
   **Decision:** Treat compile freshness as the comparison between `run.compiledFrom` and the live planning-document current revision ids, extend the post-compile provider polling window with cancellation guards, and prove both delayed workflow availability and stale-route cancellation through focused route tests.
   **Rationale:** Review found that the original Phase 5 UI could stay in a permanently compiled branch after planning docs changed, and that the short uncancelled poll loop could resolve after the operator had already moved elsewhere. The fix needed to preserve explicit compile ownership while making stale recompile paths visible, keeping the async backend compile path resilient, and preventing old completion handlers from navigating the user back into an obsolete run.
 
+- **Date:** 2026-04-21
+  **Phase:** Phase 6
+  **Decision:** Update the root `README.md` alongside `.ultrakit/notes.md` during closeout because the shipped repo narrative still claimed live run detail was out of scope even though the live `Runs` workspace is now end to end.
+  **Rationale:** Phase 6 is specifically responsible for durable closeout truth. Leaving the public repo overview on the older project-management-only boundary would make the plan and durable docs contradict each other.
+
+- **Date:** 2026-04-21
+  **Phase:** Phase 6
+  **Decision:** Fix the one new `eslint` regression in `ui/src/features/runs/run-detail-context.tsx` during closeout instead of carrying an avoidable plan-owned lint failure into the final review.
+  **Rationale:** Broad validation is part of Phase 6 acceptance, and the failure was a small local cleanup inside the shipped `Runs` provider seam rather than unrelated refactoring.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the run routes, current UI architecture, backend run/document/task/artifact contracts, the active design markdown files, and the relevant completed plans.
@@ -211,6 +221,8 @@ Compatibility that **is** required:
 - [x] 2026-04-21 Phase 4 fix pass completed: added explicit app-shell coverage that repeated `+ New run` activation reuses the in-flight create request, added route coverage that a brand-new run with zero planning documents redirects from `/runs/:runId` to `/runs/:runId/specification`, reran `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`, and closed the remaining Phase 4 review findings.
 - [x] 2026-04-21 Phase 5 completed: added compile support to the run-management API and `RunDetailProvider`, introduced an execution-plan-specific workspace/view-model with explicit compile blocked/ready/compiled states, refreshed live run state after compile until workflow data appeared, tightened task artifact compatibility messaging for non-text content, updated focused route coverage for compile gating/success plus artifact inspection, refreshed `.ultrakit/developer-docs/m1-architecture.md`, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
 - [x] 2026-04-21 Phase 5 fix pass completed: compile state now reopens recompile when live planning revisions drift from `run.compiledFrom`, the provider-owned post-compile refresh loop now waits longer and cancels stale completions on route teardown/run switches, route coverage now proves delayed workflow availability after `202 accepted` plus stale-navigation safety, unsupported artifact assertions are scoped to the correct artifact details card, and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` passes.
+- [x] 2026-04-21 Phase 6 started: delegate durable docs, broad validation truth, and archive-ready closeout.
+- [x] 2026-04-21 Phase 6 completed: corrected stale durable `Runs` narrative in `README.md` and `.ultrakit/notes.md`, removed the new plan-owned lint drift in `ui/src/features/runs/run-detail-context.tsx`, reran broad validation, recorded the final truth that `test` passes, `lint` and `typecheck` still fail on known repo-wide issues outside this phase, and `build` still fails in-sandbox but passes from a host shell, leaving the plan ready for final review and archive bookkeeping.
 
 ## Surprises & Discoveries
 
@@ -228,10 +240,21 @@ Compatibility that **is** required:
 - The live run-detail seam can observe `run.compiledFrom` before any workflow graph nodes exist. Default routing and `Execution` availability therefore need to key off compiled workflow data (`workflow.summary.totalTasks > 0`), not compile provenance alone.
 - The compile route returns `202 accepted` before the first refreshed workflow read is guaranteed to show compiled task graph state. The UI needs a short provider-owned post-compile refresh loop instead of assuming one immediate reload is enough.
 - Content-type metadata is sufficient for the current honest artifact preview contract: supported text-like types can lazy-load through the authenticated run API seam, while non-text types should render explicit compatibility messaging instead of placeholder diff chrome.
+- The root `README.md` was still describing the older project-management-only cutover after Phases 2 through 5 landed. Closeout had to update both the repo overview and `.ultrakit/notes.md` so durable docs no longer contradicted the shipped live `Runs` surface.
+- Broad `eslint` reruns surfaced one additional plan-owned `no-useless-assignment` in `ui/src/features/runs/run-detail-context.tsx`; Phase 6 fixed it before recording final validation truth.
 
 ## Outcomes & Retrospective
 
-Phases 2 through 5 are now closed. The UI reads real run, planning-document, workflow, task, and task-artifact data through feature-owned run providers and API adapters, `+ New run` creates a real project-scoped run and lands directly in the new run's live `Specification` page with honest empty-state authoring, `Execution Plan` now owns the explicit `Compile run` transition, and successful compile actions refresh live run state before routing into the real DAG. Task detail now keeps artifact review inside the authenticated run API seam with lazy text preview for supported content types plus explicit compatibility messaging for unsupported content, so the shipped `Runs` surface is now truthful from run creation through execution review. Phase 6 remains only for documentation and closeout.
+The full `Runs` plan is now implemented and closed at the phase level. The UI reads real run, planning-document, workflow, task, and task-artifact data through feature-owned run providers and API adapters, `+ New run` creates a real project-scoped run and lands directly in the new run's live `Specification` page with honest empty-state authoring, `Execution Plan` owns the explicit `Compile run` transition, and successful compile actions refresh live run state before routing into the real DAG. Task detail keeps artifact review inside the authenticated run API seam with lazy text preview for supported content types plus explicit compatibility messaging for unsupported content, so the shipped `Runs` surface is now truthful from run creation through execution review.
+
+Phase 6 aligned the durable repo narrative with that shipped boundary by updating `README.md` and `.ultrakit/notes.md`, removing the one new plan-owned lint regression in the run-detail provider, and rerunning the full broad validation suite. Final validation truth is:
+
+- `rtk npm run test` passes with `35 passed | 2 skipped` files and `224 passed | 18 skipped` tests.
+- `rtk npm run lint` still fails on repo-wide issues outside this closeout in `scripts/demo-validate.ts`, `scripts/run-local.ts`, `src/http/api/v1/documents/handlers.ts`, `src/http/handlers/ws.ts`, `src/keystone/compile/plan-run.ts`, `src/keystone/integration/finalize-run.ts`, `src/lib/db/schema.ts`, `src/lib/workspace/init.ts`, `src/workflows/RunWorkflow.ts`, `src/workflows/TaskWorkflow.ts`, `tests/lib/project-workspace-materialization.test.ts`, `tests/lib/run-records.test.ts`, and `tests/lib/workflows/run-workflow-compile.test.ts`.
+- `rtk npm run typecheck` still fails on the pre-existing Hyperdrive binding mismatch in `tests/lib/db-client-worker.test.ts`.
+- `rtk npm run build` still fails inside the sandbox after `vite build` because Wrangler/Docker cannot write under `~/.config/.wrangler` and `~/.docker/buildx/activity`, but the same build passes from a host shell outside the sandbox.
+
+The plan is ready for the orchestrator's final comprehensive review. Archive bookkeeping remains pending that final review, so the active/completed indexes are intentionally unchanged in this pass.
 
 ## Context and Orientation
 
@@ -373,6 +396,24 @@ Baseline before execution:
   - Wrangler cannot write `~/.config/.wrangler/logs/...`,
   - Docker buildx cannot write under `~/.docker/buildx/activity/...`.
 
+Final broad validation rerun on 2026-04-21:
+
+- `rtk npm run test`
+  Passes with `35 passed | 2 skipped` files and `224 passed | 18 skipped` tests.
+
+- `rtk npm run lint`
+  Still fails on repo-wide issues outside this closeout:
+  - unused vars in `scripts/demo-validate.ts`, `scripts/run-local.ts`, `src/http/api/v1/documents/handlers.ts`, `src/http/handlers/ws.ts`, `src/keystone/compile/plan-run.ts`, `src/lib/db/schema.ts`, `src/lib/workspace/init.ts`, `src/workflows/RunWorkflow.ts`, `src/workflows/TaskWorkflow.ts`, `tests/lib/project-workspace-materialization.test.ts`, and `tests/lib/workflows/run-workflow-compile.test.ts`,
+  - missing `cause` attachments in `src/http/api/v1/documents/handlers.ts` and `src/keystone/integration/finalize-run.ts`,
+  - `prefer-const` in `tests/lib/run-records.test.ts`,
+  - `no-useless-assignment` in `src/workflows/TaskWorkflow.ts`.
+
+- `rtk npm run typecheck`
+  Still fails on the pre-existing `tests/lib/db-client-worker.test.ts` Hyperdrive binding mismatch.
+
+- `rtk npm run build`
+  Still fails inside the Codex sandbox after a successful `vite build` because Wrangler cannot write `~/.config/.wrangler/logs/...` and Docker buildx cannot write under `~/.docker/buildx/activity/...`. Re-running the same command from a host shell outside the sandbox passes on this machine.
+
 ## Idempotence and Recovery
 
 This plan is safe to execute incrementally if each phase keeps its seam additive and its UI states honest.
@@ -440,6 +481,16 @@ This plan is safe to execute incrementally if each phase keeps its seam additive
   - `ui/src/features/execution/components/task-detail-workspace.tsx`
   - `ui/src/test/runs-routes.test.tsx`
   - `.ultrakit/developer-docs/m1-architecture.md`
+
+- Phase 6 closeout artifacts:
+  - `README.md`
+  - `.ultrakit/notes.md`
+  - `ui/src/features/runs/run-detail-context.tsx`
+  - final broad validation:
+    - `rtk npm run test`
+    - `rtk npm run lint`
+    - `rtk npm run typecheck`
+    - `rtk npm run build` inside the sandbox plus one escalated host-shell rerun
 
 ## Interfaces and Dependencies
 
@@ -791,11 +842,13 @@ Out of scope: unrelated UI polish or adjacent destination work.
 `.ultrakit/exec-plans/active/index.md`
 
 **Files Expected To Change:**  
+`README.md`  
 `.ultrakit/notes.md`  
 `.ultrakit/developer-docs/m1-architecture.md` if needed  
+`.ultrakit/exec-plans/active/keystone-ui-runs-pages-live-cutover.md`  
+`ui/src/features/runs/run-detail-context.tsx` if broad validation exposes a plan-owned closeout fix  
 `.ultrakit/exec-plans/active/index.md`  
 `.ultrakit/exec-plans/completed/README.md` if needed  
-This plan file
 
 **Validation:**  
 Run from repo root:
@@ -824,8 +877,8 @@ All living sections in this plan, plus any durable docs proven stale by the fina
 - Do not claim broad validation is green unless it actually is.
 - Preserve the known sandbox build limitation if it still exists.
 
-**Status:** Pending approval
+**Status:** Completed
 
-**Completion Notes:** Not started.
+**Completion Notes:** Closeout corrected the stale shipped `Runs` narrative in both `README.md` and `.ultrakit/notes.md`, removed the new plan-owned lint regression in `ui/src/features/runs/run-detail-context.tsx`, and reran the full broad validation suite. Final validation truth is now recorded in this plan: `rtk npm run test` passes, `rtk npm run lint` and `rtk npm run typecheck` still fail on repo-wide issues outside this phase, and `rtk npm run build` still fails inside the sandbox after `vite build` but passes from a host shell outside the sandbox. The plan is phase-complete and ready for final review; active/completed index bookkeeping is intentionally deferred until that review closes cleanly.
 
-**Next Starter Context:** The closeout phase should leave no stale repo narrative that still says live run detail is out of scope.
+**Next Starter Context:** The next step is the orchestrator's final comprehensive review across the whole plan. Use the final validation record in this plan as the source of truth, note that archive bookkeeping is still pending because the plan has not been moved out of `active/` yet, and keep the documented live/scaffold boundary explicit: full `Runs` is shipped, while `Documentation` and `Workstreams` remain scaffold-backed.

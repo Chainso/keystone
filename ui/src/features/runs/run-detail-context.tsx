@@ -391,7 +391,6 @@ export function RunDetailProvider({
     requestIdRef.current = requestId;
     taskArtifactRequestIdsRef.current.clear();
     const pollDelays = options.waitForExecution ? executionAvailabilityPollDelaysMs : [];
-    let latestSnapshot: LoadedRunDetailSnapshot | null = null;
 
     for (let attempt = 0; attempt <= pollDelays.length; attempt += 1) {
       if (!isCurrentRunDetailRequest(requestId)) {
@@ -401,7 +400,7 @@ export function RunDetailProvider({
         };
       }
 
-      latestSnapshot = await fetchRunDetailSnapshot(api, runId);
+      const latestSnapshot = await fetchRunDetailSnapshot(api, runId);
 
       if (!isCurrentRunDetailRequest(requestId)) {
         return {
