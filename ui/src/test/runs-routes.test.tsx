@@ -12,6 +12,8 @@ import { renderRoute } from "./render-route";
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function createDeferred<T>() {
@@ -487,6 +489,143 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
         }
       }
     })
+  },
+  "run-109": {
+    ...createRunFixture("run-109", {
+      revisions: [
+        {
+          content: "# Specification\n- Keep the compiled workflow available while planning changes.\n",
+          documentId: "run-109-specification",
+          revision: {
+            artifactId: "run-109-specification-artifact",
+            contentUrl: "/v1/artifacts/run-109-specification-artifact/content",
+            createdAt: "2026-04-20T13:10:00.000Z",
+            documentRevisionId: "run-109-specification-v1",
+            revisionNumber: 1,
+            title: "Run Specification"
+          }
+        },
+        {
+          content: "# Architecture\n- Recompile when planning revisions drift.\n",
+          documentId: "run-109-architecture",
+          revision: {
+            artifactId: "run-109-architecture-artifact",
+            contentUrl: "/v1/artifacts/run-109-architecture-artifact/content",
+            createdAt: "2026-04-20T13:12:00.000Z",
+            documentRevisionId: "run-109-architecture-v1",
+            revisionNumber: 1,
+            title: "Run Architecture"
+          }
+        },
+        {
+          content: "# Execution Plan\n- Previous compiled revision.\n",
+          documentId: "run-109-execution-plan",
+          revision: {
+            artifactId: "run-109-execution-plan-artifact-v1",
+            contentUrl: "/v1/artifacts/run-109-execution-plan-artifact-v1/content",
+            createdAt: "2026-04-20T13:14:00.000Z",
+            documentRevisionId: "run-109-execution-plan-v1",
+            revisionNumber: 1,
+            title: "Execution Plan"
+          }
+        },
+        {
+          content: "# Execution Plan\n- Current planning revision is newer than the compiled graph.\n",
+          documentId: "run-109-execution-plan",
+          revision: {
+            artifactId: "run-109-execution-plan-artifact-v2",
+            contentUrl: "/v1/artifacts/run-109-execution-plan-artifact-v2/content",
+            createdAt: "2026-04-20T13:16:00.000Z",
+            documentRevisionId: "run-109-execution-plan-v2",
+            revisionNumber: 2,
+            title: "Execution Plan"
+          }
+        }
+      ],
+      documents: [
+        {
+          currentRevisionId: "run-109-specification-v1",
+          documentId: "run-109-specification",
+          kind: "specification",
+          path: "specification",
+          scopeType: "run",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "run-109-specification-conversation"
+          }
+        },
+        {
+          currentRevisionId: "run-109-architecture-v1",
+          documentId: "run-109-architecture",
+          kind: "architecture",
+          path: "architecture",
+          scopeType: "run",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "run-109-architecture-conversation"
+          }
+        },
+        {
+          currentRevisionId: "run-109-execution-plan-v2",
+          documentId: "run-109-execution-plan",
+          kind: "execution_plan",
+          path: "execution-plan",
+          scopeType: "run",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "run-109-execution-plan-conversation"
+          }
+        }
+      ],
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-109-architecture-v1",
+          compiledAt: "2026-04-20T13:15:00.000Z",
+          executionPlanRevisionId: "run-109-execution-plan-v1",
+          specificationRevisionId: "run-109-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "scripted",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-109",
+        startedAt: "2026-04-20T13:18:00.000Z",
+        status: "configured",
+        workflowInstanceId: "wf-run-109"
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Inspect the currently compiled workflow.",
+          endedAt: null,
+          name: "Inspect current execution graph",
+          runId: "run-109",
+          startedAt: "2026-04-20T13:18:30.000Z",
+          status: "ready",
+          taskId: "task-090"
+        }
+      ],
+      workflow: {
+        edges: [],
+        nodes: [
+          {
+            dependsOn: [],
+            name: "Inspect current execution graph",
+            status: "ready",
+            taskId: "task-090"
+          }
+        ],
+        summary: {
+          activeTasks: 0,
+          cancelledTasks: 0,
+          completedTasks: 0,
+          failedTasks: 0,
+          pendingTasks: 0,
+          readyTasks: 1,
+          totalTasks: 1
+        }
+      }
+    })
   }
 };
 
@@ -517,6 +656,42 @@ function createTextResponse(body: string, contentType = "text/plain; charset=utf
     status: 200,
     headers: {
       "content-type": contentType
+    }
+  });
+}
+
+function createRunDetailResponse(run: StaticRunDetailRecord["run"]) {
+  return createJsonResponse({
+    data: run,
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "run" as const
+    }
+  });
+}
+
+function createTaskCollectionResponse(tasks: NonNullable<StaticRunDetailRecord["tasks"]>) {
+  return createJsonResponse({
+    data: {
+      items: tasks,
+      total: tasks.length
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "task" as const
+    }
+  });
+}
+
+function createWorkflowDetailResponse(workflow: NonNullable<StaticRunDetailRecord["workflow"]>) {
+  return createJsonResponse({
+    data: workflow,
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "workflow_graph" as const
     }
   });
 }
@@ -1447,6 +1622,22 @@ describe("Run routes", () => {
       "href",
       "/runs/run-104/execution"
     );
+
+    cleanup();
+
+    renderRunRoute("/runs/run-109/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-109" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recompile run" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open current execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-109/execution"
+    );
+    expect(
+      screen.getByText(
+        "Current planning revisions are newer than the execution graph. Recompile to refresh Execution with the latest live documents."
+      )
+    ).toBeInTheDocument();
   });
 
   it("compiles a ready run, refreshes live state, and routes into execution", async () => {
@@ -1475,6 +1666,158 @@ describe("Run routes", () => {
         url: "/v1/runs/run-108/compile"
       })
     ).toBe(1);
+  });
+
+  it("waits for delayed workflow availability after compile returns 202 accepted", async () => {
+    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    };
+    const compiledRun = {
+      ...runFixtures["run-108"]!.run,
+      compiledFrom: buildCompiledFrom(runFixtures["run-108"]!)
+    };
+    const compiledTasks = runFixtures["run-108"]!.tasks ?? [];
+    const compiledWorkflow = runFixtures["run-108"]!.workflow!;
+    let workflowRequestCount = 0;
+    let compileAccepted = false;
+
+    createBrowserRunFetch({
+      "/v1/runs/run-108": () =>
+        createRunDetailResponse(compileAccepted ? compiledRun : runFixtures["run-108"]!.run),
+      "/v1/runs/run-108/compile": () => {
+        compileAccepted = true;
+
+        return createJsonResponse(
+          {
+            data: {
+              run: compiledRun,
+              status: "accepted",
+              workflowInstanceId: compiledRun.workflowInstanceId
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "action" as const,
+              resourceType: "run" as const
+            }
+          },
+          202
+        );
+      },
+      "/v1/runs/run-108/workflow": () => {
+        workflowRequestCount += 1;
+
+        return createWorkflowDetailResponse(
+          workflowRequestCount >= 3 ? compiledWorkflow : emptyWorkflow
+        );
+      },
+      "/v1/runs/run-108/tasks": () =>
+        createTaskCollectionResponse(workflowRequestCount >= 3 ? compiledTasks : [])
+    });
+
+    const { router } = renderRoute("/runs/run-108/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+
+    vi.useFakeTimers();
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      vi.useRealTimers();
+
+      expect(router.state.location.pathname).toBe("/runs/run-108/execution");
+      expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+      expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not navigate back into an older run when a delayed compile completes after switching routes", async () => {
+    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    };
+    const compiledRun = {
+      ...runFixtures["run-108"]!.run,
+      compiledFrom: buildCompiledFrom(runFixtures["run-108"]!)
+    };
+    const compiledTasks = runFixtures["run-108"]!.tasks ?? [];
+    const compiledWorkflow = runFixtures["run-108"]!.workflow!;
+    let workflowRequestCount = 0;
+    let compileAccepted = false;
+
+    createBrowserRunFetch({
+      "/v1/runs/run-108": () =>
+        createRunDetailResponse(compileAccepted ? compiledRun : runFixtures["run-108"]!.run),
+      "/v1/runs/run-108/compile": () => {
+        compileAccepted = true;
+
+        return createJsonResponse(
+          {
+            data: {
+              run: compiledRun,
+              status: "accepted",
+              workflowInstanceId: compiledRun.workflowInstanceId
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "action" as const,
+              resourceType: "run" as const
+            }
+          },
+          202
+        );
+      },
+      "/v1/runs/run-108/workflow": () => {
+        workflowRequestCount += 1;
+
+        return createWorkflowDetailResponse(
+          workflowRequestCount >= 4 ? compiledWorkflow : emptyWorkflow
+        );
+      },
+      "/v1/runs/run-108/tasks": () =>
+        createTaskCollectionResponse(workflowRequestCount >= 4 ? compiledTasks : [])
+    });
+
+    const { router } = renderRoute("/runs/run-108/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+
+    vi.useFakeTimers();
+
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
+
+      await router.navigate("/runs/run-104/specification");
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders a planning-page error state when the current revision cannot be read", async () => {
@@ -1570,19 +1913,37 @@ describe("Run routes", () => {
     expect(await screen.findByText("artifact-task-032-diff")).toBeInTheDocument();
     expect(screen.getByText("artifact-task-032-preview")).toBeInTheDocument();
     expect(screen.getByText("Content type: text/plain; charset=utf-8")).toBeInTheDocument();
+    const textArtifactCard = screen.getByText("artifact-task-032-diff").closest("details");
+    const unsupportedArtifactCard = screen.getByText("artifact-task-032-preview").closest("details");
+
+    expect(textArtifactCard).not.toBeNull();
+    expect(unsupportedArtifactCard).not.toBeNull();
     expect(
-      screen.getByText(/Text preview is available for this artifact and loads on demand through the run API seam/i)
+      within(textArtifactCard as HTMLElement).getByText(
+        /Text preview is available for this artifact and loads on demand through the run API seam/i
+      )
     ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open artifact content" })).not.toBeInTheDocument();
     expect(
-      screen.getByText("Preview unavailable in this view because image/png is not text-compatible.")
+      within(unsupportedArtifactCard as HTMLElement).getByText(
+        "Preview unavailable in this view because image/png is not text-compatible."
+      )
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Load text preview" })).toBeInTheDocument();
+    expect(
+      within(unsupportedArtifactCard as HTMLElement).queryByRole("button", {
+        name: "Load text preview"
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
+    ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Load text preview" }));
+    fireEvent.click(
+      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
+    );
 
     expect(
-      await screen.findByText((content) =>
+      await within(textArtifactCard as HTMLElement).findByText((content) =>
         content.includes("keep artifact access inside the authenticated run API seam")
       )
     ).toBeInTheDocument();

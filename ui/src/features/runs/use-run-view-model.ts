@@ -118,12 +118,16 @@ export interface ExecutionPlanCompileReadyViewModel {
   compileRun: () => void;
   helperMessage: string;
   isSubmitting: boolean;
+  secondaryActionHref?: string | undefined;
+  secondaryActionLabel?: string | undefined;
   state: "ready";
   submitErrorMessage: string | null;
   title: string;
 }
 
 export interface ExecutionPlanCompileBlockedViewModel {
+  actionHref?: string | undefined;
+  actionLabel?: string | undefined;
   helperMessage: string;
   state: "blocked";
   title: string;
@@ -231,6 +235,26 @@ function hasCompiledWorkflowData(input: {
   return input.compiledFrom !== null && input.workflow.summary.totalTasks > 0;
 }
 
+function hasCurrentCompiledPlanningRevisions(input: {
+  planningDocuments: ReturnType<typeof useReadyRunDetail>["state"]["planningDocuments"];
+  run: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>;
+}) {
+  const compiledFrom = input.run.compiledFrom;
+
+  if (!compiledFrom) {
+    return false;
+  }
+
+  return (
+    input.planningDocuments.specification.document?.currentRevisionId ===
+      compiledFrom.specificationRevisionId &&
+    input.planningDocuments.architecture.document?.currentRevisionId ===
+      compiledFrom.architectureRevisionId &&
+    input.planningDocuments["execution-plan"].document?.currentRevisionId ===
+      compiledFrom.executionPlanRevisionId
+  );
+}
+
 function buildPhaseStepperViewModel(
   input: {
     run: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>;
@@ -311,8 +335,10 @@ function buildPlanningDraftSource(
 }
 
 function getCompileBlockingMessage(input: {
+  executionAvailable: boolean;
   hasCompileProvenance: boolean;
   missingPhaseLabels: string[];
+  planningChangedSinceCompile: boolean;
   planningState: RunPlanningPhaseViewModel["state"];
   runStatus: string;
 }) {
@@ -328,6 +354,20 @@ function getCompileBlockingMessage(input: {
     const missingList = input.missingPhaseLabels.join(", ");
 
     return `Compile becomes available once current revisions exist for: ${missingList}.`;
+  }
+
+  if (input.planningChangedSinceCompile) {
+    if (input.runStatus === "active") {
+      return "Current planning revisions are newer than the executing workflow. Recompile becomes available after this run finishes.";
+    }
+
+    if (["archived", "failed", "cancelled"].includes(input.runStatus)) {
+      return `Run status is ${formatStatusLabel(input.runStatus)}. Execution still reflects older planning revisions and cannot be refreshed here.`;
+    }
+
+    if (input.executionAvailable) {
+      return "Current planning revisions are newer than the execution graph. Recompile this run to refresh Execution with the latest live documents.";
+    }
   }
 
   if (input.hasCompileProvenance) {
@@ -669,10 +709,14 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
   const [isCompiling, setIsCompiling] = useState(false);
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const compileInFlightRef = useRef(false);
+  const compileCompletionGuardRef = useRef(0);
   const compileSourceKey = [
     run.runId,
     run.status,
     run.compiledFrom?.compiledAt ?? "not-compiled",
+    run.compiledFrom?.specificationRevisionId ?? "missing-specification-compile",
+    run.compiledFrom?.architectureRevisionId ?? "missing-architecture-compile",
+    run.compiledFrom?.executionPlanRevisionId ?? "missing-execution-plan-compile",
     workflow.summary.totalTasks,
     planning.state,
     ...runPlanningPhaseOrder.map((phaseId) =>
@@ -686,11 +730,26 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
     setSubmitErrorMessage(null);
   }, [compileSourceKey]);
 
+  useEffect(() => {
+    return () => {
+      compileCompletionGuardRef.current += 1;
+      compileInFlightRef.current = false;
+    };
+  }, []);
+
   const executionAvailable = hasCompiledWorkflowData({
     compiledFrom: run.compiledFrom,
     workflow
   });
-  const compileAcceptedWithoutWorkflow = run.compiledFrom !== null && !executionAvailable;
+  const currentCompileMatchesPlanning = hasCurrentCompiledPlanningRevisions({
+    planningDocuments: state.planningDocuments,
+    run
+  });
+  const planningChangedSinceCompile = run.compiledFrom !== null && !currentCompileMatchesPlanning;
+  const compileAcceptedWithoutWorkflow =
+    run.compiledFrom !== null &&
+    currentCompileMatchesPlanning &&
+    !executionAvailable;
   const missingPhaseLabels = runPlanningPhaseOrder.flatMap((phaseId) =>
     state.planningDocuments[phaseId].document?.currentRevisionId
       ? []
@@ -702,12 +761,17 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
       return;
     }
 
+    const compileGuard = compileCompletionGuardRef.current;
     compileInFlightRef.current = true;
     setIsCompiling(true);
     setSubmitErrorMessage(null);
 
     try {
       const result = await actions.compileRun();
+
+      if (compileCompletionGuardRef.current !== compileGuard || result.cancelled) {
+        return;
+      }
 
       if (!result.executionAvailable) {
         setIsCompiling(false);
@@ -719,6 +783,10 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
 
       navigate(executionPath);
     } catch (error) {
+      if (compileCompletionGuardRef.current !== compileGuard) {
+        return;
+      }
+
       setIsCompiling(false);
       setSubmitErrorMessage(
         error instanceof Error && error.message
@@ -732,7 +800,7 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
 
   let compile: ExecutionPlanCompileViewModel;
 
-  if (executionAvailable) {
+  if (executionAvailable && !planningChangedSinceCompile) {
     compile = {
       actionHref: executionPath,
       actionLabel: "Open execution",
@@ -744,32 +812,46 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
     planning.state === "editing" ||
     planning.state === "error" ||
     compileAcceptedWithoutWorkflow ||
+    (planningChangedSinceCompile && ["active", "archived", "failed", "cancelled"].includes(run.status)) ||
     missingPhaseLabels.length > 0 ||
     run.status === "active" ||
     ["archived", "failed", "cancelled"].includes(run.status)
   ) {
     compile = {
+      actionHref: executionAvailable ? executionPath : undefined,
+      actionLabel: executionAvailable ? "Open current execution" : undefined,
       helperMessage: getCompileBlockingMessage({
+        executionAvailable,
         hasCompileProvenance: compileAcceptedWithoutWorkflow,
         missingPhaseLabels,
+        planningChangedSinceCompile,
         planningState: planning.state,
         runStatus: run.status
       }),
       state: "blocked",
-      title: "Compile unavailable"
+      title: planningChangedSinceCompile ? "Recompile unavailable" : "Compile unavailable"
     };
   } else {
     compile = {
-      actionLabel: isCompiling ? "Compiling run..." : "Compile run",
+      actionLabel: isCompiling
+        ? planningChangedSinceCompile
+          ? "Recompiling run..."
+          : "Compiling run..."
+        : planningChangedSinceCompile
+          ? "Recompile run"
+          : "Compile run",
       compileRun: () => {
         void compileRun();
       },
-      helperMessage:
-        "Compile persists the execution graph from the current specification, architecture, and execution plan.",
+      helperMessage: planningChangedSinceCompile
+        ? "Current planning revisions are newer than the execution graph. Recompile to refresh Execution with the latest live documents."
+        : "Compile persists the execution graph from the current specification, architecture, and execution plan.",
       isSubmitting: isCompiling,
+      secondaryActionHref: executionAvailable ? executionPath : undefined,
+      secondaryActionLabel: executionAvailable ? "Open current execution" : undefined,
       state: "ready",
       submitErrorMessage,
-      title: "Compile run"
+      title: planningChangedSinceCompile ? "Recompile run" : "Compile run"
     };
   }
 

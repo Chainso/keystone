@@ -32,9 +32,20 @@ export function ExecutionPlanWorkspace({ model }: { model: ExecutionPlanWorkspac
                 >
                   {model.compile.actionLabel}
                 </button>
+                {model.compile.secondaryActionHref && model.compile.secondaryActionLabel ? (
+                  <Link to={model.compile.secondaryActionHref} className="ghost-button">
+                    {model.compile.secondaryActionLabel}
+                  </Link>
+                ) : null}
               </div>
             </>
           ) : model.compile.state === "compiled" ? (
+            <div className="shell-state-actions">
+              <Link to={model.compile.actionHref} className="ghost-button">
+                {model.compile.actionLabel}
+              </Link>
+            </div>
+          ) : model.compile.actionHref && model.compile.actionLabel ? (
             <div className="shell-state-actions">
               <Link to={model.compile.actionHref} className="ghost-button">
                 {model.compile.actionLabel}

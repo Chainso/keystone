@@ -88,6 +88,7 @@ export interface RunDetailMeta {
 }
 
 export interface RunCompileResult {
+  cancelled?: boolean;
   executionAvailable: boolean;
 }
 
@@ -261,6 +262,8 @@ function delay(milliseconds: number) {
   });
 }
 
+const executionAvailabilityPollDelaysMs = [250, 500, 1_000, 1_500, 2_000, 2_000];
+
 export function RunManagementApiProvider({
   api = browserRunManagementApi,
   children
@@ -303,6 +306,7 @@ export function RunDetailProvider({
     state: buildEmptyRunDetailState()
   }));
   const requestIdRef = useRef(0);
+  const isMountedRef = useRef(true);
   const taskArtifactRequestIdsRef = useRef(new Map<string, number>());
   const createPlanningDocumentRequestsRef = useRef(
     new Map<RunPlanningPhaseId, Promise<DocumentResource>>()
@@ -374,6 +378,10 @@ export function RunDetailProvider({
     return true;
   }
 
+  function isCurrentRunDetailRequest(requestId: number) {
+    return isMountedRef.current && requestIdRef.current === requestId;
+  }
+
   async function refreshRunDetail(
     options: {
       waitForExecution?: boolean;
@@ -382,28 +390,43 @@ export function RunDetailProvider({
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     taskArtifactRequestIdsRef.current.clear();
-
-    const maxAttempts = options.waitForExecution ? 8 : 1;
+    const pollDelays = options.waitForExecution ? executionAvailabilityPollDelaysMs : [];
     let latestSnapshot: LoadedRunDetailSnapshot | null = null;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    for (let attempt = 0; attempt <= pollDelays.length; attempt += 1) {
+      if (!isCurrentRunDetailRequest(requestId)) {
+        return {
+          cancelled: true,
+          executionAvailable: false
+        };
+      }
+
       latestSnapshot = await fetchRunDetailSnapshot(api, runId);
+
+      if (!isCurrentRunDetailRequest(requestId)) {
+        return {
+          cancelled: true,
+          executionAvailable: false
+        };
+      }
+
       const executionAvailable = hasCompiledWorkflowData({
         run: latestSnapshot.run,
         workflow: latestSnapshot.workflow
       });
 
-      if (!options.waitForExecution || executionAvailable || attempt === maxAttempts - 1) {
-        setRunDetailSnapshot(latestSnapshot, {
+      if (!options.waitForExecution || executionAvailable || attempt === pollDelays.length) {
+        const applied = setRunDetailSnapshot(latestSnapshot, {
           requestId
         });
 
         return {
+          cancelled: !applied,
           executionAvailable
         };
       }
 
-      await delay(250);
+      await delay(pollDelays[attempt]!);
     }
 
     return {
@@ -685,7 +708,15 @@ export function RunDetailProvider({
   }
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     void loadRunDetail();
+
+    return () => {
+      isMountedRef.current = false;
+      requestIdRef.current += 1;
+      taskArtifactRequestIdsRef.current.clear();
+    };
   }, [api, runId]);
 
   const providedValue: RunDetailValue = {
