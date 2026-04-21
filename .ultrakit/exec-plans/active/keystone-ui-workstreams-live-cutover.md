@@ -74,6 +74,7 @@ Compatibility that **is** required:
 - 2026-04-20, Phase 1 fix pass: made logical-task-id recovery fail-open for unreadable run-plan artifacts, replaced the project-task count path with an aggregate plus deterministic `createdAt`/`runTaskId` ordering, strengthened the HTTP suites with fail-open and repository-level bucket/pagination coverage, and revalidated with `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts`.
 - 2026-04-20, Phase 2: cut over `/runs/:runId/execution` and `/runs/:runId/execution/tasks/:taskId` to live browser fetches behind a feature-owned execution API seam, kept scaffold-mode route behavior intact, added truthful live header/stepper decisions under the existing run tree, and revalidated with `rtk npm run test -- ui/src/test/runs-routes.test.tsx` plus `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 - 2026-04-20, Phase 2 fix pass: mounted `GET /v1/runs/:runId/tasks/:taskId/artifacts`, made live task detail and dependency rows fall back to `taskId` when `logicalTaskId` is absent, turned missing workflow dependencies into an explicit execution error instead of flattening them into depth `0`, separated live artifact loading/empty/error states, strengthened the live route suite around those branches, and revalidated with `rtk npm run test -- ui/src/test/runs-routes.test.tsx` plus `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
+- 2026-04-20, Phase 3: cut `/workstreams` over to the live project task collection through the shared project API seam, kept the static harness on the same filter/page contract via scaffold emulation, replaced the live compatibility fallback with truthful loading/error/empty states plus `All`/`Active`/`Running`/`Queued`/`Blocked` filtering and pagination controls, and revalidated with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` plus `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 
 ## Progress
 
@@ -84,7 +85,8 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Phase 2 started: live execution/task drill-in handoff prepared with the Phase 1 contract and logical-id fallback constraints.
 - [x] 2026-04-20 Phase 2 completed: live execution and task-detail routes now load through browser APIs while scaffold runs keep the static dataset path.
 - [x] 2026-04-20 Phase 2 fix pass completed: live task detail now treats `logicalTaskId` as best-effort UI data, the mounted task-artifacts route matches the live fetch contract, and execution/task-detail error states are honest under inconsistent workflow or artifact responses.
-- [ ] Phase 3: Cut over the `Workstreams` UI to the live task collection while preserving scaffold mode for the static harness.
+- [x] 2026-04-20 Phase 3 started: Workstreams handoff prepared with the live project task collection plus truthful run execution/task drill-in already in place.
+- [x] 2026-04-20 Phase 3 completed: Workstreams now loads truthful project task data for API-backed projects while the static harness keeps the same contract through scaffold emulation.
 - [ ] Phase 4: Update durable docs/notes, rerun validation, and archive the plan.
 
 ## Surprises & Discoveries
@@ -99,6 +101,8 @@ Compatibility that **is** required:
 - The cleanest UI seam for the run-detail cutover was a feature-owned execution API context under `ui/src/features/execution/` rather than pushing live fetch state into the generic scaffold/resource-model provider. That kept scaffold tests unchanged while letting the live execution/task routes opt into browser data.
 - The first Phase 2 implementation missed backend route registration for `GET /v1/runs/:runId/tasks/:taskId/artifacts` even though the handler and browser client already existed. Mounting the route was the coherent fix; the UI contract was already correct.
 - Rendering a missing dependency target at depth `0` produced a believable-looking DAG with incorrect semantics. The safer behavior is to fail the live execution view with a concrete error so operators do not trust a fabricated graph.
+- The current-project provider deliberately hides whether its backing API is the browser fetch client or the static test harness; both go through the same `ProjectManagementApi` contract. For Workstreams, the clean cutover path was to extend that shared API seam with `listProjectTasks` instead of branching on dataset presence or adding destination-specific reach into the resource-model provider.
+- The scaffold task dataset still contains `Ready` rows, while the product filter chips are `Running`, `Queued`, and `Blocked`. Treating `ready` as part of the queued bucket kept the scaffold harness aligned with the live backend's `queued` grouping and preserved the `Active = queued + running + blocked` contract.
 - The worktree baseline initially lacked local dependencies. After `rtk npm install`, the current baseline is:
   - `rtk npm run test` passes (`35` files passed, `2` skipped; `203` tests passed, `18` skipped),
   - `rtk npm run lint` fails with pre-existing unrelated backend/script lint errors,
@@ -142,6 +146,14 @@ Phase 2 fix-pass outcome on 2026-04-20:
 - The execution DAG builder now treats missing dependency targets as an execution error rather than silently assigning them depth `0`, so the live graph stays honest when workflow/task data is inconsistent.
 - Live task detail now models artifact loading, empty, ready, and error states separately, which prevents the artifact pane from implying both "no artifacts" and "artifacts unavailable" at the same time.
 - The focused route suite now covers live `logicalTaskId` fallback, empty execution results, live task-list failure, missing-dependency workflow errors, and distinct artifact empty/error states. Focused validation still passes with `rtk npm run test -- ui/src/test/runs-routes.test.tsx` and `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
+
+Phase 3 outcome on 2026-04-20:
+
+- `Workstreams` now uses the Phase 1 `GET /v1/projects/:projectId/tasks` contract for API-backed projects instead of the old compatibility fallback, while the static harness emulates the same `filter/page/pageSize` response shape from scaffold data.
+- The Workstreams hook now owns live loading, error, empty, filter, and pagination state without pushing task collection state into the generic resource-model provider, and the board stays mostly presentational.
+- The chip set is now `All`, `Active`, `Running`, `Queued`, and `Blocked`, with `Active` as the default operator view and `All` expanding to terminal tasks. `Ready` and `pending` task states are surfaced under the `Queued` bucket so the UI matches the backend grouping contract.
+- The `Run` column now uses `runId`, task ids treat `logicalTaskId` as best-effort display data with fallback to `taskId`, and row links continue to land on the truthful execution task drill-in path under `/runs/:runId/execution/tasks/:taskId`.
+- Focused validation passed with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` and `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 
 ## Context and Orientation
 
@@ -399,7 +411,7 @@ This plan is accepted only when all of the following are true:
 
 ### Phase Handoff
 
-- **Status:** Pending
+- **Status:** Completed
 - **Goal:** Replace the live-project compatibility fallback on `/workstreams` with a truthful project task list backed by the new project task collection.
 - **Scope Boundary:** In scope: Workstreams live loading/error/empty states, filter mapping, paginated response state, row-click behavior, and scaffold/live test coverage. Out of scope: global shell redesign, documentation cutover, and search/sort features beyond the existing board contract.
 - **Read First:**
@@ -422,7 +434,9 @@ This plan is accepted only when all of the following are true:
 - **Plan / Docs To Update:** Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retrospective`, and this phase handoff.
 - **Deliverables:** A live Workstreams destination for API-backed projects, while scaffold mode still works for the static harness.
 - **Commit Expectation:** `Wire live Workstreams page`
-- **Known Constraints / Baseline Failures:** Preserve the `All`/`Active`/`Running`/`Queued`/`Blocked` chip set from the workspace spec, with `runId` as the `Run` label for the first live pass. Keep the board component mostly presentational and avoid reintroducing right-rail narration or scaffold-only fallback copy for live projects.
+- **Known Constraints / Baseline Failures:** Preserve the `All`/`Active`/`Running`/`Queued`/`Blocked` chip set from the workspace spec, with `runId` as the `Run` label for the first live pass. Keep the board component mostly presentational and avoid reintroducing right-rail narration or scaffold-only fallback copy for live projects. Treat `logicalTaskId` as best-effort display data and fall back to `taskId` when the backend could not recover a logical id from compiled run-plan artifacts.
+- **Completion Notes:** Extended the shared project API seam with `listProjectTasks(projectId, { filter, page, pageSize })`, backed by the browser `GET /v1/projects/:projectId/tasks` route and by a static scaffold implementation that emulates the same filter/pagination contract. `ui/src/features/workstreams/use-workstreams-view-model.ts` now owns Workstreams loading/error/empty/filter/pagination state with `Active` as the default filter, maps `ready`/`pending` into the queued bucket, formats live `updatedAt` timestamps honestly, uses `runId` for the `Run` column, and falls back to `taskId` when `logicalTaskId` is effectively unavailable. `ui/src/features/workstreams/components/workstreams-board.tsx` stays mostly presentational while rendering the new chip set, state cards, and minimal previous/next pagination controls, and the focused route suites now cover scaffold and live Workstreams behavior including filter switching, empty/error/loading states, and server-backed pagination.
+- **Next Starter Context:** Phase 4 should update durable notes and final archive bookkeeping with the new boundary: the shell/sidebar, `Runs`, `Project settings`, `New project`, run execution drill-in, and `Workstreams` are now live for API-backed projects, while `Documentation` remains scaffold-backed. Reuse the existing focused validation evidence first, then rerun the broad repo commands and record the known unrelated `lint`/`typecheck` backlog plus the host-shell `build` caveat before archiving the plan.
 
 ## Phase 4: Docs, Validation, And Archive
 

@@ -3,14 +3,18 @@ import {
   type ProjectConfig
 } from "../../../../src/keystone/projects/contracts";
 import {
+  projectTaskCollectionEnvelopeSchema,
   projectCollectionEnvelopeSchema,
-  projectDetailEnvelopeSchema
+  projectDetailEnvelopeSchema,
+  type ProjectTaskFilter
 } from "../../../../src/http/api/v1/projects/contracts";
 import { runCollectionEnvelopeSchema } from "../../../../src/http/api/v1/runs/contracts";
 import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 import { uiScaffoldDataset } from "../resource-model/scaffold-dataset";
 import {
+  getTask,
   getProjectConfiguration,
+  listProjectWorkstreamTasks,
   listRunSummaries
 } from "../resource-model/selectors";
 import type { ResourceModelDataset } from "../resource-model/types";
@@ -61,6 +65,43 @@ export interface ScaffoldProjectRunRecord {
 
 export type ProjectRunRecord = ApiProjectRunRecord | ScaffoldProjectRunRecord;
 
+export interface ApiProjectTaskRecord {
+  source: "api";
+  logicalTaskId: string;
+  runId: string;
+  status: string;
+  taskId: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface ScaffoldProjectTaskRecord {
+  source: "scaffold";
+  logicalTaskId: string;
+  runId: string;
+  status: string;
+  taskId: string;
+  title: string;
+  updatedLabel: string;
+}
+
+export type ProjectTaskRecord = ApiProjectTaskRecord | ScaffoldProjectTaskRecord;
+
+export interface ProjectTaskListParams {
+  filter: ProjectTaskFilter;
+  page: number;
+  pageSize: number;
+}
+
+export interface ProjectTaskCollectionRecord {
+  filter: ProjectTaskFilter;
+  items: ProjectTaskRecord[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface ProjectValidationIssue {
   code: string;
   message: string;
@@ -91,6 +132,10 @@ export interface ProjectManagementApi {
   getProject: (projectId: string) => Promise<ProjectDetailRecord>;
   listProjects: () => Promise<CurrentProjectRecord[]>;
   listProjectRuns: (projectId: string) => Promise<ProjectRunRecord[]>;
+  listProjectTasks: (
+    projectId: string,
+    params: ProjectTaskListParams
+  ) => Promise<ProjectTaskCollectionRecord>;
   updateProject: (projectId: string, config: ProjectConfig) => Promise<ProjectDetailRecord>;
 }
 
@@ -272,6 +317,55 @@ function normalizeRunRecord(run: {
   };
 }
 
+function normalizeProjectTaskRecord(task: {
+  logicalTaskId: string;
+  name: string;
+  runId: string;
+  status: string;
+  taskId: string;
+  updatedAt: string;
+}): ApiProjectTaskRecord {
+  return {
+    source: "api",
+    logicalTaskId: task.logicalTaskId,
+    runId: task.runId,
+    status: task.status,
+    taskId: task.taskId,
+    title: task.name,
+    updatedAt: task.updatedAt
+  };
+}
+
+function getProjectTaskFilterBucket(status: string) {
+  switch (status.toLowerCase()) {
+    case "active":
+    case "running":
+      return "running" as const;
+    case "ready":
+    case "pending":
+    case "queued":
+      return "queued" as const;
+    case "blocked":
+      return "blocked" as const;
+    default:
+      return "terminal" as const;
+  }
+}
+
+function matchesProjectTaskFilter(status: string, filter: ProjectTaskFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  const bucket = getProjectTaskFilterBucket(status);
+
+  if (filter === "active") {
+    return bucket === "running" || bucket === "queued" || bucket === "blocked";
+  }
+
+  return bucket === filter;
+}
+
 function buildStaticProjectDetail(
   project: CurrentProjectRecord,
   dataset: ResourceModelDataset
@@ -399,6 +493,38 @@ export function createBrowserProjectManagementApi(
 
       return payload.data.items.map(normalizeRunRecord);
     },
+    async listProjectTasks(projectId, params) {
+      const searchParams = new URLSearchParams({
+        filter: params.filter,
+        page: String(params.page),
+        pageSize: String(params.pageSize)
+      });
+      const response = await fetchImplementation(
+        `/v1/projects/${encodeURIComponent(projectId)}/tasks?${searchParams.toString()}`,
+        {
+          method: "GET",
+          credentials: "same-origin",
+          headers: buildProtectedBrowserHeaders({
+            accept: "application/json"
+          })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Unable to load workstreams (${response.status}).`);
+      }
+
+      const payload = projectTaskCollectionEnvelopeSchema.parse(await response.json());
+
+      return {
+        filter: payload.data.filter,
+        items: payload.data.items.map(normalizeProjectTaskRecord),
+        page: payload.data.page,
+        pageCount: payload.data.pageCount,
+        pageSize: payload.data.pageSize,
+        total: payload.data.total
+      };
+    },
     async updateProject(projectId, config) {
       const response = await fetchImplementation(`/v1/projects/${encodeURIComponent(projectId)}`, {
         method: "PATCH",
@@ -481,6 +607,39 @@ export function createStaticProjectManagementApi(
         updatedLabel: run.updatedLabel,
         detailPath: run.detailPath
       }));
+    },
+    async listProjectTasks(projectId, params) {
+      const projectTasks = listProjectWorkstreamTasks(projectId, dataset).map((row) => {
+        const task = getTask(row.taskId, dataset);
+
+        if (!task) {
+          throw new Error(`Task ${row.taskId} was not found.`);
+        }
+
+        return {
+          source: "scaffold" as const,
+          logicalTaskId: task.displayId,
+          runId: task.runId,
+          status: task.status,
+          taskId: task.taskId,
+          title: task.title,
+          updatedLabel: task.updatedLabel
+        };
+      });
+      const filteredTasks = projectTasks.filter((task) =>
+        matchesProjectTaskFilter(task.status, params.filter)
+      );
+      const pageCount = Math.max(1, Math.ceil(filteredTasks.length / params.pageSize));
+      const startIndex = (params.page - 1) * params.pageSize;
+
+      return {
+        filter: params.filter,
+        items: filteredTasks.slice(startIndex, startIndex + params.pageSize),
+        page: params.page,
+        pageCount,
+        pageSize: params.pageSize,
+        total: filteredTasks.length
+      };
     },
     async updateProject(projectId, config) {
       const parsedConfig = projectConfigSchema.parse(config);
