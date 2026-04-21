@@ -23,6 +23,7 @@ The current UI is no longer scaffold-only for project management:
 - `Project settings` loads and saves through `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`
 - the `Runs` index follows the selected project through `GET /v1/projects/:projectId/runs`
 - `Workstreams` now follows the selected project through `GET /v1/projects/:projectId/tasks`, including server-backed filter and pagination state
+- browser-backed `Workstreams` fetch readiness is keyed off `useProjectManagement().state.currentProject`; `useCurrentProject()` remains a scaffold-compatibility fallback and is not sufficient as a live readiness signal
 
 The current live/scaffold split is still intentional:
 

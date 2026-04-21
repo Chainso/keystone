@@ -297,8 +297,6 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
     loadWorkstreams(currentProject.projectId, currentPage, activeFilterId);
   }, [api, currentProject?.projectId, activeFilterId, currentPage]);
 
-  const currentFilter =
-    filterDefinitions.find((filter) => filter.filterId === activeFilterId) ?? filterDefinitions[0]!;
   const rows = (visiblePage?.items ?? []).map((task) => ({
     detailPath: buildRunTaskPath(task.runId, task.taskId),
     rowId: `${task.runId}-${task.taskId}`,

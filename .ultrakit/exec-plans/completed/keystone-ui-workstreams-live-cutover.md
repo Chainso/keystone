@@ -76,6 +76,7 @@ Compatibility that **is** required:
 - 2026-04-20, Phase 2 fix pass: mounted `GET /v1/runs/:runId/tasks/:taskId/artifacts`, made live task detail and dependency rows fall back to `taskId` when `logicalTaskId` is absent, turned missing workflow dependencies into an explicit execution error instead of flattening them into depth `0`, separated live artifact loading/empty/error states, strengthened the live route suite around those branches, and revalidated with `rtk npm run test -- ui/src/test/runs-routes.test.tsx` plus `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 - 2026-04-20, Phase 3: cut `/workstreams` over to the live project task collection through the shared project API seam, kept the static harness on the same filter/page contract via scaffold emulation, replaced the live compatibility fallback with truthful loading/error/empty states plus `All`/`Active`/`Running`/`Queued`/`Blocked` filtering and pagination controls, and revalidated with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` plus `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 - 2026-04-20, Phase 3 fix pass: gated live Workstreams fetches on the resolved project-management selection instead of the scaffold compatibility fallback, keyed pagination by project/filter so page changes reset to `1` before the next request is computed, strengthened the focused UI suites around delayed project resolution plus filter/project page resets and helper branches, and revalidated with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` plus `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
+- 2026-04-21, Phase 4: updated durable docs/notes to match the final live/scaffold boundary and the `projectManagement.state.currentProject` Workstreams-readiness nuance, cleaned the broad validation back down to the recorded baseline by fixing the Phase 1 HTTP test typings plus the Phase 3 hook lint regression, confirmed `rtk npm run lint` still fails only in the pre-existing backend/script files, confirmed `rtk npm run typecheck` is back to the single known `tests/lib/db-client-worker.test.ts(24,47)` mismatch, reran `rtk npm run test` with host permissions because the demo-contract suite hits `listen EPERM` in the sandbox, reran `rtk npm run build` with host permissions after the expected Wrangler/Docker home-directory `EROFS` failure, and prepared the plan for archival.
 
 ## Progress
 
@@ -89,7 +90,8 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Phase 3 started: Workstreams handoff prepared with the live project task collection plus truthful run execution/task drill-in already in place.
 - [x] 2026-04-20 Phase 3 completed: Workstreams now loads truthful project task data for API-backed projects while the static harness keeps the same contract through scaffold emulation.
 - [x] 2026-04-20 Phase 3 fix pass completed: Workstreams now waits for the real selected live project before fetching, resets pagination coherently across filter/project changes, and the focused UI suites cover those branches plus scaffold pagination emulation.
-- [ ] Phase 4: Update durable docs/notes, rerun validation, and archive the plan.
+- [x] 2026-04-21 Phase 4 started: closeout work began with durable doc/note reconciliation and broad validation reruns.
+- [x] 2026-04-21 Phase 4 completed: docs, notes, broad validation evidence, and archive bookkeeping now all agree on the final live Workstreams cutover state.
 
 ## Surprises & Discoveries
 
@@ -106,6 +108,7 @@ Compatibility that **is** required:
 - The current-project provider deliberately hides whether its backing API is the browser fetch client or the static test harness; both go through the same `ProjectManagementApi` contract. For Workstreams, the clean cutover path was to extend that shared API seam with `listProjectTasks` instead of branching on dataset presence or adding destination-specific reach into the resource-model provider.
 - The scaffold task dataset still contains `Ready` rows, while the product filter chips are `Running`, `Queued`, and `Blocked`. Treating `ready` as part of the queued bucket kept the scaffold harness aligned with the live backend's `queued` grouping and preserved the `Active = queued + running + blocked` contract.
 - The project-management provider intentionally hides whether the active source is the browser fetch client or the static harness, and `useCurrentProject()` deliberately falls back to the scaffold compatibility project when no live selection is ready yet. The Phase 3 fix pass confirmed that Workstreams cannot derive live fetch readiness from `useCurrentProject()` alone; it has to wait on `useProjectManagement().state.currentProject` so browser-backed routes do not issue task requests for the scaffold project before the real selection resolves.
+- The broad demo-contract suite now binds `127.0.0.1` during `npm test`. On this host, sandboxed runs fail with `listen EPERM`, so the final closeout proof has to rerun the broad test suite with host permissions even though the focused UI/backend suites remain sandbox-safe.
 - The worktree baseline initially lacked local dependencies. After `rtk npm install`, the current baseline is:
   - `rtk npm run test` passes (`35` files passed, `2` skipped; `203` tests passed, `18` skipped),
   - `rtk npm run lint` fails with pre-existing unrelated backend/script lint errors,
@@ -164,6 +167,16 @@ Phase 3 fix-pass outcome on 2026-04-20:
 - Workstreams pagination is now keyed to the active project/filter selection, which makes filter changes and project switches request page `1` immediately instead of briefly computing a stale page from the previous selection.
 - The focused route/tests now cover delayed live-project resolution, filter/page reset behavior, `resolveTaskDisplayId` and `buildEmptyState` helper branches, and scaffold pagination emulation through the static project API seam.
 - Focused validation still passes with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` and `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
+
+Phase 4 outcome on 2026-04-21:
+
+- `.ultrakit/developer-docs/m1-architecture.md` and `.ultrakit/notes.md` now match the final boundary: the shell/sidebar, `New project`, `Project settings`, `Runs`, live run `Execution` task drill-in, and `Workstreams` are live for API-backed projects, `Documentation` remains scaffold-backed, and browser-backed Workstreams readiness must key off `useProjectManagement().state.currentProject` rather than `useCurrentProject()`.
+- Broad validation is now classified cleanly against the recorded baseline:
+  - `rtk npm run lint` still fails only in the pre-existing backend/script files and no longer reports any Workstreams-phase regressions.
+  - `rtk npm run typecheck` is back to the single known `tests/lib/db-client-worker.test.ts(24,47)` worker-binding mismatch after the closeout pass fixed the Phase 1 HTTP test typings.
+  - `rtk npm run test` passes (`35` files passed, `2` skipped; `225` tests passed, `18` skipped) when rerun with host permissions because the demo-contract suite cannot bind `127.0.0.1` inside the sandbox.
+  - `rtk npm run build` still fails in the Codex sandbox with the expected Wrangler/Docker home-directory `EROFS` issue, then passes when rerun with host permissions.
+- Active/completed indexes now point to the archived plan, and no extra tech-debt entry was needed because the remaining validation failures were already recorded baseline items.
 
 ## Context and Orientation
 
@@ -452,7 +465,7 @@ This plan is accepted only when all of the following are true:
 
 ### Phase Handoff
 
-- **Status:** Pending
+- **Status:** Completed
 - **Goal:** Update durable docs/notes to reflect the live Workstreams cutover, rerun the validation set, and archive the completed plan.
 - **Scope Boundary:** In scope: developer docs, notes, final validation, plan closeout, and index/archive bookkeeping. Out of scope: new feature work or reopening earlier design decisions.
 - **Read First:**
@@ -475,3 +488,5 @@ This plan is accepted only when all of the following are true:
 - **Deliverables:** Updated durable docs/notes, final validation evidence, and an archived completed plan.
 - **Commit Expectation:** `Document live Workstreams cutover`
 - **Known Constraints / Baseline Failures:** `rtk npm run build` still needs a host-permitted shell on this machine when Wrangler/Docker write under home-directory paths. Do not archive the plan while docs or indexes still claim Workstreams is scaffold-backed for live projects.
+- **Completion Notes:** Updated `.ultrakit/developer-docs/m1-architecture.md` and `.ultrakit/notes.md` to reflect the final live/scaffold boundary plus the Workstreams readiness nuance around `useProjectManagement().state.currentProject`. The closeout pass also removed the Phase 3 hook lint regression and tightened the Phase 1 HTTP test typings so broad validation returned to the recorded baseline: `lint` still fails only in the pre-existing backend/script files, `typecheck` now fails only at `tests/lib/db-client-worker.test.ts(24,47)`, `test` passes when rerun with host permissions because the demo-contract suite binds `127.0.0.1`, and `build` still needs the known host-permitted rerun after the sandboxed Wrangler/Docker `EROFS` failure.
+- **Next Starter Context:** None. This plan is ready to archive to `completed/`, and future work should start from the archived completion record plus the durable docs/notes rather than reopening this execution plan.

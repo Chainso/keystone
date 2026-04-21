@@ -305,12 +305,24 @@ function extractOrderColumns(orderBy: unknown[] = []) {
 function compareSortValues(left: unknown, right: unknown) {
   const leftValue = left instanceof Date ? left.getTime() : left;
   const rightValue = right instanceof Date ? right.getTime() : right;
+  const comparableLeft =
+    typeof leftValue === "number" || typeof leftValue === "string"
+      ? leftValue
+      : typeof leftValue === "boolean"
+        ? Number(leftValue)
+        : String(leftValue);
+  const comparableRight =
+    typeof rightValue === "number" || typeof rightValue === "string"
+      ? rightValue
+      : typeof rightValue === "boolean"
+        ? Number(rightValue)
+        : String(rightValue);
 
-  if (leftValue === rightValue) {
+  if (comparableLeft === comparableRight) {
     return 0;
   }
 
-  return leftValue < rightValue ? -1 : 1;
+  return comparableLeft < comparableRight ? -1 : 1;
 }
 
 function sortRows(rows: RepositoryFixtureRow[], orderBy: unknown[] = []) {
@@ -342,7 +354,7 @@ function createProjectTaskRepositoryClient(
   return {
     connectionString: "postgres://test",
     sql: {} as DatabaseClient["sql"],
-    db: {
+    db: ({
       query: {
         projects: {
           findFirst: async ({ where }: { where?: unknown } = {}) =>
@@ -416,7 +428,7 @@ function createProjectTaskRepositoryClient(
           }
         })
       })
-    } as DatabaseClient["db"],
+    }) as unknown as DatabaseClient["db"],
     close: async () => undefined
   };
 }
@@ -454,7 +466,7 @@ const mocked = vi.hoisted(() => {
       createDocumentRepositoryClient(projectDocumentRepositoryFixture, close)
     ),
     deleteArtifactRef: vi.fn(async () => null),
-    getArtifactText: vi.fn(async (): Promise<string | null> => null),
+    getArtifactText: vi.fn(async (_bucket: R2Bucket, _key: string): Promise<string | null> => null),
     createArtifactRef: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       artifactRefId: "artifact-project-spec-v2",
@@ -829,7 +841,7 @@ describe("project API", () => {
     mocked.createWorkerDatabaseClient.mockImplementation(() =>
       createDocumentRepositoryClient(projectDocumentRepositoryFixture, mocked.close)
     );
-    mocked.getArtifactText.mockImplementation(async (_bucket, key) => {
+    mocked.getArtifactText.mockImplementation(async (_bucket: R2Bucket, key: string) => {
       const runId = Object.keys(compiledRunPlansByRunId).find((candidate) => key.includes(candidate));
 
       return runId ? JSON.stringify(compiledRunPlansByRunId[runId as keyof typeof compiledRunPlansByRunId]) : null;
@@ -1551,7 +1563,21 @@ describe("project API", () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = await response.json();
+    const payload = (await response.json()) as {
+      data: {
+        filter: string;
+        items: Array<Record<string, unknown>>;
+        page: number;
+        pageCount: number;
+        pageSize: number;
+        total: number;
+      };
+      meta: {
+        apiVersion: string;
+        envelope: string;
+        resourceType: string;
+      };
+    };
 
     expect(payload).toMatchObject({
       meta: {
@@ -1599,7 +1625,7 @@ describe("project API", () => {
   });
 
   it("fails open when one project run plan payload is malformed", async () => {
-    mocked.getArtifactText.mockImplementation(async (_bucket, key) => {
+    mocked.getArtifactText.mockImplementation(async (_bucket: R2Bucket, key: string) => {
       if (key.includes("run-123")) {
         return "{not-valid-json";
       }
@@ -1621,7 +1647,11 @@ describe("project API", () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = await response.json();
+    const payload = (await response.json()) as {
+      data: {
+        items: Array<Record<string, unknown>>;
+      };
+    };
 
     expect(payload.data.items).toEqual(
       expect.arrayContaining([
@@ -1652,7 +1682,16 @@ describe("project API", () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = await response.json();
+    const payload = (await response.json()) as {
+      data: {
+        filter: string;
+        items: Array<Record<string, unknown>>;
+        page: number;
+        pageCount: number;
+        pageSize: number;
+        total: number;
+      };
+    };
 
     expect(payload).toMatchObject({
       data: {
