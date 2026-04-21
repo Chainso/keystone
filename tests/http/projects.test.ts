@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { DatabaseClient } from "../../src/lib/db/client";
 import { createDocumentRepositoryClient } from "./document-db-fixture";
 
 const projectDocumentFixture = {
@@ -42,6 +43,7 @@ const RUN_TASK_PREPARE_ID = "11111111-1111-4111-8111-111111111111";
 const RUN_TASK_IMPLEMENTATION_ID = "22222222-2222-4222-8222-222222222222";
 const RUN_TASK_REVIEW_ID = "33333333-3333-4333-8333-333333333333";
 const RUN_TASK_ARCHIVE_ID = "44444444-4444-4444-8444-444444444444";
+const RUN_TASK_PENDING_ID = "55555555-5555-4555-8555-555555555555";
 
 const projectRunTaskFixture = {
   runTaskId: RUN_TASK_IMPLEMENTATION_ID,
@@ -181,6 +183,243 @@ const compiledRunPlansByRunId = {
     ]
   }
 } as const;
+
+type RepositoryFixtureRow = Record<string, unknown>;
+
+interface ProjectTaskRepositoryFixture {
+  projects: RepositoryFixtureRow[];
+  runs: RepositoryFixtureRow[];
+  runTasks: RepositoryFixtureRow[];
+  runTaskDependencies: RepositoryFixtureRow[];
+}
+
+function columnNameToPropertyName(columnName: string) {
+  return columnName.replace(/_([a-z])/g, (_match, character: string) => character.toUpperCase());
+}
+
+function extractWhereFilters(
+  expression: unknown,
+  filters = {
+    equals: new Map<string, unknown>(),
+    includes: new Map<string, unknown[]>()
+  }
+) {
+  if (!expression || typeof expression !== "object") {
+    return filters;
+  }
+
+  if (!("queryChunks" in expression) || !Array.isArray(expression.queryChunks)) {
+    return filters;
+  }
+
+  const queryChunks = expression.queryChunks as unknown[];
+
+  for (let index = 0; index < queryChunks.length - 2; index += 1) {
+    const column = queryChunks[index];
+    const operator = queryChunks[index + 1];
+    const param = queryChunks[index + 2];
+
+    if (
+      column &&
+      typeof column === "object" &&
+      "name" in column &&
+      typeof column.name === "string" &&
+      operator &&
+      typeof operator === "object" &&
+      "value" in operator &&
+      Array.isArray(operator.value)
+    ) {
+      if (
+        operator.value[0] === " = " &&
+        param &&
+        typeof param === "object" &&
+        "value" in param
+      ) {
+        filters.equals.set(column.name, param.value);
+      }
+
+      if (operator.value[0] === " in " && Array.isArray(param)) {
+        filters.includes.set(
+          column.name,
+          param
+            .filter(
+              (entry): entry is {
+                value: unknown;
+              } => typeof entry === "object" && entry !== null && "value" in entry
+            )
+            .map((entry) => entry.value)
+        );
+      }
+    }
+  }
+
+  for (const chunk of queryChunks) {
+    extractWhereFilters(chunk, filters);
+  }
+
+  return filters;
+}
+
+function matchesWhere(row: RepositoryFixtureRow, where: unknown) {
+  const filters = extractWhereFilters(where);
+
+  for (const [columnName, expectedValue] of filters.equals) {
+    const propertyName = columnNameToPropertyName(columnName);
+
+    if (row[propertyName] !== expectedValue) {
+      return false;
+    }
+  }
+
+  for (const [columnName, expectedValues] of filters.includes) {
+    const propertyName = columnNameToPropertyName(columnName);
+
+    if (!expectedValues.includes(row[propertyName])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function extractOrderColumns(orderBy: unknown[] = []) {
+  return orderBy.flatMap((expression) => {
+    if (!expression || typeof expression !== "object") {
+      return [];
+    }
+
+    if (!("queryChunks" in expression) || !Array.isArray(expression.queryChunks)) {
+      return [];
+    }
+
+    return expression.queryChunks.flatMap((chunk) => {
+      if (chunk && typeof chunk === "object" && "name" in chunk && typeof chunk.name === "string") {
+        return [columnNameToPropertyName(chunk.name)];
+      }
+
+      return [];
+    });
+  });
+}
+
+function compareSortValues(left: unknown, right: unknown) {
+  const leftValue = left instanceof Date ? left.getTime() : left;
+  const rightValue = right instanceof Date ? right.getTime() : right;
+
+  if (leftValue === rightValue) {
+    return 0;
+  }
+
+  return leftValue < rightValue ? -1 : 1;
+}
+
+function sortRows(rows: RepositoryFixtureRow[], orderBy: unknown[] = []) {
+  const orderColumns = extractOrderColumns(orderBy);
+
+  return [...rows].sort((left, right) => {
+    for (const column of orderColumns) {
+      const comparison = compareSortValues(left[column], right[column]);
+
+      if (comparison !== 0) {
+        return comparison;
+      }
+    }
+
+    return 0;
+  });
+}
+
+function createProjectTaskRepositoryClient(
+  fixture: ProjectTaskRepositoryFixture
+): DatabaseClient {
+  const buildJoinedTaskRows = () =>
+    fixture.runTasks.flatMap((task) => {
+      const run = fixture.runs.find((candidate) => candidate.runId === task.runId);
+
+      return run ? [{ ...run, ...task }] : [];
+    });
+
+  return {
+    connectionString: "postgres://test",
+    sql: {} as DatabaseClient["sql"],
+    db: {
+      query: {
+        projects: {
+          findFirst: async ({ where }: { where?: unknown } = {}) =>
+            fixture.projects.find((row) => matchesWhere(row, where))
+        },
+        runTaskDependencies: {
+          findMany: async ({
+            where,
+            orderBy
+          }: {
+            where?: unknown;
+            orderBy?: unknown[];
+          } = {}) =>
+            sortRows(
+              fixture.runTaskDependencies.filter((row) => matchesWhere(row, where)),
+              orderBy
+            )
+        }
+      },
+      select: (selection: Record<string, unknown>) => ({
+        from: () => ({
+          innerJoin: () => {
+            const joinedTaskRows = buildJoinedTaskRows();
+
+            if ("total" in selection) {
+              return {
+                where: async (where: unknown) => [
+                  {
+                    total: joinedTaskRows.filter((row) => matchesWhere(row, where)).length
+                  }
+                ]
+              };
+            }
+
+            const state: {
+              where?: unknown;
+              orderBy: unknown[];
+              limit?: number;
+            } = {
+              orderBy: []
+            };
+
+            const builder = {
+              where(where: unknown) {
+                state.where = where;
+                return builder;
+              },
+              orderBy(...orderBy: unknown[]) {
+                state.orderBy = orderBy;
+                return builder;
+              },
+              limit(limit: number) {
+                state.limit = limit;
+                return builder;
+              },
+              async offset(offset: number) {
+                let rows = joinedTaskRows.filter((row) => matchesWhere(row, state.where));
+
+                rows = sortRows(rows, state.orderBy);
+                rows = rows.slice(offset);
+
+                if (state.limit !== undefined) {
+                  rows = rows.slice(0, state.limit);
+                }
+
+                return rows.map((task) => ({ task }));
+              }
+            };
+
+            return builder;
+          }
+        })
+      })
+    } as DatabaseClient["db"],
+    close: async () => undefined
+  };
+}
 
 const projectRunArtifactFixture = {
   tenantId: "tenant-read",
@@ -520,6 +759,9 @@ vi.mock("../../src/http/handlers/dev-think", () => ({
 }));
 
 const documentsDb = await import("../../src/lib/db/documents");
+const actualRunRepositories = await vi.importActual<typeof import("../../src/lib/db/runs")>(
+  "../../src/lib/db/runs"
+);
 const { app } = await import("../../src/http/app");
 
 const env = {
@@ -1356,6 +1598,47 @@ describe("project API", () => {
     );
   });
 
+  it("fails open when one project run plan payload is malformed", async () => {
+    mocked.getArtifactText.mockImplementation(async (_bucket, key) => {
+      if (key.includes("run-123")) {
+        return "{not-valid-json";
+      }
+
+      const runId = Object.keys(compiledRunPlansByRunId).find((candidate) => key.includes(candidate));
+
+      return runId ? JSON.stringify(compiledRunPlansByRunId[runId as keyof typeof compiledRunPlansByRunId]) : null;
+    });
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/tasks",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.data.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run-123",
+          taskId: RUN_TASK_PREPARE_ID,
+          logicalTaskId: RUN_TASK_PREPARE_ID
+        }),
+        expect.objectContaining({
+          runId: "run-456",
+          taskId: RUN_TASK_REVIEW_ID,
+          logicalTaskId: "TASK-019"
+        })
+      ])
+    );
+  });
+
   it("applies server-side project task filters and pagination params", async () => {
     const response = await app.request(
       "http://example.com/v1/projects/project-123/tasks?filter=active&page=2&pageSize=2",
@@ -1400,5 +1683,133 @@ describe("project API", () => {
         pageSize: 2
       })
     );
+  });
+});
+
+describe("listProjectTasks repository logic", () => {
+  it("filters operator buckets and paginates deterministically", async () => {
+    const client = createProjectTaskRepositoryClient({
+      projects: [
+        {
+          tenantId: "tenant-repo",
+          projectId: "project-repo"
+        }
+      ],
+      runs: [
+        {
+          tenantId: "tenant-repo",
+          projectId: "project-repo",
+          runId: "run-a",
+          createdAt: new Date("2026-04-17T10:00:00.000Z")
+        },
+        {
+          tenantId: "tenant-repo",
+          projectId: "project-repo",
+          runId: "run-b",
+          createdAt: new Date("2026-04-17T11:00:00.000Z")
+        },
+        {
+          tenantId: "tenant-other",
+          projectId: "project-other",
+          runId: "run-other",
+          createdAt: new Date("2026-04-17T12:00:00.000Z")
+        }
+      ],
+      runTasks: [
+        {
+          runTaskId: RUN_TASK_IMPLEMENTATION_ID,
+          runId: "run-a",
+          status: "active",
+          createdAt: new Date("2026-04-17T10:05:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_PREPARE_ID,
+          runId: "run-a",
+          status: "ready",
+          createdAt: new Date("2026-04-17T10:05:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_PENDING_ID,
+          runId: "run-a",
+          status: "pending",
+          createdAt: new Date("2026-04-17T10:06:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_REVIEW_ID,
+          runId: "run-b",
+          status: "blocked",
+          createdAt: new Date("2026-04-17T10:07:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_ARCHIVE_ID,
+          runId: "run-b",
+          status: "completed",
+          createdAt: new Date("2026-04-17T10:08:00.000Z")
+        },
+        {
+          runTaskId: "66666666-6666-4666-8666-666666666666",
+          runId: "run-other",
+          status: "active",
+          createdAt: new Date("2026-04-17T10:09:00.000Z")
+        }
+      ],
+      runTaskDependencies: []
+    });
+
+    const firstPage = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "all",
+      page: 1,
+      pageSize: 2
+    });
+    const secondPage = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "all",
+      page: 2,
+      pageSize: 2
+    });
+    const running = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "running",
+      page: 1,
+      pageSize: 25
+    });
+    const queued = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "queued",
+      page: 1,
+      pageSize: 25
+    });
+    const blocked = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "blocked",
+      page: 1,
+      pageSize: 25
+    });
+
+    expect(firstPage.total).toBe(5);
+    expect(firstPage.items.map((task) => task.runTaskId)).toEqual([
+      RUN_TASK_PREPARE_ID,
+      RUN_TASK_IMPLEMENTATION_ID
+    ]);
+    expect(secondPage.total).toBe(5);
+    expect(secondPage.items.map((task) => task.runTaskId)).toEqual([
+      RUN_TASK_PENDING_ID,
+      RUN_TASK_REVIEW_ID
+    ]);
+    expect(running.total).toBe(1);
+    expect(running.items.map((task) => task.runTaskId)).toEqual([RUN_TASK_IMPLEMENTATION_ID]);
+    expect(queued.total).toBe(2);
+    expect(queued.items.map((task) => task.runTaskId)).toEqual([
+      RUN_TASK_PREPARE_ID,
+      RUN_TASK_PENDING_ID
+    ]);
+    expect(blocked.total).toBe(1);
+    expect(blocked.items.map((task) => task.runTaskId)).toEqual([RUN_TASK_REVIEW_ID]);
   });
 });

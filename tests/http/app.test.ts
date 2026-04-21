@@ -1143,6 +1143,55 @@ describe("app", () => {
     expect(conversationResponse.status).toBe(404);
   });
 
+  it("fails open when run plan lookup rejects for run task routes", async () => {
+    mocked.getArtifactText.mockRejectedValueOnce(new Error("r2 unavailable"));
+    mocked.getArtifactText.mockRejectedValueOnce(new Error("r2 unavailable"));
+
+    const [listResponse, detailResponse] = await Promise.all([
+      app.request(
+        "http://example.com/v1/runs/run-123/tasks",
+        {
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-fixture"
+          }
+        },
+        env
+      ),
+      app.request(
+        `http://example.com/v1/runs/run-123/tasks/${RUN_TASK_IMPLEMENTATION_ID}`,
+        {
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-fixture"
+          }
+        },
+        env
+      )
+    ]);
+
+    expect(listResponse.status).toBe(200);
+    await expect(listResponse.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        items: [
+          {
+            taskId: RUN_TASK_IMPLEMENTATION_ID,
+            logicalTaskId: RUN_TASK_IMPLEMENTATION_ID
+          }
+        ]
+      }
+    });
+
+    expect(detailResponse.status).toBe(200);
+    await expect(detailResponse.json()).resolves.toMatchObject({
+      data: {
+        taskId: RUN_TASK_IMPLEMENTATION_ID,
+        logicalTaskId: RUN_TASK_IMPLEMENTATION_ID
+      }
+    });
+  });
+
   it("returns 404 for removed approval, event, coordinator, and decision-package surfaces", async () => {
     const responses = await Promise.all([
       app.request(

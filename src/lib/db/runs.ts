@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { buildStableRunTaskId } from "../workflows/ids";
 import { buildRunSandboxId } from "../workspace/worktree";
@@ -672,22 +672,24 @@ export async function listProjectTasks(
     whereClauses.push(inArray(runTasks.status, filteredStatuses));
   }
 
+  const filteredWhereClause = and(...whereClauses);
+
   const offset = (input.page - 1) * input.pageSize;
-  const matchingTaskIds = await client.db
+  const countRows = await client.db
     .select({
-      runTaskId: runTasks.runTaskId
+      total: sql<number>`count(*)`
     })
     .from(runTasks)
     .innerJoin(runs, eq(runs.runId, runTasks.runId))
-    .where(and(...whereClauses));
+    .where(filteredWhereClause);
   const rows = await client.db
     .select({
       task: runTasks
     })
     .from(runTasks)
     .innerJoin(runs, eq(runs.runId, runTasks.runId))
-    .where(and(...whereClauses))
-    .orderBy(asc(runs.createdAt), asc(runTasks.createdAt))
+    .where(filteredWhereClause)
+    .orderBy(asc(runTasks.createdAt), asc(runTasks.runTaskId))
     .limit(input.pageSize)
     .offset(offset);
   const items = rows.map((row) => row.task);
@@ -707,7 +709,7 @@ export async function listProjectTasks(
   return {
     items,
     dependencies,
-    total: matchingTaskIds.length,
+    total: Number(countRows[0]?.total ?? 0),
     page: input.page,
     pageSize: input.pageSize
   };

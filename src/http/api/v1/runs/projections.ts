@@ -51,6 +51,21 @@ export function buildLogicalTaskIdIndex(plan: CompiledRunPlan | null) {
   return logicalTaskIdByRunTaskId;
 }
 
+export async function loadLogicalTaskIdIndex(
+  env: Pick<WorkerBindings, "ARTIFACTS_BUCKET">,
+  tenantId: string,
+  runId: string
+) {
+  try {
+    return buildLogicalTaskIdIndex(await loadCompiledRunPlan(env, tenantId, runId));
+  } catch {
+    // Logical task ids are a projection enhancement. Task routes must still serve
+    // authoritative DB-backed rows when the optional run-plan artifact is missing
+    // or unreadable.
+    return new Map<string, string>();
+  }
+}
+
 export async function loadCompiledRunPlan(
   env: Pick<WorkerBindings, "ARTIFACTS_BUCKET">,
   tenantId: string,

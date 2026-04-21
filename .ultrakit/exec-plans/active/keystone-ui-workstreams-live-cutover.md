@@ -71,12 +71,14 @@ Compatibility that **is** required:
 
 - 2026-04-20, orchestration: execution started after plan approval; active index moved to `In Progress` and Phase 1 was prepared for implementation handoff.
 - 2026-04-20, Phase 1: added `GET /v1/projects/:projectId/tasks`, enriched the shared task resource with `logicalTaskId` and `updatedAt`, reused compiled run-plan artifacts to recover logical task ids without changing persistence, and validated the backend contract with `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts`.
+- 2026-04-20, Phase 1 fix pass: made logical-task-id recovery fail-open for unreadable run-plan artifacts, replaced the project-task count path with an aggregate plus deterministic `createdAt`/`runTaskId` ordering, strengthened the HTTP suites with fail-open and repository-level bucket/pagination coverage, and revalidated with `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts`.
 
 ## Progress
 
 - [x] 2026-04-20 Planning completed: discovery finished, the design markdown references were read, the live/scaffold route boundary was resolved, and the broad baseline was recorded.
 - [x] 2026-04-20 Phase 1 started: backend projection handoff prepared for implementation.
 - [x] 2026-04-20 Phase 1 completed: the project task collection route, filter/pagination contract, and enriched shared task resource landed with focused HTTP coverage.
+- [x] 2026-04-20 Phase 1 fix pass completed: logical task ids now fail open to `runTaskId` when run-plan artifacts are unreadable, and project-task pagination is deterministic under stable ordering.
 - [ ] Phase 2: Cut over the live execution graph and task-detail routes under the existing run route tree.
 - [ ] Phase 3: Cut over the `Workstreams` UI to the live task collection while preserving scaffold mode for the static harness.
 - [ ] Phase 4: Update durable docs/notes, rerun validation, and archive the plan.
@@ -88,6 +90,7 @@ Compatibility that **is** required:
 - The current live run shell cutover stopped at the runs index. `ui/src/routes/runs/run-detail-layout.tsx`, `ui/src/routes/runs/run-default-phase-route.tsx`, and `ui/src/features/execution/use-execution-view-model.ts` are still scaffold-only.
 - There is currently no `GET /v1/projects/:projectId/tasks` route, even though the earlier archived target-model UI plan anticipated that shape.
 - The compiled run-plan artifact already carries the logical task ids needed by Workstreams, but the mapping is only trustworthy when keyed by persisted `runTaskId`. Reusing that artifact projection let Phase 1 expose `logicalTaskId` without adding a new database column or altering the existing run-task routes.
+- The run-plan artifact is not part of route correctness. The fix pass confirmed the projection must treat artifact read, parse, and schema failures as optional enhancement misses; otherwise one bad artifact can break otherwise valid DB-backed task routes.
 - The worktree baseline initially lacked local dependencies. After `rtk npm install`, the current baseline is:
   - `rtk npm run test` passes (`35` files passed, `2` skipped; `203` tests passed, `18` skipped),
   - `rtk npm run lint` fails with pre-existing unrelated backend/script lint errors,
@@ -109,6 +112,12 @@ Phase 1 outcome on 2026-04-20:
 - The shared run-task resource now includes `logicalTaskId` and `updatedAt`, so run-scoped task routes and the new project-scoped task collection stay on one contract.
 - Logical task ids now come from compiled run-plan artifacts when available, with a fallback to the authoritative `runTaskId`, which keeps the route additive and avoids inventing a second task identifier model.
 - Focused validation passed with `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts`.
+
+Phase 1 fix-pass outcome on 2026-04-20:
+
+- Logical task id recovery now fails open for unreadable or invalid run-plan artifacts, so task routes still return authoritative DB-backed rows with fallback logical ids.
+- The project-task repository now derives `total` from a count aggregate instead of materializing every matching id, and it pages with deterministic ordering by `run_tasks.created_at` plus `run_task_id`.
+- The focused test suites now cover route-level fail-open behavior plus repository-level `running`, `queued`, and `blocked` bucket behavior and stable pagination slices.
 
 ## Context and Orientation
 
@@ -319,8 +328,8 @@ This plan is accepted only when all of the following are true:
 - **Deliverables:** A new `GET /v1/projects/:projectId/tasks` route with server-side filtering/pagination plus enriched task resources that expose `logicalTaskId` and `updatedAt`.
 - **Commit Expectation:** `Add project task collection projection`
 - **Known Constraints / Baseline Failures:** Keep the route additive. Do not invent UI-only display ids in the backend response. Broad repo `lint` and `typecheck` are already red for unrelated reasons; use the focused HTTP tests for this phase.
-- **Completion Notes:** Added the new project task collection route and response schema under `src/http/api/v1/projects/*`, added `listProjectTasks` in `src/lib/db/runs.ts`, enriched `taskResourceSchema` plus the shared task projector with `logicalTaskId` and `updatedAt`, and taught both project-scoped and run-scoped task responses to load logical ids from compiled run-plan artifacts when present. Updated `tests/http/projects.test.ts` and `tests/http/app.test.ts` to cover default pagination, filter grouping, project-task pagination metadata, and backward-compatible run-task responses on the richer task contract.
-- **Next Starter Context:** Phase 2 can assume the backend task contract is stable. Start with the live run-route/UI files listed below and wire `/runs/:runId/execution` plus `/runs/:runId/execution/tasks/:taskId` against the existing `GET /v1/runs/:runId/workflow`, `GET /v1/runs/:runId/tasks`, and `GET /v1/runs/:runId/tasks/:taskId` endpoints before touching the Workstreams page.
+- **Completion Notes:** Added the new project task collection route and response schema under `src/http/api/v1/projects/*`, added `listProjectTasks` in `src/lib/db/runs.ts`, enriched `taskResourceSchema` plus the shared task projector with `logicalTaskId` and `updatedAt`, and taught both project-scoped and run-scoped task responses to load logical ids from compiled run-plan artifacts when present. The fix pass then made logical-id recovery fail open when artifact reads or parsing fail, replaced the `total` path with a count aggregate, stabilized pagination ordering with a `createdAt`/`runTaskId` tie-breaker, and strengthened the focused HTTP suites with fail-open coverage plus repository-level bucket/pagination assertions.
+- **Next Starter Context:** Phase 2 can assume the backend task contract is stable and fail-open on missing/invalid run-plan artifacts. Start with the live run-route/UI files listed below and wire `/runs/:runId/execution` plus `/runs/:runId/execution/tasks/:taskId` against the existing `GET /v1/runs/:runId/workflow`, `GET /v1/runs/:runId/tasks`, and `GET /v1/runs/:runId/tasks/:taskId` endpoints before touching the Workstreams page.
 
 ## Phase 2: Live Execution And Task Drill-In
 

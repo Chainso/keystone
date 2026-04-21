@@ -25,8 +25,7 @@ import {
   workflowGraphDetailEnvelopeSchema
 } from "./contracts";
 import {
-  buildLogicalTaskIdIndex,
-  loadCompiledRunPlan,
+  loadLogicalTaskIdIndex,
   projectArtifactResource,
   projectRunResource,
   projectTaskResources,
@@ -133,8 +132,10 @@ async function loadRunState(context: Context<AppEnv>, runId: string) {
       },
       async loadLogicalTaskIds() {
         if (cachedLogicalTaskIdByRunTaskId === null) {
-          cachedLogicalTaskIdByRunTaskId = buildLogicalTaskIdIndex(
-            await loadCompiledRunPlan(context.env, auth.tenantId, runId)
+          cachedLogicalTaskIdByRunTaskId = await loadLogicalTaskIdIndex(
+            context.env,
+            auth.tenantId,
+            runId
           );
         }
 

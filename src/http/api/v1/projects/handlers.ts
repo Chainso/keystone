@@ -23,8 +23,7 @@ import {
 } from "./contracts";
 import { runCollectionEnvelopeSchema } from "../runs/contracts";
 import {
-  buildLogicalTaskIdIndex,
-  loadCompiledRunPlan,
+  loadLogicalTaskIdIndex,
   projectRunResource,
   projectTaskResources
 } from "../runs/projections";
@@ -88,9 +87,7 @@ async function loadLogicalTaskIdIndexForRuns(
 ) {
   const uniqueRunIds = [...new Set(runIds)];
   const indexes = await Promise.all(
-    uniqueRunIds.map(async (runId) =>
-      buildLogicalTaskIdIndex(await loadCompiledRunPlan(context.env, tenantId, runId))
-    )
+    uniqueRunIds.map((runId) => loadLogicalTaskIdIndex(context.env, tenantId, runId))
   );
   const logicalTaskIdByRunTaskId = new Map<string, string>();
 
