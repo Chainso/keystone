@@ -144,6 +144,11 @@ Compatibility that **is** required:
   **Decision:** Pause execution after preflight and fold the live/scaffold seam analysis back into the plan before any UI code changes.  
   **Rationale:** The current `CurrentProjectProvider` override behavior and the missing run-summary fields in the live API were concrete enough that the next executor should not have to rediscover them from code inspection or chat history.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 1  
+  **Decision:** Finish the live project-context seam by introducing a fetch-backed project-management provider above the shell, while keeping scaffold destinations alive through an explicit compatibility bridge and a static route-test provider helper.  
+  **Rationale:** The sidebar and shell needed truthful live project ownership now, but Phase 1 still had to avoid pulling Runs, Documentation, Workstreams, or project-form data into live APIs before their later phases.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -161,6 +166,11 @@ Compatibility that **is** required:
   - live current-project state must not keep piggybacking on `createProjectOverrideDataset()`,
   - the live project-runs API does not expose scaffold summary fields,
   - non-scaffold runs must not assume scaffold run-detail routes can render them.
+- [x] 2026-04-20 Phase 1 completed:
+  - `ui/src/features/projects/project-context.tsx` now owns live project list loading, persisted current-project selection, and shell-facing `state` / `actions` / `meta`.
+  - `ui/src/shared/layout/{app-shell,shell-sidebar}.tsx` now render honest loading, empty, and error shell states plus a live sidebar project switcher.
+  - `ui/src/features/resource-model/context.tsx` now acts as a scaffold compatibility seam instead of the canonical owner of live project selection.
+  - Focused UI tests now cover stale local-storage fallback, empty project collections, and sidebar project switching with explicit `fetch` stubs.
 
 ## Surprises & Discoveries
 
@@ -178,6 +188,7 @@ Compatibility that **is** required:
   - host `build` passes once Wrangler and Docker are allowed to run outside the sandbox.
 - `Documentation` and `Workstreams` still depend on scaffold dataset assumptions around the current project, so project switching cannot simply stop at the sidebar; the provider seam has to keep non-live destinations renderable for non-scaffold projects.
 - [ui/src/test/render-route.tsx](../../ui/src/test/render-route.tsx) only injects a project override today. API-backed UI phases will need explicit `fetch` stubs and `localStorage` reset discipline in jsdom tests.
+- Phase 1 exposed a new repo-level validation mismatch: after restoring dependencies in this worktree, the exact required `rtk npm run typecheck` command now fails outside the UI scope in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`. The Phase 1 UI surface still compiles with `./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 
 ## Outcomes & Retrospective
 
@@ -189,6 +200,14 @@ Planning outcome on 2026-04-20:
 - The real baseline is now recorded after dependency restoration instead of being obscured by a missing `node_modules` state.
 - Execution was intentionally paused after preflight so the live/scaffold provider seam, runs-contract limits, and test harness expectations could be captured in the plan before code changes started.
 - The plan is now more resume-safe for a future executor because the main implementation traps are written into the checked-in document instead of living only in chat context.
+
+Phase 1 outcome on 2026-04-20:
+
+- Keystone now has a real project-management provider and same-origin project list adapter instead of a dataset-rewrite current-project hack.
+- The global shell can show explicit loading, empty, and retry states before route content mounts, which keeps zero-project tenants coherent.
+- The sidebar project switcher is now live and persisted through `keystone.ui.current-project.v1`.
+- The route-test harness now defaults back to a static scaffold provider unless a test explicitly opts into the browser API path, which keeps non-Phase-1 route tests stable while live project tests stub `fetch` honestly.
+- The required targeted UI tests pass, but the repo-wide `rtk npm run typecheck` command is currently blocked by an unrelated worker-binding type mismatch outside this phase.
 
 ## Context and Orientation
 
@@ -474,15 +493,23 @@ Success means the shell can load and change the current project, persists select
 
 #### Status
 
-Pending.
+Completed on 2026-04-20.
 
 #### Completion Notes
 
-- None yet.
+- Added `ui/src/features/projects/project-management-api.ts` and rewired [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) into a live project-management provider with persisted selection and a scaffold compatibility seam.
+- Updated [ui/src/shared/layout/app-shell.tsx](../../ui/src/shared/layout/app-shell.tsx) and [ui/src/shared/layout/shell-sidebar.tsx](../../ui/src/shared/layout/shell-sidebar.tsx) so the shell handles loading/empty/error states and the sidebar exposes a real disclosure-style project switcher.
+- Updated [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx), [ui/src/test/resource-model-selectors.test.tsx](../../ui/src/test/resource-model-selectors.test.tsx), and [ui/src/test/render-route.tsx](../../ui/src/test/render-route.tsx) for fetch-backed provider tests plus static fallback route helpers.
+- Validation:
+  - `rtk npm install` passed after this worktree unexpectedly lost `node_modules`.
+  - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed.
+  - `rtk npm run typecheck` failed outside Phase 1 scope in `tests/lib/db-client-worker.test.ts`.
+  - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passed.
 
 #### Next Starter Context
 
-- Start by introducing the new provider/client seam before touching form code.
+- Phase 2 should consume `useProjectManagement()` for the selected live project and cut `Runs` over to `GET /v1/projects/:projectId/runs` without assuming scaffold-only detail fields.
+- The scaffold compatibility seam still intentionally falls back for non-live destinations; Phase 2 should make `Documentation` and `Workstreams` safe for non-scaffold projects instead of relying on the default scaffold project.
 
 ## Phase 2: Live Runs Integration And Project-Safe Empty States
 

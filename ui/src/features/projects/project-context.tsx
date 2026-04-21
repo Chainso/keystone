@@ -1,44 +1,312 @@
-import type { ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode
+} from "react";
 
 import { ResourceModelProvider, useCurrentResourceProject } from "../resource-model/context";
 import {
   createProjectOverrideDataset,
-  selectCurrentProjectSummary,
-  type CurrentProjectSummary
+  selectCurrentProjectSummary
 } from "../resource-model/selectors";
+import {
+  createBrowserProjectManagementApi,
+  type CurrentProjectRecord,
+  type ProjectManagementApi
+} from "./project-management-api";
 
-export type CurrentProject = CurrentProjectSummary;
+export type CurrentProject = CurrentProjectRecord;
 
-export const scaffoldProject = selectCurrentProjectSummary();
+export interface ProjectManagementState {
+  currentProject: CurrentProject | null;
+  currentProjectId: string | null;
+  projects: CurrentProject[];
+}
+
+export interface ProjectManagementActions {
+  reloadProjects: () => Promise<void>;
+  selectProject: (projectId: string) => void;
+}
+
+export interface ProjectManagementMeta {
+  errorMessage: string | null;
+  source: "api" | "provided";
+  status: "loading" | "ready" | "empty" | "error";
+  storageKey: string;
+}
+
+export interface ProjectManagementValue {
+  state: ProjectManagementState;
+  actions: ProjectManagementActions;
+  meta: ProjectManagementMeta;
+}
 
 interface CurrentProjectProviderProps {
+  api?: ProjectManagementApi;
   children: ReactNode;
   project?: CurrentProject;
 }
 
-export function CurrentProjectProvider({
-  children,
-  project = scaffoldProject
-}: CurrentProjectProviderProps) {
-  if (
+interface ProjectManagementSnapshot {
+  currentProjectId: string | null;
+  errorMessage: string | null;
+  projects: CurrentProject[];
+  status: ProjectManagementMeta["status"];
+}
+
+const browserProjectManagementApi = createBrowserProjectManagementApi();
+const ProjectManagementContext = createContext<ProjectManagementValue | null>(null);
+const scaffoldProject = selectCurrentProjectSummary();
+
+export const currentProjectStorageKey = "keystone.ui.current-project.v1";
+
+function getStorage() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage;
+}
+
+function readStoredProjectId() {
+  try {
+    return getStorage()?.getItem(currentProjectStorageKey) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredProjectId(projectId: string | null) {
+  const storage = getStorage();
+
+  if (!storage) {
+    return;
+  }
+
+  try {
+    if (projectId) {
+      storage.setItem(currentProjectStorageKey, projectId);
+      return;
+    }
+
+    storage.removeItem(currentProjectStorageKey);
+  } catch {
+    // Ignore storage failures and keep the in-memory selection usable.
+  }
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unable to load projects.";
+}
+
+function resolveCurrentProject(
+  projects: CurrentProject[],
+  requestedProjectId: string | null
+) {
+  if (projects.length === 0) {
+    return null;
+  }
+
+  return (
+    (requestedProjectId
+      ? projects.find((project) => project.projectId === requestedProjectId)
+      : null) ?? projects[0]!
+  );
+}
+
+function buildProvidedSnapshot(project: CurrentProject): ProjectManagementSnapshot {
+  const compatibilityProject =
     project.projectId === scaffoldProject.projectId &&
     project.projectKey === scaffoldProject.projectKey &&
     project.displayName === scaffoldProject.displayName &&
     project.description === scaffoldProject.description
-  ) {
-    return <ResourceModelProvider>{children}</ResourceModelProvider>;
-  }
+      ? scaffoldProject
+      : project;
+
+  return {
+    currentProjectId: compatibilityProject.projectId,
+    errorMessage: null,
+    projects: [compatibilityProject],
+    status: "ready"
+  };
+}
+
+function ProjectManagementCompatibilityProvider({
+  children,
+  currentProjectId,
+  providedProject
+}: {
+  children: ReactNode;
+  currentProjectId: string | null;
+  providedProject?: CurrentProject;
+}) {
+  const providerProps = providedProject
+    ? {
+        currentProjectId: providedProject.projectId,
+        dataset: createProjectOverrideDataset(providedProject)
+      }
+    : currentProjectId
+      ? { currentProjectId }
+      : {};
 
   return (
-    <ResourceModelProvider
-      dataset={createProjectOverrideDataset(project)}
-      initialProjectId={project.projectId}
-    >
-      {children}
-    </ResourceModelProvider>
+    <ResourceModelProvider {...providerProps}>{children}</ResourceModelProvider>
   );
 }
 
+export function CurrentProjectProvider({
+  api = browserProjectManagementApi,
+  children,
+  project
+}: CurrentProjectProviderProps) {
+  const [snapshot, setSnapshot] = useState<ProjectManagementSnapshot>(() => {
+    if (project) {
+      return buildProvidedSnapshot(project);
+    }
+
+    return {
+      currentProjectId: null,
+      errorMessage: null,
+      projects: [],
+      status: "loading"
+    };
+  });
+  const requestIdRef = useRef(0);
+  const selectedProjectIdRef = useRef<string | null>(project?.projectId ?? null);
+
+  async function loadProjects() {
+    if (project) {
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
+    setSnapshot((current) => ({
+      ...current,
+      errorMessage: null,
+      status: "loading"
+    }));
+
+    try {
+      const projects = await api.listProjects();
+
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      const preferredProjectId = selectedProjectIdRef.current ?? readStoredProjectId();
+      const currentProject = resolveCurrentProject(projects, preferredProjectId);
+      const nextProjectId = currentProject?.projectId ?? null;
+
+      selectedProjectIdRef.current = nextProjectId;
+      writeStoredProjectId(nextProjectId);
+      setSnapshot({
+        currentProjectId: nextProjectId,
+        errorMessage: null,
+        projects,
+        status: currentProject ? "ready" : "empty"
+      });
+    } catch (error) {
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      selectedProjectIdRef.current = null;
+      setSnapshot({
+        currentProjectId: null,
+        errorMessage: getErrorMessage(error),
+        projects: [],
+        status: "error"
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (project) {
+      selectedProjectIdRef.current = project.projectId;
+      setSnapshot(buildProvidedSnapshot(project));
+      return;
+    }
+
+    void loadProjects();
+  }, [api, project]);
+
+  const currentProject = resolveCurrentProject(snapshot.projects, snapshot.currentProjectId);
+  const value: ProjectManagementValue = {
+    state: {
+      currentProject,
+      currentProjectId: currentProject?.projectId ?? null,
+      projects: snapshot.projects
+    },
+    actions: {
+      async reloadProjects() {
+        await loadProjects();
+      },
+      selectProject(projectId) {
+        setSnapshot((current) => {
+          const nextProject = current.projects.find((candidate) => candidate.projectId === projectId);
+
+          if (!nextProject) {
+            return current;
+          }
+
+          selectedProjectIdRef.current = nextProject.projectId;
+          writeStoredProjectId(nextProject.projectId);
+
+          return {
+            ...current,
+            currentProjectId: nextProject.projectId,
+            errorMessage: null,
+            status: "ready"
+          };
+        });
+      }
+    },
+    meta: {
+      errorMessage: snapshot.errorMessage,
+      source: project ? "provided" : "api",
+      status: snapshot.status,
+      storageKey: currentProjectStorageKey
+    }
+  };
+
+  return (
+    <ProjectManagementContext.Provider value={value}>
+      <ProjectManagementCompatibilityProvider
+        currentProjectId={value.state.currentProjectId}
+        {...(project ? { providedProject: project } : {})}
+      >
+        {children}
+      </ProjectManagementCompatibilityProvider>
+    </ProjectManagementContext.Provider>
+  );
+}
+
+export function useProjectManagement() {
+  const value = useContext(ProjectManagementContext);
+
+  if (!value) {
+    throw new Error("useProjectManagement must be used within CurrentProjectProvider.");
+  }
+
+  return value;
+}
+
 export function useCurrentProject() {
-  return useCurrentResourceProject();
+  const projectManagement = useContext(ProjectManagementContext);
+  const resourceProject = useCurrentResourceProject();
+
+  if (projectManagement?.state.currentProject) {
+    return projectManagement.state.currentProject;
+  }
+
+  return resourceProject;
 }

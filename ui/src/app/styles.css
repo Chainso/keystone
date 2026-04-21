@@ -133,10 +133,48 @@ pre {
   line-height: 1.2;
 }
 
+.project-switcher-summary,
+.project-switcher-option-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
 .project-switcher-chevron {
   color: var(--text-muted);
   font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
   font-size: 0.9rem;
+}
+
+.project-switcher-panel {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-panel);
+}
+
+.project-switcher-option {
+  display: grid;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+}
+
+.project-switcher-option:hover,
+.project-switcher-option:focus-visible,
+.project-switcher-option.is-selected {
+  border-color: var(--border-muted);
+  background: var(--accent-fill);
+}
+
+.project-switcher-option-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .project-actions {
@@ -229,6 +267,7 @@ pre {
 }
 
 .page-stage,
+.shell-state,
 .project-config-body,
 .project-config-section,
 .component-card-stack,
@@ -266,6 +305,11 @@ pre {
 
 .page-section {
   display: grid;
+  gap: 0.75rem;
+}
+
+.shell-state-actions {
+  display: flex;
   gap: 0.75rem;
 }
 
