@@ -155,3 +155,10 @@ Future work should not reintroduce:
 - session/event-derived product state
 - event streaming as a required UI contract
 - metadata escape hatches on business entities
+
+## Local Dev Boundaries
+
+Two host-specific constraints still matter in this repo:
+
+- `wrangler dev` with container bindings must be run outside the Codex sandbox boundary on this host
+- `npm run build` still needs a normal host shell on this machine when Wrangler's dry-run deploy needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`

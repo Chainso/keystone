@@ -1,32 +1,53 @@
-import type { PlanningMessageScaffold } from "../run-scaffold";
+import type { ConversationLocator } from "../../resource-model/types";
 
-interface PlanningWorkspaceProps {
-  chatTitle: string;
+export interface PlanningWorkspaceFrameProps {
+  phaseTitle: string;
+  phaseSummary: string;
+  conversationLocator: ConversationLocator | null;
   documentTitle: string;
-  documentName: string;
+  documentPath: string;
   documentLines: string[];
-  composerText: string;
-  messages: PlanningMessageScaffold[];
 }
 
-function PlanningMessageList({ messages }: { messages: PlanningMessageScaffold[] }) {
+function PlanningConversationPanel({
+  phaseTitle,
+  phaseSummary,
+  conversationLocator
+}: Pick<PlanningWorkspaceFrameProps, "phaseTitle" | "phaseSummary" | "conversationLocator">) {
   return (
-    <div className="message-stack">
-      {messages.map((message) => (
-        <article key={`${message.speaker}-${message.body}`} className="message-card">
-          <p className="message-card-speaker">{message.speaker}</p>
-          <p className="message-card-body">{message.body}</p>
+    <section className="workspace-panel">
+      <header className="workspace-panel-header">
+        <div>
+          <h2 className="workspace-panel-title">{phaseTitle}</h2>
+        </div>
+        <p className="workspace-panel-summary">{phaseSummary}</p>
+      </header>
+
+      {conversationLocator ? (
+        <article className="message-card" aria-label="Conversation status">
+          <p className="message-card-speaker">Conversation status</p>
+          <p className="message-card-body">Conversation attached to this document.</p>
+          <p className="document-card-summary">
+            Live message history will resolve through the attached conversation when chat transport is added.
+          </p>
         </article>
-      ))}
-    </div>
+      ) : (
+        <article className="message-card" aria-label="Conversation status">
+          <p className="message-card-speaker">Conversation status</p>
+          <p className="message-card-body">
+            No conversation is attached to this document yet.
+          </p>
+        </article>
+      )}
+    </section>
   );
 }
 
 function PlanningDocumentPanel({
   documentTitle,
-  documentName,
+  documentPath,
   documentLines
-}: Pick<PlanningWorkspaceProps, "documentTitle" | "documentName" | "documentLines">) {
+}: Pick<PlanningWorkspaceFrameProps, "documentTitle" | "documentPath" | "documentLines">) {
   return (
     <section className="workspace-panel workspace-panel-document">
       <header className="workspace-panel-header">
@@ -36,7 +57,7 @@ function PlanningDocumentPanel({
       </header>
 
       <div className="document-card">
-        <p className="document-name">{documentName}</p>
+        <p className="document-name">{documentPath}</p>
         <div className="document-rule" aria-hidden="true" />
         <div className="document-copy">
           {documentLines.map((line) => (
@@ -50,36 +71,25 @@ function PlanningDocumentPanel({
   );
 }
 
-export function PlanningWorkspace({
-  chatTitle,
+export function PlanningWorkspaceFrame({
+  phaseTitle,
+  phaseSummary,
+  conversationLocator,
   documentTitle,
-  documentName,
+  documentPath,
   documentLines,
-  composerText,
-  messages
-}: PlanningWorkspaceProps) {
+}: PlanningWorkspaceFrameProps) {
   return (
     <div className="workspace-split">
-      <section className="workspace-panel">
-        <header className="workspace-panel-header">
-          <div>
-            <h2 className="workspace-panel-title">{chatTitle}</h2>
-          </div>
-        </header>
-
-        <PlanningMessageList messages={messages} />
-
-        <textarea
-          aria-label="Message composer"
-          className="composer-field"
-          readOnly
-          value={composerText}
-        />
-      </section>
+      <PlanningConversationPanel
+        phaseTitle={phaseTitle}
+        phaseSummary={phaseSummary}
+        conversationLocator={conversationLocator}
+      />
 
       <PlanningDocumentPanel
         documentTitle={documentTitle}
-        documentName={documentName}
+        documentPath={documentPath}
         documentLines={documentLines}
       />
     </div>

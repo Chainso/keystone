@@ -1,4 +1,7 @@
-import type { ProjectComponentScaffold } from "../project-configuration-scaffold";
+import {
+  getProjectComponentKindLabel,
+  type ProjectComponentScaffold
+} from "../project-configuration-scaffold";
 import {
   PlaceholderSelectField,
   PlaceholderTextField
@@ -48,8 +51,8 @@ export function ProjectComponentCard({
       <div className="project-form-grid">
         <PlaceholderSelectField
           label="Type"
-          options={[component.kindLabel]}
-          value={component.kindLabel}
+          options={[getProjectComponentKindLabel(component.kind)]}
+          value={getProjectComponentKindLabel(component.kind)}
         />
         <PlaceholderTextField label="Name" value={component.displayName} />
         <PlaceholderTextField label="Key" value={component.componentKey} />

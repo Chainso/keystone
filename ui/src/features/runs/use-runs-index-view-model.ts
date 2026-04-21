@@ -1,13 +1,16 @@
-import { getRunPhaseLabel, listRunScaffolds } from "./run-scaffold";
+import { useResourceModel } from "../resource-model/context";
+import { listRunSummaries } from "../resource-model/selectors";
+import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 
 export function useRunsIndexViewModel() {
-  const runs = listRunScaffolds().map((run) => ({
+  const { state } = useResourceModel();
+  const runs = listRunSummaries(state.currentProjectId, state.dataset).map((run) => ({
     runId: run.runId,
     displayId: run.displayId,
     summary: run.summary,
     status: run.status,
     updatedLabel: run.updatedLabel,
-    currentPhaseLabel: getRunPhaseLabel(run.currentPhase),
+    stageLabel: getRunPhaseDefinition(run.defaultPhaseId).label,
     detailPath: run.detailPath
   }));
 

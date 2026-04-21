@@ -1,25 +1,18 @@
+import type {
+  ResourceProjectConfigurationComponent,
+  ResourceProjectComponentKind,
+  ResourceProjectComponentSourceMode
+} from "../resource-model/types";
+
 export type ProjectConfigurationMode = "new" | "settings";
 export type ProjectConfigurationTabId = "overview" | "components" | "rules" | "environment";
-export type ProjectComponentKindId = "git_repository";
-export type ProjectComponentSourceMode = "localPath" | "gitUrl";
+export type ProjectComponentKindId = ResourceProjectComponentKind;
+export type ProjectComponentSourceMode = ResourceProjectComponentSourceMode;
+export type ProjectComponentScaffold = ResourceProjectConfigurationComponent;
 
 export interface ProjectConfigurationTabDefinition {
   tabId: ProjectConfigurationTabId;
   label: string;
-}
-
-export interface ProjectComponentScaffold {
-  componentId: string;
-  heading: string;
-  displayName: string;
-  componentKey: string;
-  kindLabel: string;
-  sourceMode: ProjectComponentSourceMode;
-  localPath: string;
-  gitUrl: string;
-  defaultRef: string;
-  reviewInstructions: string[];
-  testInstructions: string[];
 }
 
 export interface ProjectComponentTypeOption {
@@ -64,28 +57,29 @@ export function buildProjectConfigurationPath(
   return mode === "new" ? `/projects/new/${tabId}` : `/settings/${tabId}`;
 }
 
-export function getProjectComponentSourceModeLabel(sourceMode: ProjectComponentSourceMode) {
-  return sourceMode === "localPath" ? "Local path" : "Git URL";
+export function getProjectComponentKindLabel(kind: ProjectComponentKindId) {
+  return kind === "git_repository" ? "Git repository" : kind;
 }
 
-export function buildProjectComponentScaffold(
+export function buildProjectConfigurationComponentDraft(
   mode: ProjectConfigurationMode,
-  index: number
-) {
+  index: number,
+  kindId: ProjectComponentKindId
+): ProjectComponentScaffold {
   if (mode === "settings" && index === 0) {
     return {
       componentId: "component-worker-app",
       heading: "Component 1",
       displayName: "API",
       componentKey: "api",
-      kindLabel: "Git repository",
+      kind: kindId,
       sourceMode: "localPath",
       localPath: "./services/api",
       gitUrl: "",
       defaultRef: "main",
       reviewInstructions: ["Focus on API changes"],
       testInstructions: ["Run targeted API tests"]
-    } satisfies ProjectComponentScaffold;
+    };
   }
 
   const componentNumber = index + 1;
@@ -93,24 +87,24 @@ export function buildProjectComponentScaffold(
   return {
     componentId: `${mode}-component-${componentNumber}`,
     heading: `Component ${componentNumber}`,
-    displayName: mode === "new" ? `Repository ${componentNumber}` : `Background worker ${componentNumber}`,
+    displayName: mode === "new" ? `Repository ${componentNumber}` : `Service ${componentNumber}`,
     componentKey:
-      mode === "new" ? `repository-${componentNumber}` : `background-worker-${componentNumber}`,
-    kindLabel: "Git repository",
+      mode === "new" ? `repository-${componentNumber}` : `service-${componentNumber}`,
+    kind: kindId,
     sourceMode: "gitUrl",
     localPath: "",
     gitUrl:
       mode === "new"
         ? `https://github.com/keystone/repository-${componentNumber}.git`
-        : `https://github.com/keystone/background-worker-${componentNumber}.git`,
+        : `https://github.com/keystone/service-${componentNumber}.git`,
     defaultRef: "main",
     reviewInstructions:
       mode === "new"
         ? ["Focus on repository boundaries"]
-        : ["Focus on background worker changes"],
+        : ["Focus on service changes"],
     testInstructions:
       mode === "new"
-        ? ["Run the component test plan"]
-        : ["Run the worker test plan"]
-  } satisfies ProjectComponentScaffold;
+        ? ["Run targeted component tests"]
+        : ["Run targeted component tests"]
+  };
 }

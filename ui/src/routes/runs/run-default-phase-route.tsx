@@ -1,11 +1,17 @@
 import { Navigate } from "react-router-dom";
 
-import { getRunScaffold } from "../../features/runs/run-scaffold";
+import { useResourceModel } from "../../features/resource-model/context";
+import { getRunSummary } from "../../features/resource-model/selectors";
 import { useRequiredRunParams } from "./use-required-run-params";
 
 export function RunDefaultPhaseRoute() {
   const { runId } = useRequiredRunParams();
-  const run = getRunScaffold(runId);
+  const { state } = useResourceModel();
+  const run = getRunSummary(runId, state.dataset);
 
-  return <Navigate to={run.currentPhase} replace />;
+  if (!run) {
+    throw new Error(`Run "${runId}" is missing from the scaffold dataset.`);
+  }
+
+  return <Navigate to={run.defaultPhaseId} replace />;
 }

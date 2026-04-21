@@ -65,8 +65,8 @@ function expectWorkstreamLink(taskDisplayId: string, href: string) {
   expect(screen.getByRole("link", { name: taskDisplayId })).toHaveAttribute("href", href);
 }
 
-describe("project destinations", () => {
-  it("renders the documentation tree shape and switches selection without the removed scaffold chrome", async () => {
+describe("Destination scaffolds", () => {
+  it("renders derived documentation groups and switches selection structurally", async () => {
     renderRoute("/documentation");
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
@@ -75,42 +75,66 @@ describe("project destinations", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Doc tree" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Document viewer" })).toBeInTheDocument();
-    expect(screen.queryByText("Documentation scaffold")).not.toBeInTheDocument();
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
     expect(screen.queryByText("Deferred work")).not.toBeInTheDocument();
 
     const documentationTree = screen.getByLabelText("Documentation tree");
-    expect(within(documentationTree).getByText("▾ Product Specifications")).toBeInTheDocument();
-    expect(within(documentationTree).getByText("▾ Technical Architecture")).toBeInTheDocument();
-    expect(within(documentationTree).getByText("▾ Miscellaneous Notes")).toBeInTheDocument();
-    expect(within(documentationTree).getAllByText("└─")).toHaveLength(3);
-    expect(within(documentationTree).getAllByText("├─")).toHaveLength(1);
+    expect(within(documentationTree).getByRole("heading", { name: "Product Specifications" })).toBeInTheDocument();
+    expect(within(documentationTree).getByRole("heading", { name: "Technical Architecture" })).toBeInTheDocument();
+    expect(within(documentationTree).getByRole("heading", { name: "Miscellaneous Notes" })).toBeInTheDocument();
     expect(within(documentationTree).getAllByRole("button")).toHaveLength(4);
-    expect(within(documentationTree).getAllByRole("button", { name: "Current" })).toHaveLength(2);
+    expect(
+      within(documentationTree).getByRole("button", { name: "Current docs/product/current.md" })
+    ).toBeInTheDocument();
+    expect(
+      within(documentationTree).getByRole("button", {
+        name: "Current docs/architecture/current.md"
+      })
+    ).toBeInTheDocument();
 
-    const productGroup = screen.getByText("▾ Product Specifications").closest("section");
-    const notesGroup = screen.getByText("▾ Miscellaneous Notes").closest("section");
-
-    expect(productGroup).not.toBeNull();
-    expect(notesGroup).not.toBeNull();
-
-    const currentSpecButton = within(productGroup as HTMLElement).getByRole("button", {
-      name: "Current"
+    const currentSpecButton = within(documentationTree).getByRole("button", {
+      name: "Current docs/product/current.md"
     });
-    const openQuestionsButton = within(notesGroup as HTMLElement).getByRole("button", {
-      name: "Open questions"
+    const currentArchitectureButton = within(documentationTree).getByRole("button", {
+      name: "Current docs/architecture/current.md"
     });
+    const openQuestionsButton = within(documentationTree).getByRole("button", {
+      name: "Open questions docs/notes/open-questions.md"
+    });
+    const documentViewer = screen.getByRole("heading", { name: "Document viewer" }).closest("section");
+
+    expect(documentViewer).not.toBeNull();
 
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "true");
+    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
+    expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
+    expect(within(documentViewer as HTMLElement).getByText("docs/product/current.md")).toBeInTheDocument();
+
+    fireEvent.click(currentArchitectureButton);
+
+    expect(
+      await screen.findByRole("heading", { name: "current living architecture + decisions" })
+    ).toBeInTheDocument();
+    expect(
+      within(documentViewer as HTMLElement).getByText("docs/architecture/current.md")
+    ).toBeInTheDocument();
+    expect(
+      within(documentViewer as HTMLElement).getByText(
+        "The product runs as a Cloudflare-served SPA with route-owned destinations and feature-owned rendering surfaces."
+      )
+    ).toBeInTheDocument();
+    expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
+    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "true");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
 
     fireEvent.click(openQuestionsButton);
 
     expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
     expect(
-      screen.getByText(/How should current project documents evolve once editing and persistence are added\?/i)
+      within(documentViewer as HTMLElement).getByText("docs/notes/open-questions.md")
     ).toBeInTheDocument();
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
+    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "true");
     expect(
       within(documentationTree)
@@ -126,39 +150,41 @@ describe("project destinations", () => {
       await screen.findByRole("heading", { name: "Active and queued project work" })
     ).toBeInTheDocument();
     expect(screen.getByText("Filters:")).toBeInTheDocument();
-    expect(screen.queryByText("Route handoff")).not.toBeInTheDocument();
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
     expectWorkstreamRows([
-      ["TASK-032", "Build shell", "Run-104", "Running", "2m ago"],
-      ["TASK-033", "DAG wiring", "Run-104", "Queued", "4m ago"],
-      ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"],
-      ["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]
+      ["TASK-032", "Run shell navigation", "Run-104", "Running", "2m ago"],
+      ["TASK-033", "Task detail routing", "Run-104", "Queued", "4m ago"],
+      ["TASK-021", "Documentation curation", "Run-103", "Running", "9m ago"],
+      ["TASK-019", "Blocked task visibility", "Run-101", "Blocked", "1h ago"]
     ]);
     expectWorkstreamLink("TASK-032", "/runs/run-104/execution/tasks/task-032");
     expectWorkstreamLink("TASK-033", "/runs/run-104/execution/tasks/task-033");
     expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
     expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-4 of 4 tasks · Page 1 of 1"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Running" }));
     expectWorkstreamRows([
-      ["TASK-032", "Build shell", "Run-104", "Running", "2m ago"],
-      ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"]
+      ["TASK-032", "Run shell navigation", "Run-104", "Running", "2m ago"],
+      ["TASK-021", "Documentation curation", "Run-103", "Running", "9m ago"]
     ]);
     expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
 
     fireEvent.click(screen.getByRole("button", { name: "Queued" }));
-    expectWorkstreamRows([["TASK-033", "DAG wiring", "Run-104", "Queued", "4m ago"]]);
+    expectWorkstreamRows([["TASK-033", "Task detail routing", "Run-104", "Queued", "4m ago"]]);
 
     fireEvent.click(screen.getByRole("button", { name: "Blocked" }));
-    expectWorkstreamRows([["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]]);
+    expectWorkstreamRows([["TASK-019", "Blocked task visibility", "Run-101", "Blocked", "1h ago"]]);
     expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expectWorkstreamRows([
-      ["TASK-032", "Build shell", "Run-104", "Running", "2m ago"],
-      ["TASK-033", "DAG wiring", "Run-104", "Queued", "4m ago"],
-      ["TASK-021", "Docs refresh", "Run-103", "Running", "9m ago"],
-      ["TASK-019", "Review fix", "Run-101", "Blocked", "1h ago"]
+      ["TASK-032", "Run shell navigation", "Run-104", "Running", "2m ago"],
+      ["TASK-033", "Task detail routing", "Run-104", "Queued", "4m ago"],
+      ["TASK-021", "Documentation curation", "Run-103", "Running", "9m ago"],
+      ["TASK-019", "Blocked task visibility", "Run-101", "Blocked", "1h ago"]
     ]);
   });
 
@@ -173,7 +199,7 @@ describe("project destinations", () => {
 
     expect(blockedRow).not.toBeNull();
 
-    fireEvent.click(within(blockedRow as HTMLElement).getByText("Review fix"));
+    fireEvent.click(within(blockedRow as HTMLElement).getByText("Blocked task visibility"));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-101/execution/tasks/task-019");
@@ -184,14 +210,37 @@ describe("project destinations", () => {
     renderRoute("/runs/run-103/execution/tasks/task-021");
 
     expect(await screen.findByRole("heading", { name: "Run-103 / TASK-021" })).toBeInTheDocument();
-    expect(screen.getByText("Docs refresh")).toBeInTheDocument();
+    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+      "Conversation attached to this task."
+    );
+    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
 
     cleanup();
 
     renderRoute("/runs/run-101/execution/tasks/task-019");
 
     expect(await screen.findByRole("heading", { name: "Run-101 / TASK-019" })).toBeInTheDocument();
-    expect(screen.getByText("Review fix")).toBeInTheDocument();
+    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+      "Conversation attached to this task."
+    );
+    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
+  });
+
+  it("renders recorded artifact cards for execution tasks that include review output", async () => {
+    renderRoute("/runs/run-104/execution/tasks/task-033");
+
+    expect(await screen.findByRole("heading", { name: "Run-104 / TASK-033" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+      "Conversation attached to this task."
+    );
+    const artifactCard = screen
+      .getByText("ui/src/features/execution/components/task-detail-workspace.tsx")
+      .closest("details");
+
+    expect(artifactCard).not.toBeNull();
+    expect(artifactCard).toHaveTextContent("Task detail split layout.");
+    expect(artifactCard).toHaveTextContent("+ render task updates beside the review sidebar");
+    expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
   });
 
   it("redirects /projects/new to overview and keeps the project-configuration tab routes concrete", async () => {
@@ -260,7 +309,9 @@ describe("project destinations", () => {
         .closest(".project-config-section-header")
         ?.querySelector("button")
     ).toBeNull();
-    expect(screen.getByText("No components added yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Add repository components before saving the project.")
+    ).toBeInTheDocument();
 
     fireEvent.click(addComponentButton);
     expect(addComponentButton).toHaveAttribute("aria-expanded", "true");
@@ -292,7 +343,7 @@ describe("project destinations", () => {
       "Focus on repository boundaries"
     );
     expect(newComponentCard.queries.getByRole("textbox", { name: "Test" })).toHaveValue(
-      "Run the component test plan"
+      "Run targeted component tests"
     );
     expect(newComponentCard.queries.getByRole("button", { name: "Remove" })).toBeDisabled();
   });
@@ -358,16 +409,16 @@ describe("project destinations", () => {
 
     const newComponentCard = getComponentCard("Component 2");
     expect(newComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue(
-      "Background worker 2"
+      "Service 2"
     );
     expect(newComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue(
-      "background-worker-2"
+      "service-2"
     );
     expect(newComponentCard.queries.getByRole("radio", { name: "Local path" })).not.toBeChecked();
     expect(newComponentCard.queries.getByRole("radio", { name: "Git URL" })).toBeChecked();
     expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue("");
     expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue(
-      "https://github.com/keystone/background-worker-2.git"
+      "https://github.com/keystone/service-2.git"
     );
   });
 
@@ -388,5 +439,37 @@ describe("project destinations", () => {
     );
     expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("reflects a non-default current project across the settings shell and configuration tabs", async () => {
+    const customProject = {
+      projectId: "project-custom",
+      projectKey: "custom-project",
+      displayName: "Custom Project",
+      description: "Custom project settings scaffold."
+    };
+
+    renderRoute("/settings/overview", { project: customProject });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Custom Project" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Custom Project");
+    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("custom-project");
+    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
+      "Custom project settings scaffold."
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Components" }));
+
+    const currentComponentCard = await screen.findByRole("heading", { name: "Component 1" });
+    const componentCard = currentComponentCard.closest("article");
+
+    expect(componentCard).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Project settings: Custom Project" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Description" })).not.toBeInTheDocument();
+    expect(within(componentCard as HTMLElement).getByRole("textbox", { name: "Name" })).toHaveValue(
+      "API"
+    );
   });
 });

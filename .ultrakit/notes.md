@@ -15,7 +15,7 @@ These notes help future agents work effectively without rediscovering project-sp
 
 - Local Worker dev on this host must run outside the Codex sandbox boundary; otherwise `wrangler dev` fails before serving traffic with `uv_interface_addresses returned Unknown system error 1`.
 - Local Wrangler startup on this host still has to run outside the Codex sandbox boundary, but it no longer needs a host `CLOUDFLARE_API_TOKEN` just for Think model access because the Worker no longer binds Cloudflare `AI` for local validation.
-- `npm run build` can finish `vite build` inside the sandbox, but the Wrangler dry-run deploy still has to run from a host shell on this machine because it writes under `~/.config/.wrangler` and `~/.docker/buildx/activity`.
+- `npm run build` still reproduces the same sandbox limitation on this host: `vite build` completes, then Wrangler/Docker fail on writes under `~/.config/.wrangler` and `~/.docker/buildx/activity`. Revalidated in the 2026-04-20 follow-up pass; use a host shell when you need the full build proof.
 - The local chat-completions backend is plain HTTP at `http://localhost:10531`, streams SSE chunks by default, and is the shared backend for M1 compile plus the live Think model path.
 - The fixture happy path depends on `npm test` inside the sandboxed task worktree; task workflows assume the target repo can run that command.
 - The operator-facing demo shortcut lives in `.keystone/demo-last-run.json`: `demo:run` only updates it after a successful archived run, and `demo:validate` ignores it whenever `--run-id` or `KEYSTONE_RUN_ID` is supplied.
@@ -26,5 +26,6 @@ These notes help future agents work effectively without rediscovering project-sp
 - Direct `wrangler workflows trigger run-workflow --local` must keep `RunCoordinatorDO` initialization inside the workflow path itself because the HTTP create-run path is not present there to seed the coordinator first.
 - If port `8787` is already occupied, `wrangler dev` may bind another local port. Use Wrangler's `Ready on ...` URL via `KEYSTONE_BASE_URL` or the scripts' `--base-url=` flag instead of assuming `127.0.0.1:8787`.
 - The current UI scaffold contract is minimal-board-first: keep `ui/src/routes/` as thin route/layout containers, keep destination rendering under `ui/src/features/**/components/`, and do not reintroduce hero/aside/right-rail narration unless `design/workspace-spec.md` changes.
+- The only checked-in UI scaffold source of truth is `ui/src/features/resource-model/`; if a future UI pass needs placeholder data, extend selectors or the normalized dataset there instead of recreating destination-local scaffold files.
 - `ui/src/routes/projects/project-configuration-layout.tsx` owns only the `new` vs `settings` shell split; `ui/src/features/projects/components/project-configuration-tabs.tsx` owns tab-specific board content, so future project work should extend those feature components instead of pushing section/card rendering back into the route file.
 - Current planning preference: do not introduce first-class `Thread` or `Lease` primitives unless a concrete Keystone gap appears that Think or the Cloudflare runtime cannot already cover.

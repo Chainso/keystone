@@ -23,6 +23,18 @@ For the standard local workflow, start the checked-in zellij helper from a norma
 npm run dev:zellij
 ```
 
+That opens vertically split panes for `npx localflare` and `npm run dev:ui`.
+By default it also opens the local UI in the system browser once `/v1/health` responds at `http://127.0.0.1:8787`.
+
+If you need a different browser target or want to suppress the browser launch:
+
+```bash
+export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
+export KEYSTONE_BROWSER_URL="${KEYSTONE_BASE_URL}"
+# optional
+export KEYSTONE_OPEN_BROWSER=0
+```
+
 If you need the manual path instead, use:
 
 ```bash
@@ -34,6 +46,8 @@ If Wrangler binds a non-default port, export it before running helper scripts:
 ```bash
 export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 ```
+
+If you are validating the full repo after UI changes, expect `npm run build` to hit the same sandbox limitation on this host: `vite build` completes, then Wrangler's dry-run deploy still needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`. Rerun from a normal host shell when you need the full `build` proof.
 
 ## Sanity Checks
 

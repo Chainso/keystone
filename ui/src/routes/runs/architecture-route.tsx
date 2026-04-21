@@ -1,10 +1,10 @@
 import { useRunPlanningPhaseViewModel } from "../../features/runs/use-run-view-model";
-import { PlanningWorkspace } from "../../features/runs/components/planning-workspace";
+import { ArchitectureWorkspace } from "../../features/runs/components/architecture-workspace";
 import { useRequiredRunParams } from "./use-required-run-params";
 
 export function ArchitectureRoute() {
   const { runId } = useRequiredRunParams();
   const model = useRunPlanningPhaseViewModel(runId, "architecture");
 
-  return <PlanningWorkspace {...model} />;
+  return <ArchitectureWorkspace {...model} />;
 }

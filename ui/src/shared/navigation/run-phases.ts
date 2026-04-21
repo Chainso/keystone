@@ -1,36 +1,15 @@
-export type RunPhaseId = "specification" | "architecture" | "execution-plan" | "execution";
+import {
+  getRunPhaseDefinition as getResourceRunPhaseDefinition,
+  runPhaseDefinitions,
+  type RunPhaseDefinition,
+  type RunPhaseId
+} from "../../features/resource-model/run-phase";
 
-export interface RunPhaseDefinition {
-  id: RunPhaseId;
-  label: string;
-  summary: string;
-}
-
-export const runPhaseDefinitions: RunPhaseDefinition[] = [
-  {
-    id: "specification",
-    label: "Specification",
-    summary: "Agent chat plus the living product spec."
-  },
-  {
-    id: "architecture",
-    label: "Architecture",
-    summary: "Agent chat plus the current technical shape."
-  },
-  {
-    id: "execution-plan",
-    label: "Execution Plan",
-    summary: "Agent chat plus the staged delivery plan."
-  },
-  {
-    id: "execution",
-    label: "Execution",
-    summary: "Workflow DAG first, then task detail."
-  }
-];
+export type { RunPhaseDefinition, RunPhaseId };
+export { runPhaseDefinitions };
 
 export function getRunPhaseDefinition(phaseId: RunPhaseId) {
-  return runPhaseDefinitions.find((phase) => phase.id === phaseId) ?? runPhaseDefinitions[0]!;
+  return getResourceRunPhaseDefinition(phaseId);
 }
 
 export function buildRunPath(runId: string) {

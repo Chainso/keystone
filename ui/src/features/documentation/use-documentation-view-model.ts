@@ -1,14 +1,15 @@
 import { useState } from "react";
 
 import {
-  defaultDocumentId,
-  documentationGroups,
-  findDocumentationDocument
-} from "./documentation-scaffold";
+  getProjectDocumentationSelection
+} from "../resource-model/selectors";
+import { useResourceModel } from "../resource-model/context";
 
 export interface DocumentationTreeDocument {
   documentId: string;
   label: string;
+  title: string;
+  path: string;
   isSelected: boolean;
 }
 
@@ -20,6 +21,8 @@ export interface DocumentationTreeGroup {
 
 export interface DocumentationSelectedDocument {
   documentId: string;
+  title: string;
+  path: string;
   viewerTitle: string;
   contentLines: string[];
 }
@@ -32,30 +35,37 @@ export interface DocumentationViewModel {
 }
 
 export function useDocumentationViewModel(): DocumentationViewModel {
-  const [selectedDocumentId, setSelectedDocumentId] = useState(defaultDocumentId);
+  const { state } = useResourceModel();
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
+  const selection = getProjectDocumentationSelection(
+    state.currentProjectId,
+    selectedDocumentId,
+    state.dataset
+  );
 
-  const selectedDocument =
-    findDocumentationDocument(selectedDocumentId) ?? findDocumentationDocument(defaultDocumentId);
-
-  if (!selectedDocument) {
-    throw new Error("Documentation scaffold is missing its default document.");
+  if (!selection) {
+    throw new Error(`Project "${state.currentProjectId}" is missing documentation scaffold data.`);
   }
 
   return {
     title: "Project documentation",
-    groups: documentationGroups.map((group) => ({
+    groups: selection.groups.map((group) => ({
       groupId: group.groupId,
       label: group.label,
       documents: group.documents.map((document) => ({
         documentId: document.documentId,
         label: document.label,
-        isSelected: document.documentId === selectedDocument.documentId
+        title: document.title,
+        path: document.path,
+        isSelected: document.documentId === selection.selectedDocument.documentId
       }))
     })),
     selectedDocument: {
-      documentId: selectedDocument.documentId,
-      viewerTitle: selectedDocument.viewerTitle,
-      contentLines: selectedDocument.contentLines
+      documentId: selection.selectedDocument.documentId,
+      title: selection.selectedDocument.title,
+      path: selection.selectedDocument.path,
+      viewerTitle: selection.selectedDocument.viewerTitle,
+      contentLines: selection.selectedDocument.contentLines
     },
     selectDocument(documentId: string) {
       setSelectedDocumentId(documentId);
