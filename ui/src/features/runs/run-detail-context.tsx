@@ -259,11 +259,52 @@ export function RunDetailProvider({
   }));
   const requestIdRef = useRef(0);
   const taskArtifactRequestIdsRef = useRef(new Map<string, number>());
+  const createPlanningDocumentRequestsRef = useRef(
+    new Map<RunPlanningPhaseId, Promise<DocumentResource>>()
+  );
+  const savePlanningDocumentRequestsRef = useRef(
+    new Map<RunPlanningPhaseId, Promise<DocumentRevisionResource>>()
+  );
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  function setPlanningDocumentState(
+    phaseId: RunPlanningPhaseId,
+    planningDocumentState: RunPlanningDocumentState
+  ) {
+    setValue((current) => {
+      if (current.meta.status !== "ready") {
+        return current;
+      }
+
+      return {
+        ...current,
+        state: {
+          ...current.state,
+          planningDocuments: {
+            ...current.state.planningDocuments,
+            [phaseId]: planningDocumentState
+          }
+        }
+      };
+    });
+  }
+
+  async function reloadPlanningDocumentState(phaseId: RunPlanningPhaseId) {
+    const documents = await api.listRunDocuments(runId);
+    const planningDocumentState = await loadPlanningDocumentState(api, runId, phaseId, documents);
+
+    setPlanningDocumentState(phaseId, planningDocumentState);
+
+    return planningDocumentState;
+  }
 
   async function loadRunDetail() {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     taskArtifactRequestIdsRef.current.clear();
+    createPlanningDocumentRequestsRef.current.clear();
+    savePlanningDocumentRequestsRef.current.clear();
 
     setValue((current) => ({
       ...current,
@@ -321,41 +362,59 @@ export function RunDetailProvider({
   }
 
   async function createPlanningDocument(phaseId: RunPlanningPhaseId) {
-    const existingDocument = value.state.planningDocuments[phaseId].document;
+    const existingRequest = createPlanningDocumentRequestsRef.current.get(phaseId);
+
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const existingDocument = valueRef.current.state.planningDocuments[phaseId].document;
 
     if (existingDocument) {
       return existingDocument;
     }
 
-    const createdDocument = await api.createRunDocument(runId, {
-      kind: planningPhaseDocumentKind[phaseId],
-      path: planningPhaseDocumentPath[phaseId]
-    });
+    const createRequest = (async () => {
+      try {
+        const createdDocument = await api.createRunDocument(runId, {
+          kind: planningPhaseDocumentKind[phaseId],
+          path: planningPhaseDocumentPath[phaseId]
+        });
 
-    setValue((current) => {
-      if (current.meta.status !== "ready") {
-        return current;
-      }
+        setPlanningDocumentState(phaseId, {
+          document: createdDocument,
+          phaseId,
+          reason: "missing_revision",
+          revision: null,
+          status: "empty"
+        });
 
-      return {
-        ...current,
-        state: {
-          ...current.state,
-          planningDocuments: {
-            ...current.state.planningDocuments,
-            [phaseId]: {
-              document: createdDocument,
-              phaseId,
-              reason: "missing_revision",
-              revision: null,
-              status: "empty"
-            }
+        return createdDocument;
+      } catch (error) {
+        if (
+          error instanceof RunManagementApiError &&
+          error.code === "document_path_conflict"
+        ) {
+          const planningDocumentState = await reloadPlanningDocumentState(phaseId);
+
+          if (planningDocumentState.document) {
+            return planningDocumentState.document;
           }
         }
-      };
-    });
 
-    return createdDocument;
+        throw error;
+      }
+    })();
+
+    createPlanningDocumentRequestsRef.current.set(phaseId, createRequest);
+
+    try {
+      return await createRequest;
+    } finally {
+      if (createPlanningDocumentRequestsRef.current.get(phaseId) === createRequest) {
+        createPlanningDocumentRequestsRef.current.delete(phaseId);
+      }
+    }
   }
 
   async function savePlanningDocument(
@@ -365,50 +424,47 @@ export function RunDetailProvider({
       title: string;
     }
   ) {
-    const planningDocument = value.state.planningDocuments[phaseId].document;
+    const existingRequest = savePlanningDocumentRequestsRef.current.get(phaseId);
 
-    if (!planningDocument) {
-      throw new Error("Create the document before saving a revision.");
+    if (existingRequest) {
+      return existingRequest;
     }
 
-    const revision = await api.createRunDocumentRevision(runId, planningDocument.documentId, {
-      body: input.body,
-      title: input.title
-    });
+    const saveRequest = (async () => {
+      const planningDocument = valueRef.current.state.planningDocuments[phaseId].document;
 
-    setValue((current) => {
-      if (current.meta.status !== "ready") {
-        return current;
+      if (!planningDocument) {
+        throw new Error("Create the document before saving a revision.");
       }
 
-      const currentPlanningDocument = current.state.planningDocuments[phaseId].document;
+      const revision = await api.createRunDocumentRevision(runId, planningDocument.documentId, {
+        body: input.body,
+        title: input.title
+      });
 
-      if (!currentPlanningDocument) {
-        return current;
+      setPlanningDocumentState(phaseId, {
+        content: input.body,
+        document: {
+          ...planningDocument,
+          currentRevisionId: revision.documentRevisionId
+        },
+        phaseId,
+        revision,
+        status: "ready"
+      });
+
+      return revision;
+    })();
+
+    savePlanningDocumentRequestsRef.current.set(phaseId, saveRequest);
+
+    try {
+      return await saveRequest;
+    } finally {
+      if (savePlanningDocumentRequestsRef.current.get(phaseId) === saveRequest) {
+        savePlanningDocumentRequestsRef.current.delete(phaseId);
       }
-
-      return {
-        ...current,
-        state: {
-          ...current.state,
-          planningDocuments: {
-            ...current.state.planningDocuments,
-            [phaseId]: {
-              content: input.body,
-              document: {
-                ...currentPlanningDocument,
-                currentRevisionId: revision.documentRevisionId
-              },
-              phaseId,
-              revision,
-              status: "ready"
-            }
-          }
-        }
-      };
-    });
-
-    return revision;
+    }
   }
 
   async function loadTaskArtifacts(taskId: string, options: { force?: boolean } = {}) {

@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import type { RunManagementApi, StaticRunDetailRecord } from "../features/runs/run-management-api";
-import { createStaticRunManagementApi } from "../features/runs/run-management-api";
+import {
+  createStaticRunManagementApi,
+  RunManagementApiError
+} from "../features/runs/run-management-api";
 import { renderRoute } from "./render-route";
 
 afterEach(() => {
@@ -471,6 +474,18 @@ function getFetchRequests(fetchMock: ReturnType<typeof vi.fn>) {
   }));
 }
 
+function countFetchRequests(
+  fetchMock: ReturnType<typeof vi.fn>,
+  input: {
+    method: string;
+    url: string;
+  }
+) {
+  return getFetchRequests(fetchMock).filter(
+    (request) => request.method === input.method && request.url === input.url
+  ).length;
+}
+
 function createBrowserRunFetch(
   overrides: Record<string, (() => Promise<Response> | Response) | undefined> = {}
 ) {
@@ -880,6 +895,39 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
   });
 
+  it.each([
+    {
+      documentPath: "architecture",
+      expectedLine: "- Keep route files thin.",
+      path: "/runs/run-104/architecture",
+      phaseHeading: "Architecture conversation",
+      revisionTitle: "Run Architecture"
+    },
+    {
+      documentPath: "execution-plan",
+      expectedLine: "- Cut over the live provider seam.",
+      path: "/runs/run-104/execution-plan",
+      phaseHeading: "Execution Plan conversation",
+      revisionTitle: "Execution Plan"
+    }
+  ])(
+    "loads the current planning revision for $path through the live route seam",
+    async ({ documentPath, expectedLine, path, phaseHeading, revisionTitle }) => {
+      createBrowserRunFetch();
+
+      renderRoute(path);
+
+      expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: phaseHeading })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: revisionTitle })).toBeInTheDocument();
+      expect(screen.getByText(documentPath)).toBeInTheDocument();
+      expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+        "Conversation attached to this document."
+      );
+      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+    }
+  );
+
   it("loads the current specification revision and saves a new revision without route churn", async () => {
     const { fetchMock } = createBrowserRunFetch();
     const { router } = renderRoute("/runs/run-104/specification");
@@ -924,6 +972,54 @@ describe("Run routes", () => {
         })
       ])
     );
+  });
+
+  it("deduplicates rapid create and save activations for a planning document", async () => {
+    const { fetchMock } = createBrowserRunFetch();
+
+    renderRoute("/runs/run-106/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
+
+    const createButton = screen.getByRole("button", {
+      name: "Create specification document"
+    });
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+
+    expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
+      "Run Specification"
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Specification\n- Single-flight planning mutations prevent duplicates.\n"
+      }
+    });
+
+    const saveButton = screen.getByRole("button", { name: "Save changes" });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(await screen.findByRole("heading", { name: "Run Specification" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("- Single-flight planning mutations prevent duplicates.")
+    ).toBeInTheDocument();
+    expect(
+      countFetchRequests(fetchMock, {
+        method: "POST",
+        url: "/v1/runs/run-106/documents"
+      })
+    ).toBe(1);
+    expect(
+      countFetchRequests(fetchMock, {
+        method: "POST",
+        url: "/v1/runs/run-106/documents/run-106-specification/revisions"
+      })
+    ).toBe(1);
   });
 
   it.each([
@@ -992,6 +1088,68 @@ describe("Run routes", () => {
       );
     }
   );
+
+  it("reconciles document path conflicts by reloading the existing backend document state", async () => {
+    const existingDocument = {
+      conversation: {
+        agentClass: "PlanningDocumentAgent",
+        agentName: "run-106-architecture-conversation"
+      },
+      currentRevisionId: "run-106-architecture-v1",
+      documentId: "run-106-architecture",
+      kind: "architecture" as const,
+      path: "architecture",
+      scopeType: "run" as const
+    };
+    let listRunDocumentsCallCount = 0;
+    const listRunDocuments = vi.fn(async () => {
+      listRunDocumentsCallCount += 1;
+
+      return listRunDocumentsCallCount === 1 ? [] : [existingDocument];
+    });
+    const createRunDocument = vi.fn(async () => {
+      throw new RunManagementApiError({
+        code: "document_path_conflict",
+        message: "A document with that logical path already exists in this scope.",
+        status: 409
+      });
+    });
+    const getRunDocumentRevision = vi.fn(async () => ({
+      artifactId: "run-106-architecture-artifact",
+      contentUrl: "/v1/artifacts/run-106-architecture-artifact/content",
+      createdAt: "2026-04-20T12:05:00.000Z",
+      documentRevisionId: "run-106-architecture-v1",
+      revisionNumber: 1,
+      title: "Run Architecture"
+    }));
+    const getDocumentContent = vi.fn(
+      async () => "# Architecture\n- Conflict recovery reflects backend truth.\n"
+    );
+
+    renderRunRoute(
+      "/runs/run-106/architecture",
+      createRunApi({
+        createRunDocument,
+        getDocumentContent,
+        getRunDocumentRevision,
+        listRunDocuments
+      })
+    );
+
+    expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
+    expect(screen.getByText("No architecture document yet")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create architecture document" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Conflict recovery reflects backend truth.")).toBeInTheDocument();
+    expect(screen.queryByText("No architecture document yet")).not.toBeInTheDocument();
+    expect(createRunDocument).toHaveBeenCalledTimes(1);
+    expect(listRunDocuments).toHaveBeenCalledTimes(2);
+  });
 
   it("lets a planning page with no current revision enter the editor, discard changes, and save", async () => {
     const { router } = renderRunRoute(

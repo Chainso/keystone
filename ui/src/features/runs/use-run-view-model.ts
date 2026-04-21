@@ -396,11 +396,15 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const pendingEditorSourceKeyRef = useRef<string | null>(null);
+  const createInFlightRef = useRef(false);
+  const saveInFlightRef = useRef(false);
 
   useEffect(() => {
     const shouldEnterEditor = pendingEditorSourceKeyRef.current === sourceKey;
 
+    createInFlightRef.current = false;
     pendingEditorSourceKeyRef.current = null;
+    saveInFlightRef.current = false;
     setBody(sourceDraft.body);
     setIsCreating(false);
     setIsEditing(shouldEnterEditor);
@@ -413,6 +417,11 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     setSubmitErrorMessage(null);
 
     if (planningState.status === "empty" && planningState.reason === "missing_document") {
+      if (createInFlightRef.current) {
+        return;
+      }
+
+      createInFlightRef.current = true;
       setIsCreating(true);
 
       try {
@@ -431,6 +440,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
             ? error.message
             : `Unable to create ${phase.label.toLowerCase()} document.`
         );
+      } finally {
+        createInFlightRef.current = false;
       }
 
       return;
@@ -455,17 +466,22 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     !isSubmitting;
 
   async function saveChanges() {
-    if (!canSave) {
+    const trimmedTitle = title.trim();
+    const hasBody = body.trim().length > 0;
+    const canSaveNow = trimmedTitle.length > 0 && hasBody && hasUnsavedChanges;
+
+    if (!canSaveNow || saveInFlightRef.current) {
       return;
     }
 
+    saveInFlightRef.current = true;
     setIsSubmitting(true);
     setSubmitErrorMessage(null);
 
     try {
       await actions.savePlanningDocument(phaseId, {
         body,
-        title: title.trim()
+        title: trimmedTitle
       });
     } catch (error) {
       setIsSubmitting(false);
@@ -474,6 +490,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
           ? error.message
           : `Unable to save ${phase.label.toLowerCase()}.`
       );
+    } finally {
+      saveInFlightRef.current = false;
     }
   }
 
