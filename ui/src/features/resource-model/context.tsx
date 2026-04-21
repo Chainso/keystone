@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 import { uiScaffoldDataset } from "./scaffold-dataset";
 import { selectCurrentProjectSummary } from "./selectors";
@@ -27,28 +27,38 @@ const ResourceModelContext = createContext<ResourceModelValue | null>(null);
 
 interface ResourceModelProviderProps {
   children: ReactNode;
+  currentProjectId?: string;
   dataset?: ResourceModelDataset;
   initialProjectId?: string;
 }
 
+function resolveProjectId(dataset: ResourceModelDataset, requestedProjectId?: string) {
+  if (requestedProjectId && dataset.projects.some((project) => project.projectId === requestedProjectId)) {
+    return requestedProjectId;
+  }
+
+  return dataset.meta.defaultProjectId;
+}
+
 export function ResourceModelProvider({
   children,
+  currentProjectId: controlledProjectId,
   dataset = uiScaffoldDataset,
   initialProjectId
 }: ResourceModelProviderProps) {
-  const resolvedProjectId = initialProjectId ?? dataset.meta.defaultProjectId;
-  const [currentProjectId, setCurrentProjectId] = useState(resolvedProjectId);
-  const effectiveProjectId = initialProjectId
-    ? initialProjectId
-    : dataset.projects.some((project) => project.projectId === currentProjectId)
-      ? currentProjectId
-      : resolvedProjectId;
-
-  useEffect(() => {
-    if (currentProjectId !== effectiveProjectId) {
-      setCurrentProjectId(effectiveProjectId);
-    }
-  }, [currentProjectId, effectiveProjectId]);
+  const [uncontrolledProjectId, setUncontrolledProjectId] = useState(() =>
+    resolveProjectId(dataset, initialProjectId)
+  );
+  const effectiveProjectId = resolveProjectId(
+    dataset,
+    controlledProjectId ?? uncontrolledProjectId
+  );
+  const setCurrentProjectId =
+    controlledProjectId === undefined
+      ? setUncontrolledProjectId
+      : () => {
+          // Live project selection is owned by the project-management provider.
+        };
 
   return (
     <ResourceModelContext.Provider

@@ -32,13 +32,15 @@ export function ProjectConfigurationScaffold({
           </div>
         </header>
 
-        <nav className="project-tab-strip" aria-label="Project configuration tabs">
-          {tabs.map((tab) => (
-            <NavLink key={tab.tabId} to={tab.path} className={getProjectTabClassName}>
-              <span className="project-tab-link-label">{tab.label}</span>
-            </NavLink>
-          ))}
-        </nav>
+        {tabs.length > 0 ? (
+          <nav className="project-tab-strip" aria-label="Project configuration tabs">
+            {tabs.map((tab) => (
+              <NavLink key={tab.tabId} to={tab.path} className={getProjectTabClassName}>
+                <span className="project-tab-link-label">{tab.label}</span>
+              </NavLink>
+            ))}
+          </nav>
+        ) : null}
 
         <div className="project-config-body">{children}</div>
       </section>

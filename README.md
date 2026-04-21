@@ -48,21 +48,27 @@ For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manu
 
 Current UI scope:
 
-- the global project-scoped sidebar
+- the global project-scoped sidebar with a live project list, persisted current-project selection, and a real project switcher
+- live `New project` creation through `POST /v1/projects`
+- live `Project settings` load/save through `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`
+- a live project-scoped `Runs` index backed by `GET /v1/projects/:projectId/runs`
 - top-level destination routes for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
 - a plain `Runs` index with a disabled `New run` control
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - a graph-first `Execution` board with workflow nodes and a task-detail route with chat-plus-review split
-- board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with minimal scaffold data and no extra hero, aside, or right-rail chrome
+- board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
+- explicit compatibility states for `Documentation` and `Workstreams` when the selected live project is not present in the scaffold dataset
 
 Current UI non-goals:
 
-- live backend loading
-- real run creation, project switching, or destination content loading
+- live backend loading for `Documentation` and `Workstreams`
+- real run creation
+- live run-detail cutover for non-scaffold runs
 - real task conversations, DAG layout, or review diff content
-- persisted documentation, workstream, or project-configuration editing
+- persisted documentation or workstream editing
 - final visual polish
-- destination-specific behavior beyond the current scaffold surfaces
+- auth-specific UI flows or tenant-selection controls
+- destination-specific behavior beyond the current live project-management and runs surfaces
 
 ## UI Architecture
 
@@ -79,8 +85,10 @@ The frontend scaffold is intentionally split by ownership so future feature work
 Current UI boundary:
 
 - the scaffold is served from the same Worker deployable as the `v1` API
-- the UI still uses fixed scaffold data instead of live backend adapters
-- documentation collections, evidence, integration, release, and project editing flows remain unwired behind the stable route tree
+- the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, and the `Runs` index
+- `Documentation` and `Workstreams` still rely on scaffold-backed selectors and render explicit compatibility states for non-scaffold live projects
+- non-scaffold live runs do not yet have a truthful run-detail route, so the `Runs` index avoids broken deep links for those rows
+- documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend
 
@@ -229,6 +237,11 @@ Local dev auth uses:
 
 - `Authorization: Bearer <KEYSTONE_DEV_TOKEN>`
 - `X-Keystone-Tenant-Id: <tenant-id>`
+
+The shared browser API seam now sends these headers automatically for protected UI requests. Local UI defaults match this repo's checked-in dev values:
+
+- `KEYSTONE_DEV_TOKEN=change-me-local-token`
+- `KEYSTONE_DEV_TENANT_ID=tenant-dev-local`
 
 Start from `.dev.vars.example` and keep local overrides in `.dev.vars`.
 

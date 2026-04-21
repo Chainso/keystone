@@ -2,15 +2,19 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
   CurrentProjectProvider,
+  currentProjectStorageKey,
   useCurrentProject,
+  useProjectManagement,
   type CurrentProject
 } from "../features/projects/project-context";
 import { buildProjectConfigurationComponentDraft } from "../features/projects/project-configuration-scaffold";
+import { ProjectSettingsConfigurationProvider } from "../features/projects/project-settings-context";
+import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
 import { useProjectSettingsComponentsViewModel } from "../features/projects/use-project-configuration-view-model";
 import {
   ResourceModelProvider,
@@ -18,20 +22,26 @@ import {
 } from "../features/resource-model/context";
 import { uiScaffoldDataset } from "../features/resource-model/scaffold-dataset";
 import {
-  createProjectOverrideDataset,
   getNewProjectConfiguration,
   getProjectConfiguration,
   getProjectDocumentationSelection,
   getRunDefaultPhaseId,
   listRunSummaries,
   listProjectDocumentationGroups,
-  listProjectWorkstreamTasks,
-  selectCurrentProjectSummary
+  listProjectWorkstreamTasks
 } from "../features/resource-model/selectors";
 import type { ResourceModelDataset } from "../features/resource-model/types";
+import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
+
+const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  window.localStorage.clear();
 });
 
 function CurrentProjectProbe() {
@@ -47,6 +57,22 @@ function CurrentProjectDetailsProbe() {
     <>
       <span data-testid="current-project-name">{project.displayName}</span>
       <span data-testid="current-project-id">{project.projectId}</span>
+    </>
+  );
+}
+
+function ProjectManagementProbe() {
+  const { actions, meta, state } = useProjectManagement();
+
+  return (
+    <>
+      <span data-testid="project-management-status">{meta.status}</span>
+      <span data-testid="project-management-name">{state.currentProject?.displayName ?? "none"}</span>
+      <span data-testid="project-management-id">{state.currentProjectId ?? "none"}</span>
+      <span data-testid="project-management-count">{String(state.projects.length)}</span>
+      <button type="button" onClick={() => actions.selectProject("project-alt")}>
+        Select alt project
+      </button>
     </>
   );
 }
@@ -81,19 +107,81 @@ function ResourceModelProbe() {
 }
 
 function ProjectSettingsComponentsProbe() {
-  const { actions } = useResourceModel();
+  const { actions } = useProjectManagement();
   const viewModel = useProjectSettingsComponentsViewModel();
 
   return (
     <>
       <span data-testid="components-heading">
-        {viewModel.components.map((component) => component.displayName).join(",")}
+        {viewModel.components.map((component) => component.displayNameField.value).join(",")}
       </span>
-      <button type="button" onClick={() => actions.setCurrentProjectId("project-alt")}>
+      <button type="button" onClick={() => actions.selectProject("project-alt")}>
         Switch settings project
       </button>
     </>
   );
+}
+
+function buildProjectsResponse(projects: CurrentProject[]) {
+  return {
+    data: {
+      items: projects.map((project) =>
+        serializeProjectListItem({
+          projectId: project.projectId,
+          projectKey: project.projectKey,
+          displayName: project.displayName,
+          description: project.description || null,
+          createdAt: defaultTimestamp,
+          updatedAt: defaultTimestamp
+        })
+      ),
+      total: projects.length
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "project" as const
+    }
+  };
+}
+
+function renderProjectSettingsComponents(dataset: ResourceModelDataset) {
+  const projects = dataset.projects.map((project) => ({
+    projectId: project.projectId,
+    projectKey: project.projectKey,
+    displayName: project.displayName,
+    description: project.description
+  }));
+  const projectApi = createStaticProjectManagementApi(projects, dataset);
+
+  return render(
+    <CurrentProjectProvider api={projectApi}>
+      <ProjectSettingsConfigurationProvider>
+        <ProjectSettingsComponentsProbe />
+      </ProjectSettingsConfigurationProvider>
+    </CurrentProjectProvider>
+  );
+}
+
+function stubProjectListFetch(projects: CurrentProject[]) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+
+    if (url === "/v1/projects") {
+      return new Response(JSON.stringify(buildProjectsResponse(projects)), {
+        status: 200,
+        headers: {
+          "content-type": "application/json"
+        }
+      });
+    }
+
+    throw new Error(`Unexpected fetch request: ${url}`);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return fetchMock;
 }
 
 describe("resource-model selectors", () => {
@@ -360,16 +448,6 @@ describe("resource-model selectors", () => {
     };
 
     render(
-      <CurrentProjectProvider>
-        <CurrentProjectProbe />
-      </CurrentProjectProvider>
-    );
-
-    expect(screen.getByText("Keystone Cloudflare")).toBeInTheDocument();
-
-    cleanup();
-
-    render(
       <CurrentProjectProvider project={project}>
         <CurrentProjectProbe />
       </CurrentProjectProvider>
@@ -411,33 +489,97 @@ describe("resource-model selectors", () => {
     expect(screen.getByTestId("current-project-id")).toHaveTextContent("project-beta");
   });
 
-  it("remaps project-scoped resources when overriding the current project scaffold", () => {
-    const project: CurrentProject = {
-      projectId: "project-custom",
-      projectKey: "custom-project",
-      displayName: "Custom Project",
-      description: "Custom project scaffold."
-    };
-    const dataset = createProjectOverrideDataset(project);
+  it("falls back to the first project when local storage points at a stale project id", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate project."
+      }
+    ];
 
-    expect(listRunSummaries(project.projectId, dataset)).toHaveLength(uiScaffoldDataset.runs.length);
-    expect(listProjectWorkstreamTasks(project.projectId, dataset)).toHaveLength(
-      uiScaffoldDataset.tasks.length
+    window.localStorage.setItem(currentProjectStorageKey, "project-stale");
+    stubProjectListFetch(projects);
+
+    render(
+      <CurrentProjectProvider>
+        <ProjectManagementProbe />
+      </CurrentProjectProvider>
     );
-    expect(listProjectDocumentationGroups(project.projectId, dataset))
-      .toEqual(listProjectDocumentationGroups(uiScaffoldDataset.meta.defaultProjectId));
-    expect(getProjectConfiguration(project.projectId, dataset)?.overview).toEqual({
-      displayName: "Custom Project",
-      projectKey: "custom-project",
-      description: "Custom project scaffold."
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-management-status")).toHaveTextContent("ready");
     });
-    expect(selectCurrentProjectSummary(dataset, dataset.meta.defaultProjectId)).toEqual({
-      projectId: "project-custom",
-      projectKey: "custom-project",
-      displayName: "Custom Project",
-      description: "Custom project scaffold."
+
+    expect(screen.getByTestId("project-management-name")).toHaveTextContent("Keystone Cloudflare");
+    expect(screen.getByTestId("project-management-id")).toHaveTextContent(
+      "project-keystone-cloudflare"
+    );
+    expect(screen.getByTestId("project-management-count")).toHaveTextContent("2");
+    expect(window.localStorage.getItem(currentProjectStorageKey)).toBe(
+      "project-keystone-cloudflare"
+    );
+  });
+
+  it("exposes an empty provider state when the live project list is empty", async () => {
+    stubProjectListFetch([]);
+
+    render(
+      <CurrentProjectProvider>
+        <ProjectManagementProbe />
+      </CurrentProjectProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-management-status")).toHaveTextContent("empty");
     });
-    expect(listRunSummaries(uiScaffoldDataset.meta.defaultProjectId, dataset)).toHaveLength(0);
+
+    expect(screen.getByTestId("project-management-name")).toHaveTextContent("none");
+    expect(screen.getByTestId("project-management-id")).toHaveTextContent("none");
+    expect(screen.getByTestId("project-management-count")).toHaveTextContent("0");
+    expect(window.localStorage.getItem(currentProjectStorageKey)).toBeNull();
+  });
+
+  it("switches the live current project and persists the selected id", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate project."
+      }
+    ];
+
+    stubProjectListFetch(projects);
+
+    render(
+      <CurrentProjectProvider>
+        <ProjectManagementProbe />
+      </CurrentProjectProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("project-management-status")).toHaveTextContent("ready");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Select alt project" }));
+
+    expect(screen.getByTestId("project-management-name")).toHaveTextContent("Alt Project");
+    expect(screen.getByTestId("project-management-id")).toHaveTextContent("project-alt");
+    expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
 
   it("exposes mutable project selection and scaffold meta through the provider contract", () => {
@@ -485,7 +627,7 @@ describe("resource-model selectors", () => {
     expect(screen.getByTestId("run-count")).toHaveTextContent("1");
   });
 
-  it("resynchronizes settings components when the current project changes", () => {
+  it("resynchronizes settings components when the current project changes", async () => {
     const dataset: ResourceModelDataset = {
       ...uiScaffoldDataset,
       projects: [
@@ -532,20 +674,20 @@ describe("resource-model selectors", () => {
       ]
     };
 
-    render(
-      <ResourceModelProvider dataset={dataset}>
-        <ProjectSettingsComponentsProbe />
-      </ResourceModelProvider>
-    );
+    renderProjectSettingsComponents(dataset);
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Switch settings project" }));
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("Alt Service");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("Alt Service");
+    });
   });
 
-  it("resynchronizes settings components when the backing configuration changes for the same project", () => {
+  it("resynchronizes settings components when the backing configuration changes for the same project", async () => {
     const initialDataset: ResourceModelDataset = uiScaffoldDataset;
     const updatedDataset: ResourceModelDataset = {
       ...uiScaffoldDataset,
@@ -575,20 +717,34 @@ describe("resource-model selectors", () => {
       })
     };
 
+    const projects = initialDataset.projects.map((project) => ({
+      projectId: project.projectId,
+      projectKey: project.projectKey,
+      displayName: project.displayName,
+      description: project.description
+    }));
     const { rerender } = render(
-      <ResourceModelProvider dataset={initialDataset}>
-        <ProjectSettingsComponentsProbe />
-      </ResourceModelProvider>
+      <CurrentProjectProvider api={createStaticProjectManagementApi(projects, initialDataset)}>
+        <ProjectSettingsConfigurationProvider>
+          <ProjectSettingsComponentsProbe />
+        </ProjectSettingsConfigurationProvider>
+      </CurrentProjectProvider>
     );
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("API");
+    });
 
     rerender(
-      <ResourceModelProvider dataset={updatedDataset}>
-        <ProjectSettingsComponentsProbe />
-      </ResourceModelProvider>
+      <CurrentProjectProvider api={createStaticProjectManagementApi(projects, updatedDataset)}>
+        <ProjectSettingsConfigurationProvider>
+          <ProjectSettingsComponentsProbe />
+        </ProjectSettingsConfigurationProvider>
+      </CurrentProjectProvider>
     );
 
-    expect(screen.getByTestId("components-heading")).toHaveTextContent("Gateway");
+    await waitFor(() => {
+      expect(screen.getByTestId("components-heading")).toHaveTextContent("Gateway");
+    });
   });
 });

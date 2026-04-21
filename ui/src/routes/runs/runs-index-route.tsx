@@ -36,40 +36,94 @@ export function RunsIndexRoute() {
           </button>
         </div>
 
-        <div className="table-scroll">
-          <table className="runs-table">
-            <thead>
-              <tr>
-                <th scope="col">Run ID</th>
-                <th scope="col">Summary</th>
-                <th scope="col">Stage</th>
-                <th scope="col">Status</th>
-                <th scope="col">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {model.runs.map((run) => (
-                <tr
-                  key={run.runId}
-                  className="table-clickable-row"
-                  onClick={(event) => handleRowClick(event, run.detailPath)}
+        {model.compatibilityState ? (
+          <section className="empty-state-card">
+            <h2 className="document-card-title">{model.compatibilityState.heading}</h2>
+            <p className="document-card-summary">{model.compatibilityState.message}</p>
+            {model.compatibilityState.heading === "Unable to load runs" ? (
+              <div className="shell-state-actions">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => {
+                    model.retry();
+                  }}
                 >
-                  <td>
-                    <Link to={run.detailPath} className="table-primary-link">
-                      {run.displayId}
-                    </Link>
-                  </td>
-                  <td>{run.summary}</td>
-                  <td>{run.stageLabel}</td>
-                  <td>
-                    <StatusPill label={run.status} />
-                  </td>
-                  <td>{run.updatedLabel}</td>
+                  Retry
+                </button>
+              </div>
+            ) : null}
+          </section>
+        ) : model.scaffoldRuns.length > 0 ? (
+          <div className="table-scroll">
+            <table className="runs-table">
+              <thead>
+                <tr>
+                  <th scope="col">Run ID</th>
+                  <th scope="col">Summary</th>
+                  <th scope="col">Stage</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Updated</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {model.scaffoldRuns.map((run) => (
+                  <tr
+                    key={run.runId}
+                    className="table-clickable-row"
+                    onClick={(event) => handleRowClick(event, run.detailPath)}
+                  >
+                    <td>
+                      <Link to={run.detailPath} className="table-primary-link">
+                        {run.displayId}
+                      </Link>
+                    </td>
+                    <td>{run.summary}</td>
+                    <td>{run.stageLabel}</td>
+                    <td>
+                      <StatusPill label={run.status} />
+                    </td>
+                    <td>{run.updatedLabel}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table className="runs-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Run ID</th>
+                    <th scope="col">Workflow instance</th>
+                    <th scope="col">Engine</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Latest activity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {model.liveRuns.map((run) => (
+                    <tr key={run.runId}>
+                      <td>{run.runId}</td>
+                      <td>{run.workflowInstanceId}</td>
+                      <td>{run.executionEngine}</td>
+                      <td>
+                        <StatusPill label={run.status} />
+                      </td>
+                      <td>{run.latestActivityLabel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="page-section-copy">
+              Live runs are listed without deep links until the run-detail route can render API-backed
+              run data truthfully.
+            </p>
+          </>
+        )}
       </section>
     </div>
   );

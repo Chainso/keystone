@@ -108,3 +108,10 @@ export function buildProjectConfigurationComponentDraft(
         : ["Run targeted component tests"]
   };
 }
+
+export function buildNewProjectComponentDraft(
+  index: number,
+  kindId: ProjectComponentKindId
+) {
+  return buildProjectConfigurationComponentDraft("new", index, kindId);
+}

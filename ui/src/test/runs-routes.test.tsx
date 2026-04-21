@@ -19,10 +19,10 @@ describe("Run routes", () => {
     });
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
-        current: "page"
+        name: "Execution"
       })
     ).toHaveAttribute("href", "/runs/run-104/execution");
-    expect(screen.getByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
     expect(screen.getByText("Project workspace navigation")).toBeInTheDocument();
   });
 
@@ -35,7 +35,7 @@ describe("Run routes", () => {
     });
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
-        current: "page"
+        name: "Execution Plan"
       })
     ).toHaveAttribute("href", "/runs/run-102/execution-plan");
     const navigation = screen.getByRole("navigation", { name: "Run phases" });
@@ -44,7 +44,9 @@ describe("Run routes", () => {
       "aria-disabled",
       "true"
     );
-    expect(screen.getByRole("heading", { name: "Execution Plan conversation" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Execution Plan conversation" })
+    ).toBeInTheDocument();
   });
 
   it("redirects run-103 to architecture when execution-plan is unavailable", async () => {
@@ -56,7 +58,7 @@ describe("Run routes", () => {
     });
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
-        current: "page"
+        name: "Architecture"
       })
     ).toHaveAttribute("href", "/runs/run-103/architecture");
     expect(
@@ -64,7 +66,9 @@ describe("Run routes", () => {
         name: "Execution"
       })
     ).toHaveAttribute("href", "/runs/run-103/execution");
-    expect(screen.getByRole("heading", { name: "Architecture conversation" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Architecture conversation" })
+    ).toBeInTheDocument();
   });
 
   it("redirects run-101 to specification when only the specification doc exists", async () => {
@@ -76,17 +80,22 @@ describe("Run routes", () => {
     });
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
-        current: "page"
+        name: "Specification"
       })
     ).toHaveAttribute("href", "/runs/run-101/specification");
-    expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Specification conversation" })
+    ).toBeInTheDocument();
   });
 
   it("renders run index rows with run-detail navigation targets", async () => {
     const { router } = renderRoute("/runs");
 
     expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Run-104" })).toHaveAttribute("href", "/runs/run-104");
+    expect(await screen.findByRole("link", { name: "Run-104" })).toHaveAttribute(
+      "href",
+      "/runs/run-104"
+    );
     expect(screen.getByRole("link", { name: "Run-103" })).toHaveAttribute("href", "/runs/run-103");
     expect(screen.getByText("Execution Plan")).toBeInTheDocument();
 
@@ -182,7 +191,7 @@ describe("Run routes", () => {
   it("renders the task detail split inside execution", async () => {
     renderRoute("/runs/run-104/execution/tasks/task-032");
 
-    expect(screen.getByRole("heading", { name: "Run-104 / TASK-032" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Run-104 / TASK-032" })).toBeInTheDocument();
     expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
       "Conversation attached to this task."
     );

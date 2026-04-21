@@ -12,30 +12,53 @@ import {
   useProjectSettingsRulesViewModel
 } from "../use-project-configuration-view-model";
 import { ComponentTypePicker } from "../../../shared/forms/component-type-picker";
+import { FormTextAreaField, FormTextField } from "../../../shared/forms/form-field";
+import { TextListField } from "../../../shared/forms/text-list-field";
 import {
-  PlaceholderTextAreaField,
-  PlaceholderTextField
-} from "../../../shared/forms/placeholder-field";
-import { PlaceholderListField } from "../../../shared/forms/placeholder-list-field";
-import { ProjectComponentCard } from "./project-component-card";
+  EditableProjectComponentCard
+} from "./project-component-card";
 import {
   ProjectConfigurationActions,
   ProjectConfigurationSection
 } from "./project-configuration-section";
 
-function OverviewTab({
-  model
+function ProjectConfigurationError({
+  message
 }: {
-  model: ReturnType<typeof useNewProjectOverviewViewModel>;
+  message: string | null | undefined;
 }) {
+  if (!message) {
+    return null;
+  }
+
+  return <p className="project-config-error">{message}</p>;
+}
+
+function NewProjectOverviewTab() {
+  const model = useNewProjectOverviewViewModel();
+
   return (
     <ProjectConfigurationSection title={model.heading}>
+      <ProjectConfigurationError message={model.submitError} />
+
       <div className="project-form-grid">
-        <PlaceholderTextField label={model.nameField.label} value={model.nameField.value} />
-        <PlaceholderTextField label={model.keyField.label} value={model.keyField.value} />
-        <PlaceholderTextAreaField
+        <FormTextField
+          label={model.nameField.label}
+          value={model.nameField.value}
+          onChange={(event) => model.nameField.onChange?.(event.currentTarget.value)}
+          errorMessage={model.nameField.errorMessage}
+        />
+        <FormTextField
+          label={model.keyField.label}
+          value={model.keyField.value}
+          onChange={(event) => model.keyField.onChange?.(event.currentTarget.value)}
+          errorMessage={model.keyField.errorMessage}
+        />
+        <FormTextAreaField
           label={model.descriptionField.label}
           value={model.descriptionField.value}
+          onChange={(event) => model.descriptionField.onChange?.(event.currentTarget.value)}
+          errorMessage={model.descriptionField.errorMessage}
         />
       </div>
 
@@ -44,13 +67,48 @@ function OverviewTab({
   );
 }
 
-function ComponentsTab({
-  model
-}: {
-  model: ReturnType<typeof useNewProjectComponentsViewModel>;
-}) {
+function ProjectSettingsOverviewTab() {
+  const model = useProjectSettingsOverviewViewModel();
+
   return (
     <ProjectConfigurationSection title={model.heading}>
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
+
+        <div className="project-form-grid">
+          <FormTextField
+            label={model.nameField.label}
+            value={model.nameField.value}
+            onChange={(event) => model.nameField.onChange?.(event.currentTarget.value)}
+            errorMessage={model.nameField.errorMessage}
+          />
+          <FormTextField
+            label={model.keyField.label}
+            value={model.keyField.value}
+            onChange={(event) => model.keyField.onChange?.(event.currentTarget.value)}
+            errorMessage={model.keyField.errorMessage}
+          />
+          <FormTextAreaField
+            label={model.descriptionField.label}
+            value={model.descriptionField.value}
+            onChange={(event) => model.descriptionField.onChange?.(event.currentTarget.value)}
+            errorMessage={model.descriptionField.errorMessage}
+          />
+        </div>
+
+        <ProjectConfigurationActions actions={model.footerActions} />
+      </fieldset>
+    </ProjectConfigurationSection>
+  );
+}
+
+function NewProjectComponentsTab() {
+  const model = useNewProjectComponentsViewModel();
+
+  return (
+    <ProjectConfigurationSection title={model.heading}>
+      <ProjectConfigurationError message={model.submitError} />
+
       <div className="project-config-section-actions">
         <button
           type="button"
@@ -74,11 +132,12 @@ function ComponentsTab({
       {model.components.length === 0 ? (
         <section className="empty-state-card">
           <p className="document-line">{model.emptyState}</p>
+          {model.emptyError ? <ProjectConfigurationError message={model.emptyError} /> : null}
         </section>
       ) : (
         <div className="component-card-stack">
           {model.components.map((component) => (
-            <ProjectComponentCard key={component.componentId} component={component} />
+            <EditableProjectComponentCard key={component.componentId} component={component} />
           ))}
         </div>
       )}
@@ -88,15 +147,84 @@ function ComponentsTab({
   );
 }
 
+function ProjectSettingsComponentsTab() {
+  const model = useProjectSettingsComponentsViewModel();
+
+  return (
+    <ProjectConfigurationSection title={model.heading}>
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
+
+        <div className="project-config-section-actions">
+          <button
+            type="button"
+            className="ghost-button"
+            aria-expanded={model.typePickerOpen}
+            onClick={model.toggleTypePicker}
+          >
+            <span>+ Add component{" "}</span>
+            <span aria-hidden="true">▾</span>
+          </button>
+        </div>
+
+        {model.typePickerOpen ? (
+          <ComponentTypePicker
+            title={model.typePickerTitle}
+            options={model.typeOptions}
+            onSelect={model.pickComponentType}
+          />
+        ) : null}
+
+        {model.components.length === 0 ? (
+          <section className="empty-state-card">
+            <p className="document-line">{model.emptyState}</p>
+            {model.emptyError ? <ProjectConfigurationError message={model.emptyError} /> : null}
+          </section>
+        ) : (
+          <div className="component-card-stack">
+            {model.components.map((component) => (
+              <EditableProjectComponentCard key={component.componentId} component={component} />
+            ))}
+          </div>
+        )}
+
+        <ProjectConfigurationActions actions={model.footerActions} />
+      </fieldset>
+    </ProjectConfigurationSection>
+  );
+}
+
 function NewProjectRulesTab() {
   const model = useNewProjectRulesViewModel();
 
   return (
     <ProjectConfigurationSection title={model.heading}>
+      <ProjectConfigurationError message={model.submitError} />
+
       <div className="project-rule-grid">
-        <PlaceholderListField label="Project review instructions" items={model.reviewInstructions} />
-        <PlaceholderListField label="Project test instructions" items={model.testInstructions} />
+        <TextListField
+          label={model.reviewInstructions.label}
+          items={model.reviewInstructions.items}
+          addLabel={model.reviewInstructions.addLabel}
+          onAdd={model.reviewInstructions.onAdd}
+          onChange={model.reviewInstructions.onChange}
+          onRemove={model.reviewInstructions.onRemove}
+          rowErrors={model.reviewInstructions.rowErrors}
+          emptyMessage="No project review instructions added."
+        />
+        <TextListField
+          label={model.testInstructions.label}
+          items={model.testInstructions.items}
+          addLabel={model.testInstructions.addLabel}
+          onAdd={model.testInstructions.onAdd}
+          onChange={model.testInstructions.onChange}
+          onRemove={model.testInstructions.onRemove}
+          rowErrors={model.testInstructions.rowErrors}
+          emptyMessage="No project test instructions added."
+        />
       </div>
+
+      {model.footerActions ? <ProjectConfigurationActions actions={model.footerActions} /> : null}
     </ProjectConfigurationSection>
   );
 }
@@ -106,10 +234,34 @@ function ProjectSettingsRulesTab() {
 
   return (
     <ProjectConfigurationSection title={model.heading}>
-      <div className="project-rule-grid">
-        <PlaceholderListField label="Project review instructions" items={model.reviewInstructions} />
-        <PlaceholderListField label="Project test instructions" items={model.testInstructions} />
-      </div>
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
+
+        <div className="project-rule-grid">
+          <TextListField
+            label={model.reviewInstructions.label}
+            items={model.reviewInstructions.items}
+            addLabel={model.reviewInstructions.addLabel}
+            onAdd={model.reviewInstructions.onAdd}
+            onChange={model.reviewInstructions.onChange}
+            onRemove={model.reviewInstructions.onRemove}
+            rowErrors={model.reviewInstructions.rowErrors}
+            emptyMessage="No project review instructions added."
+          />
+          <TextListField
+            label={model.testInstructions.label}
+            items={model.testInstructions.items}
+            addLabel={model.testInstructions.addLabel}
+            onAdd={model.testInstructions.onAdd}
+            onChange={model.testInstructions.onChange}
+            onRemove={model.testInstructions.onRemove}
+            rowErrors={model.testInstructions.rowErrors}
+            emptyMessage="No project test instructions added."
+          />
+        </div>
+
+        {model.footerActions ? <ProjectConfigurationActions actions={model.footerActions} /> : null}
+      </fieldset>
     </ProjectConfigurationSection>
   );
 }
@@ -119,11 +271,49 @@ function NewProjectEnvironmentTab() {
 
   return (
     <ProjectConfigurationSection title={model.heading}>
-      <div className="project-environment-stack">
-        {model.envVars.map((envVar) => (
-          <PlaceholderTextField key={envVar.name} label={envVar.name} value={envVar.value} />
-        ))}
+      <ProjectConfigurationError message={model.submitError} />
+
+      {model.envVars.length === 0 ? (
+        <section className="empty-state-card">
+          <p className="document-line">{model.emptyMessage}</p>
+        </section>
+      ) : (
+        <div className="project-environment-stack">
+          {model.envVars.map((envVar) => (
+            <article key={envVar.entryId} className="environment-var-card">
+              <div className="environment-var-heading">
+                <h3 className="page-section-title">Environment variable</h3>
+                <button type="button" className="ghost-button" onClick={envVar.onRemove}>
+                  Remove
+                </button>
+              </div>
+
+              <div className="project-form-grid">
+                <FormTextField
+                  label={envVar.nameField.label}
+                  value={envVar.nameField.value}
+                  onChange={(event) => envVar.nameField.onChange?.(event.currentTarget.value)}
+                  errorMessage={envVar.nameField.errorMessage}
+                />
+                <FormTextField
+                  label={envVar.valueField.label}
+                  value={envVar.valueField.value}
+                  onChange={(event) => envVar.valueField.onChange?.(event.currentTarget.value)}
+                  errorMessage={envVar.valueField.errorMessage}
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <div className="project-config-section-actions">
+        <button type="button" className="ghost-button" onClick={model.addEnvVar}>
+          + Add environment variable
+        </button>
       </div>
+
+      <ProjectConfigurationActions actions={model.footerActions} />
     </ProjectConfigurationSection>
   );
 }
@@ -133,29 +323,53 @@ function ProjectSettingsEnvironmentTab() {
 
   return (
     <ProjectConfigurationSection title={model.heading}>
-      <div className="project-environment-stack">
-        {model.envVars.map((envVar) => (
-          <PlaceholderTextField key={envVar.name} label={envVar.name} value={envVar.value} />
-        ))}
-      </div>
+      <fieldset className="project-config-form-frame" disabled={model.isSubmitting}>
+        <ProjectConfigurationError message={model.submitError} />
+
+        {model.envVars.length === 0 ? (
+          <section className="empty-state-card">
+            <p className="document-line">{model.emptyMessage}</p>
+          </section>
+        ) : (
+          <div className="project-environment-stack">
+            {model.envVars.map((envVar) => (
+              <article key={envVar.entryId} className="environment-var-card">
+                <div className="environment-var-heading">
+                  <h3 className="page-section-title">Environment variable</h3>
+                  <button type="button" className="ghost-button" onClick={envVar.onRemove}>
+                    Remove
+                  </button>
+                </div>
+
+                <div className="project-form-grid">
+                  <FormTextField
+                    label={envVar.nameField.label}
+                    value={envVar.nameField.value}
+                    onChange={(event) => envVar.nameField.onChange?.(event.currentTarget.value)}
+                    errorMessage={envVar.nameField.errorMessage}
+                  />
+                  <FormTextField
+                    label={envVar.valueField.label}
+                    value={envVar.valueField.value}
+                    onChange={(event) => envVar.valueField.onChange?.(event.currentTarget.value)}
+                    errorMessage={envVar.valueField.errorMessage}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        <div className="project-config-section-actions">
+          <button type="button" className="ghost-button" onClick={model.addEnvVar}>
+            + Add environment variable
+          </button>
+        </div>
+
+        <ProjectConfigurationActions actions={model.footerActions} />
+      </fieldset>
     </ProjectConfigurationSection>
   );
-}
-
-function NewProjectOverviewTab() {
-  return <OverviewTab model={useNewProjectOverviewViewModel()} />;
-}
-
-function NewProjectComponentsTab() {
-  return <ComponentsTab model={useNewProjectComponentsViewModel()} />;
-}
-
-function ProjectSettingsOverviewTab() {
-  return <OverviewTab model={useProjectSettingsOverviewViewModel()} />;
-}
-
-function ProjectSettingsComponentsTab() {
-  return <ComponentsTab model={useProjectSettingsComponentsViewModel()} />;
 }
 
 const newProjectTabComponents: Record<ProjectConfigurationTabId, ComponentType> = {
