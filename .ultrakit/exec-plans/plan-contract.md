@@ -28,6 +28,16 @@ If a phase requires reading more files, making more changes, or running more com
 
 The orchestrator is responsible for sizing phases correctly during planning. Each phase should be scoped so one spawned implementation subagent can complete it end to end. If a subagent discovers mid-execution that a phase is too large, it should complete as much as possible, update the plan with what remains, and report back to the orchestrator for re-planning.
 
+When in doubt, size phases for a capable junior engineer. A healthy phase should have one clear objective, a narrow scope boundary, an obvious place to start, a concrete validation path, and little need for invention once execution begins.
+
+Signs a phase is too large:
+
+- it spans multiple loosely related subsystems or feature areas,
+- it mixes architectural invention with broad implementation,
+- it requires multiple distinct validation stories to prove completion,
+- it forces the implementer to choose sequencing or approach details that planning should have already resolved,
+- it is hard to describe as a single commit-worthy result.
+
 ## Repository Workflow
 
 When work is multi-step or spans more than one tightly related edit, create or update a plan under `.ultrakit/exec-plans/active/` before making substantial changes.
@@ -152,6 +162,8 @@ If a design choice changes the meaning of another section, update that section t
 ## Milestones and Phases
 
 Break larger efforts into phases or milestones that are independently verifiable. Each phase should say what will exist at the end of that phase, what commands to run, and what evidence proves the phase is done.
+
+Prefer junior-engineer-sized increments over fewer larger phases. Smaller, low-ambiguity phases are easier to delegate, review, resume, and re-plan when reality diverges from the original expectation.
 
 Default to one phase in progress at a time. If phases can safely run in parallel, the plan must say why the scopes do not conflict and what evidence each parallel lane must return.
 

@@ -41,6 +41,8 @@ Follow the plan contract. Every section marked as required must be present. Key 
 
 This is the most important part of planning. Each phase must satisfy the granularity constraint: **completable by a single agent within its context window**.
 
+Plan as if each phase will be handed to a capable junior engineer with the checked-in plan, the working tree, and no hidden context. The phase should feel straightforward to execute, not like a miniature staff-level architecture project.
+
 Rules for phase boundaries:
 
 - Each phase has a single clear goal
@@ -48,6 +50,15 @@ Rules for phase boundaries:
 - Each phase's scope can be understood by reading its Phase Handoff subsection alone
 - Phases are ordered so later phases can build on earlier ones
 - If a phase seems too large, split it. Err on the side of smaller phases.
+
+Junior-engineer sizing heuristics:
+
+- Prefer phases with one obvious implementation seam rather than work spread across multiple unrelated subsystems
+- Prefer phases with one primary validation story rather than a grab bag of unrelated checks
+- Split foundation work from follow-on wiring when combining them would force the implementer to hold too many moving parts in working memory
+- Split design-risk reduction or prototyping from productionization when the proof step is materially different from the landing step
+- If a phase would require the implementer to invent sequencing, choose between multiple viable approaches, or coordinate a broad refactor while adding new behavior, the phase is too large
+- A good phase should read like: "change this area for this reason, run these checks, and produce this commit"
 
 Common phase patterns:
 

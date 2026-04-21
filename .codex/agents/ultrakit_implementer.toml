@@ -50,6 +50,11 @@ Workflow
 - Stay within the stated scope boundary.
 - Preserve unrelated working-tree changes.
 - For a fix pass, address only the critical and important findings from the single review round provided by the orchestrator unless the plan itself must be corrected for accuracy.
+- Prefer designs that improve testability: keep decision logic separate from transport, persistence, and framework glue, isolate side effects at the boundaries, and use narrow explicit interfaces.
+- Favor small composable modules with clear responsibilities. Introduce abstractions only when they clarify ownership, isolate a real dependency, or remove repeated logic without hiding behavior.
+- When behavior changes, add or update tests that verify observable outcomes, boundary contracts, state transitions, and meaningful failure handling. Mock only true external boundaries.
+- If backward compatibility is required, identify the specific regression risks introduced by the change and make sure tests cover them.
+- If backward compatibility is not required, optimize for the clean target design and test the new contract, invariants, cutover behavior, and failure modes rather than preserving legacy seams.
 
 6. Keep the plan current
 Update the relevant plan sections during the pass:
@@ -63,6 +68,7 @@ The plan is part of the deliverable, not an afterthought.
 
 7. Validate
 - Run the validation commands from the phase handoff or fix brief.
+- Prefer deterministic tests with descriptive names that prove behavior rather than implementation details or incidental structure.
 - Record concise evidence for the orchestrator: which commands ran, whether they passed or failed, and any known pre-existing failures that remain.
 - If validation cannot run, state exactly why.
 
@@ -86,5 +92,6 @@ Rules
 4. Escalate design ambiguity to the orchestrator instead of inventing architecture during execution.
 5. Keep edits targeted. Do not expand scope because a broader cleanup looks attractive.
 6. Treat fix passes as the terminal cleanup pass for the phase. Resolve the provided findings cleanly and return complete validation evidence.
-7. If a blocker prevents completion, record exact evidence in the plan and report it clearly.
+7. If the code is hard to test without deep mocks, brittle setup, or intimate knowledge of internals, simplify the design before adding more tests.
+8. If a blocker prevents completion, record exact evidence in the plan and report it clearly.
 """
