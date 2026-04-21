@@ -306,6 +306,86 @@ describe("App shell", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("renders the run error state and recovers after retry", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const fetchMock = stubProjectManagementFetch({
+      projectResponses: [() => createJsonResponse(buildProjectsResponse([scaffoldProject]))],
+      projectRunsByProjectId: {
+        [scaffoldProject.projectId]: [
+          async () => {
+            throw new Error("Run list failed.");
+          },
+          () =>
+            createJsonResponse(
+              buildRunsResponse([
+                createLiveRunFixture(scaffoldProject.projectId, {
+                  runId: "run-104",
+                  workflowInstanceId: "wf-run-104"
+                })
+              ])
+            )
+        ]
+      }
+    });
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Unable to load runs" })).toBeInTheDocument();
+    expect(screen.getByText("Run list failed.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("run-104")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders honest latest activity labels for ended, compiled, and idle live runs", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+
+    stubProjectListFetch([scaffoldProject], {
+      [scaffoldProject.projectId]: [
+        createLiveRunFixture(scaffoldProject.projectId, {
+          runId: "run-ended",
+          endedAt: "2026-04-20T14:05:00.000Z",
+          workflowInstanceId: "wf-ended"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          compiledFrom: {
+            specificationRevisionId: "spec-rev-1",
+            architectureRevisionId: "arch-rev-1",
+            executionPlanRevisionId: "plan-rev-1",
+            compiledAt: "2026-04-20T13:40:00.000Z"
+          },
+          runId: "run-compiled",
+          startedAt: null,
+          workflowInstanceId: "wf-compiled"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          runId: "run-idle",
+          startedAt: null,
+          workflowInstanceId: "wf-idle"
+        })
+      ]
+    });
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByText("run-ended")).toBeInTheDocument();
+    expect(screen.getByText("Ended 2026-04-20 14:05 UTC")).toBeInTheDocument();
+    expect(screen.getByText("Compiled 2026-04-20 13:40 UTC")).toBeInTheDocument();
+    expect(screen.getByText("No recorded activity yet")).toBeInTheDocument();
+  });
+
   it("rehydrates a valid stored project id on startup", async () => {
     const projects: CurrentProject[] = [
       {

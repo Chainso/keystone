@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
+import { WorkstreamsBoard } from "../features/workstreams/components/workstreams-board";
 import { renderRoute } from "./render-route";
 import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
 
@@ -301,6 +302,59 @@ describe("Destination scaffolds", () => {
       screen.getByText(/Project workstreams still depend on scaffold-backed task data\./i)
     ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("keeps workstream filters visible when the active filter yields zero rows", () => {
+    const setActiveFilter = vi.fn();
+
+    render(
+      <WorkstreamsBoard
+        model={{
+          title: "Active and queued project work",
+          filters: [
+            {
+              filterId: "all",
+              label: "All",
+              isActive: false
+            },
+            {
+              filterId: "running",
+              label: "Running",
+              isActive: false
+            },
+            {
+              filterId: "queued",
+              label: "Queued",
+              isActive: true
+            },
+            {
+              filterId: "blocked",
+              label: "Blocked",
+              isActive: false
+            }
+          ],
+          rows: [],
+          pagination: {
+            currentPage: 1,
+            pageCount: 1,
+            rangeLabel: "Showing 0 of 0 tasks"
+          },
+          setActiveFilter
+        }}
+      />
+    );
+
+    expect(screen.getByText("Filters:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Queued" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No workstreams match this filter" })).toBeInTheDocument();
+    expect(screen.getByText("No workstreams match the queued filter right now.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 0 of 0 tasks · Page 1 of 1"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+    expect(setActiveFilter).toHaveBeenCalledWith("all");
   });
 
   it("opens a workstream task when the user clicks the row body", async () => {

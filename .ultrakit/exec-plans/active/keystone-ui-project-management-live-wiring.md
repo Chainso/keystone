@@ -159,6 +159,11 @@ Compatibility that **is** required:
   **Decision:** Keep one shared project-management API seam for both project lists and project-scoped runs, while letting the static route-test provider continue returning scaffold-backed run rows so existing scaffold run-detail routes stay truthful in tests.  
   **Rationale:** The real app needed live `GET /v1/projects/:projectId/runs` behavior immediately, but the existing run-detail route and several non-Phase-2 tests still rely on scaffold-backed run records. Splitting the API by source instead of forcing one fake shape preserved truthful live behavior without breaking the scaffold route harness.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 2 Fix Pass  
+  **Decision:** Keep the Workstreams filter bar mounted independently from the zero-row state, and extend the live-runs shell tests to cover run-fetch retry plus every `Latest activity` branch.  
+  **Rationale:** The review round found one behavioral regression in the new zero-row Workstreams branch and one testing gap in the live-runs path. Both fixes stayed inside the Phase 2 surface and did not require any run-detail or create/update work.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -190,6 +195,10 @@ Compatibility that **is** required:
   - [ui/src/routes/runs/runs-index-route.tsx](../../ui/src/routes/runs/runs-index-route.tsx) now renders truthful live run columns plus a visible no-detail limitation note, while preserving scaffold-backed run rows for the static test harness.
   - [ui/src/features/documentation/use-documentation-view-model.ts](../../ui/src/features/documentation/use-documentation-view-model.ts) and [ui/src/features/workstreams/use-workstreams-view-model.ts](../../ui/src/features/workstreams/use-workstreams-view-model.ts) now render explicit compatibility states for non-scaffold projects instead of falling through to scaffold defaults or throwing.
   - Focused shell and destination tests now prove stored-project rehydration into a no-runs state, sidebar-driven live run refresh, and non-scaffold safety for Documentation and Workstreams.
+- [x] 2026-04-20 Phase 2 targeted fix pass completed:
+  - [ui/src/features/workstreams/components/workstreams-board.tsx](../../ui/src/features/workstreams/components/workstreams-board.tsx) now keeps the filter controls visible when an active filter yields zero rows and renders a filter-specific empty state instead of hiding the controls.
+  - [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) now covers `/v1/projects/:projectId/runs` failure plus Retry recovery and asserts the `Latest activity` labels for ended, compiled-only, and idle live runs.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now includes a direct zero-row Workstreams board test so the filter-bar regression stays covered without broadening the route surface.
 
 ## Surprises & Discoveries
 
@@ -211,6 +220,7 @@ Compatibility that **is** required:
 - The first Phase 1 shell gate was too aggressive: it blocked the visible zero-project recovery route at `/projects/new`, which only showed up once the review pass exercised the route directly instead of just the empty shell CTA.
 - `Project settings` needed its own non-scaffold compatibility state even before live settings APIs exist, because the parent shell/provider seam alone does not stop the scaffold-only settings view models from throwing.
 - Phase 2 did not need a deeper `ResourceModelProvider` rewrite after all. Using `useCurrentProject()` plus direct dataset membership checks in Documentation and Workstreams was enough to detect non-scaffold selections honestly without changing the scaffold provider contract again.
+- The first Phase 2 Workstreams empty-state branch was too coarse: treating every zero-row result like a global empty state accidentally hid the filter controls for filter-specific zero results. Keeping the filters outside that branch fixed the regression without changing the Workstreams view-model contract.
 
 ## Outcomes & Retrospective
 
@@ -243,6 +253,12 @@ Phase 2 outcome on 2026-04-20:
 - Live run rows no longer advertise scaffold-only deep links, while scaffold-backed test runs still preserve the existing run-detail route behavior.
 - `Documentation` and `Workstreams` now stay stable for non-scaffold projects by rendering explicit compatibility states instead of crashing or silently falling back to the scaffold default project.
 - The required focused test command passes, while the repo-wide `rtk npm run typecheck` command remains blocked by the same unrelated worker-binding mismatch already recorded from Phase 1.
+
+Phase 2 targeted fix pass outcome on 2026-04-20:
+
+- Workstreams now keeps its filter controls visible across zero-row results, so an operator can recover immediately from an empty filter selection.
+- The live-runs shell coverage now exercises the run-fetch retry path and all three previously untested `Latest activity` fallback branches.
+- The focused validation picture is unchanged aside from the new passing tests: `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and `rtk npm run typecheck` still fails only in the unrelated worker-binding test.
 
 ## Context and Orientation
 
@@ -642,6 +658,10 @@ Completed on 2026-04-20.
   - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed.
   - `rtk npm run typecheck` still fails outside Phase 2 scope in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
   - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passed.
+- Targeted fix pass:
+  - [ui/src/features/workstreams/components/workstreams-board.tsx](../../ui/src/features/workstreams/components/workstreams-board.tsx) now preserves the filter controls across zero-row states and renders a filter-specific empty-state message when appropriate.
+  - [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) now covers run-fetch failure plus Retry recovery and the remaining live-run `Latest activity` branches.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now covers the zero-row Workstreams filter state directly.
 
 #### Next Starter Context
 
