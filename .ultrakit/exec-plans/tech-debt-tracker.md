@@ -59,3 +59,13 @@ New entries should follow this format:
 7. **Proposed Fix:** Add the missing persistence/projection layers and delivery behavior behind the frozen routes, starting with durable operator-message delivery and first-class decision-package/document collections.
 8. **Target Window:** `next UI/backend feature implementation cycle`
 9. **Status:** `open`
+
+1. **ID:** `TD-2026-04-20-005`
+2. **Date Added:** `2026-04-20`
+3. **Area:** `Target-model developer docs`
+4. **Description:** `README.md`, `.ultrakit/developer-docs/README.md`, and the archived target-model migration plan still reference `keystone-target-model-handoff.md`, but that file is not checked into the repo.
+5. **Impact:** Contributors hit a broken source-of-truth link when changing persistence, API, run orchestration, or document behavior, which makes the final target-model guidance harder to discover.
+6. **Owner:** `keystone-target-model-migration`
+7. **Proposed Fix:** Either restore a durable `keystone-target-model-handoff.md` document or replace those references with the current architecture docs and archived migration plan.
+8. **Target Window:** `next docs cleanup cycle`
+9. **Status:** `open`

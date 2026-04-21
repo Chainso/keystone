@@ -229,6 +229,16 @@ The migration strategy in this plan is therefore:
   **Decision:** Keep the third cumulative audit pass tightly on replay-safe bridge publication and pre-launch coordinator cleanup, without pulling forward Phase 4 persistence work.
   **Rationale:** The remaining blockers were all transitional bridge gaps: approval-request publication could be lost after a retry, terminal live-state publication could not replay after DB success, failed run creation could strand coordinator snapshots, and the audit still lacked proof for those cleanup and nested-document 404 branches.
 
+- **Date:** 2026-04-20
+  **Phase:** Archive reconciliation
+  **Decision:** Archive this plan based on the current repository state instead of reopening execution.
+  **Rationale:** The checked-in schema, routes, scripts, tests, and durable docs already satisfy the remaining Phase 4-6 acceptance criteria. The stale state was in the planning artifact, not in the implementation.
+
+- **Date:** 2026-04-20
+  **Phase:** Archive reconciliation
+  **Decision:** Record the missing `keystone-target-model-handoff.md` reference as follow-up debt rather than blocking archive.
+  **Rationale:** The final document-first run/task model is already captured by the current code, the M1/Think runtime docs, and this archived plan. The broken reference is a documentation-index gap, not an incomplete migration.
+
 ## Progress
 
 - [x] 2026-04-19 Discovery completed against the target-model handoff, design docs, current runtime, API, tests, and remaining legacy coupling.
@@ -248,9 +258,10 @@ The migration strategy in this plan is therefore:
 - [x] 2026-04-19 Post-Phase-3 audit fix pass complete: `rtk npm run typecheck` is green again, document hydration now finishes before client teardown, failed `POST /v1/runs` requests compensate mirrored authoritative rows, finalization safely reuses or cleans up deterministic summary artifacts, run summary fallback survives workflow metadata rewrites, malformed base64 document bodies now return `400 invalid_request`, and non-gated tests now prove positive `runs`-row persistence more credibly.
 - [x] 2026-04-19 Post-Phase-3 audit fix pass 2 complete: the run/session bridge now has real happy-path create and cleanup proof, `RunWorkflow` terminalizes authoritative `runs` rows on deny/compile-timeout aborts, run detail prefers authoritative run status over stale coordinator state, project run listing hydrates task/artifact summaries coherently, and approval resolution is retry-safe enough to avoid duplicate side effects while re-signaling still-paused workflows.
 - [x] 2026-04-19 Post-Phase-3 audit fix pass 3 complete: approval requests now re-publish through stable event keys so paused live state can recover on retry, terminal run publication replays against already-terminal mirrored rows, failed pre-launch `POST /v1/runs` cleanup now clears coordinator snapshots alongside DB compensation, and HTTP/workflow tests now cover the earlier cleanup failures plus explicit nested run-document `run_not_found`/`document_not_found` branches.
-- [ ] Phase 4 complete: compile and task execution write `run_tasks` and dependency edges, while legacy projections still function.
-- [ ] Phase 5 complete: public run/task/document APIs and scripts cut over to the target model, and old public contract shapes are removed rather than shimmed.
-- [ ] Phase 6 complete: sessions/events/approvals/coordinator/workspace bindings/decision-package architecture is removed and docs are refreshed.
+- [x] 2026-04-20 Phase 4 complete: compile now requires the three run planning documents, writes compile provenance plus DAG/task rows, and task workflows persist authoritative task state and conversation locators on `run_tasks`.
+- [x] 2026-04-20 Phase 5 complete: public project/run/document APIs and demo scripts now use the target-model contract, while legacy approval/event/stream/decision-package surfaces return `404` instead of lingering as compatibility shims.
+- [x] 2026-04-20 Phase 6 complete: legacy session/event/approval/coordinator/workspace-binding persistence and routes are absent from the current repo, and the checked-in developer docs describe the document-first run/task architecture.
+- [x] 2026-04-20 Archival cleanup complete: reconciled this plan with the current repo state, recorded the missing handoff-doc reference as follow-up debt, and archived the plan.
 
 ## Surprises & Discoveries
 
@@ -272,6 +283,8 @@ The migration strategy in this plan is therefore:
 - The transitional run/session mirror is only self-healing because the root run session still carries `project`, `workflowInstanceId`, and execution metadata; later cleanup phases should preserve those facts somewhere authoritative before removing root-session metadata entirely.
 - Transactional dual-write protection was not sufficient by itself once run creation and finalization started performing non-DB side effects. The transitional bridge still needed explicit compensation and deterministic artifact reuse to avoid ghost `runs` rows or orphaned run-summary blobs when later calls fail.
 - Coordinator snapshot state can diverge from relational cleanup unless the bridge either replays publication from stable event keys or explicitly clears pre-launch live state during compensation; the DO is a separate durability surface, not just a transient cache.
+- By 2026-04-20, the repository itself already reflected the Phase 4-6 end state; the stale artifact was the active exec plan, which had never been archived after the migration landed.
+- The repo no longer contains the original `keystone-target-model-handoff.md` file that this plan initially cited, so README and developer-doc indexes still contain a broken source-of-truth reference. That gap is documentation debt, not remaining backend migration work.
 
 ## Outcomes & Retrospective
 
@@ -342,43 +355,66 @@ Phase 1 fix-pass outcome on 2026-04-19:
 - Document revision numbering now serializes on the owning document row, closing the `max(revision_number) + 1` race without adding new schema state.
 - Repository tests now cover legacy `r2://` bucket/object-key backfill, invalid document scope inputs, self-dependency rejection, and the new revision/provenance integrity guards.
 
+Phase 4 outcome on 2026-04-20:
+
+- Compile now loads the required run planning documents through `src/lib/documents/runtime.ts`, records compile provenance on `runs`, and persists DAG/task rows through `src/lib/db/runs.ts` plus `src/workflows/RunWorkflow.ts`.
+- `src/workflows/TaskWorkflow.ts` now updates authoritative task status on `run_tasks` and stores Think conversation locators there instead of relying on event-derived task state.
+- The runtime contract now matches the target sandbox model: one sandbox per run with task-specific worktrees behind the stable task-session bridge, as reflected in the current docs and validation coverage.
+
+Phase 5 outcome on 2026-04-20:
+
+- The active `v1` surface now centers on `projects`, `runs`, `documents`, `workflow`, `tasks`, and `artifacts`, while `scripts/demo-run.ts`, `scripts/demo-validate.ts`, and `scripts/run-local.ts` use project-scoped run creation plus `executionEngine`.
+- Legacy public approval, event, stream, and decision-package surfaces are intentionally gone; `tests/http/app.test.ts` now proves those removed routes return `404`.
+- The old `runtime` plus `thinkMode` request contract has been replaced by `executionEngine`, and `tests/http/run-input.test.ts` now rejects the legacy request fields explicitly.
+
+Phase 6 outcome on 2026-04-20:
+
+- Legacy persistence and route modules such as `src/lib/db/events.ts`, `src/lib/db/approvals.ts`, `src/lib/db/workspaces.ts`, `src/http/api/v1/decision-packages/`, and `src/durable-objects/RunCoordinatorDO.ts` are absent from the current repo state.
+- `README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/m1-local-runbook.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, and `.ultrakit/developer-docs/think-runtime-runbook.md` now describe the document-first run/task model and the removal of the old public legacy surfaces.
+- The remaining post-migration gap is documentation-only: the repo still references a non-existent `keystone-target-model-handoff.md`, so the follow-up work is to restore or replace that durable source-of-truth link.
+
+Archival outcome on 2026-04-20:
+
+- The migration itself is complete. This cleanup pass closed the stale active-plan bookkeeping, preserved the evidence that Phases 4-6 already landed, and archived the plan.
+- The only explicit follow-up is documentation debt around the missing target-model handoff link; it does not reopen the backend migration.
+
 ## Context and Orientation
 
-The target model is defined in [keystone-target-model-handoff.md](../../developer-docs/keystone-target-model-handoff.md). The user wants implementation planning for that exact target, not a partial simplification.
+The original target-model handoff document is not currently checked into this repo. Use this archived plan together with [m1-architecture.md](../../developer-docs/m1-architecture.md) and [think-runtime-architecture.md](../../developer-docs/think-runtime-architecture.md) as the durable record of the resolved target model.
 
 Relevant design docs:
 
-- [design/workspace-spec.md](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/design/workspace-spec.md)
-- [design/design-guidelines.md](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/design/design-guidelines.md)
+- [design/workspace-spec.md](/home/chanzo/code/large-projects/keystone-cloudflare/design/workspace-spec.md)
+- [design/design-guidelines.md](/home/chanzo/code/large-projects/keystone-cloudflare/design/design-guidelines.md)
 
 Key current backend paths:
 
-- persistence schema: [src/lib/db/schema.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/schema.ts)
-- current run/session repository: [src/lib/db/runs.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/runs.ts)
-- current artifact repository: [src/lib/db/artifacts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/artifacts.ts)
-- current workspace repository: [src/lib/db/workspaces.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/workspaces.ts)
-- current project repository: [src/lib/db/projects.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/projects.ts)
-- current event repository: [src/lib/db/events.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/events.ts)
-- current approval repository: [src/lib/db/approvals.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/approvals.ts)
-- run workflow: [src/workflows/RunWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/RunWorkflow.ts)
-- task workflow: [src/workflows/TaskWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/TaskWorkflow.ts)
-- task session DO: [src/durable-objects/TaskSessionDO.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts)
-- coordinator DO: [src/durable-objects/RunCoordinatorDO.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts)
-- compile logic: [src/keystone/compile/plan-run.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/compile/plan-run.ts)
-- finalize logic: [src/keystone/integration/finalize-run.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/integration/finalize-run.ts)
+- persistence schema: [src/lib/db/schema.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/schema.ts)
+- current run/session repository: [src/lib/db/runs.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/runs.ts)
+- current artifact repository: [src/lib/db/artifacts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/artifacts.ts)
+- current workspace repository: [src/lib/db/workspaces.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/workspaces.ts)
+- current project repository: [src/lib/db/projects.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/projects.ts)
+- current event repository: [src/lib/db/events.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/events.ts)
+- current approval repository: [src/lib/db/approvals.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/approvals.ts)
+- run workflow: [src/workflows/RunWorkflow.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/RunWorkflow.ts)
+- task workflow: [src/workflows/TaskWorkflow.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/TaskWorkflow.ts)
+- task session DO: [src/durable-objects/TaskSessionDO.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts)
+- coordinator DO: [src/durable-objects/RunCoordinatorDO.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts)
+- compile logic: [src/keystone/compile/plan-run.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/compile/plan-run.ts)
+- finalize logic: [src/keystone/integration/finalize-run.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/integration/finalize-run.ts)
 
 Key current API paths:
 
-- project contracts/handlers/router: [src/http/api/v1/projects/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/contracts.ts), [src/http/api/v1/projects/handlers.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/handlers.ts), [src/http/api/v1/projects/router.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/router.ts)
-- run contracts/handlers/projections/router: [src/http/api/v1/runs/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/contracts.ts), [src/http/api/v1/runs/handlers.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/handlers.ts), [src/http/api/v1/runs/projections.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/projections.ts), [src/http/api/v1/runs/router.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/router.ts)
-- decision-package contracts/handlers/router: [src/http/api/v1/decision-packages/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/contracts.ts), [src/http/api/v1/decision-packages/handlers.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/handlers.ts), [src/http/api/v1/decision-packages/router.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/router.ts)
-- shared route contract helper: [src/http/api/v1/common/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/common/contracts.ts)
+- project contracts/handlers/router: [src/http/api/v1/projects/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/contracts.ts), [src/http/api/v1/projects/handlers.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/handlers.ts), [src/http/api/v1/projects/router.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/router.ts)
+- run contracts/handlers/projections/router: [src/http/api/v1/runs/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/contracts.ts), [src/http/api/v1/runs/handlers.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/handlers.ts), [src/http/api/v1/runs/projections.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/projections.ts), [src/http/api/v1/runs/router.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/router.ts)
+- decision-package contracts/handlers/router: [src/http/api/v1/decision-packages/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages/contracts.ts), [src/http/api/v1/decision-packages/handlers.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages/handlers.ts), [src/http/api/v1/decision-packages/router.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages/router.ts)
+- shared route contract helper: [src/http/api/v1/common/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/common/contracts.ts)
 
 Key tests and scripts coupled to the old model:
 
-- HTTP contract tests: [tests/http/app.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts), [tests/http/projects.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/projects.test.ts), [tests/http/run-input.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/run-input.test.ts)
-- DB/runtime tests: [tests/lib/db-repositories.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/db-repositories.test.ts), [tests/lib/session.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/session.test.ts), [tests/lib/run-summary.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/run-summary.test.ts), [tests/lib/workflows/run-workflow-compile.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/workflows/run-workflow-compile.test.ts), [tests/lib/workflows/task-workflow-think.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/workflows/task-workflow-think.test.ts)
-- demo scripts/tests: [scripts/demo-run.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/demo-run.ts), [scripts/demo-validate.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/demo-validate.ts), [scripts/run-local.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/run-local.ts), [tests/scripts/demo-contracts.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
+- HTTP contract tests: [tests/http/app.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/app.test.ts), [tests/http/projects.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/projects.test.ts), [tests/http/run-input.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/run-input.test.ts)
+- DB/runtime tests: [tests/lib/db-repositories.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/db-repositories.test.ts), [tests/lib/session.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/session.test.ts), [tests/lib/run-summary.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/run-summary.test.ts), [tests/lib/workflows/run-workflow-compile.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/workflows/run-workflow-compile.test.ts), [tests/lib/workflows/task-workflow-think.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/workflows/task-workflow-think.test.ts)
+- demo scripts/tests: [scripts/demo-run.ts](/home/chanzo/code/large-projects/keystone-cloudflare/scripts/demo-run.ts), [scripts/demo-validate.ts](/home/chanzo/code/large-projects/keystone-cloudflare/scripts/demo-validate.ts), [scripts/run-local.ts](/home/chanzo/code/large-projects/keystone-cloudflare/scripts/run-local.ts), [tests/scripts/demo-contracts.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
 
 Collection-vs-detail API shape to target:
 
@@ -407,7 +443,7 @@ Phase 6 removes the legacy architecture once the new path is proven. This includ
 
 ## Concrete Steps
 
-Run all commands from `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare` unless a phase handoff says otherwise.
+Run all commands from `/home/chanzo/code/large-projects/keystone-cloudflare` unless a phase handoff says otherwise.
 
 Broad validation baseline commands:
 
@@ -465,28 +501,28 @@ Recovery rules:
 Discovery evidence gathered for this plan:
 
 - runtime coupling was confirmed via:
-  - [src/workflows/RunWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/RunWorkflow.ts)
-  - [src/workflows/TaskWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/TaskWorkflow.ts)
-  - [src/durable-objects/TaskSessionDO.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts)
-  - [src/durable-objects/RunCoordinatorDO.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts)
+  - [src/workflows/RunWorkflow.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/RunWorkflow.ts)
+  - [src/workflows/TaskWorkflow.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/TaskWorkflow.ts)
+  - [src/durable-objects/TaskSessionDO.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts)
+  - [src/durable-objects/RunCoordinatorDO.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts)
 - persistence/API coupling was confirmed via:
-  - [src/lib/db/schema.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/schema.ts)
-  - [src/http/api/v1/runs/projections.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/projections.ts)
-  - [src/http/api/v1/runs/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/contracts.ts)
-  - [tests/http/app.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts)
-  - [tests/scripts/demo-contracts.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
+  - [src/lib/db/schema.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/schema.ts)
+  - [src/http/api/v1/runs/projections.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/projections.ts)
+  - [src/http/api/v1/runs/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/contracts.ts)
+  - [tests/http/app.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/app.test.ts)
+  - [tests/scripts/demo-contracts.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
 
 ## Interfaces and Dependencies
 
 Important interfaces and modules the migration must touch:
 
-- project domain contracts: [src/keystone/projects/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/projects/contracts.ts)
-- compile contracts: [src/keystone/compile/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/compile/contracts.ts)
-- run option/runtime contracts: [src/lib/runs/options.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/runs/options.ts)
-- route contract helper: [src/http/api/v1/common/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/common/contracts.ts)
-- artifact/R2 helpers: [src/lib/artifacts/r2.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/artifacts/r2.ts), [src/lib/artifacts/keys.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/artifacts/keys.ts)
-- Think agent/runtime seam: [src/keystone/agents/base/KeystoneThinkAgent.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/agents/base/KeystoneThinkAgent.ts), [src/maestro/agent-runtime.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/maestro/agent-runtime.ts)
-- workspace/sandbox helpers: [src/lib/workspace/init.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/workspace/init.ts), [src/lib/workspace/worktree.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/workspace/worktree.ts), [src/lib/sandbox/client.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/sandbox/client.ts)
+- project domain contracts: [src/keystone/projects/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/projects/contracts.ts)
+- compile contracts: [src/keystone/compile/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/compile/contracts.ts)
+- run option/runtime contracts: [src/lib/runs/options.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/runs/options.ts)
+- route contract helper: [src/http/api/v1/common/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/common/contracts.ts)
+- artifact/R2 helpers: [src/lib/artifacts/r2.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/artifacts/r2.ts), [src/lib/artifacts/keys.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/artifacts/keys.ts)
+- Think agent/runtime seam: [src/keystone/agents/base/KeystoneThinkAgent.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/agents/base/KeystoneThinkAgent.ts), [src/maestro/agent-runtime.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/maestro/agent-runtime.ts)
+- workspace/sandbox helpers: [src/lib/workspace/init.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/workspace/init.ts), [src/lib/workspace/worktree.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/workspace/worktree.ts), [src/lib/sandbox/client.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/sandbox/client.ts)
 
 ## Phase 1: Add the New Persistence Foundation
 
@@ -520,24 +556,24 @@ Out of scope:
 
 #### Read First
 
-- [keystone-target-model-handoff.md](../../developer-docs/keystone-target-model-handoff.md)
-- [src/lib/db/schema.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/schema.ts)
-- [src/lib/db/artifacts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/artifacts.ts)
-- [src/lib/db/runs.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/runs.ts)
-- [src/lib/db/projects.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/projects.ts)
-- [tests/lib/db-repositories.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/db-repositories.test.ts)
-- [migrations/0001_m1_operational_core.sql](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/migrations/0001_m1_operational_core.sql)
-- [migrations/0002_project_model.sql](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/migrations/0002_project_model.sql)
-- [migrations/0003_project_workspace_components.sql](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/migrations/0003_project_workspace_components.sql)
+- [m1-architecture.md](../../developer-docs/m1-architecture.md)
+- [src/lib/db/schema.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/schema.ts)
+- [src/lib/db/artifacts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/artifacts.ts)
+- [src/lib/db/runs.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/runs.ts)
+- [src/lib/db/projects.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/projects.ts)
+- [tests/lib/db-repositories.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/db-repositories.test.ts)
+- [migrations/0001_m1_operational_core.sql](/home/chanzo/code/large-projects/keystone-cloudflare/migrations/0001_m1_operational_core.sql)
+- [migrations/0002_project_model.sql](/home/chanzo/code/large-projects/keystone-cloudflare/migrations/0002_project_model.sql)
+- [migrations/0003_project_workspace_components.sql](/home/chanzo/code/large-projects/keystone-cloudflare/migrations/0003_project_workspace_components.sql)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/migrations/` (new migration files)
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/schema.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/artifacts.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/runs.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/documents.ts` (new)
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/db-repositories.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/migrations/` (new migration files)
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/schema.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/artifacts.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/runs.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/documents.ts` (new)
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/db-repositories.test.ts`
 
 #### Validation
 
@@ -609,25 +645,25 @@ Out of scope:
 
 #### Read First
 
-- [keystone-target-model-handoff.md](../../developer-docs/keystone-target-model-handoff.md)
-- [src/http/api/v1/projects/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/contracts.ts)
-- [src/http/api/v1/projects/handlers.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/handlers.ts)
-- [src/http/api/v1/projects/router.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/router.ts)
-- [src/http/api/v1/artifacts/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/artifacts/contracts.ts)
-- [src/lib/artifacts/r2.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/artifacts/r2.ts)
-- [tests/http/projects.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/projects.test.ts)
-- [tests/http/app.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts)
+- [m1-architecture.md](../../developer-docs/m1-architecture.md)
+- [src/http/api/v1/projects/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/contracts.ts)
+- [src/http/api/v1/projects/handlers.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/handlers.ts)
+- [src/http/api/v1/projects/router.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/router.ts)
+- [src/http/api/v1/artifacts/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/artifacts/contracts.ts)
+- [src/lib/artifacts/r2.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/artifacts/r2.ts)
+- [tests/http/projects.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/projects.test.ts)
+- [tests/http/app.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/app.test.ts)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/contracts.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/handlers.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/router.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/documents/` (new if split)
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/documents.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/artifacts.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/projects.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/contracts.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/handlers.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/router.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/documents/` (new if split)
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/documents.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/artifacts.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/projects.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/app.test.ts`
 
 #### Validation
 
@@ -698,24 +734,24 @@ Out of scope:
 
 #### Read First
 
-- [src/http/api/v1/runs/handlers.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/handlers.ts)
-- [src/workflows/RunWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/RunWorkflow.ts)
-- [src/lib/runs/options.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/runs/options.ts)
-- [src/lib/db/runs.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/runs.ts)
-- [src/keystone/integration/finalize-run.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/integration/finalize-run.ts)
-- [tests/lib/workflows/run-workflow-compile.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/workflows/run-workflow-compile.test.ts)
-- [tests/lib/finalize-run.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/finalize-run.test.ts)
+- [src/http/api/v1/runs/handlers.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/handlers.ts)
+- [src/workflows/RunWorkflow.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/RunWorkflow.ts)
+- [src/lib/runs/options.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/runs/options.ts)
+- [src/lib/db/runs.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/runs.ts)
+- [src/keystone/integration/finalize-run.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/integration/finalize-run.ts)
+- [tests/lib/workflows/run-workflow-compile.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/workflows/run-workflow-compile.test.ts)
+- [tests/lib/finalize-run.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/finalize-run.test.ts)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/handlers.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/RunWorkflow.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/runs/options.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/runs.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/integration/finalize-run.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/workflows/run-workflow-compile.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/finalize-run.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/run-input.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/handlers.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/RunWorkflow.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/runs/options.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/runs.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/integration/finalize-run.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/workflows/run-workflow-compile.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/finalize-run.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/run-input.test.ts`
 
 #### Validation
 
@@ -786,27 +822,27 @@ Out of scope:
 
 #### Read First
 
-- [src/keystone/compile/plan-run.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/compile/plan-run.ts)
-- [src/workflows/TaskWorkflow.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/TaskWorkflow.ts)
-- [src/durable-objects/TaskSessionDO.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts)
-- [src/lib/workspace/init.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/workspace/init.ts)
-- [src/lib/workspace/worktree.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/workspace/worktree.ts)
-- [src/keystone/tasks/load-task-contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/tasks/load-task-contracts.ts)
-- [tests/lib/compile-plan-run.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/compile-plan-run.test.ts)
-- [tests/lib/workflows/task-workflow-think.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/workflows/task-workflow-think.test.ts)
-- [tests/lib/project-workspace-materialization.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/project-workspace-materialization.test.ts)
+- [src/keystone/compile/plan-run.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/compile/plan-run.ts)
+- [src/workflows/TaskWorkflow.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/TaskWorkflow.ts)
+- [src/durable-objects/TaskSessionDO.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts)
+- [src/lib/workspace/init.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/workspace/init.ts)
+- [src/lib/workspace/worktree.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/workspace/worktree.ts)
+- [src/keystone/tasks/load-task-contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/tasks/load-task-contracts.ts)
+- [tests/lib/compile-plan-run.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/compile-plan-run.test.ts)
+- [tests/lib/workflows/task-workflow-think.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/workflows/task-workflow-think.test.ts)
+- [tests/lib/project-workspace-materialization.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/project-workspace-materialization.test.ts)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/keystone/compile/plan-run.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/workflows/TaskWorkflow.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/workspace/init.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/workspace/worktree.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/workspaces.ts` (transitional if still needed)
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/compile-plan-run.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/workflows/task-workflow-think.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/project-workspace-materialization.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/keystone/compile/plan-run.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/workflows/TaskWorkflow.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/TaskSessionDO.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/workspace/init.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/workspace/worktree.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/workspaces.ts` (transitional if still needed)
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/compile-plan-run.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/workflows/task-workflow-think.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/project-workspace-materialization.test.ts`
 
 #### Validation
 
@@ -842,15 +878,15 @@ Success means the replacement DAG state and task-state rows are real, compile re
 
 #### Status
 
-Pending approval.
+Completed on 2026-04-20 during archive reconciliation against the current repo state.
 
 #### Completion Notes
 
-Not started.
+The current repo state satisfies this phase. Compile now loads the required run planning documents through `src/lib/documents/runtime.ts`, `src/workflows/RunWorkflow.ts` records compile provenance plus persisted DAG/task rows, and `src/workflows/TaskWorkflow.ts` updates authoritative task state and Think conversation locators on `run_tasks`. The checked-in runtime docs now describe one sandbox per run with task-specific worktrees behind `TaskSessionDO`, which matches the target execution boundary. Relevant proof now lives in `tests/lib/document-runtime.test.ts`, `tests/lib/compile-plan-run.test.ts`, `tests/lib/workflows/run-workflow-compile.test.ts`, `tests/lib/workflows/task-workflow-think.test.ts`, `tests/lib/workflows/task-workflow-scripted.test.ts`, and `tests/lib/project-workspace-materialization.test.ts`.
 
 #### Next Starter Context
 
-This phase is still not the time to delete `session_events`. It is the time to make those events non-authoritative by establishing direct DAG/task rows.
+Phase 5 can treat the DAG/task rows as authoritative and should remove old public contract shapes rather than adding more bridge logic. No further Phase 4 foundation work remains.
 
 ## Phase 5: Cut Over The Public API And Scripts
 
@@ -879,37 +915,37 @@ Out of scope:
 
 #### Read First
 
-- [src/http/api/v1/runs/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/contracts.ts)
-- [src/http/api/v1/runs/handlers.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/handlers.ts)
-- [src/http/api/v1/runs/projections.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/projections.ts)
-- [src/http/api/v1/decision-packages/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/contracts.ts)
-- [src/http/api/v1/decision-packages/router.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/router.ts)
-- [src/http/api/v1/common/contracts.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/common/contracts.ts)
-- [scripts/demo-run.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/demo-run.ts)
-- [scripts/demo-validate.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/demo-validate.ts)
-- [tests/http/app.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts)
-- [tests/scripts/demo-contracts.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
+- [src/http/api/v1/runs/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/contracts.ts)
+- [src/http/api/v1/runs/handlers.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/handlers.ts)
+- [src/http/api/v1/runs/projections.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/projections.ts)
+- [src/http/api/v1/decision-packages/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages/contracts.ts)
+- [src/http/api/v1/decision-packages/router.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages/router.ts)
+- [src/http/api/v1/common/contracts.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/common/contracts.ts)
+- [scripts/demo-run.ts](/home/chanzo/code/large-projects/keystone-cloudflare/scripts/demo-run.ts)
+- [scripts/demo-validate.ts](/home/chanzo/code/large-projects/keystone-cloudflare/scripts/demo-validate.ts)
+- [tests/http/app.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/app.test.ts)
+- [tests/scripts/demo-contracts.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/common/contracts.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/contracts.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/router.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/projects/handlers.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/contracts.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/router.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/handlers.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/runs/projections.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/` (delete or retire)
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/handlers/ws.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/demo-run.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/demo-validate.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/run-local.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/scripts/demo-state.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/projects.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/run-input.test.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/scripts/demo-contracts.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/common/contracts.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/contracts.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/router.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/projects/handlers.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/contracts.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/router.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/handlers.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/runs/projections.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages/` (delete or retire)
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/handlers/ws.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/scripts/demo-run.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/scripts/demo-validate.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/scripts/run-local.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/scripts/demo-state.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/app.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/projects.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/run-input.test.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/scripts/demo-contracts.test.ts`
 
 #### Validation
 
@@ -944,15 +980,15 @@ Success means the active public contract and demo scripts align with the target 
 
 #### Status
 
-Pending approval.
+Completed on 2026-04-20 during archive reconciliation against the current repo state.
 
 #### Completion Notes
 
-Not started.
+The current `v1` API and demo tooling satisfy this phase. `src/http/api/v1/` now exposes the target-model project/run/document/artifact resources, `src/http/api/v1/runs/router.ts` serves compile, workflow, task, and nested-document routes over that model, and `scripts/demo-run.ts`, `scripts/demo-validate.ts`, and `scripts/run-local.ts` all use project-scoped run creation plus `executionEngine`. `tests/http/app.test.ts`, `tests/http/projects.test.ts`, `tests/http/run-input.test.ts`, and `tests/scripts/demo-contracts.test.ts` now validate the document-first contract, explicit compile flow, compile provenance, and task conversation locators. The removed approval/event/stream/decision-package surfaces are now explicit `404` assertions, not tolerated shims.
 
 #### Next Starter Context
 
-This phase is the intentional public break. Do not add compatibility shims unless a later phase would be blocked without them, and if one is added, record exactly why it is temporary.
+Phase 6 can delete any remaining legacy bridge code and stale documentation assumptions. The public contract cutover is already complete.
 
 ## Phase 6: Remove Legacy Architecture And Refresh Docs
 
@@ -988,34 +1024,34 @@ Out of scope:
 
 #### Read First
 
-- [keystone-target-model-handoff.md](../../developer-docs/keystone-target-model-handoff.md)
-- [src/lib/db/schema.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/schema.ts)
-- [src/lib/db/events.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/events.ts)
-- [src/lib/db/approvals.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/approvals.ts)
-- [src/lib/db/workspaces.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/workspaces.ts)
-- [src/durable-objects/RunCoordinatorDO.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts)
-- [src/http/handlers/ws.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/handlers/ws.ts)
-- [src/http/api/v1/decision-packages/](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages)
-- [tests/lib/db-repositories.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/db-repositories.test.ts)
-- [tests/lib/run-summary.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/run-summary.test.ts)
-- [tests/lib/event-types.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/event-types.test.ts)
-- [tests/http/app.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/app.test.ts)
-- [tests/scripts/demo-contracts.test.ts](/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
+- [m1-architecture.md](../../developer-docs/m1-architecture.md)
+- [src/lib/db/schema.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/schema.ts)
+- [src/lib/db/events.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/events.ts)
+- [src/lib/db/approvals.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/approvals.ts)
+- [src/lib/db/workspaces.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/workspaces.ts)
+- [src/durable-objects/RunCoordinatorDO.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts)
+- [src/http/handlers/ws.ts](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/handlers/ws.ts)
+- [src/http/api/v1/decision-packages/](/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages)
+- [tests/lib/db-repositories.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/db-repositories.test.ts)
+- [tests/lib/run-summary.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/run-summary.test.ts)
+- [tests/lib/event-types.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/event-types.test.ts)
+- [tests/http/app.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/app.test.ts)
+- [tests/scripts/demo-contracts.test.ts](/home/chanzo/code/large-projects/keystone-cloudflare/tests/scripts/demo-contracts.test.ts)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/schema.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/events.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/approvals.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/lib/db/workspaces.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/handlers/ws.ts`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/src/http/api/v1/decision-packages/`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/lib/`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/http/`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/tests/scripts/`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/.ultrakit/developer-docs/`
-- `/home/chanzo/.codex/worktrees/e3b7/keystone-cloudflare/.ultrakit/notes.md`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/schema.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/events.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/approvals.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/lib/db/workspaces.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/durable-objects/RunCoordinatorDO.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/handlers/ws.ts`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/src/http/api/v1/decision-packages/`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/lib/`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/http/`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/tests/scripts/`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/.ultrakit/developer-docs/`
+- `/home/chanzo/code/large-projects/keystone-cloudflare/.ultrakit/notes.md`
 
 #### Validation
 
@@ -1050,12 +1086,12 @@ Success means the repository no longer depends on the old architecture and the d
 
 #### Status
 
-Pending approval.
+Completed on 2026-04-20 during archive reconciliation against the current repo state.
 
 #### Completion Notes
 
-Not started.
+The current repo state satisfies this phase. Legacy persistence and route modules named in this handoff are absent from the checked-in tree, `src/durable-objects/` now contains only `TaskSessionDO.ts`, and the checked-in README plus M1/Think runtime docs describe the final document-first run/task model instead of the old session/event public contract. The remaining gap is documentation-only: the repo still references a missing `keystone-target-model-handoff.md`, which is now tracked as explicit follow-up debt rather than a blocker for archive.
 
 #### Next Starter Context
 
-This is the only destructive cleanup phase. If the repository still has mixed old/new reads at this point, stop and re-scope rather than deleting support prematurely.
+Archived. Future work should start from the current document-first run/task model rather than from migration-era session/event assumptions.
