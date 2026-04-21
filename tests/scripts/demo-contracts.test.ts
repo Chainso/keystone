@@ -8,35 +8,27 @@ import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  resolveCreatedRunExecutionContract,
-  resolveRuntime as resolveDemoRunRuntime,
-  resolveThinkMode as resolveDemoRunThinkMode
-} from "../../scripts/demo-run";
-import {
-  resolveBaseUrl as resolveEnsureDemoProjectBaseUrl,
-  resolveDemoTenantId,
-  resolveFixtureProjectConfig as resolveEnsureProjectFixtureConfig
-} from "../../scripts/ensure-demo-project";
-import {
-  resolveRuntime as resolveDemoValidateRuntime,
-  resolveThinkMode as resolveDemoValidateThinkMode,
-  resolveValidatedRunContract
-} from "../../scripts/demo-validate";
+import { resolveFixtureProjectConfig } from "../../scripts/ensure-demo-project";
 
 const execFileAsync = promisify(execFile);
 const demoEnvKeys = [
   "KEYSTONE_BASE_URL",
-  "KEYSTONE_AGENT_RUNTIME",
-  "KEYSTONE_DEMO_TENANT_ID",
   "KEYSTONE_DEMO_STATE_PATH",
-  "KEYSTONE_THINK_DEMO_MODE",
-  "KEYSTONE_PRESERVE_SANDBOX",
-  "KEYSTONE_RUN_ID",
-  "KEYSTONE_STREAM_EVENTS"
+  "KEYSTONE_DEMO_TENANT_ID",
+  "KEYSTONE_DEV_TOKEN",
+  "KEYSTONE_EXECUTION_ENGINE",
+  "KEYSTONE_RUN_ID"
 ] as const;
 const originalArgv = [...process.argv];
 const originalEnv = new Map(demoEnvKeys.map((key) => [key, process.env[key]]));
+const tempPaths = new Set<string>();
+
+type ScriptName =
+  | "run:local"
+  | "demo:ensure-project"
+  | "demo:run"
+  | "demo:run:think-live"
+  | "demo:validate";
 
 type StubRequest = {
   method: string;
@@ -83,7 +75,6 @@ async function startStubServer(
       requests.push(stubRequest);
 
       const stubResponse = await handler(stubRequest);
-
       response.writeHead(stubResponse.status ?? 200, {
         "Content-Type": "application/json"
       });
@@ -104,6 +95,7 @@ async function startStubServer(
   await once(server, "listening");
 
   const address = server.address();
+
   if (!address || typeof address === "string") {
     throw new Error("Expected stub server to expose a TCP address.");
   }
@@ -118,8 +110,14 @@ async function startStubServer(
   };
 }
 
+async function createTempStatePath() {
+  const directory = await mkdtemp(join(tmpdir(), "keystone-demo-state-"));
+  tempPaths.add(directory);
+  return join(directory, "demo-last-run.json");
+}
+
 async function runDemoScript(
-  scriptName: "demo:ensure-project" | "demo:run" | "demo:validate",
+  scriptName: ScriptName,
   args: string[],
   envOverrides: Record<string, string | undefined> = {}
 ) {
@@ -146,39 +144,7 @@ function parseCommandJson(stdout: string) {
   return JSON.parse(trimmedOutput.slice(jsonStart)) as Record<string, unknown>;
 }
 
-function handleDemoProjectBootstrap(request: StubRequest): StubResponse | null {
-  if (request.method === "GET" && request.path === "/v1/projects") {
-    return {
-      body: {
-        tenantId: "tenant-dev-local",
-        total: 0,
-        projects: []
-      }
-    };
-  }
-
-  if (request.method === "POST" && request.path === "/v1/projects") {
-    return {
-      status: 201,
-      body: {
-        project: {
-          projectId: "project-created",
-          projectKey: "fixture-demo-project"
-        }
-      }
-    };
-  }
-
-  return null;
-}
-
-function clearDemoEnv() {
-  for (const key of demoEnvKeys) {
-    delete process.env[key];
-  }
-}
-
-afterEach(() => {
+afterEach(async () => {
   process.argv = [...originalArgv];
 
   for (const [key, value] of originalEnv) {
@@ -189,11 +155,22 @@ afterEach(() => {
 
     process.env[key] = value;
   }
+
+  for (const path of tempPaths) {
+    await rm(path, {
+      recursive: true,
+      force: true
+    });
+  }
+
+  tempPaths.clear();
 });
 
 describe("demo scripts", () => {
-  it("exposes the full fixture project config contract", () => {
-    expect(resolveEnsureProjectFixtureConfig()).toMatchObject({
+  it("exposes the fixture project config contract without legacy bindings or metadata", () => {
+    const fixtureConfig = resolveFixtureProjectConfig();
+
+    expect(fixtureConfig).toMatchObject({
       projectKey: "fixture-demo-project",
       ruleSet: {
         reviewInstructions: expect.any(Array),
@@ -201,30 +178,86 @@ describe("demo scripts", () => {
       },
       components: [
         expect.objectContaining({
-          componentKey: "demo-target"
+          componentKey: "demo-target",
+          config: {
+            localPath: "./fixtures/demo-target",
+            ref: "main"
+          }
         })
       ],
       envVars: [
-        expect.objectContaining({
-          name: "KEYSTONE_FIXTURE_PROJECT"
-        })
-      ],
-      integrationBindings: expect.any(Array),
-      metadata: {
-        source: "ensure-demo-project"
-      }
+        {
+          name: "KEYSTONE_FIXTURE_PROJECT",
+          value: "1"
+        }
+      ]
     });
+    expect("integrationBindings" in fixtureConfig).toBe(false);
+    expect("metadata" in fixtureConfig).toBe(false);
   });
 
-  it("executes the demo:ensure-project entrypoint and creates the fixture project when missing", async () => {
-    const fixtureConfig = resolveEnsureProjectFixtureConfig();
+  it("run:local creates project-scoped runs and reports the next document-driven steps", async () => {
+    const server = await startStubServer((request) => {
+      if (request.method === "POST" && request.path === "/v1/projects/project-fixture/runs") {
+        return {
+          status: 201,
+          body: {
+            data: {
+              runId: "run-local-123",
+              status: "configured"
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      const { stdout } = await runDemoScript(
+        "run:local",
+        [`--base-url=${server.baseUrl}`, "--project-id=project-fixture"],
+        {
+          KEYSTONE_DEMO_TENANT_ID: "tenant-local"
+        }
+      );
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        baseUrl: server.baseUrl,
+        tenantId: "tenant-local",
+        projectId: "project-fixture",
+        runId: "run-local-123",
+        executionEngine: "scripted",
+        status: "configured",
+        nextSteps: {
+          createDocuments: "/v1/runs/run-local-123/documents",
+          compile: "/v1/runs/run-local-123/compile"
+        }
+      });
+      expect(server.requests).toEqual([
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/projects/project-fixture/runs",
+          body: {
+            executionEngine: "scripted"
+          }
+        })
+      ]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:ensure-project creates the fixture project when none exists yet", async () => {
     const server = await startStubServer((request) => {
       if (request.method === "GET" && request.path === "/v1/projects") {
         return {
           body: {
-            tenantId: "tenant-dev-local",
-            total: 0,
-            projects: []
+            data: {
+              items: [],
+              total: 0
+            }
           }
         };
       }
@@ -233,7 +266,7 @@ describe("demo scripts", () => {
         return {
           status: 201,
           body: {
-            project: {
+            data: {
               projectId: "project-created",
               projectKey: "fixture-demo-project"
             }
@@ -245,632 +278,151 @@ describe("demo scripts", () => {
     });
 
     try {
-      const { stdout } = await runDemoScript("demo:ensure-project", [
-        `--base-url=${server.baseUrl}`
-      ]);
+      const { stdout } = await runDemoScript("demo:ensure-project", [`--base-url=${server.baseUrl}`]);
       const payload = parseCommandJson(stdout);
 
       expect(payload).toMatchObject({
         action: "created",
         baseUrl: server.baseUrl,
-        tenantId: "tenant-dev-local",
         project: {
           projectId: "project-created",
           projectKey: "fixture-demo-project"
         }
       });
-
-      expect(server.requests).toHaveLength(2);
-      expect(server.requests[0]).toMatchObject({
-        method: "GET",
-        path: "/v1/projects"
-      });
-      expect(server.requests[1]).toMatchObject({
-        method: "POST",
-        path: "/v1/projects",
-        body: fixtureConfig
-      });
+      expect(server.requests).toEqual([
+        expect.objectContaining({
+          method: "GET",
+          path: "/v1/projects"
+        }),
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/projects",
+          body: expect.objectContaining({
+            projectKey: "fixture-demo-project",
+            components: [
+              expect.objectContaining({
+                componentKey: "demo-target"
+              })
+            ]
+          })
+        })
+      ]);
     } finally {
       await server.close();
     }
-  }, 15_000);
+  });
 
-  it("executes the demo:ensure-project entrypoint and updates the fixture project when it already exists", async () => {
-    const fixtureConfig = resolveEnsureProjectFixtureConfig();
+  it("demo:run seeds the three planning documents, compiles, and persists archived run state", async () => {
+    const statePath = await createTempStatePath();
+    const createdDocuments: Array<Record<string, unknown>> = [];
+    const createdRevisions: Array<Record<string, unknown>> = [];
     const server = await startStubServer((request) => {
       if (request.method === "GET" && request.path === "/v1/projects") {
         return {
           body: {
-            tenantId: "tenant-dev-local",
-            total: 1,
-            projects: [
-              {
-                projectId: "project-existing",
-                projectKey: "fixture-demo-project"
-              }
-            ]
-          }
-        };
-      }
-
-      if (request.method === "PUT" && request.path === "/v1/projects/project-existing") {
-        return {
-          body: {
-            project: {
-              projectId: "project-existing",
-              projectKey: "fixture-demo-project",
-              displayName: "Fixture Demo Project"
-            }
-          }
-        };
-      }
-
-      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
-    });
-
-    try {
-      const { stdout } = await runDemoScript("demo:ensure-project", [
-        `--base-url=${server.baseUrl}`
-      ]);
-      const payload = parseCommandJson(stdout);
-
-      expect(payload).toMatchObject({
-        action: "updated",
-        baseUrl: server.baseUrl,
-        tenantId: "tenant-dev-local",
-        project: {
-          projectId: "project-existing",
-          projectKey: "fixture-demo-project"
-        }
-      });
-
-      expect(server.requests).toHaveLength(2);
-      expect(server.requests[1]).toMatchObject({
-        method: "PUT",
-        path: "/v1/projects/project-existing",
-        body: fixtureConfig
-      });
-    } finally {
-      await server.close();
-    }
-  }, 15_000);
-
-  it("executes the demo:run entrypoint with the default scripted contract", async () => {
-    const server = await startStubServer((request) => {
-      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
-      if (fixtureProjectResponse) {
-        return fixtureProjectResponse;
-      }
-
-      if (request.method === "POST" && request.path === "/v1/runs") {
-        return {
-          body: {
-            runId: "run-scripted"
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-scripted") {
-        return {
-          body: {
-            status: "archived",
-            artifacts: {
-              total: 5,
-              byKind: {
-                run_summary: 1,
-                task_log: 1
-              }
-            },
-            sessions: {
-              total: 3
-            }
-          }
-        };
-      }
-
-      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
-    });
-
-    try {
-      const { stdout } = await runDemoScript("demo:run", [`--base-url=${server.baseUrl}`]);
-      const payload = parseCommandJson(stdout);
-
-      expect(payload).toMatchObject({
-        baseUrl: server.baseUrl,
-        runId: "run-scripted",
-        runtime: "scripted",
-        thinkMode: "mock",
-        preserveSandbox: false,
-        status: "archived",
-        demoContract: {
-          contractId: "scripted-fixture-demo",
-          workflowStatus: "Default non-Think demo path."
-        },
-        summary: {
-          artifacts: {
-            byKind: {
-              run_summary: 1,
-              task_log: 1
-            }
-          }
-        }
-      });
-
-      expect(server.requests).toHaveLength(4);
-      expect(server.requests[0]).toMatchObject({
-        method: "GET",
-        path: "/v1/projects"
-      });
-      expect(server.requests[1]).toMatchObject({
-        method: "POST",
-        path: "/v1/projects"
-      });
-      expect(server.requests[2]).toMatchObject({
-        method: "POST",
-        path: "/v1/runs",
-        body: {
-          projectId: "project-created",
-          decisionPackage: {
-            source: "inline",
-            payload: expect.objectContaining({
-              decisionPackageId: "demo-greeting-update"
-            })
-          },
-          options: {
-            thinkMode: "mock",
-            preserveSandbox: false
-          }
-        }
-      });
-      expect(server.requests[2]?.headers["x-keystone-agent-runtime"]).toBe("scripted");
-      expect(server.requests[3]).toMatchObject({
-        method: "GET",
-        path: "/v1/runs/run-scripted"
-      });
-    } finally {
-      await server.close();
-    }
-  }, 15_000);
-
-  it("executes the demo:run entrypoint for deterministic Think mock requests", async () => {
-    const server = await startStubServer((request) => {
-      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
-      if (fixtureProjectResponse) {
-        return fixtureProjectResponse;
-      }
-
-      if (request.method === "POST" && request.path === "/v1/runs") {
-        return {
-          body: {
-            runId: "run-think-mock",
-            runtime: "think",
-            options: {
-              thinkMode: "mock",
-              preserveSandbox: false
-            }
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-think-mock") {
-        return {
-          body: {
-            status: "archived",
-            artifacts: {
-              total: 5,
-              byKind: {
-                run_summary: 1,
-                run_note: 1
-              }
-            },
-            sessions: {
-              total: 3
-            }
-          }
-        };
-      }
-
-      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
-    });
-
-    try {
-      const { stdout } = await runDemoScript("demo:run", [
-        `--base-url=${server.baseUrl}`,
-        "--runtime=think",
-        "--think-mode=mock"
-      ]);
-      const payload = parseCommandJson(stdout);
-
-      expect(stdout).not.toContain("[demo] streaming persisted run events");
-      expect(payload).toMatchObject({
-        baseUrl: server.baseUrl,
-        runId: "run-think-mock",
-        runtime: "think",
-        thinkMode: "mock",
-        preserveSandbox: false,
-        status: "archived",
-        demoContract: {
-          contractId: "think-mock-validation",
-          proofScope: "Fixture-backed Think task path",
-          modelExecution: "Deterministic mock Think model",
-          workflowStatus:
-            "Stable validation path for the current fixture-backed compile and task handoff behavior."
-        },
-        summary: {
-          artifacts: {
-            byKind: {
-              run_summary: 1,
-              run_note: 1
-            }
-          }
-        }
-      });
-
-      expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-        "GET /v1/projects",
-        "POST /v1/projects",
-        "POST /v1/runs",
-        "GET /v1/runs/run-think-mock"
-      ]);
-      expect(server.requests[2]).toMatchObject({
-        body: {
-          projectId: "project-created",
-          options: {
-            thinkMode: "mock",
-            preserveSandbox: false
-          }
-        }
-      });
-      expect(server.requests[2]?.headers["x-keystone-agent-runtime"]).toBe("think");
-    } finally {
-      await server.close();
-    }
-  }, 15_000);
-
-  it("executes the demo:run entrypoint for live Think requests, including event polling", async () => {
-    const server = await startStubServer((request) => {
-      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
-      if (fixtureProjectResponse) {
-        return fixtureProjectResponse;
-      }
-
-      if (request.method === "POST" && request.path === "/v1/runs") {
-        return {
-          body: {
-            runId: "run-live",
-            runtime: "think",
-            options: {
-              thinkMode: "live",
-              preserveSandbox: true
-            }
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-live/events") {
-        return {
-          body: {
-            events: [
-              {
-                eventId: "evt-1",
-                timestamp: "2026-04-17T00:00:00.000Z",
-                eventType: "task.updated",
-                actor: "workflow",
-                severity: "info",
-                taskId: "task-1",
-                payload: {
-                  status: "running"
+            data: {
+              items: [
+                {
+                  projectId: "project-123",
+                  projectKey: "fixture-demo-project"
                 }
-              }
-            ]
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-live") {
-        return {
-          body: {
-            status: "archived",
-            artifacts: {
-              total: 6,
-              byKind: {
-                run_summary: 1,
-                run_note: 1
-              }
-            },
-            sessions: {
-              total: 3
-            }
-          }
-        };
-      }
-
-      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
-    });
-
-    try {
-      const { stdout } = await runDemoScript(
-        "demo:run",
-        [`--base-url=${server.baseUrl}`],
-        {
-          KEYSTONE_AGENT_RUNTIME: "think",
-          KEYSTONE_THINK_DEMO_MODE: "live",
-          KEYSTONE_PRESERVE_SANDBOX: "1"
-        }
-      );
-      const payload = parseCommandJson(stdout);
-
-      expect(stdout).toContain("[demo] streaming persisted run events for run-live");
-      expect(stdout).toContain(
-        '[event 2026-04-17T00:00:00.000Z] info task.updated actor=workflow task=task-1 status="running"'
-      );
-      expect(payload).toMatchObject({
-        baseUrl: server.baseUrl,
-        runId: "run-live",
-        runtime: "think",
-        thinkMode: "live",
-        preserveSandbox: true,
-        status: "archived",
-        sandboxShellHint:
-          "Sandbox preserved for inspection. Run `npm run sandbox:shell` while the local Worker is still running.",
-        demoContract: {
-          contractId: "think-live-compile-demo",
-          proofScope: "Fixture-scoped live compile plus compiled Think task execution",
-          modelExecution: "Live local chat-completions backend",
-          workflowStatus:
-            "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
-        }
-      });
-
-      expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-        "GET /v1/projects",
-        "POST /v1/projects",
-        "POST /v1/runs",
-        "GET /v1/runs/run-live/events",
-        "GET /v1/runs/run-live"
-      ]);
-      expect(server.requests[2]).toMatchObject({
-        body: {
-          projectId: "project-created",
-          decisionPackage: {
-            source: "inline",
-            payload: expect.objectContaining({
-              decisionPackageId: "demo-greeting-update"
-            })
-          },
-          options: {
-            thinkMode: "live",
-            preserveSandbox: true
-          }
-        }
-      });
-      expect(server.requests[2]?.headers["x-keystone-agent-runtime"]).toBe("think");
-    } finally {
-      await server.close();
-    }
-  }, 15_000);
-
-  it("lets demo:validate reuse the persisted live demo state from demo:run", async () => {
-    const tempDir = await mkdtemp(join(tmpdir(), "keystone-demo-state-"));
-    const statePath = join(tempDir, "demo-last-run.json");
-    const server = await startStubServer((request) => {
-      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
-      if (fixtureProjectResponse) {
-        return fixtureProjectResponse;
-      }
-
-      if (request.method === "POST" && request.path === "/v1/runs") {
-        return {
-          body: {
-            runId: "run-live-state",
-            runtime: "think",
-            options: {
-              thinkMode: "live",
-              preserveSandbox: true
-            }
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-live-state/events") {
-        return {
-          body: {
-            events: []
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-live-state") {
-        return {
-          body: {
-            status: "archived",
-            inputs: {
-              runtime: "think",
-              options: {
-                thinkMode: "live"
-              }
-            },
-            sessions: {
-              total: 3
-            },
-            artifacts: {
-              total: 5,
-              byKind: {
-                run_summary: 1,
-                run_note: 1
-              }
-            }
-          }
-        };
-      }
-
-      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
-    });
-
-    try {
-      await runDemoScript(
-        "demo:run",
-        [`--base-url=${server.baseUrl}`],
-        {
-          KEYSTONE_AGENT_RUNTIME: "think",
-          KEYSTONE_THINK_DEMO_MODE: "live",
-          KEYSTONE_PRESERVE_SANDBOX: "1",
-          KEYSTONE_DEMO_STATE_PATH: statePath
-        }
-      );
-
-      const savedState = JSON.parse(await readFile(statePath, "utf8")) as Record<string, unknown>;
-
-      expect(savedState).toMatchObject({
-        baseUrl: server.baseUrl,
-        runId: "run-live-state",
-        runtime: "think",
-        thinkMode: "live"
-      });
-
-      const { stdout } = await runDemoScript(
-        "demo:validate",
-        [],
-        {
-          KEYSTONE_AGENT_RUNTIME: "think",
-          KEYSTONE_THINK_DEMO_MODE: "live",
-          KEYSTONE_DEMO_STATE_PATH: statePath
-        }
-      );
-      const payload = parseCommandJson(stdout);
-
-      expect(payload).toMatchObject({
-        ok: true,
-        baseUrl: server.baseUrl,
-        runId: "run-live-state",
-        runtime: "think",
-        thinkMode: "live",
-        demoContract: {
-          contractId: "think-live-compile-demo",
-          workflowStatus:
-            "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
-        }
-      });
-
-      expect(server.requests.map((request) => `${request.method} ${request.path}`)).toEqual([
-        "GET /v1/projects",
-        "POST /v1/projects",
-        "POST /v1/runs",
-        "GET /v1/runs/run-live-state/events",
-        "GET /v1/runs/run-live-state",
-        "GET /v1/runs/run-live-state"
-      ]);
-    } finally {
-      await server.close();
-      await rm(tempDir, {
-        force: true,
-        recursive: true
-      });
-    }
-  }, 15_000);
-
-  it("does not replace the last successful demo state when a later run fails", async () => {
-    const tempDir = await mkdtemp(join(tmpdir(), "keystone-demo-state-failed-"));
-    const statePath = join(tempDir, "demo-last-run.json");
-    const previousState = {
-      baseUrl: "http://127.0.0.1:12345",
-      runId: "run-previous-success",
-      runtime: "think",
-      thinkMode: "live",
-      savedAt: "2026-04-17T00:00:00.000Z"
-    };
-    const server = await startStubServer((request) => {
-      const fixtureProjectResponse = handleDemoProjectBootstrap(request);
-      if (fixtureProjectResponse) {
-        return fixtureProjectResponse;
-      }
-
-      if (request.method === "POST" && request.path === "/v1/runs") {
-        return {
-          body: {
-            runId: "run-failed",
-            runtime: "think",
-            options: {
-              thinkMode: "live",
-              preserveSandbox: true
-            }
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-failed/events") {
-        return {
-          body: {
-            events: []
-          }
-        };
-      }
-
-      if (request.method === "GET" && request.path === "/v1/runs/run-failed") {
-        return {
-          body: {
-            status: "failed",
-            artifacts: {
-              total: 0,
-              byKind: {}
-            },
-            sessions: {
+              ],
               total: 1
             }
           }
         };
       }
 
-      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
-    });
-
-    try {
-      await writeFile(statePath, `${JSON.stringify(previousState, null, 2)}\n`, "utf8");
-
-      const { stdout } = await runDemoScript(
-        "demo:run",
-        [`--base-url=${server.baseUrl}`],
-        {
-          KEYSTONE_AGENT_RUNTIME: "think",
-          KEYSTONE_THINK_DEMO_MODE: "live",
-          KEYSTONE_PRESERVE_SANDBOX: "1",
-          KEYSTONE_DEMO_STATE_PATH: statePath
-        }
-      );
-      const payload = parseCommandJson(stdout);
-
-      expect(payload).toMatchObject({
-        runId: "run-failed",
-        status: "failed"
-      });
-
-      const savedState = JSON.parse(await readFile(statePath, "utf8")) as Record<string, unknown>;
-
-      expect(savedState).toEqual(previousState);
-    } finally {
-      await server.close();
-      await rm(tempDir, {
-        force: true,
-        recursive: true
-      });
-    }
-  }, 15_000);
-
-  it("executes the demo:validate entrypoint for deterministic Think mock requests", async () => {
-    const server = await startStubServer((request) => {
-      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock") {
+      if (request.method === "PATCH" && request.path === "/v1/projects/project-123") {
         return {
           body: {
-            status: "archived",
-            sessions: {
-              total: 3
-            },
-            artifacts: {
-              total: 5,
-              byKind: {
-                run_summary: 1,
-                run_note: 1
+            data: {
+              projectId: "project-123",
+              projectKey: "fixture-demo-project"
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/projects/project-123/runs") {
+        return {
+          status: 201,
+          body: {
+            data: {
+              runId: "run-123",
+              status: "configured"
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/runs/run-123/documents") {
+        const body = request.body as Record<string, unknown>;
+        createdDocuments.push(body);
+
+        return {
+          status: 201,
+          body: {
+            data: {
+              documentId: `doc-${body.kind}`
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path.startsWith("/v1/runs/run-123/documents/doc-")) {
+        createdRevisions.push((request.body as Record<string, unknown>) ?? {});
+
+        return {
+          status: 201,
+          body: {
+            data: {
+              documentRevisionId: crypto.randomUUID()
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/runs/run-123/compile") {
+        return {
+          body: {
+            data: {
+              runId: "run-123"
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-123") {
+        return {
+          body: {
+            data: {
+              runId: "run-123",
+              status: "archived",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-1",
+                architectureRevisionId: "arch-rev-1",
+                executionPlanRevisionId: "plan-rev-1"
               }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-123/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-1",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-2",
+                  status: "ready"
+                }
+              ]
             }
           }
         };
@@ -880,129 +432,182 @@ describe("demo scripts", () => {
     });
 
     try {
-      const { stdout } = await runDemoScript("demo:validate", [
-        `--base-url=${server.baseUrl}`,
-        "--run-id=run-validate-mock",
-        "--runtime=think",
-        "--think-mode=mock"
-      ]);
+      const { stdout } = await runDemoScript("demo:run", [`--base-url=${server.baseUrl}`], {
+        KEYSTONE_DEMO_STATE_PATH: statePath
+      });
       const payload = parseCommandJson(stdout);
+      const persisted = JSON.parse(await readFile(statePath, "utf8")) as Record<string, unknown>;
 
       expect(payload).toMatchObject({
-        ok: true,
         baseUrl: server.baseUrl,
-        runId: "run-validate-mock",
-        runtime: "think",
-        thinkMode: "mock",
+        projectId: "project-123",
+        runId: "run-123",
+        executionEngine: "scripted",
         status: "archived",
-        sessions: 3,
-        artifacts: {
-          total: 5,
-          byKind: {
-            run_summary: 1,
-            run_note: 1
-          }
+        compiledFrom: {
+          specificationRevisionId: "spec-rev-1",
+          architectureRevisionId: "arch-rev-1",
+          executionPlanRevisionId: "plan-rev-1"
+        },
+        tasks: {
+          total: 2,
+          completed: 1,
+          ready: 1,
+          active: 0,
+          pending: 0,
+          failed: 0,
+          cancelled: 0
         },
         demoContract: {
-          contractId: "think-mock-validation",
-          workflowStatus:
-            "Stable validation path for the current fixture-backed compile and task handoff behavior."
+          contractId: "scripted-document-run"
         }
       });
-
-      expect(server.requests).toHaveLength(1);
-      expect(server.requests[0]).toMatchObject({
-        method: "GET",
-        path: "/v1/runs/run-validate-mock"
+      expect(persisted).toMatchObject({
+        baseUrl: server.baseUrl,
+        runId: "run-123",
+        executionEngine: "scripted"
       });
-    } finally {
-      await server.close();
-    }
-  }, 15_000);
-
-  it("lets explicit validate inputs bypass a malformed persisted state file", async () => {
-    const tempDir = await mkdtemp(join(tmpdir(), "keystone-demo-state-explicit-"));
-    const statePath = join(tempDir, "demo-last-run.json");
-    const server = await startStubServer((request) => {
-      if (request.method === "GET" && request.path === "/v1/runs/run-explicit") {
-        return {
-          body: {
-            status: "archived",
-            inputs: {
-              runtime: "think",
-              options: {
-                thinkMode: "live"
-              }
-            },
-            sessions: {
-              total: 3
-            },
-            artifacts: {
-              total: 5,
-              byKind: {
-                run_summary: 1,
-                run_note: 1
-              }
-            }
-          }
-        };
-      }
-
-      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
-    });
-
-    try {
-      await writeFile(statePath, "{not-valid-json", "utf8");
-
-      const { stdout } = await runDemoScript(
-        "demo:validate",
-        [
-          `--base-url=${server.baseUrl}`,
-          "--run-id=run-explicit"
-        ],
+      expect(createdDocuments).toEqual([
         {
-          KEYSTONE_DEMO_STATE_PATH: statePath
+          kind: "specification",
+          path: "specification"
+        },
+        {
+          kind: "architecture",
+          path: "architecture"
+        },
+        {
+          kind: "execution_plan",
+          path: "execution-plan"
         }
-      );
-      const payload = parseCommandJson(stdout);
-
-      expect(payload).toMatchObject({
-        ok: true,
-        baseUrl: server.baseUrl,
-        runId: "run-explicit",
-        runtime: "think",
-        thinkMode: "live"
-      });
+      ]);
+      expect(createdRevisions).toEqual([
+        expect.objectContaining({
+          title: "Run Specification",
+          contentType: "text/markdown; charset=utf-8",
+          body: expect.any(String)
+        }),
+        expect.objectContaining({
+          title: "Run Architecture",
+          contentType: "text/markdown; charset=utf-8",
+          body: expect.any(String)
+        }),
+        expect.objectContaining({
+          title: "Execution Plan",
+          contentType: "text/markdown; charset=utf-8",
+          body: expect.any(String)
+        })
+      ]);
     } finally {
       await server.close();
-      await rm(tempDir, {
-        force: true,
-        recursive: true
-      });
     }
-  }, 15_000);
+  });
 
-  it("executes the demo:validate entrypoint and prefers persisted runtime metadata", async () => {
+  it("demo:run:think-live resolves the live execution engine contract", async () => {
+    const statePath = await createTempStatePath();
     const server = await startStubServer((request) => {
-      if (request.method === "GET" && request.path === "/v1/runs/run-validate") {
+      if (request.method === "GET" && request.path === "/v1/projects") {
         return {
           body: {
-            status: "archived",
-            inputs: {
-              runtime: "think",
-              options: {
-                thinkMode: "live"
+            data: {
+              items: [
+                {
+                  projectId: "project-123",
+                  projectKey: "fixture-demo-project"
+                }
+              ],
+              total: 1
+            }
+          }
+        };
+      }
+
+      if (request.method === "PATCH" && request.path === "/v1/projects/project-123") {
+        return {
+          body: {
+            data: {
+              projectId: "project-123",
+              projectKey: "fixture-demo-project"
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/projects/project-123/runs") {
+        return {
+          status: 201,
+          body: {
+            data: {
+              runId: "run-live-123",
+              status: "configured"
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/runs/run-live-123/documents") {
+        const body = request.body as Record<string, unknown>;
+
+        return {
+          status: 201,
+          body: {
+            data: {
+              documentId: `doc-${body.kind}`
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "POST" &&
+        request.path.startsWith("/v1/runs/run-live-123/documents/doc-")
+      ) {
+        return {
+          status: 201,
+          body: {
+            data: {
+              documentRevisionId: crypto.randomUUID()
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/runs/run-live-123/compile") {
+        return {
+          body: {
+            data: {
+              runId: "run-live-123"
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-live-123") {
+        return {
+          body: {
+            data: {
+              runId: "run-live-123",
+              status: "archived",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-live",
+                architectureRevisionId: "arch-rev-live",
+                executionPlanRevisionId: "plan-rev-live"
               }
-            },
-            sessions: {
-              total: 3
-            },
-            artifacts: {
-              total: 5,
-              byKind: {
-                run_summary: 1,
-                run_note: 1
-              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-live-123/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-live",
+                  status: "completed"
+                }
+              ]
             }
           }
         };
@@ -1012,161 +617,170 @@ describe("demo scripts", () => {
     });
 
     try {
-      const { stdout } = await runDemoScript("demo:validate", [
-        `--base-url=${server.baseUrl}`,
-        "--run-id=run-validate"
-      ]);
+      const { stdout } = await runDemoScript("demo:run:think-live", [`--base-url=${server.baseUrl}`], {
+        KEYSTONE_DEMO_STATE_PATH: statePath
+      });
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        executionEngine: "think_live",
+        demoContract: {
+          contractId: "think-live-document-run"
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate reads persisted run state and verifies compile provenance plus task conversations", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-123") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-123",
+              status: "archived",
+              executionEngine: "think_mock",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-validate",
+                architectureRevisionId: "arch-rev-validate",
+                executionPlanRevisionId: "plan-rev-validate"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-123/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-validate",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-123:task:task-validate"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-123",
+            executionEngine: "think_mock"
+          },
+          null,
+          2
+        )
+      );
+
+      const { stdout } = await runDemoScript("demo:validate", [], {
+        KEYSTONE_DEMO_STATE_PATH: statePath
+      });
       const payload = parseCommandJson(stdout);
 
       expect(payload).toMatchObject({
         ok: true,
         baseUrl: server.baseUrl,
-        runId: "run-validate",
-        runtime: "think",
-        thinkMode: "live",
+        runId: "run-validate-123",
+        executionEngine: "think_mock",
         status: "archived",
-        sessions: 3,
-        artifacts: {
-          total: 5,
-          byKind: {
-            run_summary: 1,
-            run_note: 1
-          }
+        compiledFrom: {
+          specificationRevisionId: "spec-rev-validate",
+          architectureRevisionId: "arch-rev-validate",
+          executionPlanRevisionId: "plan-rev-validate"
+        },
+        tasks: {
+          total: 1,
+          completed: 1
         },
         demoContract: {
-          contractId: "think-live-compile-demo",
-          workflowStatus:
-            "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+          contractId: "think-mock-document-run"
         }
-      });
-
-      expect(server.requests).toHaveLength(1);
-      expect(server.requests[0]).toMatchObject({
-        method: "GET",
-        path: "/v1/runs/run-validate"
       });
     } finally {
       await server.close();
     }
-  }, 15_000);
-
-  it("defaults demo-run to the scripted fixture contract", () => {
-    process.argv = ["node", "scripts/demo-run.ts"];
-    clearDemoEnv();
-
-    const requestedRuntime = resolveDemoRunRuntime();
-    const requestedThinkMode = resolveDemoRunThinkMode();
-    const contract = resolveCreatedRunExecutionContract({}, requestedRuntime, requestedThinkMode);
-
-    expect(requestedRuntime).toBe("scripted");
-    expect(requestedThinkMode).toBe("mock");
-    expect(contract).toMatchObject({
-      runtime: "scripted",
-      thinkMode: "mock",
-      preserveSandbox: false,
-      streamEvents: false,
-      maxPollAttempts: 30,
-      demoContract: {
-        contractId: "scripted-fixture-demo",
-        workflowStatus: "Default non-Think demo path."
-      }
-    });
   });
 
-  it("resolves the deterministic fixture-project bootstrap defaults", () => {
-    clearDemoEnv();
-
-    expect(resolveEnsureDemoProjectBaseUrl()).toBe("http://127.0.0.1:8787");
-    expect(resolveDemoTenantId()).toBe("tenant-dev-local");
-    expect(resolveEnsureProjectFixtureConfig()).toMatchObject({
-      projectKey: "fixture-demo-project",
-      displayName: "Fixture Demo Project",
-      components: [
-        {
-          componentKey: "demo-target",
-          config: {
-            localPath: "./fixtures/demo-target",
-            defaultRef: "main"
+  it("demo:validate fails closed when run detail omits a valid execution engine", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-123") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-123",
+              status: "archived",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-validate",
+                architectureRevisionId: "arch-rev-validate",
+                executionPlanRevisionId: "plan-rev-validate"
+              }
+            }
           }
-        }
-      ]
-    });
-  });
-
-  it("treats an explicit live Think request as the current live-compile demo contract", () => {
-    process.argv = ["node", "scripts/demo-run.ts", "--runtime=think", "--think-mode=live"];
-    clearDemoEnv();
-
-    const requestedRuntime = resolveDemoRunRuntime();
-    const requestedThinkMode = resolveDemoRunThinkMode();
-    const contract = resolveCreatedRunExecutionContract(
-      {
-        runtime: "think",
-        options: {}
-      },
-      requestedRuntime,
-      requestedThinkMode
-    );
-
-    expect(contract).toMatchObject({
-      runtime: "think",
-      thinkMode: "live",
-      preserveSandbox: true,
-      streamEvents: true,
-      maxPollAttempts: 90,
-      demoContract: {
-        contractId: "think-live-compile-demo",
-        proofScope: "Fixture-scoped live compile plus compiled Think task execution",
-        modelExecution: "Live local chat-completions backend",
-        workflowStatus:
-          "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
+        };
       }
-    });
-  });
 
-  it("lets demo-validate prefer persisted live Think metadata over requested defaults", () => {
-    const contract = resolveValidatedRunContract(
-      {
-        inputs: {
-          runtime: "think",
-          options: {
-            thinkMode: "live"
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-123/tasks") {
+        return {
+          body: {
+            data: {
+              items: []
+            }
           }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-123",
+            executionEngine: "think_mock"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(async () => {
+        try {
+          await runDemoScript("demo:validate", [], {
+            KEYSTONE_DEMO_STATE_PATH: statePath
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+
+          expect(message).toMatch(/did not return a valid executionEngine/);
+          return;
         }
-      },
-      "scripted",
-      "mock"
-    );
 
-    expect(contract).toMatchObject({
-      runtime: "think",
-      thinkMode: "live",
-      demoContract: {
-        contractId: "think-live-compile-demo",
-        workflowStatus:
-          "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
-      }
-    });
-  });
-
-  it("falls back to the requested Think mock contract when persisted metadata is absent", () => {
-    process.argv = ["node", "scripts/demo-validate.ts", "--runtime=think"];
-    clearDemoEnv();
-
-    const requestedRuntime = resolveDemoValidateRuntime();
-    const requestedThinkMode = resolveDemoValidateThinkMode();
-    const contract = resolveValidatedRunContract({}, requestedRuntime, requestedThinkMode);
-
-    expect(requestedRuntime).toBe("think");
-    expect(requestedThinkMode).toBe("mock");
-    expect(contract).toMatchObject({
-      runtime: "think",
-      thinkMode: "mock",
-      demoContract: {
-        contractId: "think-mock-validation",
-        workflowStatus:
-          "Stable validation path for the current fixture-backed compile and task handoff behavior."
-      }
-    });
+        throw new Error("Expected demo:validate to fail when executionEngine is missing.");
+      }).not.toThrow();
+    } finally {
+      await server.close();
+    }
   });
 });

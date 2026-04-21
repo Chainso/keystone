@@ -2,7 +2,9 @@ export interface R2ArtifactPutResult {
   storageBackend: "r2";
   storageUri: string;
   key: string;
+  objectVersion: string | null;
   etag: string | null;
+  sha256: string | null;
   sizeBytes: number;
 }
 
@@ -10,13 +12,22 @@ export interface R2ArtifactGetResult {
   storageBackend: "r2";
   storageUri: string;
   key: string;
+  objectVersion: string | null;
   etag: string | null;
+  sha256: string | null;
   sizeBytes: number;
   body: ArrayBuffer;
   contentType: string | null;
 }
 
 export type ArtifactBodyEncoding = "utf-8" | "base64" | undefined;
+
+export class InvalidArtifactBodyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidArtifactBodyError";
+  }
+}
 
 export function toR2Uri(bucketName: string, key: string) {
   return `r2://${bucketName}/${key}`;
@@ -33,6 +44,10 @@ export function parseR2Uri(storageUri: string) {
     bucketName: match[1],
     key: match[2]
   };
+}
+
+function resolveR2Sha256(checksums: R2Checksums | undefined) {
+  return checksums?.toJSON().sha256 ?? null;
 }
 
 export async function putArtifactBytes(
@@ -52,7 +67,9 @@ export async function putArtifactBytes(
     storageBackend: "r2",
     storageUri: toR2Uri(bucketName, key),
     key,
+    objectVersion: object.version ?? null,
     etag: object.httpEtag ?? null,
+    sha256: resolveR2Sha256(object.checksums),
     sizeBytes: object.size
   };
 }
@@ -68,6 +85,10 @@ export async function putArtifactJson(
       contentType: "application/json; charset=utf-8"
     }
   });
+}
+
+export async function deleteArtifactObject(bucket: R2Bucket, key: string) {
+  await bucket.delete(key);
 }
 
 export async function getArtifactText(bucket: R2Bucket, key: string) {
@@ -95,7 +116,9 @@ export async function getArtifactBytes(
     storageBackend: "r2",
     storageUri,
     key: parsed.key,
+    objectVersion: object.version ?? null,
     etag: object.httpEtag ?? null,
+    sha256: resolveR2Sha256(object.checksums),
     sizeBytes: object.size,
     body: await object.arrayBuffer(),
     contentType: object.httpMetadata?.contentType ?? null
@@ -104,7 +127,28 @@ export async function getArtifactBytes(
 
 export function decodeArtifactBody(content: string, encoding?: ArtifactBodyEncoding) {
   if (encoding === "base64") {
-    const binary = atob(content);
+    const normalized = content.replace(/\s+/g, "");
+
+    if (
+      normalized.length === 0 ||
+      normalized.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)
+    ) {
+      throw new InvalidArtifactBodyError(
+        'Document body must be valid base64 when encoding is "base64".'
+      );
+    }
+
+    let binary: string;
+
+    try {
+      binary = atob(normalized);
+    } catch {
+      throw new InvalidArtifactBodyError(
+        'Document body must be valid base64 when encoding is "base64".'
+      );
+    }
+
     const bytes = new Uint8Array(binary.length);
 
     for (let index = 0; index < binary.length; index += 1) {

@@ -9,14 +9,12 @@ import {
   listProjects,
   updateProject
 } from "../../../../lib/db/projects";
-import { listProjectRunSessions } from "../../../../lib/db/runs";
+import { listProjectRuns } from "../../../../lib/db/runs";
 import { jsonErrorResponse, throwJsonHttpError } from "../../../../lib/http/errors";
 import { parseProjectListQuery, parseProjectWriteInput } from "../../../contracts/project-input";
-import { decisionPackageCollectionEnvelopeSchema } from "../decision-packages/contracts";
 import {
   projectCollectionEnvelopeSchema,
   projectDetailEnvelopeSchema,
-  projectDocumentCollectionEnvelopeSchema,
   serializeProjectListItem,
   serializeProjectResource
 } from "./contracts";
@@ -30,34 +28,6 @@ function isUniqueViolation(error: unknown) {
     "code" in error &&
     error.code === "23505"
   );
-}
-
-function buildEmptyProjectDocumentsResponse() {
-  return projectDocumentCollectionEnvelopeSchema.parse({
-    data: {
-      items: [],
-      total: 0
-    },
-    meta: {
-      apiVersion: "v1",
-      envelope: "collection",
-      resourceType: "project_document"
-    }
-  });
-}
-
-function buildEmptyDecisionPackagesResponse() {
-  return decisionPackageCollectionEnvelopeSchema.parse({
-    data: {
-      items: [],
-      total: 0
-    },
-    meta: {
-      apiVersion: "v1",
-      envelope: "collection",
-      resourceType: "decision_package"
-    }
-  });
 }
 
 async function requireProject(
@@ -242,58 +212,6 @@ export async function updateProjectHandler(context: Context<AppEnv>) {
   }
 }
 
-export async function listProjectDocumentsHandler(context: Context<AppEnv>) {
-  const projectId = context.req.param("projectId");
-
-  if (!projectId) {
-    throwJsonHttpError(400, "invalid_path", "Project ID is required.");
-  }
-
-  const client = createWorkerDatabaseClient(context.env);
-
-  try {
-    const project = await requireProject(context, client, projectId);
-
-    if (!project) {
-      return jsonErrorResponse(
-        "project_not_found",
-        `Project ${projectId} was not found.`,
-        404
-      );
-    }
-
-    return context.json(buildEmptyProjectDocumentsResponse());
-  } finally {
-    await client.close();
-  }
-}
-
-export async function listProjectDecisionPackagesHandler(context: Context<AppEnv>) {
-  const projectId = context.req.param("projectId");
-
-  if (!projectId) {
-    throwJsonHttpError(400, "invalid_path", "Project ID is required.");
-  }
-
-  const client = createWorkerDatabaseClient(context.env);
-
-  try {
-    const project = await requireProject(context, client, projectId);
-
-    if (!project) {
-      return jsonErrorResponse(
-        "project_not_found",
-        `Project ${projectId} was not found.`,
-        404
-      );
-    }
-
-    return context.json(buildEmptyDecisionPackagesResponse());
-  } finally {
-    await client.close();
-  }
-}
-
 export async function listProjectRunsHandler(context: Context<AppEnv>) {
   const auth = context.get("auth");
   const projectId = context.req.param("projectId");
@@ -315,21 +233,11 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
       );
     }
 
-    const sessions = await listProjectRunSessions(client, {
+    const runs = await listProjectRuns(client, {
       tenantId: auth.tenantId,
       projectId
     });
-    const items = sessions.map((session) =>
-      projectRunResource({
-        tenantId: auth.tenantId,
-        runId: session.runId,
-        sessions: [session],
-        events: [],
-        artifacts: [],
-        liveSnapshot: null,
-        runPlanSummary: null
-      })
-    );
+    const items = runs.map((run) => projectRunResource({ run }));
 
     return context.json(
       runCollectionEnvelopeSchema.parse({

@@ -1,48 +1,36 @@
-import type { AgentRuntimeKind } from "../../maestro/contracts";
-import { z } from "zod";
+export const executionEngineValues = ["scripted", "think_mock", "think_live"] as const;
+const executionEngineKinds = new Set<string>(executionEngineValues);
+export type ExecutionEngine = (typeof executionEngineValues)[number];
 
-export const thinkDemoModeValues = ["mock", "live"] as const;
-
-export const runExecutionOptionsSchema = z
-  .object({
-    thinkMode: z.enum(thinkDemoModeValues).optional(),
-    preserveSandbox: z.boolean().optional()
-  })
-  .transform((value) => ({
-    thinkMode: value.thinkMode ?? "mock",
-    preserveSandbox: value.preserveSandbox ?? false
-  }));
-
-export type ThinkDemoMode = (typeof thinkDemoModeValues)[number];
-export type RunExecutionOptions = z.output<typeof runExecutionOptionsSchema>;
-
-export function parseRunExecutionOptions(value: unknown): RunExecutionOptions {
-  return runExecutionOptionsSchema.parse(value ?? {});
-}
-
-export function resolveRunExecutionOptions(
-  requestedOptions: unknown,
-  existingMetadata?: Record<string, unknown> | null | undefined
-): RunExecutionOptions {
-  const existingResult = runExecutionOptionsSchema.safeParse(existingMetadata?.options);
-
-  if (existingResult.success) {
-    return existingResult.data;
+export function parseExecutionEngine(value: unknown): ExecutionEngine | null {
+  if (typeof value !== "string") {
+    return null;
   }
 
-  return parseRunExecutionOptions(requestedOptions);
+  const normalized = value.trim();
+
+  if (!executionEngineKinds.has(normalized)) {
+    return null;
+  }
+
+  return normalized as ExecutionEngine;
 }
 
-export function isLiveThinkExecution(
-  runtime: AgentRuntimeKind,
-  options: RunExecutionOptions
-) {
-  return runtime === "think" && options.thinkMode === "live";
+export function resolveRunExecutionEngine(
+  requestedExecutionEngine: unknown,
+  existingExecutionEngine?: unknown
+): ExecutionEngine {
+  return (
+    parseExecutionEngine(existingExecutionEngine) ??
+    parseExecutionEngine(requestedExecutionEngine) ??
+    "scripted"
+  );
 }
 
-export function isMockThinkExecution(
-  runtime: AgentRuntimeKind,
-  options: RunExecutionOptions
-) {
-  return runtime === "think" && options.thinkMode === "mock";
+export function isLiveThinkExecution(executionEngine: ExecutionEngine) {
+  return executionEngine === "think_live";
+}
+
+export function isMockThinkExecution(executionEngine: ExecutionEngine) {
+  return executionEngine === "think_mock";
 }

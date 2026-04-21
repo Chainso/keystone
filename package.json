@@ -24,7 +24,7 @@
     "run:local": "node --import tsx scripts/run-local.ts",
     "demo:ensure-project": "node --import tsx scripts/ensure-demo-project.ts",
     "demo:run": "node --import tsx scripts/demo-run.ts",
-    "demo:run:think-live": "KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live KEYSTONE_PRESERVE_SANDBOX=1 node --import tsx scripts/demo-run.ts",
+    "demo:run:think-live": "KEYSTONE_EXECUTION_ENGINE=think_live node --import tsx scripts/demo-run.ts",
     "demo:validate": "node --import tsx scripts/demo-validate.ts"
   },
   "dependencies": {

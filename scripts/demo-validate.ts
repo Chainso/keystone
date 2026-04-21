@@ -1,53 +1,25 @@
 import { readDemoState, type PersistedDemoState } from "./demo-state";
+import {
+  describeDemoContract,
+  summarizeTasks,
+  type DemoContract
+} from "./demo-run";
 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type DemoContract = {
-  contractId: string;
-  proofScope: string;
-  modelExecution: string;
-  workflowStatus: string;
-};
+type ExecutionEngine = "scripted" | "think_mock" | "think_live";
 
-export type RunSummary = {
+type RunSummary = {
   data?: {
     status?: string;
-    execution?: {
-      runtime?: unknown;
-      thinkMode?: unknown;
-    };
-    artifacts?: {
-      total?: number;
-      byKind?: Record<string, number>;
-    };
-    sessions?: {
-      total?: number;
-    };
-  };
-  status?: string;
-  execution?: {
-    runtime?: unknown;
-    thinkMode?: unknown;
-  };
-  inputs?: {
-    runtime?: unknown;
-    options?: {
-      thinkMode?: unknown;
-    };
-  };
-  artifacts?: {
-    total?: number;
-    byKind?: Record<string, number>;
-  };
-  sessions?: {
-    total?: number;
+    executionEngine?: unknown;
+    compiledFrom?: unknown;
   };
 };
 
-export type DemoValidationContract = {
-  runtime: string;
-  thinkMode: string;
+type DemoValidationContract = {
+  executionEngine: ExecutionEngine;
   demoContract: DemoContract;
 };
 
@@ -66,6 +38,24 @@ function resolveExplicitBaseUrl() {
   return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL;
 }
 
+function asObject(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function asArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function requireDataObject(value: Record<string, unknown>, label: string) {
+  const detail = asObject(value.data);
+
+  if (!detail) {
+    throw new Error(`${label} did not return the canonical data envelope.`);
+  }
+
+  return detail;
+}
+
 export function resolveBaseUrl(persistedState?: PersistedDemoState) {
   return (
     getArg("base-url") ??
@@ -75,151 +65,116 @@ export function resolveBaseUrl(persistedState?: PersistedDemoState) {
   );
 }
 
-export function resolveRuntime() {
-  return getArg("runtime") ?? process.env.KEYSTONE_AGENT_RUNTIME ?? "scripted";
+export function resolveExecutionEngine() {
+  return getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "scripted";
 }
 
-export function resolveThinkMode() {
-  return getArg("think-mode") ?? process.env.KEYSTONE_THINK_DEMO_MODE ?? "mock";
-}
+function resolveActualExecutionEngine(summary: RunSummary): ExecutionEngine {
+  const detail = requireDataObject(summary as Record<string, unknown>, "Run detail");
+  const executionEngine = detail.executionEngine;
 
-export function describeDemoContract(runtime: string, thinkMode: string): DemoContract {
-  if (runtime === "think" && thinkMode === "live") {
-    return {
-      contractId: "think-live-compile-demo",
-      proofScope: "Fixture-scoped live compile plus compiled Think task execution",
-      modelExecution: "Live local chat-completions backend",
-      workflowStatus:
-        "Proves the fixture-scoped happy path from live compile through compiled Think task execution, run_note promotion, and archived run summary."
-    };
+  if (
+    executionEngine === "scripted" ||
+    executionEngine === "think_mock" ||
+    executionEngine === "think_live"
+  ) {
+    return executionEngine;
   }
 
-  if (runtime === "think") {
-    return {
-      contractId: "think-mock-validation",
-      proofScope: "Fixture-backed Think task path",
-      modelExecution: "Deterministic mock Think model",
-      workflowStatus:
-        "Stable validation path for the current fixture-backed compile and task handoff behavior."
-    };
-  }
-
-  return {
-    contractId: "scripted-fixture-demo",
-    proofScope: "Fixture-backed scripted path",
-    modelExecution: "Scripted task runner",
-    workflowStatus: "Default non-Think demo path."
-  };
-}
-
-export function resolveActualRuntime(summary: RunSummary, fallback: string) {
-  const legacy = summary;
-
-  return summary.data?.execution?.runtime === "think" || summary.data?.execution?.runtime === "scripted"
-    ? summary.data.execution.runtime
-    : legacy.inputs?.runtime === "think" || legacy.inputs?.runtime === "scripted"
-      ? legacy.inputs.runtime
-    : fallback;
-}
-
-export function resolveActualThinkMode(summary: RunSummary, fallback: string) {
-  const actualThinkMode = summary.data?.execution?.thinkMode ?? summary.inputs?.options?.thinkMode;
-
-  return actualThinkMode === "live" || actualThinkMode === "mock" ? actualThinkMode : fallback;
+  throw new Error("Run detail did not return a valid executionEngine.");
 }
 
 export function resolveValidatedRunContract(
   summary: RunSummary,
-  requestedRuntime: string,
-  requestedThinkMode: string
+  _requestedExecutionEngine: string
 ): DemoValidationContract {
-  const runtime = resolveActualRuntime(summary, requestedRuntime);
-  const thinkMode = resolveActualThinkMode(summary, requestedThinkMode);
+  const executionEngine = resolveActualExecutionEngine(summary);
 
   return {
-    runtime,
-    thinkMode,
-    demoContract: describeDemoContract(runtime, thinkMode)
+    executionEngine,
+    demoContract: describeDemoContract(executionEngine)
   };
 }
 
-export function summarizeRunDetail(summary: RunSummary) {
-  const detail = summary.data ?? summary;
-
-  return {
-    sessions: {
-      total: detail.sessions?.total ?? 0
-    },
-    artifacts: {
-      total: detail.artifacts?.total ?? 0,
-      byKind: detail.artifacts?.byKind ?? {}
+async function fetchRunDetail(baseUrl: string, runId: string) {
+  const response = await fetch(`${baseUrl}/v1/runs/${encodeURIComponent(runId)}`, {
+    headers: {
+      Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
+      "X-Keystone-Tenant-Id": process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local"
     }
-  };
+  });
+
+  if (!response.ok) {
+    throw new Error(`Run detail fetch failed with ${response.status}: ${await response.text()}`);
+  }
+
+  return (await response.json()) as RunSummary;
+}
+
+async function fetchRunTasks(baseUrl: string, runId: string) {
+  const response = await fetch(`${baseUrl}/v1/runs/${encodeURIComponent(runId)}/tasks`, {
+    headers: {
+      Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
+      "X-Keystone-Tenant-Id": process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Run tasks fetch failed with ${response.status}: ${await response.text()}`);
+  }
+
+  return response.json() as Promise<Record<string, unknown>>;
 }
 
 export async function main() {
   const explicitRunId = resolveExplicitRunId();
   const explicitBaseUrl = resolveExplicitBaseUrl();
-  const persistedState =
-    explicitRunId !== undefined
-      ? undefined
-      : await readDemoState();
+  const persistedState = await readDemoState();
   const runId = explicitRunId ?? persistedState?.runId;
-  const baseUrl =
-    explicitBaseUrl ??
-    (explicitRunId === undefined ? resolveBaseUrl(persistedState) : "http://127.0.0.1:8787");
-  const requestedRuntime = resolveRuntime();
-  const requestedThinkMode = resolveThinkMode();
+  const baseUrl = explicitBaseUrl ?? resolveBaseUrl(persistedState);
+  const requestedExecutionEngine = resolveExecutionEngine();
 
   if (!runId) {
     throw new Error("Provide --run-id=<id>, set KEYSTONE_RUN_ID, or run demo:run first.");
   }
 
-  const response = await fetch(
-    `${baseUrl}/v1/runs/${runId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
-        "X-Keystone-Tenant-Id": process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local"
-      }
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Run summary fetch failed with ${response.status}: ${await response.text()}`);
-  }
-
-  const summary = (await response.json()) as RunSummary;
-  const detail = summary.data ?? summary;
-  const derived = summarizeRunDetail(summary);
-  const { runtime, thinkMode, demoContract } = resolveValidatedRunContract(
+  const summary = await fetchRunDetail(baseUrl, runId);
+  const detail = requireDataObject(summary as Record<string, unknown>, "Run detail");
+  const tasks = await fetchRunTasks(baseUrl, runId);
+  const tasksData = requireDataObject(tasks, "Run task list");
+  const taskItems = asArray(tasksData.items).map((task) => asObject(task) ?? {});
+  const { executionEngine, demoContract } = resolveValidatedRunContract(
     summary,
-    requestedRuntime,
-    requestedThinkMode
+    requestedExecutionEngine
   );
+  const status = typeof detail.status === "string" ? detail.status : "unknown";
+  const compiledFrom = asObject(detail.compiledFrom);
+  const taskSummary = summarizeTasks(taskItems);
 
-  if (detail.status !== "archived") {
-    throw new Error(`Expected archived run, received ${detail.status ?? "unknown"}.`);
+  if (status !== "archived") {
+    throw new Error(`Expected archived run, received ${status}.`);
   }
 
-  if ((derived.sessions.total ?? 0) < 3) {
-    throw new Error(`Expected at least 3 sessions, received ${derived.sessions.total ?? 0}.`);
+  if (!compiledFrom) {
+    throw new Error("Expected the run to record compile provenance.");
   }
 
-  if ((derived.artifacts.total ?? 0) < 5) {
-    throw new Error(`Expected at least 5 artifacts, received ${derived.artifacts.total ?? 0}.`);
+  if (taskSummary.total < 1) {
+    throw new Error("Expected at least one compiled run task.");
   }
 
-  if ((derived.artifacts.byKind.run_summary ?? 0) < 1) {
-    throw new Error("Expected a run_summary artifact.");
-  }
+  if (executionEngine !== "scripted") {
+    const taskWithConversation = taskItems.find((task) => {
+      const conversation = asObject(task.conversation);
+      return (
+        typeof conversation?.agentClass === "string" &&
+        typeof conversation?.agentName === "string"
+      );
+    });
 
-  if (runtime === "think" && (derived.artifacts.byKind.run_note ?? 0) < 1) {
-    throw new Error("Expected at least one promoted run_note artifact for the Think runtime.");
-  }
-
-  if (runtime === "scripted" && (derived.artifacts.byKind.task_log ?? 0) < 1) {
-    throw new Error("Expected at least one task_log artifact for the scripted runtime.");
+    if (!taskWithConversation) {
+      throw new Error("Expected Think execution to expose at least one task conversation locator.");
+    }
   }
 
   console.log(
@@ -228,12 +183,11 @@ export async function main() {
         ok: true,
         baseUrl,
         runId,
-        runtime,
-        thinkMode,
-        demoContract,
-        status: detail.status,
-        sessions: derived.sessions.total,
-        artifacts: derived.artifacts
+        executionEngine,
+        status,
+        compiledFrom,
+        tasks: taskSummary,
+        demoContract
       },
       null,
       2

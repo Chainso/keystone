@@ -3,7 +3,6 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
 import type { WorkerBindings } from "../../../env";
-import type { EventSeverity } from "../../../lib/events/types";
 import { ensureThinkRpcInitialization } from "./think-rpc";
 import {
   type AgentFilesystemLayout,
@@ -14,9 +13,6 @@ import {
   type AgentTurnResult
 } from "../../../maestro/agent-runtime";
 import { ensureSandboxSession } from "../../../lib/sandbox/client";
-import { createWorkerDatabaseClient, type DatabaseClient } from "../../../lib/db/client";
-import { appendAndPublishRunEvent } from "../../../lib/events/publish";
-import { getSessionRecord, updateSessionStatus } from "../../../lib/db/runs";
 import { buildChatCompletionsApiBaseUrl } from "../../../lib/llm/chat-completions";
 import { assertOutboundUrlAllowed } from "../../../lib/security/outbound";
 import {
@@ -30,12 +26,10 @@ import {
   type ImplementerToolEvent,
   type ImplementerTurnMetadata
 } from "../implementer/ImplementerAgent";
-import { deriveSessionStatusForAgentTurnOutcome } from "../../../maestro/session";
 
 type ActiveTurnState = {
   context: AgentTurnContext;
   metadata: ImplementerTurnMetadata;
-  client: DatabaseClient;
   events: AgentTurnResult["events"];
   lastAssistantText?: string | undefined;
 };
@@ -153,7 +147,6 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
 
   async executeTurn(input: AgentTurnContext, signal?: AbortSignal): Promise<AgentTurnResult> {
     const metadata = parseImplementerTurnMetadata(input);
-    const client = createWorkerDatabaseClient(this.env);
 
     try {
       const { session } = await ensureSandboxSession({
@@ -165,24 +158,8 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
       this.activeTurn = {
         context: input,
         metadata,
-        client,
         events: []
       };
-
-      const existingSession = await getSessionRecord(client, input.tenantId, input.sessionId);
-
-      if (existingSession?.status === "ready") {
-        await updateSessionStatus(client, {
-          tenantId: input.tenantId,
-          sessionId: input.sessionId,
-          status: "active",
-          metadata: {
-            ...(existingSession.metadata ?? {}),
-            runtime: this.runtime,
-            role: this.role
-          }
-        });
-      }
 
       await this.recordTurnEvent("agent.turn.started", {
         role: this.role,
@@ -277,26 +254,9 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
         "failed"
       );
 
-      const existingSession = await getSessionRecord(client, input.tenantId, input.sessionId);
-
-      if (existingSession && existingSession.status !== "failed") {
-        await updateSessionStatus(client, {
-          tenantId: input.tenantId,
-          sessionId: input.sessionId,
-          status: "failed",
-          metadata: {
-            ...(existingSession.metadata ?? {}),
-            runtime: this.runtime,
-            role: this.role,
-            lastError: message
-          }
-        });
-      }
-
       throw error;
     } finally {
       this.activeTurn = null;
-      await client.close();
     }
   }
 
@@ -353,32 +313,19 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
   private async recordTurnEvent(
     eventType: string,
     payload: Record<string, unknown>,
-    severity: EventSeverity = "info",
+    _severity: "info" | "warning" | "error" = "info",
     status = this.activeTurn ? "active" : undefined
   ) {
     if (!this.activeTurn) {
       return;
     }
 
-    const published = await appendAndPublishRunEvent(this.activeTurn.client, this.env, {
-      tenantId: this.activeTurn.context.tenantId,
-      runId: this.activeTurn.context.runId,
-      sessionId: this.activeTurn.context.sessionId,
-      taskId: this.activeTurn.context.taskId,
-      eventType,
-      actor: thinkActor,
-      severity,
-      payload,
-      status: status
-        ? deriveSessionStatusForAgentTurnOutcome(
-            status === "failed" ? "failed" : "completed"
-          )
-        : undefined
-    });
-
     this.activeTurn.events.push({
-      eventType: published.eventType,
-      payload: published.payload as Record<string, unknown>
+      eventType,
+      payload: {
+        ...payload,
+        ...(status ? { status } : {})
+      }
     });
   }
 }

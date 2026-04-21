@@ -16,6 +16,16 @@ function asObject(value: unknown) {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
 }
 
+function requireDataObject(value: Record<string, unknown>, label: string) {
+  const detail = asObject(value.data);
+
+  if (!detail) {
+    throw new Error(`${label} did not return the canonical data envelope.`);
+  }
+
+  return detail;
+}
+
 export function resolveBaseUrl() {
   return getArg("base-url") ?? process.env.KEYSTONE_BASE_URL ?? "http://127.0.0.1:8787";
 }
@@ -40,26 +50,16 @@ export function resolveFixtureProjectConfig() {
         kind: "git_repository" as const,
         config: {
           localPath: "./fixtures/demo-target",
-          defaultRef: "main"
-        },
-        metadata: {
-          source: "fixture"
+          ref: "main"
         }
       }
     ],
     envVars: [
       {
         name: "KEYSTONE_FIXTURE_PROJECT",
-        value: "1",
-        metadata: {
-          source: "demo"
-        }
+        value: "1"
       }
-    ],
-    integrationBindings: [],
-    metadata: {
-      source: "ensure-demo-project"
-    }
+    ]
   };
 }
 
@@ -87,19 +87,15 @@ export async function ensureFixtureProject() {
   }
 
   const listed = await readJsonResponse(listResponse);
-  const listedData = asObject(listed.data);
-  const existingProjects = Array.isArray(listedData?.items)
-    ? listedData.items
-    : Array.isArray(listed.projects)
-      ? listed.projects
-    : [];
+  const listedData = requireDataObject(listed, "Project list");
+  const existingProjects = Array.isArray(listedData.items) ? listedData.items : [];
   const existingProject = existingProjects[0] as Record<string, unknown> | undefined;
 
   if (existingProject?.projectId) {
     const updateResponse = await fetch(
       `${baseUrl}/v1/projects/${existingProject.projectId}`,
       {
-        method: "PUT",
+        method: "PATCH",
         headers,
         body: JSON.stringify(fixtureConfig)
       }
@@ -112,7 +108,7 @@ export async function ensureFixtureProject() {
     }
 
     const updated = await readJsonResponse(updateResponse);
-    const updatedProject = asObject(updated.data) ?? asObject(updated.project);
+    const updatedProject = requireDataObject(updated, "Project update");
 
     return {
       action: "updated" as const,
@@ -135,7 +131,7 @@ export async function ensureFixtureProject() {
   }
 
   const created = await readJsonResponse(createResponse);
-  const createdProject = asObject(created.data) ?? asObject(created.project);
+  const createdProject = requireDataObject(created, "Project creation");
 
   return {
     action: "created" as const,

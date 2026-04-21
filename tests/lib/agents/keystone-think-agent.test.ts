@@ -98,15 +98,6 @@ const mocked = vi.hoisted(() => {
     ensureSandboxSession: vi.fn(async () => ({
       session: state.session
     })),
-    createWorkerDatabaseClient: vi.fn(() => ({
-      close: state.close,
-      db: {},
-      sql: {}
-    })),
-    appendAndPublishRunEvent: vi.fn(async (_client, _env, event) => ({
-      eventId: crypto.randomUUID(),
-      payload: event.payload
-    })),
     getSessionRecord: vi.fn(async () => ({
       status: "ready",
       metadata: {}
@@ -150,14 +141,6 @@ vi.mock("../../../src/keystone/agents/base/think-rpc", () => ({
 
 vi.mock("../../../src/lib/sandbox/client", () => ({
   ensureSandboxSession: mocked.state.ensureSandboxSession
-}));
-
-vi.mock("../../../src/lib/db/client", () => ({
-  createWorkerDatabaseClient: mocked.state.createWorkerDatabaseClient
-}));
-
-vi.mock("../../../src/lib/events/publish", () => ({
-  appendAndPublishRunEvent: mocked.state.appendAndPublishRunEvent
 }));
 
 vi.mock("../../../src/lib/db/runs", () => ({
@@ -254,9 +237,7 @@ describe("KeystoneThinkAgent live boundary", () => {
     expect(
       mocked.state.session?.files.get("/artifacts/out/keystone-think-run-note.md")?.content
     ).toContain("Implementer turn completed without assistant text.");
-    expect(mocked.state.appendAndPublishRunEvent).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
+    expect(result.events).toContainEqual(
       expect.objectContaining({
         eventType: "agent.turn.completed",
         payload: expect.objectContaining({

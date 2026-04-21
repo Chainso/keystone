@@ -6,14 +6,6 @@ export function tenantRunPrefix(tenantId: string, runId: string) {
   return `tenants/${keySegment(tenantId)}/runs/${keySegment(runId)}`;
 }
 
-export function decisionPackageArtifactKey(
-  tenantId: string,
-  runId: string,
-  artifactId: string
-) {
-  return `${tenantRunPrefix(tenantId, runId)}/inputs/decision-package/${keySegment(artifactId)}.json`;
-}
-
 export function runPlanArtifactKey(tenantId: string, runId: string) {
   return `${tenantRunPrefix(tenantId, runId)}/plan/plan.json`;
 }
@@ -21,18 +13,18 @@ export function runPlanArtifactKey(tenantId: string, runId: string) {
 export function taskHandoffArtifactKey(
   tenantId: string,
   runId: string,
-  taskId: string
+  runTaskId: string
 ) {
-  return `${tenantRunPrefix(tenantId, runId)}/tasks/${keySegment(taskId)}/handoff.json`;
+  return `${tenantRunPrefix(tenantId, runId)}/tasks/${keySegment(runTaskId)}/handoff.json`;
 }
 
 export function taskLogArtifactKey(
   tenantId: string,
   runId: string,
-  taskId: string,
+  runTaskId: string,
   attemptId: string
 ) {
-  return `${tenantRunPrefix(tenantId, runId)}/tasks/${keySegment(taskId)}/logs/${keySegment(attemptId)}.jsonl`;
+  return `${tenantRunPrefix(tenantId, runId)}/tasks/${keySegment(runTaskId)}/logs/${keySegment(attemptId)}.jsonl`;
 }
 
 export function taskEvidenceIndexArtifactKey(

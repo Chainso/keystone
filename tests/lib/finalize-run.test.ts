@@ -2,47 +2,67 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => {
   const state = {
-    artifactRefInputs: [] as Array<Record<string, unknown>>,
-    events: [] as Array<Record<string, unknown>>,
+    artifactRefs: [] as Array<Record<string, unknown>>,
+    deletedObjects: [] as string[],
     jsonWrites: [] as Array<{ key: string; value: unknown }>,
-    statusUpdates: [] as Array<Record<string, unknown>>
+    runUpdates: [] as Array<Record<string, unknown>>
   };
 
   function reset() {
-    state.artifactRefInputs.length = 0;
-    state.events.length = 0;
+    state.artifactRefs.length = 0;
+    state.deletedObjects.length = 0;
     state.jsonWrites.length = 0;
-    state.statusUpdates.length = 0;
+    state.runUpdates.length = 0;
   }
 
   return {
     state,
     reset,
     createArtifactRef: vi.fn(async (_client, input) => {
-      state.artifactRefInputs.push(input as Record<string, unknown>);
-
-      return {
+      const artifactRef = {
         artifactRefId: "run-summary-artifact",
         tenantId: input.tenantId,
+        projectId: input.projectId,
         runId: input.runId,
-        sessionId: input.sessionId,
-        taskId: null,
-        kind: input.kind,
+        artifactKind: input.artifactKind,
         storageBackend: input.storageBackend,
-        storageUri: input.storageUri,
+        bucket: input.bucket,
+        objectKey: input.objectKey,
+        objectVersion: input.objectVersion ?? null,
+        etag: input.etag ?? null,
         contentType: input.contentType,
-        sizeBytes: input.sizeBytes ?? null,
-        metadata: input.metadata ?? null,
-        createdAt: new Date("2026-04-17T00:00:00.000Z"),
-        updatedAt: new Date("2026-04-17T00:00:00.000Z")
+        sha256: input.sha256 ?? null,
+        sizeBytes: input.sizeBytes ?? null
       };
+      state.artifactRefs.push(artifactRef as Record<string, unknown>);
+      return artifactRef;
     }),
-    putArtifactJson: vi.fn(async (_bucket, _namespace, key, value) => {
-      state.jsonWrites.push({
-        key,
-        value
-      });
+    deleteArtifactRef: vi.fn(async (_client, input) => {
+      const index = state.artifactRefs.findIndex(
+        (artifactRef) => artifactRef.artifactRefId === input.artifactRefId
+      );
 
+      if (index === -1) {
+        return null;
+      }
+
+      const [deleted] = state.artifactRefs.splice(index, 1);
+      return deleted ?? null;
+    }),
+    findArtifactRefByObjectKey: vi.fn(async (_client, input) => {
+      return (
+        state.artifactRefs.find(
+          (artifactRef) =>
+            artifactRef.bucket === input.bucket &&
+            artifactRef.objectKey === input.objectKey &&
+            artifactRef.runId === input.runId &&
+            artifactRef.artifactKind === input.artifactKind
+        ) ?? null
+      );
+    }),
+    getArtifactRef: vi.fn(async () => null),
+    putArtifactJson: vi.fn(async (_bucket, _namespace, key, value) => {
+      state.jsonWrites.push({ key, value });
       return {
         storageBackend: "r2",
         storageUri: `r2://keystone-artifacts-dev/${key}`,
@@ -51,47 +71,55 @@ const mocked = vi.hoisted(() => {
         sizeBytes: JSON.stringify(value).length
       };
     }),
-    appendAndPublishRunEvent: vi.fn(async (_client, _env, input) => {
-      state.events.push(input as Record<string, unknown>);
-
-      return {
-        eventId: "event-run-summary",
-        ts: new Date("2026-04-17T00:00:00.000Z")
-      };
+    deleteArtifactObject: vi.fn(async (_bucket, key) => {
+      state.deletedObjects.push(key);
     }),
-    getSessionRecord: vi.fn(async () => ({
+    getRunRecord: vi.fn(async () => ({
       tenantId: "tenant-fixture",
-      sessionId: "run-session-123",
       runId: "run-123",
-      sessionType: "run",
+      projectId: "project-123",
+      workflowInstanceId: "run-workflow-123",
+      executionEngine: "scripted",
+      sandboxId: "sandbox-run-123",
       status: "active",
-      parentSessionId: null,
-      metadata: {
-        runtime: "think",
-        options: {
-          thinkMode: "live",
-          preserveSandbox: true
-        },
-        repo: {
-          source: "localPath",
-          localPath: "./fixtures/demo-target"
-        },
-        workflowInstanceId: "run-workflow-123"
-      },
+      compiledSpecRevisionId: null,
+      compiledArchitectureRevisionId: null,
+      compiledExecutionPlanRevisionId: null,
+      compiledAt: null,
+      startedAt: new Date("2026-04-17T00:00:00.000Z"),
+      endedAt: null,
       createdAt: new Date("2026-04-17T00:00:00.000Z"),
       updatedAt: new Date("2026-04-17T00:00:00.000Z")
     })),
-    updateSessionStatus: vi.fn(async (_client, input) => {
-      state.statusUpdates.push(input as Record<string, unknown>);
-
-      return {
-        tenantId: input.tenantId,
-        sessionId: input.sessionId,
+    listRunTasks: vi.fn(async () => [
+      {
+        runTaskId: "run-task-1",
         runId: "run-123",
-        sessionType: "run",
-        status: input.status,
-        parentSessionId: null,
-        metadata: input.metadata ?? null,
+        name: "Implement the change",
+        description: "Apply the approved change.",
+        status: "completed",
+        conversationAgentClass: null,
+        conversationAgentName: null,
+        startedAt: new Date("2026-04-17T00:01:00.000Z"),
+        endedAt: new Date("2026-04-17T00:02:00.000Z"),
+        createdAt: new Date("2026-04-17T00:00:00.000Z"),
+        updatedAt: new Date("2026-04-17T00:02:00.000Z")
+      }
+    ]),
+    listRunTaskDependencies: vi.fn(async () => []),
+    updateRunRecord: vi.fn(async (_client, input) => {
+      state.runUpdates.push(input as Record<string, unknown>);
+      return {
+        ...input,
+        projectId: "project-123",
+        workflowInstanceId: "run-workflow-123",
+        executionEngine: "scripted",
+        sandboxId: "sandbox-run-123",
+        compiledSpecRevisionId: null,
+        compiledArchitectureRevisionId: null,
+        compiledExecutionPlanRevisionId: null,
+        compiledAt: null,
+        startedAt: new Date("2026-04-17T00:00:00.000Z"),
         createdAt: new Date("2026-04-17T00:00:00.000Z"),
         updatedAt: new Date("2026-04-17T00:00:00.000Z")
       };
@@ -100,20 +128,22 @@ const mocked = vi.hoisted(() => {
 });
 
 vi.mock("../../src/lib/db/artifacts", () => ({
-  createArtifactRef: mocked.createArtifactRef
+  createArtifactRef: mocked.createArtifactRef,
+  deleteArtifactRef: mocked.deleteArtifactRef,
+  findArtifactRefByObjectKey: mocked.findArtifactRefByObjectKey,
+  getArtifactRef: mocked.getArtifactRef
 }));
 
 vi.mock("../../src/lib/artifacts/r2", () => ({
+  deleteArtifactObject: mocked.deleteArtifactObject,
   putArtifactJson: mocked.putArtifactJson
 }));
 
-vi.mock("../../src/lib/events/publish", () => ({
-  appendAndPublishRunEvent: mocked.appendAndPublishRunEvent
-}));
-
 vi.mock("../../src/lib/db/runs", () => ({
-  getSessionRecord: mocked.getSessionRecord,
-  updateSessionStatus: mocked.updateSessionStatus
+  getRunRecord: mocked.getRunRecord,
+  listRunTasks: mocked.listRunTasks,
+  listRunTaskDependencies: mocked.listRunTaskDependencies,
+  updateRunRecord: mocked.updateRunRecord
 }));
 
 const { finalizeRun } = await import("../../src/keystone/integration/finalize-run");
@@ -124,7 +154,7 @@ describe("finalizeRun", () => {
     mocked.reset();
   });
 
-  it("preserves existing run-session metadata when archiving the run", async () => {
+  it("writes a run summary artifact and archives a successful run", async () => {
     const result = await finalizeRun(
       {
         ARTIFACTS_BUCKET: {} as R2Bucket
@@ -132,49 +162,90 @@ describe("finalizeRun", () => {
       {} as never,
       {
         tenantId: "tenant-fixture",
-        runId: "run-123",
-        runSessionId: "run-session-123",
-        taskResults: [
-          {
-            taskId: "task-greeting-tone",
-            workflowStatus: "complete",
-            processStatus: "completed",
-            exitCode: 0,
-            logArtifactRefId: null
-          }
-        ]
+        runId: "run-123"
       }
     );
 
     expect(result.finalStatus).toBe("archived");
-    expect(mocked.state.statusUpdates).toEqual([
+    expect(mocked.updateRunRecord).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: "run-123",
         status: "archived",
-        metadata: expect.objectContaining({
-          runtime: "think",
-          options: {
-            thinkMode: "live",
-            preserveSandbox: true
-          },
-          repo: {
-            source: "localPath",
-            localPath: "./fixtures/demo-target"
-          },
-          workflowInstanceId: "run-workflow-123",
-          runSummaryArtifactRefId: "run-summary-artifact",
-          successfulTasks: 1,
-          failedTasks: 0
-        })
+        endedAt: expect.any(Date)
       })
-    ]);
-    expect(mocked.state.events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          eventType: "session.archived",
-          artifactRefId: "run-summary-artifact",
-          status: "archived"
-        })
-      ])
+    );
+    expect(mocked.createArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        projectId: "project-123",
+        runId: "run-123",
+        artifactKind: "run_summary",
+        bucket: "keystone-artifacts-dev",
+        objectKey: "tenants/tenant-fixture/runs/run-123/release/run-summary.json"
+      })
+    );
+  });
+
+  it("reuses an existing deterministic run-summary artifact ref on retry", async () => {
+    mocked.state.artifactRefs.push({
+      artifactRefId: "run-summary-artifact-existing",
+      tenantId: "tenant-fixture",
+      projectId: "project-123",
+      runId: "run-123",
+      artifactKind: "run_summary",
+      storageBackend: "r2",
+      bucket: "keystone-artifacts-dev",
+      objectKey: "tenants/tenant-fixture/runs/run-123/release/run-summary.json",
+      objectVersion: null,
+      etag: "etag-run-summary",
+      contentType: "application/json; charset=utf-8",
+      sha256: null,
+      sizeBytes: 128
+    });
+
+    const result = await finalizeRun(
+      {
+        ARTIFACTS_BUCKET: {} as R2Bucket
+      } as never,
+      {} as never,
+      {
+        tenantId: "tenant-fixture",
+        runId: "run-123"
+      }
+    );
+
+    expect(result.artifactRef.artifactRefId).toBe("run-summary-artifact-existing");
+    expect(mocked.createArtifactRef).not.toHaveBeenCalled();
+  });
+
+  it("cleans up a newly written summary artifact when run status persistence fails", async () => {
+    mocked.updateRunRecord.mockRejectedValueOnce(new Error("status update failed"));
+
+    await expect(
+      finalizeRun(
+        {
+          ARTIFACTS_BUCKET: {} as R2Bucket
+        } as never,
+        {} as never,
+        {
+          tenantId: "tenant-fixture",
+          runId: "run-123"
+        }
+      )
+    ).rejects.toThrow("status update failed");
+
+    expect(mocked.deleteArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        artifactRefId: "run-summary-artifact"
+      })
+    );
+    expect(mocked.deleteArtifactObject).toHaveBeenCalledWith(
+      expect.anything(),
+      "tenants/tenant-fixture/runs/run-123/release/run-summary.json"
     );
   });
 });

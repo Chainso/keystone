@@ -4,8 +4,8 @@
 
 - Docker with `buildx`
 - Node/npm
-- A local `.dev.vars` copied from `.dev.vars.example`
-- The local chat-completions backend reachable at `http://localhost:10531`
+- a local `.dev.vars` copied from `.dev.vars.example`
+- the local chat-completions backend reachable at `http://localhost:10531`
 
 ## Boot
 
@@ -17,7 +17,7 @@ export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://post
 npm run db:migrate
 ```
 
-For the standard local UI workflow, then start the checked-in zellij helper from a normal host shell:
+For the standard local workflow, start the checked-in zellij helper from a normal host shell:
 
 ```bash
 npm run dev:zellij
@@ -25,8 +25,6 @@ npm run dev:zellij
 
 That opens vertically split panes for `npx localflare` and `npm run dev:ui`.
 By default it also opens the local UI in the system browser once `/v1/health` responds at `http://127.0.0.1:8787`.
-
-The UI served in that workflow is the same Worker-hosted SPA route tree shipped in the repo: minimal board-shaped `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces backed by the shared target-model scaffold in `ui/src/features/resource-model/`.
 
 If you need a different browser target or want to suppress the browser launch:
 
@@ -43,19 +41,13 @@ If you need the manual path instead, use:
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
-Expected signals:
-
-- `Ready on http://127.0.0.1:<port>`
-- container image preparation succeeds
-- workflow bindings are listed in Wrangler startup output
-
-If Wrangler binds a different port because `8787` is already in use, export the ready URL before running any helper scripts:
+If Wrangler binds a non-default port, export it before running helper scripts:
 
 ```bash
 export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 ```
 
-If you are validating the full repo after UI changes, expect `npm run build` to hit the same sandbox limitation on this host: `vite build` completes, then Wrangler's dry-run deploy still needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`. Revalidated in the 2026-04-20 follow-up pass. Rerun from a normal host shell when you need the full `build` proof.
+If you are validating the full repo after UI changes, expect `npm run build` to hit the same sandbox limitation on this host: `vite build` completes, then Wrangler's dry-run deploy still needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`. Rerun from a normal host shell when you need the full `build` proof.
 
 ## Sanity Checks
 
@@ -64,7 +56,7 @@ curl -i "${KEYSTONE_BASE_URL:-http://127.0.0.1:8787}/v1/health"
 npx wrangler workflows list --local
 ```
 
-Healthy output should show `200 OK` for `/v1/health` and both `run-workflow` plus `task-workflow` in the local workflow list.
+Healthy output should show `200 OK` for `/v1/health` and both `run-workflow` plus `task-workflow`.
 
 ## Fixture Demo
 
@@ -74,26 +66,27 @@ Create and poll a fixture-backed run:
 npm run demo:run
 ```
 
-`demo:run` first calls `npm run demo:ensure-project` internally so the stored `fixture-demo-project` exists before `/v1/runs` is posted.
-
 Validate a completed run:
 
 ```bash
 npm run demo:validate
 ```
 
-Expected fixture proof:
+Current demo flow:
+
+1. `demo:run` ensures the stored fixture project exists
+2. it creates a run through `POST /v1/projects/:projectId/runs`
+3. it creates the three run planning documents
+4. it creates one revision per planning document
+5. it calls `POST /v1/runs/:runId/compile`
+6. it polls until the run reaches terminal state
+
+Expected proof:
 
 - run status reaches `archived`
-- run detail reports at least three sessions (`run`, `compile`, `task`)
-- artifacts include `decision_package`, `run_plan`, `task_handoff`, `task_log`, and `run_summary`
-- the run summary reports stored project metadata for `fixture-demo-project`
-
-If you are running the validation manually and need to pass the run id explicitly, the convenience form is:
-
-```bash
-npm run demo:validate -- --run-id=<run-id>
-```
+- compile provenance is present
+- at least one task exists
+- Think runs expose task conversation locators
 
 If you need the fixture project without starting a run, use:
 
@@ -101,65 +94,60 @@ If you need the fixture project without starting a run, use:
 npm run demo:ensure-project
 ```
 
-For the Think-backed fixture path, use the dedicated runbook. The stable validation pair is:
+If you need to validate an explicit run id, use:
 
 ```bash
-KEYSTONE_AGENT_RUNTIME=think npm run demo:run
-KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
+npm run demo:validate -- --run-id=<run-id>
 ```
 
-If you are running the Think validation manually and need to pass the run id explicitly, the convenience form is:
+## Think Paths
+
+Deterministic Think validation:
 
 ```bash
-KEYSTONE_AGENT_RUNTIME=think npm run demo:validate -- --run-id=<run-id>
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:run
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:validate
 ```
 
-## Manual Project-Backed Run Intake
+Live Think validation:
 
-The current HTTP contract is project-backed. For manual API checks:
+```bash
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate
+```
 
-1. Create or update a project through `/v1/projects` or `npm run demo:ensure-project`.
-2. Submit `/v1/runs` with `projectId` plus a typed decision-package reference.
+Sandbox inspection after a live Think run:
 
-Minimal local request shape:
+```bash
+npm run demo:run:think-live
+KEYSTONE_EXECUTION_ENGINE=think_live npm run sandbox:shell
+```
+
+## Manual API Flow
+
+The current HTTP contract is document-first and project-scoped:
+
+1. create or update a project
+2. create a run under `/v1/projects/:projectId/runs`
+3. create the run planning documents under `/v1/runs/:runId/documents`
+4. create revisions for:
+   - `specification`
+   - `architecture`
+   - `execution_plan`
+5. call `/v1/runs/:runId/compile`
+
+Minimal run-create payload:
 
 ```json
 {
-  "projectId": "<stored-project-id>",
-  "decisionPackage": {
-    "source": "inline",
-    "payload": {
-      "decisionPackageId": "demo-greeting-update",
-      "summary": "Update the deterministic fixture target.",
-      "objectives": ["Keep fixture tests green."],
-      "tasks": [
-        {
-          "taskId": "task-greeting-tone",
-          "title": "Adjust the greeting implementation",
-          "acceptanceCriteria": ["Fixture tests remain green."]
-        }
-      ]
-    }
-  }
+  "executionEngine": "scripted"
 }
 ```
 
-For UI consumers, use `GET /v1/runs/:runId/stream` as the canonical live stream path. `/events` and `/ws` remain debug/legacy seams only.
-
-## Approval Path
-
-The approval-gated path is a project whose compile target resolves to `gitUrl`. It should:
-
-1. create a run session,
-2. pause in `paused_for_approval`,
-3. create an approval row with type `outbound_network`,
-4. resume only after `POST /v1/runs/:runId/approvals/:approvalId/resolve`.
-
 ## Failure Patterns
 
-- `Invalid session status transition`: a workflow is skipping the named session lifecycle.
-- `RunCoordinatorDO was not initialized before use`: a workflow path is publishing events before initializing the coordinator.
-- `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted sandbox boundary on this host.
-- empty or stalled compile output: confirm the backend is reachable at `http://localhost:10531/v1/chat/completions`.
-- `defines multiple executable components`: the project materializes multiple code components but still lacks an explicit compile-target selector for the current runtime proof.
-- `EROFS` under `~/.config/.wrangler` or `~/.docker/buildx/activity` during `npm run build`: rerun the dry-run deploy from a host shell outside the Codex sandbox.
+- `Run detail did not return a valid executionEngine.`: the backend stopped returning authoritative execution-engine state on run detail
+- `Expected the run to record compile provenance.`: the run archived without pinned document-revision provenance
+- `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted sandbox boundary on this host
+- empty or stalled compile output: confirm the backend is reachable at `http://localhost:10531/v1/chat/completions`
+- `EROFS` under `~/.config/.wrangler` or `~/.docker/buildx/activity` during `npm run build`: rerun the dry-run deploy from a host shell outside the Codex sandbox

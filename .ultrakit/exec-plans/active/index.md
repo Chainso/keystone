@@ -6,10 +6,9 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 ## Active Plans
 
-No active plans.
-
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
+| [keystone-ui-project-management-live-wiring](./keystone-ui-project-management-live-wiring.md) | Awaiting Approval | Codex | 2026-04-18 |
 
 Add active plans in priority order using this format:
 

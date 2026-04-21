@@ -3,7 +3,6 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type {
   ProjectComponent,
   ProjectConfig,
-  ProjectIntegrationBinding,
   StoredProject
 } from "../../keystone/projects/contracts";
 import { parseProjectConfig } from "../../keystone/projects/contracts";
@@ -12,7 +11,6 @@ import {
   projectComponentRuleOverrides,
   projectComponents,
   projectEnvVars,
-  projectIntegrationBindings,
   projectRuleSets,
   projects
 } from "./schema";
@@ -50,10 +48,6 @@ function sortEnvVars<T extends { name: string }>(items: T[]) {
   return [...items].sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function sortIntegrationBindings<T extends { bindingKey: string }>(items: T[]) {
-  return [...items].sort((left, right) => left.bindingKey.localeCompare(right.bindingKey));
-}
-
 function toProjectSummary(row: typeof projects.$inferSelect): ProjectSummary {
   return {
     tenantId: row.tenantId,
@@ -70,7 +64,7 @@ async function loadStoredProject(
   client: DatabaseClient,
   projectRow: typeof projects.$inferSelect
 ): Promise<StoredProject> {
-  const [ruleSetRow, componentRows, envVarRows, integrationRows] = await Promise.all([
+  const [ruleSetRow, componentRows, envVarRows] = await Promise.all([
     client.db.query.projectRuleSets.findFirst({
       where: eq(projectRuleSets.projectId, projectRow.projectId)
     }),
@@ -81,10 +75,6 @@ async function loadStoredProject(
     client.db.query.projectEnvVars.findMany({
       where: eq(projectEnvVars.projectId, projectRow.projectId),
       orderBy: [asc(projectEnvVars.envKey)]
-    }),
-    client.db.query.projectIntegrationBindings.findMany({
-      where: eq(projectIntegrationBindings.projectId, projectRow.projectId),
-      orderBy: [asc(projectIntegrationBindings.bindingKey)]
     })
   ]);
   const overrideRows =
@@ -109,29 +99,20 @@ async function loadStoredProject(
       config: {
         localPath: componentRow.localPath ?? undefined,
         gitUrl: componentRow.gitUrl ?? undefined,
-        defaultRef: componentRow.defaultRef ?? undefined
+        ref: componentRow.ref ?? undefined
       },
       ruleOverride: overrideRow
         ? {
-            reviewInstructions: overrideRow.reviewInstructions ?? undefined,
-            testInstructions: overrideRow.testInstructions ?? undefined,
-            metadata: overrideRow.metadata
-          }
+          reviewInstructions: overrideRow.reviewInstructions ?? undefined,
+          testInstructions: overrideRow.testInstructions ?? undefined
+        }
         : undefined,
-      metadata: componentRow.metadata
     };
   });
 
   const envVars = envVarRows.map((row) => ({
     name: row.envKey,
-    value: row.envValue,
-    metadata: row.metadata
-  }));
-  const integrationBindings = integrationRows.map((row): ProjectIntegrationBinding => ({
-    bindingKey: row.bindingKey,
-    tenantIntegrationId: row.tenantIntegrationId,
-    overrides: row.overrides,
-    metadata: row.metadata
+    value: row.envValue
   }));
 
   return {
@@ -146,8 +127,6 @@ async function loadStoredProject(
     },
     components,
     envVars,
-    integrationBindings,
-    metadata: projectRow.metadata,
     createdAt: projectRow.createdAt,
     updatedAt: projectRow.updatedAt
   };
@@ -181,9 +160,6 @@ async function replaceProjectChildren(
     });
 
   await tx.delete(projectEnvVars).where(eq(projectEnvVars.projectId, input.projectId));
-  await tx
-    .delete(projectIntegrationBindings)
-    .where(eq(projectIntegrationBindings.projectId, input.projectId));
   await tx.delete(projectComponents).where(eq(projectComponents.projectId, input.projectId));
 
   if (input.config.components.length > 0) {
@@ -195,10 +171,9 @@ async function replaceProjectChildren(
       kind: component.kind,
       localPath: component.config.localPath ?? null,
       gitUrl: component.config.gitUrl ?? null,
-      defaultRef: component.config.defaultRef ?? null,
+      ref: component.config.ref ?? null,
       createdAt: now,
-      updatedAt: now,
-      metadata: component.metadata
+      updatedAt: now
     }));
 
     const insertedComponents = await tx.insert(projectComponents).values(componentRows).returning();
@@ -219,8 +194,7 @@ async function replaceProjectChildren(
           reviewInstructions: component.ruleOverride.reviewInstructions ?? null,
           testInstructions: component.ruleOverride.testInstructions ?? null,
           createdAt: now,
-          updatedAt: now,
-          metadata: component.ruleOverride.metadata
+          updatedAt: now
         }
       ];
     });
@@ -238,23 +212,7 @@ async function replaceProjectChildren(
         envKey: envVar.name,
         envValue: envVar.value,
         createdAt: now,
-        updatedAt: now,
-        metadata: envVar.metadata
-      }))
-    );
-  }
-
-  if (input.config.integrationBindings.length > 0) {
-    await tx.insert(projectIntegrationBindings).values(
-      input.config.integrationBindings.map((binding) => ({
-        bindingId: crypto.randomUUID(),
-        projectId: input.projectId,
-        bindingKey: binding.bindingKey,
-        tenantIntegrationId: binding.tenantIntegrationId,
-        overrides: binding.overrides,
-        createdAt: now,
-        updatedAt: now,
-        metadata: binding.metadata
+        updatedAt: now
       }))
     );
   }
@@ -273,8 +231,7 @@ export async function createProject(client: DatabaseClient, input: CreateProject
       displayName: config.displayName,
       description: config.description,
       createdAt: now,
-      updatedAt: now,
-      metadata: config.metadata
+      updatedAt: now
     });
 
     await replaceProjectChildren(tx, {
@@ -357,8 +314,7 @@ export async function updateProject(client: DatabaseClient, input: UpdateProject
         projectKey: config.projectKey,
         displayName: config.displayName,
         description: config.description,
-        updatedAt: now,
-        metadata: config.metadata
+        updatedAt: now
       })
       .where(and(eq(projects.tenantId, input.tenantId), eq(projects.projectId, input.projectId)));
 
@@ -400,17 +356,4 @@ export async function listProjectEnvVars(
   }
 
   return sortEnvVars(project.envVars);
-}
-
-export async function listProjectIntegrationBindings(
-  client: DatabaseClient,
-  input: ProjectLookupInput
-) {
-  const project = await getProject(client, input);
-
-  if (!project) {
-    return [];
-  }
-
-  return sortIntegrationBindings(project.integrationBindings);
 }

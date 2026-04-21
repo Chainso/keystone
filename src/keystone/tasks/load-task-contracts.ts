@@ -5,64 +5,43 @@ import { getArtifactText } from "../../lib/artifacts/r2";
 import { runPlanArtifactKey, taskHandoffArtifactKey } from "../../lib/artifacts/keys";
 import {
   compiledRunPlanSchema,
-  compiledTaskSchema,
-  type DecisionPackage
+  compiledRunPlanSourceRevisionIdsSchema,
+  compiledTaskSchema
 } from "../compile/contracts";
 
 export const taskHandoffSchema = z.object({
   runId: z.string().trim().min(1),
-  decisionPackageId: z.string().trim().min(1),
+  runTaskId: z.string().uuid(),
+  sourceRevisionIds: compiledRunPlanSourceRevisionIdsSchema,
   task: compiledTaskSchema
 });
 
 export type TaskHandoff = z.infer<typeof taskHandoffSchema>;
 
-function matchesDecisionTask(
-  task: TaskHandoff["task"],
-  decisionTask: DecisionPackage["tasks"][number]
-) {
-  return task.taskId === decisionTask.taskId || task.title === decisionTask.title;
-}
-
-export function assertFixtureScopedCompiledPlan(
+export function assertCompiledPlanIsInternallyConsistent(
   plan: ReturnType<typeof compiledRunPlanSchema.parse>,
-  decisionPackage: DecisionPackage,
-  sourceLabel = "Live Think compile"
+  sourceLabel = "Compiled run plan"
 ) {
-  if (plan.decisionPackageId !== decisionPackage.decisionPackageId) {
-    throw new Error(
-      `${sourceLabel} produced decision package ${plan.decisionPackageId}, expected ${decisionPackage.decisionPackageId}.`
-    );
-  }
+  const planTaskIds = new Set(plan.tasks.map((task) => task.taskId));
 
-  if (plan.tasks.length !== decisionPackage.tasks.length) {
-    throw new Error(
-      `${sourceLabel} produced ${plan.tasks.length} tasks, expected ${decisionPackage.tasks.length} for the current fixture-scoped happy path.`
-    );
+  if (planTaskIds.size !== plan.tasks.length) {
+    throw new Error(`${sourceLabel} contains duplicate task ids.`);
   }
-
-  const unmatchedDecisionTasks = [...decisionPackage.tasks];
 
   for (const task of plan.tasks) {
-    const matchIndex = unmatchedDecisionTasks.findIndex((decisionTask) =>
-      matchesDecisionTask(task, decisionTask)
-    );
+    for (const dependencyId of task.dependsOn) {
+      if (dependencyId === task.taskId) {
+        throw new Error(
+          `${sourceLabel} returned an invalid self-dependency for task ${task.taskId}.`
+        );
+      }
 
-    if (matchIndex === -1) {
-      throw new Error(
-        `${sourceLabel} could not reconcile task ${task.taskId} (${task.title}) with the approved fixture decision package; expected a matching task id or title.`
-      );
+      if (!planTaskIds.has(dependencyId)) {
+        throw new Error(
+          `${sourceLabel} returned unsupported dependsOn entries for task ${task.taskId}; dependency ${dependencyId} is not present in the compiled plan.`
+        );
+      }
     }
-
-    unmatchedDecisionTasks.splice(matchIndex, 1);
-  }
-
-  const dependentTask = plan.tasks.find((task) => task.dependsOn.length > 0);
-
-  if (dependentTask) {
-    throw new Error(
-      `${sourceLabel} returned unsupported dependsOn entries for task ${dependentTask.taskId}. Phase 3 still only supports independent fixture-scoped task handoffs.`
-    );
   }
 }
 
@@ -84,15 +63,15 @@ export async function loadTaskHandoffArtifact(
   env: Pick<WorkerBindings, "ARTIFACTS_BUCKET">,
   tenantId: string,
   runId: string,
-  taskId: string
+  runTaskId: string
 ) {
   const artifactText = await getArtifactText(
     env.ARTIFACTS_BUCKET,
-    taskHandoffArtifactKey(tenantId, runId, taskId)
+    taskHandoffArtifactKey(tenantId, runId, runTaskId)
   );
 
   if (!artifactText) {
-    throw new Error(`Task handoff artifact was not found for task ${taskId}.`);
+    throw new Error(`Task handoff artifact was not found for run task ${runTaskId}.`);
   }
 
   return taskHandoffSchema.parse(JSON.parse(artifactText));

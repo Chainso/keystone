@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  decisionPackageArtifactKey,
   integrationMergeReportArtifactKey,
   releasePackArtifactKey,
   sandboxBackupArtifactKey,
@@ -12,9 +11,6 @@ import {
 
 describe("artifact key helpers", () => {
   it("builds deterministic run-scoped keys", () => {
-    expect(decisionPackageArtifactKey("tenant-a", "run-1", "artifact-9")).toBe(
-      "tenants/tenant-a/runs/run-1/inputs/decision-package/artifact-9.json"
-    );
     expect(taskHandoffArtifactKey("tenant-a", "run-1", "task/42")).toBe(
       "tenants/tenant-a/runs/run-1/tasks/task%2F42/handoff.json"
     );

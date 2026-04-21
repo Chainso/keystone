@@ -3,79 +3,34 @@ import { describe, expect, it } from "vitest";
 import { parseRunInput } from "../../src/http/contracts/run-input";
 
 describe("runInputSchema", () => {
-  it("accepts a project-backed run with inline decision-package payload", () => {
+  it("accepts an explicit execution engine", () => {
     const parsed = parseRunInput({
-      projectId: "project-fixture",
-      decisionPackage: {
-        source: "inline",
-        payload: {
-          decisionPackageId: "decision-package-inline",
-          summary: "Validate inline package support",
-          objectives: ["Ship the UI-first API"],
-          tasks: [
-            {
-              taskId: "task-inline",
-              title: "Implement the contract",
-              acceptanceCriteria: ["Contract is defined"]
-            }
-          ]
-        }
-      },
-      options: {
-        thinkMode: "live",
-        preserveSandbox: true
-      }
+      executionEngine: "think_live"
     });
 
-    expect(parsed.projectId).toBe("project-fixture");
-    expect(parsed.decisionPackage.source).toBe("inline");
-    expect(parsed.options).toEqual({
-      thinkMode: "live",
-      preserveSandbox: true
-    });
+    expect(parsed.executionEngine).toBe("think_live");
   });
 
-  it("accepts a project-backed run with an artifact-backed decision package reference", () => {
-    const parsed = parseRunInput({
-      projectId: "project-fixture",
-      decisionPackage: {
-        source: "artifact",
-        artifactId: "artifact-decision-package"
-      }
-    });
+  it("defaults execution_engine to scripted", () => {
+    const parsed = parseRunInput({});
 
-    expect(parsed.projectId).toBe("project-fixture");
-    expect(parsed.decisionPackage.source).toBe("artifact");
-    expect(parsed.options).toEqual({
-      thinkMode: "mock",
-      preserveSandbox: false
-    });
+    expect(parsed.executionEngine).toBe("scripted");
   });
 
-  it("rejects missing project ids", () => {
+  it("rejects invalid execution_engine values", () => {
     expect(() =>
       parseRunInput({
-        projectId: "",
-        decisionPackage: {
-          source: "artifact",
-          artifactId: "artifact-bad-input"
-        }
+        executionEngine: "invalid"
       })
-    ).toThrow(/Too small: expected string to have >=1 characters/);
+    ).toThrow(/Invalid option/);
   });
 
-  it("rejects invalid run options", () => {
+  it("rejects legacy runtime and thinkMode fields", () => {
     expect(() =>
       parseRunInput({
-        projectId: "project-fixture",
-        decisionPackage: {
-          source: "project_collection",
-          decisionPackageId: "decision-package-project-collection"
-        },
-        options: {
-          thinkMode: "unknown"
-        }
+        runtime: "think",
+        thinkMode: "live"
       })
-    ).toThrow(/Invalid option: expected one of "mock"|"live"/);
+    ).toThrow(/Unrecognized key/);
   });
 });

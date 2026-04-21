@@ -2,13 +2,23 @@
 
 ## Purpose
 
-Use this runbook when you need to exercise the shipped demo contracts end to end. Keystone now has three operator-facing proofs:
+Use this runbook when you need to validate the current demo contracts end to end.
 
-- `scripted` remains the default fixture path
-- `runtime=think` plus `thinkMode=mock` remains the deterministic Think validation path
-- `runtime=think` plus `thinkMode=live` now proves the current live happy path from `/v1/runs` input through live compile, persisted compiled handoff artifacts, Think task execution, promoted `run_note`, and archived `run_summary`
+Keystone currently ships three execution-engine proofs:
 
-The live proof is still intentionally narrow: it stays on the stored fixture project plus committed decision package, the project must expose exactly one executable compile target, and the compiled plan must remain a single independent task with no `dependsOn`.
+- `scripted`: default deterministic backend path
+- `think_mock`: deterministic Think-backed validation path
+- `think_live`: live-model Think-backed validation path
+
+All three flows use the same document-first run contract:
+
+1. ensure the fixture project exists
+2. create a project-scoped run
+3. create the three run planning documents
+4. create one revision for each planning document
+5. compile the run explicitly
+6. poll the run to terminal state
+7. validate compile provenance and task/task-conversation outputs
 
 ## Prerequisites
 
@@ -28,13 +38,7 @@ npm run db:migrate
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
-Expected signals:
-
-- Wrangler prints `Ready on http://127.0.0.1:<port>`
-- bindings show `RUN_WORKFLOW`, `TASK_WORKFLOW`, `TASK_SESSION`, `KEYSTONE_THINK_AGENT`, `ARTIFACTS_BUCKET`, and `HYPERDRIVE`
-- the sandbox container image is discovered successfully
-
-If Wrangler binds a different port because `8787` is already occupied, export the actual ready URL:
+If Wrangler binds a non-default port, export the ready URL:
 
 ```bash
 export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
@@ -47,114 +51,86 @@ curl -i "${KEYSTONE_BASE_URL:-http://127.0.0.1:8787}/v1/health"
 npx wrangler workflows list --local
 ```
 
-Healthy output should show `200 OK` for `/v1/health` and both `run-workflow` plus `task-workflow` in the local workflow list.
+Healthy output should show:
 
-## Rerun the Demo Paths
+- `200 OK` for `/v1/health`
+- both `run-workflow` and `task-workflow` in the local workflow list
 
-Run the scripted default pair from repo root:
+## Demo Paths
+
+Run the scripted default pair:
 
 ```bash
 npm run demo:run
 npm run demo:validate
 ```
 
-What that proves today:
-
-- `scripted` is still the default runtime when no override is supplied
-- the fixture-project scripted task path archives normally
-- `demo:validate` expects a promoted `task_log` on the scripted path
-
-Run the deterministic Think validation pair from repo root:
+Run the deterministic Think pair:
 
 ```bash
-KEYSTONE_AGENT_RUNTIME=think npm run demo:run
-KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:run
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:validate
 ```
 
-What that pair proves today:
-
-- `demo:run` defaults Think requests to `thinkMode=mock`
-- the compile and task handoff behavior stays on the current fixture-project contract
-- `demo:validate` proves archived completion plus the expected Think artifact/session shape for that shipped path
-
-Run the live full-workflow Think pair from repo root:
+Run the live Think pair:
 
 ```bash
-export KEYSTONE_AGENT_RUNTIME=think
-export KEYSTONE_THINK_DEMO_MODE=live
-npm run demo:run
-npm run demo:validate
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate
 ```
 
-What that pair proves today:
+What these pairs prove:
 
-- the run starts at `/v1/runs` and uses the live compile path
-- `RunWorkflow` persists `decision_package`, `run_plan`, and `task_handoff` before task fanout
-- `TaskWorkflow` executes the persisted compiled handoff through the Think implementer path
-- the Think turn promotes at least one `run_note`
-- the run finishes archived with `run_summary`
-- the proof remains fixture-scoped to the stored fixture project plus committed decision package
-- the project must expose one unambiguous executable compile target
-- the compiled handoff must stay on the current single independent task shape, with empty `dependsOn`
+- the fixture project can be ensured through the project API
+- runs are created through `POST /v1/projects/:projectId/runs`
+- planning docs are created under `/v1/runs/:runId/documents`
+- compile requires all three run planning documents
+- runs archive successfully
+- compile provenance is recorded on the run
+- tasks are materialized from the compiled DAG
+- Think execution exposes task conversation locators on `run_tasks`
 
-The zero-argument `npm run demo:run` -> `npm run demo:validate` live pair works because `demo:run` stores only the last successful archived run under `.keystone/demo-last-run.json`, and `demo:validate` reuses that state only when you do not supply an explicit `--run-id` or `KEYSTONE_RUN_ID`.
+## Inspection-Oriented Live Run
 
-For a live-model inspection-oriented Think turn, use the dedicated convenience path:
+For a live-model Think turn that preserves the sandbox for inspection:
 
 ```bash
 npm run demo:run:think-live
-KEYSTONE_AGENT_RUNTIME=think npm run sandbox:shell
+KEYSTONE_EXECUTION_ENGINE=think_live npm run sandbox:shell
 ```
 
-What changes in that path:
+This uses the same document-first contract as the normal live pair, but keeps the run sandbox available after completion.
 
-- `demo:run:think-live` runs the same live compile plus compiled Think task path
-- it sends runtime `think` with `thinkMode=live`
-- the Think turn uses the configured local OpenAI-compatible chat-completions backend instead of `mockModelPlan`
-- sandbox preservation is enabled for that run, so `TaskWorkflow` archives the task session for inspection instead of destroying the sandbox container
-- `sandbox:shell` lets you inspect the preserved container while local Wrangler is still running
-- this path stays on the same fixture-scoped single-task happy path as the non-preserved live pair; it is an inspection wrapper, not a different proof
+## Manual Validation Notes
 
-If you are performing an ad hoc manual rerun and need to provide the run id explicitly, use this convenience form instead:
+`demo:run` persists only the last successful archived run under `.keystone/demo-last-run.json`.
+
+`demo:validate` reuses that state only when you do not pass:
+
+- `--run-id`
+- `KEYSTONE_RUN_ID`
+
+For ad hoc validation with an explicit run id on a non-default Wrangler port, export the same base URL first:
 
 ```bash
-KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate -- --run-id=<run-id-from-demo-run>
+export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate -- --run-id=<run-id>
 ```
 
-What these scripts actually check today:
+## What `demo:validate` Checks
 
-- `demo:run` first ensures the stored fixture project exists, then sends `projectId` plus `X-Keystone-Agent-Runtime`, defaults to `scripted`, defaults Think requests to `thinkMode=mock` unless explicitly overridden, and polls until the run reaches `archived` with at least one `run_summary` artifact
-- `demo:run` writes `.keystone/demo-last-run.json` only when the run reaches `archived`; failed or cancelled runs do not overwrite the last-successful shortcut
-- `demo:validate` re-reads the run summary and asserts:
-  - run status is `archived`
-  - at least three sessions exist
-  - at least five artifacts exist
-  - at least one `run_summary` artifact exists
-  - at least one promoted `run_note` artifact exists for runtime `think`
-  - at least one promoted `task_log` artifact exists for runtime `scripted`
-- `demo:validate` uses `.keystone/demo-last-run.json` only when you do not pass `--run-id` and do not set `KEYSTONE_RUN_ID`; explicit validation inputs bypass the persisted state file entirely
+`demo:validate` now fails closed if run detail does not return a valid `executionEngine`.
 
-What these scripts do not prove yet:
+It also verifies:
 
-- arbitrary project-backed compile target selection across multiple executable components
-- multi-task or dependent-task Think execution; the current validator requires a single independent compiled task with empty `dependsOn`
-- additional Think roles beyond the implementer turn
-
-## Supporting Local Smokes
-
-These are narrower checks that do not replace the end-to-end demo rerun:
-
-```bash
-npm run sandbox:smoke
-npm run think:smoke
-```
-
-- `sandbox:smoke` proves bridge projection and staged-output handling
-- `think:smoke` proves the deterministic implementer turn, including a staged markdown note promoted as `run_note`
+- run status is `archived`
+- compile provenance is present
+- at least one task exists
+- Think runs expose at least one task conversation locator
 
 ## Failure Patterns
 
-- `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted Codex sandbox boundary on this host
-- `Expected at least one promoted run_note artifact for the Think runtime`: the Think task path did not promote staged `/artifacts/out` files through `TaskWorkflow`
-- `Provide --run-id=<id>, set KEYSTONE_RUN_ID, or run demo:run first.`: `demo:validate` could not find an explicit run id and there is no last-successful `.keystone/demo-last-run.json` shortcut yet
-- fixture-scoped validator errors around task shape or `dependsOn`: the live compiled plan fell outside the currently supported single independent task contract
+- `Run detail did not return a valid executionEngine.`: the backend stopped returning authoritative execution-engine state on run detail
+- `Expected the run to record compile provenance.`: the run archived without pinned document-revision provenance
+- `Expected Think execution to expose at least one task conversation locator.`: the task row did not record its Think conversation locator
+- `Provide --run-id=<id>, set KEYSTONE_RUN_ID, or run demo:run first.`: validation had no explicit run id and no persisted last-successful run state

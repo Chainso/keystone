@@ -1,8 +1,9 @@
 import type { Context } from "hono";
+import { basename } from "node:path";
 
 import type { AppEnv } from "../../../../env";
 import { getArtifactBytes } from "../../../../lib/artifacts/r2";
-import { getArtifactRef } from "../../../../lib/db/artifacts";
+import { getArtifactRef, getArtifactStorageUri } from "../../../../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../../../../lib/db/client";
 import { jsonErrorResponse, throwJsonHttpError } from "../../../../lib/http/errors";
 import { artifactDetailEnvelopeSchema } from "./contracts";
@@ -65,7 +66,8 @@ export async function getArtifactContentHandler(context: Context<AppEnv>) {
       );
     }
 
-    const storedArtifact = await getArtifactBytes(context.env.ARTIFACTS_BUCKET, artifact.storageUri);
+    const storageUri = getArtifactStorageUri(artifact);
+    const storedArtifact = await getArtifactBytes(context.env.ARTIFACTS_BUCKET, storageUri);
 
     if (!storedArtifact) {
       return jsonErrorResponse(
@@ -79,11 +81,7 @@ export async function getArtifactContentHandler(context: Context<AppEnv>) {
 
     headers.set("content-type", storedArtifact.contentType ?? artifact.contentType);
 
-    const fileName = artifact.metadata.fileName;
-
-    if (typeof fileName === "string" && fileName.trim().length > 0) {
-      headers.set("content-disposition", `inline; filename="${fileName}"`);
-    }
+    headers.set("content-disposition", `inline; filename="${basename(artifact.objectKey)}"`);
 
     return new Response(storedArtifact.body, {
       status: 200,

@@ -196,7 +196,7 @@ async function main() {
   };
 
   await session.writeFile(
-    "/workspace/runs/think-smoke/tasks/task-1/src/greeting.js",
+    "/workspace/runs/think-smoke/tasks/task-1/code/repo/src/greeting.js",
     'export function makeGreeting(name = "Keystone") {\n  return `Hello, ${name}.`;\n}\n'
   );
   await session.writeFile(
@@ -257,8 +257,8 @@ async function main() {
 
   assert.equal(stagedArtifacts.length, 1);
   assert.match(
-    session.files.get("/workspace/runs/think-smoke/tasks/task-1/src/greeting.js")?.content ?? "",
-    /Hello from Think/
+    session.files.get("/workspace/runs/think-smoke/tasks/task-1/code/repo/src/greeting.js")?.content ?? "",
+    /Hello, \${subject}\./
   );
   assert.equal(
     session.files.get("/artifacts/out/implementer-summary.md")?.content,

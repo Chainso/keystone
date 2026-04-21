@@ -10,26 +10,31 @@ import type { KeystoneThinkAgent } from "../keystone/agents/base/KeystoneThinkAg
 import { createThinkSmokePlan } from "../keystone/agents/implementer/ImplementerAgent";
 import { readSandboxAgentFile } from "../keystone/agents/tools/filesystem";
 import type { AgentRuntimeArtifact } from "../maestro/agent-runtime";
-import type { AgentRuntimeKind } from "../maestro/contracts";
 import type { TaskSessionState } from "../durable-objects/TaskSessionDO";
-import { putArtifactBytes, decodeArtifactBody } from "../lib/artifacts/r2";
-import { createArtifactRef, findArtifactRefByStorageUri } from "../lib/db/artifacts";
+import {
+  getArtifactBytes,
+  putArtifactBytes,
+  decodeArtifactBody
+} from "../lib/artifacts/r2";
+import {
+  createArtifactRef,
+  findArtifactRefByObjectKey
+} from "../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../lib/db/client";
-import { listSessionEvents } from "../lib/db/events";
-import { appendAndPublishRunEvent } from "../lib/events/publish";
+import {
+  getRunTask,
+  updateRunTask
+} from "../lib/db/runs";
 import { getTaskSessionStub } from "../lib/auth/tenant";
-import { demoDecisionPackageFixture } from "../lib/fixtures/demo-decision-package";
 import { getProject } from "../lib/db/projects";
 import {
   buildProjectExecutionSnapshot,
   type ProjectExecutionRuleOverride,
   type ProjectExecutionSnapshot
 } from "../lib/projects/runtime";
-import type { RunExecutionOptions } from "../lib/runs/options";
-import { resolveRunExecutionOptions } from "../lib/runs/options";
-import { buildStableSessionId } from "../lib/workflows/ids";
+import type { ExecutionEngine } from "../lib/runs/options";
 import { taskLogArtifactKey, tenantRunPrefix } from "../lib/artifacts/keys";
-import { resolveRunAgentRuntime } from "../lib/workflows/idempotency";
+import { buildStableSessionId } from "../lib/workflows/ids";
 import { loadTaskHandoffArtifact } from "../keystone/tasks/load-task-contracts";
 import { ensureSandboxSession } from "../lib/sandbox/client";
 import { isTerminalProcessStatus } from "../lib/sandbox/processes";
@@ -38,10 +43,11 @@ import type { ProjectRuleSet } from "../keystone/projects/contracts";
 export interface TaskWorkflowParams {
   tenantId: string;
   runId: string;
-  runSessionId: string;
+  sandboxId: string;
   taskId: string;
-  runtime?: AgentRuntimeKind | undefined;
-  options?: RunExecutionOptions | undefined;
+  runTaskId: string;
+  executionEngine: ExecutionEngine;
+  preserveSandbox?: boolean | undefined;
   project: {
     projectId: string;
     projectKey: string;
@@ -50,6 +56,7 @@ export interface TaskWorkflowParams {
 }
 
 const MAX_PROCESS_POLL_ATTEMPTS = 20;
+const THINK_TASK_CONVERSATION_AGENT_CLASS = "KeystoneThinkAgent";
 
 interface WorkflowProcessSnapshot {
   processId: string;
@@ -65,11 +72,112 @@ interface ThinkTurnSnapshot {
   summary: string | null;
 }
 
+interface SerializableThinkTurnResult extends ThinkTurnSnapshot {
+  stagedArtifacts: Array<{
+    path: string;
+    kind: string;
+    contentType?: string | undefined;
+    metadata?: Record<string, JsonValue> | undefined;
+  }>;
+}
+
 interface TaskExecutionSnapshot {
   processStatus: string;
   exitCode: number | null;
   logArtifactRefId: string | null;
   promotedArtifactRefIds: string[];
+}
+
+interface ProcessLogArtifact {
+  processId: string;
+  stdout: string;
+  stderr: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function asStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function isThinkTurnOutcome(value: string | null): value is ThinkTurnSnapshot["outcome"] {
+  return value === "completed" || value === "failed" || value === "cancelled";
+}
+
+function parseTaskExecutionSnapshot(
+  payload: Record<string, unknown> | null,
+  fallback: {
+    processStatus: string;
+    exitCode: number | null;
+    logArtifactRefId: string | null;
+    promotedArtifactRefIds?: string[];
+  }
+): TaskExecutionSnapshot {
+  const promotedArtifactRefIds = asStringArray(payload?.promotedArtifactRefIds);
+  const processStatus =
+    asString(payload?.processStatus) ??
+    asString(payload?.status) ??
+    fallback.processStatus;
+  const exitCodeValue = payload?.exitCode;
+
+  return {
+    processStatus,
+    exitCode:
+      typeof exitCodeValue === "number"
+        ? exitCodeValue
+        : exitCodeValue === null
+          ? null
+          : fallback.exitCode,
+    logArtifactRefId: asString(payload?.logArtifactRefId) ?? fallback.logArtifactRefId,
+    promotedArtifactRefIds: promotedArtifactRefIds ?? (fallback.promotedArtifactRefIds ?? [])
+  };
+}
+
+function buildProcessLogArtifactBody(logs: ProcessLogArtifact) {
+  return [
+    logs.stdout
+      ? JSON.stringify({
+          eventType: "sandbox.process.stdout",
+          processId: logs.processId,
+          chunk: logs.stdout
+        })
+      : null,
+    logs.stderr
+      ? JSON.stringify({
+          eventType: "sandbox.process.stderr",
+          processId: logs.processId,
+          chunk: logs.stderr
+        })
+      : null
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+function parseStagedArtifactPayload(payload: Record<string, unknown> | null) {
+  const artifactPath = asString(payload?.path);
+  const artifactKind = asString(payload?.kind);
+
+  if (!artifactPath || !artifactKind) {
+    return null;
+  }
+
+  return {
+    path: artifactPath,
+    kind: artifactKind,
+    contentType: asString(payload?.contentType) ?? undefined,
+    metadata: asRecord(payload?.metadata) as Record<string, JsonValue> | undefined
+  };
 }
 
 type JsonValue =
@@ -124,217 +232,483 @@ interface TaskProjectContext {
   projectExecution: ProjectExecutionSnapshot;
 }
 
+interface AuthoritativeTaskRecordSnapshot {
+  runTaskId: string;
+}
+
+type RunTaskRecord = NonNullable<Awaited<ReturnType<typeof getRunTask>>>;
+
+function isTerminalTaskStatus(status: string | null | undefined): status is "completed" | "failed" {
+  return status === "completed" || status === "failed";
+}
+
+function buildTaskConversationLocator(input: {
+  executionEngine: ExecutionEngine;
+  tenantId: string;
+  runId: string;
+  taskSessionId: string;
+}) {
+  if (input.executionEngine === "scripted") {
+    return null;
+  }
+
+  return {
+    conversationAgentClass: THINK_TASK_CONVERSATION_AGENT_CLASS,
+    conversationAgentName: getThinkAgentName(input.tenantId, input.runId, input.taskSessionId)
+  };
+}
+
+async function findAuthoritativeRunTaskRecord(
+  client: ReturnType<typeof createWorkerDatabaseClient>,
+  input: {
+    tenantId: string;
+    runId: string;
+    runTaskId: string;
+  }
+) {
+  const stableTask = await getRunTask(client, {
+    tenantId: input.tenantId,
+    runId: input.runId,
+    runTaskId: input.runTaskId
+  });
+
+  if (stableTask) {
+    return stableTask;
+  }
+
+  return null;
+}
+
+async function requireAuthoritativeRunTaskRecord(
+  client: ReturnType<typeof createWorkerDatabaseClient>,
+  input: {
+    tenantId: string;
+    runId: string;
+    runTaskId: string;
+    executionEngine: ExecutionEngine;
+    taskSessionId: string;
+  }
+): Promise<RunTaskRecord> {
+  const existing = await findAuthoritativeRunTaskRecord(client, input);
+  const locator = buildTaskConversationLocator(input);
+
+  if (!existing) {
+    throw new Error(`Run task ${input.runTaskId} was not found for run ${input.runId}.`);
+  }
+
+  if (
+    !locator ||
+    (existing.conversationAgentClass === locator.conversationAgentClass &&
+      existing.conversationAgentName === locator.conversationAgentName)
+  ) {
+    return existing;
+  }
+
+  return updateRunTask(client, {
+    tenantId: input.tenantId,
+    runId: input.runId,
+    runTaskId: input.runTaskId,
+    conversationAgentClass: locator.conversationAgentClass,
+    conversationAgentName: locator.conversationAgentName
+  });
+}
+
+async function persistAuthoritativeRunTaskStatus(
+  client: ReturnType<typeof createWorkerDatabaseClient>,
+  input: {
+    tenantId: string;
+    runId: string;
+    runTaskId: string;
+    executionEngine: ExecutionEngine;
+    taskSessionId: string;
+    status: "active" | "completed" | "failed" | "cancelled";
+    at?: Date | undefined;
+  }
+) {
+  const existing = await getRunTask(client, {
+    tenantId: input.tenantId,
+    runId: input.runId,
+    runTaskId: input.runTaskId
+  });
+
+  if (!existing) {
+    throw new Error(`Run task ${input.runTaskId} was not found for run ${input.runId}.`);
+  }
+
+  if (
+    (existing.status === "completed" ||
+      existing.status === "failed" ||
+      existing.status === "cancelled" ||
+      existing.status === "archived") &&
+    existing.status !== input.status
+  ) {
+    return existing;
+  }
+
+  const ifStatusIn =
+    input.status === "active"
+      ? ["pending", "ready", "active"]
+      : ["pending", "ready", "active", input.status];
+
+  const locator = buildTaskConversationLocator(input);
+  const transitionAt = input.at ?? new Date();
+
+  return updateRunTask(client, {
+    tenantId: input.tenantId,
+    runId: input.runId,
+    runTaskId: input.runTaskId,
+    status: input.status,
+    ifStatusIn,
+    startedAt: existing.startedAt ?? transitionAt,
+    endedAt: input.status === "active" ? null : existing.endedAt ?? transitionAt,
+    ...(locator
+      ? {
+          conversationAgentClass: locator.conversationAgentClass,
+          conversationAgentName: locator.conversationAgentName
+        }
+      : {})
+  });
+}
+
 export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflowParams> {
   async run(event: Readonly<WorkflowEvent<TaskWorkflowParams>>, step: WorkflowStep) {
-    const runtime = resolveRunAgentRuntime(event.payload.runtime);
-    const options = resolveRunExecutionOptions(event.payload.options);
-    const handoff = await step.do("load task handoff", async () =>
-      loadTaskHandoffArtifact(this.env, event.payload.tenantId, event.payload.runId, event.payload.taskId)
-    );
-    const projectContext = (await step.do("load project execution", async () => {
-      const client = createWorkerDatabaseClient(this.env);
+    const executionEngine = event.payload.executionEngine;
+    const preserveSandbox = event.payload.preserveSandbox ?? false;
+    let execution: TaskExecutionSnapshot | null = null;
+    let taskSessionPrepared = false;
+    let taskSessionState: TaskWorkspaceSnapshot | null = null;
+    let authoritativeTaskRecord: AuthoritativeTaskRecordSnapshot | null = null;
+    let handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>> | null = null;
+    let projectContext: TaskProjectContext | null = null;
+    let taskSessionId: string | null = null;
 
-      try {
-        const project = await getProject(client, {
+    try {
+      taskSessionId = (await step.do("allocate task session id", async () =>
+        buildStableSessionId(
+          "task-session",
+          event.payload.tenantId,
+          event.payload.runId,
+          event.payload.runTaskId
+        )
+      )) as string;
+      handoff = await step.do("load task handoff", async () =>
+        loadTaskHandoffArtifact(
+          this.env,
+          event.payload.tenantId,
+          event.payload.runId,
+          event.payload.runTaskId
+        )
+      );
+      projectContext = (await step.do("load project execution", async () => {
+        const client = createWorkerDatabaseClient(this.env);
+
+        try {
+          const project = await getProject(client, {
+            tenantId: event.payload.tenantId,
+            projectId: event.payload.project.projectId
+          });
+
+          if (!project) {
+            throw new NonRetryableError(
+              `Project ${event.payload.project.projectId} was not found for task ${event.payload.taskId}.`
+            );
+          }
+
+          return {
+            projectExecution: buildProjectExecutionSnapshot(project)
+          };
+        } finally {
+          await client.close();
+        }
+      })) as TaskProjectContext;
+
+      taskSessionState = (await step.do("ensure workspace", async () => {
+        const taskSession = getTaskSessionStub(
+          this.env,
+          event.payload.tenantId,
+          event.payload.runId,
+          taskSessionId!,
+          event.payload.runTaskId
+        );
+
+        await taskSession.initialize({
           tenantId: event.payload.tenantId,
-          projectId: event.payload.project.projectId
+          runId: event.payload.runId,
+          sessionId: taskSessionId!,
+          taskId: event.payload.taskId,
+          runTaskId: event.payload.runTaskId,
+          sandboxId: event.payload.sandboxId
         });
+        taskSessionPrepared = true;
 
-        if (!project) {
-          throw new NonRetryableError(
-            `Project ${event.payload.project.projectId} was not found for task ${event.payload.taskId}.`
-          );
+        const workspaceState = (await taskSession.ensureWorkspace({
+          components: projectContext!.projectExecution.components,
+          env: projectContext!.projectExecution.environment
+        })) as TaskSessionState;
+        const bridge = workspaceState.workspace?.agentBridge;
+
+        if (!bridge) {
+          throw new Error(`Task ${event.payload.taskId} did not materialize an agent bridge.`);
         }
 
         return {
-          projectExecution: buildProjectExecutionSnapshot(project)
+          taskSessionId: taskSessionId!,
+          sandboxId: workspaceState.sandboxId,
+          agentBridgeJson: JSON.stringify(bridge)
         };
-      } finally {
-        await client.close();
+      })) as TaskWorkspaceSnapshot;
+
+      authoritativeTaskRecord = (await step.do("ensure authoritative run task", async () => {
+        const client = createWorkerDatabaseClient(this.env);
+
+        try {
+          const runTask = await requireAuthoritativeRunTaskRecord(client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId,
+            runTaskId: event.payload.runTaskId,
+            executionEngine,
+            taskSessionId: taskSessionId!
+          });
+
+          return {
+            runTaskId: runTask.runTaskId
+          };
+        } finally {
+          await client.close();
+        }
+      })) as AuthoritativeTaskRecordSnapshot;
+      const preparedTaskSession = taskSessionState;
+      const resolvedAuthoritativeTaskRecord = authoritativeTaskRecord;
+
+      if (!preparedTaskSession || !resolvedAuthoritativeTaskRecord) {
+        throw new NonRetryableError(
+          `Task ${event.payload.taskId} could not resolve its prepared session state.`
+        );
       }
-    })) as TaskProjectContext;
 
-    const taskSessionState = (await step.do("ensure workspace", async () => {
-      const taskSessionId = await buildStableSessionId(
-        "task-session",
-        event.payload.tenantId,
-        event.payload.runId,
-        event.payload.taskId
-      );
-      const taskSession = getTaskSessionStub(
-        this.env,
-        event.payload.tenantId,
-        event.payload.runId,
-        taskSessionId,
-        event.payload.taskId
-      );
+      await step.do("mark task active", async () => {
+        const client = createWorkerDatabaseClient(this.env);
 
-      await taskSession.initialize({
-        tenantId: event.payload.tenantId,
-        runId: event.payload.runId,
-        sessionId: taskSessionId,
-        taskId: event.payload.taskId,
-        parentSessionId: event.payload.runSessionId
+        try {
+          const persistedTask = await persistAuthoritativeRunTaskStatus(client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId,
+            runTaskId: resolvedAuthoritativeTaskRecord.runTaskId,
+            executionEngine,
+            taskSessionId: taskSessionId!,
+            status: "active"
+          });
+
+          if (persistedTask.status !== "active") {
+            throw new NonRetryableError(
+              `Task ${event.payload.taskId} is no longer runnable because its authoritative status is ${persistedTask.status}.`
+            );
+          }
+        } finally {
+          await client.close();
+        }
+
+        return true;
       });
 
-      const workspaceState = (await taskSession.ensureWorkspace({
-        components: projectContext.projectExecution.components,
-        env: projectContext.projectExecution.environment
-      })) as TaskSessionState;
-      const bridge = workspaceState.workspace?.agentBridge;
-
-      if (!bridge) {
-        throw new Error(`Task ${event.payload.taskId} did not materialize an agent bridge.`);
-      }
-
-      return {
-        taskSessionId,
-        sandboxId: workspaceState.sandboxId,
-        agentBridgeJson: JSON.stringify(bridge)
-      };
-    })) as TaskWorkspaceSnapshot;
-
-    await step.do("mark task active", async () => {
-      const client = createWorkerDatabaseClient(this.env);
-
-      try {
-        await appendAndPublishRunEvent(client, this.env, {
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          sessionId: taskSessionState.taskSessionId,
-          taskId: event.payload.taskId,
-          eventType: "task.status_changed",
-          payload: {
-            taskId: event.payload.taskId,
-            status: "active",
-            summary: handoff.task.summary,
-            runtime,
-            projectId: event.payload.project.projectId,
-            projectKey: event.payload.project.projectKey
-          },
-          status: "active"
-        });
-      } finally {
-        await client.close();
-      }
-
-      return true;
-    });
-
-    const execution = runtime === "think"
-      ? await step.do("run think implementer", async () => {
-          const agentBridge = JSON.parse(taskSessionState.agentBridgeJson) as SerializableAgentBridge;
+      if (executionEngine !== "scripted") {
+        const runThinkStep = step.do as unknown as (
+          name: string,
+          fn: () => Promise<unknown>
+        ) => Promise<unknown>;
+        const turnResult = (await runThinkStep("run think implementer", async () => {
+          const agentBridge = JSON.parse(preparedTaskSession.agentBridgeJson) as SerializableAgentBridge;
           const agent = await getAgentByName(
             this.env.KEYSTONE_THINK_AGENT,
-            getThinkAgentName(event.payload.tenantId, event.payload.runId, taskSessionState.taskSessionId)
+            getThinkAgentName(event.payload.tenantId, event.payload.runId, taskSessionId!)
           ) as Pick<KeystoneThinkAgent, "runImplementerTurn">;
-          const turnInput = resolveThinkTurnInput(projectContext.projectExecution, handoff, options);
+          const turnInput = resolveThinkTurnInput(
+            projectContext!.projectExecution,
+            handoff!,
+            executionEngine
+          );
           const result = await agent.runImplementerTurn({
             tenantId: event.payload.tenantId,
             runId: event.payload.runId,
-            sessionId: taskSessionState.taskSessionId,
+            sessionId: taskSessionId!,
             taskId: event.payload.taskId,
-            prompt: buildThinkImplementerPrompt(handoff, {
+            prompt: buildThinkImplementerPrompt(handoff!, {
               projectId: event.payload.project.projectId,
               projectKey: event.payload.project.projectKey,
               displayName: event.payload.project.displayName,
-              ruleSet: projectContext.projectExecution.ruleSet,
-              componentRuleOverrides: projectContext.projectExecution.componentRuleOverrides
+              ruleSet: projectContext!.projectExecution.ruleSet,
+              componentRuleOverrides: projectContext!.projectExecution.componentRuleOverrides
             }),
-            sandboxId: taskSessionState.sandboxId,
+            sandboxId: preparedTaskSession.sandboxId,
             agentBridge,
             ...turnInput
           });
-          const client = createWorkerDatabaseClient(this.env);
-          const turnResult = {
+
+          const serializedStagedArtifacts: SerializableThinkTurnResult["stagedArtifacts"] =
+            result.stagedArtifacts.map((stagedArtifact) => ({
+              path: stagedArtifact.path,
+              kind: stagedArtifact.kind,
+              contentType: stagedArtifact.contentType,
+              metadata: stagedArtifact.metadata
+                ? (JSON.parse(JSON.stringify(stagedArtifact.metadata)) as Record<string, JsonValue>)
+                : undefined
+            }));
+
+          return {
             outcome: result.outcome,
-            summary: result.summary ?? null
-          } satisfies ThinkTurnSnapshot;
+            summary: result.summary ?? null,
+            stagedArtifacts: serializedStagedArtifacts
+          };
+        })) as unknown as SerializableThinkTurnResult;
+
+        execution = await step.do("promote think artifacts", async () => {
+          const client = createWorkerDatabaseClient(this.env);
 
           try {
             const promotedArtifactRefIds = await promoteStagedArtifacts(this.env, client, {
               tenantId: event.payload.tenantId,
+              projectId: event.payload.project.projectId,
               runId: event.payload.runId,
-              sessionId: taskSessionState.taskSessionId,
+              runTaskId: resolvedAuthoritativeTaskRecord.runTaskId,
+              sessionId: taskSessionId!,
               taskId: event.payload.taskId,
-              sandboxId: taskSessionState.sandboxId,
-              agentBridge,
-              stagedArtifacts: result.stagedArtifacts
+              sandboxId: preparedTaskSession.sandboxId,
+              agentBridge: JSON.parse(preparedTaskSession.agentBridgeJson) as SerializableAgentBridge,
+              stagedArtifacts: turnResult.stagedArtifacts
             });
-
-            return {
+            const thinkExecution = {
               processStatus:
                 turnResult.outcome === "completed" ? "completed" : turnResult.outcome,
               exitCode: turnResult.outcome === "completed" ? 0 : 1,
               logArtifactRefId: null,
               promotedArtifactRefIds
             } satisfies TaskExecutionSnapshot;
+
+            return thinkExecution;
           } finally {
             await client.close();
           }
-        })
-      : await runScriptedTask(
+        });
+      } else {
+        execution = await runScriptedTask(
           this.env,
           step,
           event.payload,
-          taskSessionState.taskSessionId,
-          projectContext.projectExecution.environment
+          resolvedAuthoritativeTaskRecord.runTaskId,
+          taskSessionId!,
+          projectContext!.projectExecution.environment
         );
-
-    await step.do("mark task complete", async () => {
-      const client = createWorkerDatabaseClient(this.env);
-      const taskStatus = execution.exitCode === 0 ? "completed" : "failed";
-
-      try {
-        await appendAndPublishRunEvent(client, this.env, {
-          tenantId: event.payload.tenantId,
-          runId: event.payload.runId,
-          sessionId: taskSessionState.taskSessionId,
-          taskId: event.payload.taskId,
-          eventType: "task.status_changed",
-          severity: execution.exitCode === 0 ? "info" : "error",
-          payload: {
-            taskId: event.payload.taskId,
-            status: taskStatus,
-            exitCode: execution.exitCode,
-            runtime,
-            promotedArtifactCount: execution.promotedArtifactRefIds.length
-          },
-          status: execution.exitCode === 0 ? "active" : "failed"
-        });
-      } finally {
-        await client.close();
       }
 
-      return taskStatus;
-    });
-
-    await step.do(options.preserveSandbox ? "preserve task session" : "teardown task session", async () => {
-      const taskSession = getTaskSessionStub(
-        this.env,
-        event.payload.tenantId,
-        event.payload.runId,
-        taskSessionState.taskSessionId,
-        event.payload.taskId
-      );
-
-      if (options.preserveSandbox) {
-        await taskSession.preserveForInspection();
-      } else {
-        await taskSession.teardown();
+      if (!execution) {
+        throw new NonRetryableError(
+          `Task ${event.payload.taskId} did not produce an execution snapshot.`
+        );
       }
 
-      return true;
-    });
+      const completedExecution = execution;
 
-    return {
-      taskId: event.payload.taskId,
-      taskSessionId: taskSessionState.taskSessionId,
-      processStatus: execution.processStatus,
-      exitCode: execution.exitCode,
-      logArtifactRefId: execution.logArtifactRefId,
-      workflowStatus: execution.exitCode === 0 ? "complete" : "errored"
-    };
+      const persistedTaskStatus = (await step.do("persist task terminal state", async () => {
+        const client = createWorkerDatabaseClient(this.env);
+        const taskStatus =
+          completedExecution.processStatus === "cancelled"
+            ? "cancelled"
+            : completedExecution.processStatus === "completed" && completedExecution.exitCode === 0
+              ? "completed"
+              : "failed";
+
+        try {
+          const persistedTask = await persistAuthoritativeRunTaskStatus(client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId,
+            runTaskId: resolvedAuthoritativeTaskRecord.runTaskId,
+            executionEngine,
+            taskSessionId: taskSessionId!,
+            status: taskStatus
+          });
+
+          return persistedTask.status;
+        } finally {
+          await client.close();
+        }
+      })) as string;
+
+      await step.do("mark task complete", async () => {
+        return persistedTaskStatus;
+      });
+
+      return {
+        taskId: event.payload.taskId,
+        runTaskId: event.payload.runTaskId,
+        processStatus:
+          persistedTaskStatus === "cancelled"
+            ? "cancelled"
+            : completedExecution.processStatus,
+        exitCode: persistedTaskStatus === "cancelled" ? 1 : completedExecution.exitCode,
+        logArtifactRefId: completedExecution.logArtifactRefId,
+        workflowStatus:
+          persistedTaskStatus === "completed"
+            ? "complete"
+            : persistedTaskStatus === "cancelled"
+              ? "cancelled"
+              : "errored"
+      };
+    } catch (error) {
+      await step.do("persist task failed state", async () => {
+        const client = createWorkerDatabaseClient(this.env);
+        const fallbackTaskSessionId =
+          taskSessionState?.taskSessionId ??
+          taskSessionId ??
+          (await buildStableSessionId(
+            "task-session",
+            event.payload.tenantId,
+            event.payload.runId,
+            event.payload.runTaskId
+          ));
+
+        try {
+          await persistAuthoritativeRunTaskStatus(client, {
+            tenantId: event.payload.tenantId,
+            runId: event.payload.runId,
+            runTaskId: authoritativeTaskRecord?.runTaskId ?? event.payload.runTaskId,
+            executionEngine,
+            taskSessionId: fallbackTaskSessionId,
+            status: "failed"
+          });
+        } catch (statusError) {
+          console.warn("Failed to persist task failure state during workflow error handling", statusError);
+        } finally {
+          await client.close();
+        }
+
+        return true;
+      });
+
+      throw error;
+    } finally {
+      if (taskSessionPrepared) {
+        await step.do(
+          preserveSandbox ? "preserve task session" : "teardown task session",
+          async () => {
+            const taskSession = getTaskSessionStub(
+              this.env,
+              event.payload.tenantId,
+              event.payload.runId,
+              taskSessionId!,
+              event.payload.runTaskId
+            );
+
+            if (preserveSandbox) {
+              await taskSession.preserveForInspection();
+            } else {
+              await taskSession.teardown();
+            }
+
+            return true;
+          }
+        );
+      }
+    }
   }
 }
 
@@ -368,6 +742,7 @@ async function runScriptedTask(
   env: WorkerBindings,
   step: WorkflowStep,
   payload: TaskWorkflowParams,
+  runTaskId: string,
   taskSessionId: string,
   projectEnv: Record<string, string>
 ): Promise<TaskExecutionSnapshot> {
@@ -377,7 +752,7 @@ async function runScriptedTask(
       payload.tenantId,
       payload.runId,
       taskSessionId,
-      payload.taskId
+      payload.runTaskId
     );
 
     const process = await taskSession.startProcess({
@@ -400,7 +775,7 @@ async function runScriptedTask(
         payload.tenantId,
         payload.runId,
         taskSessionId,
-        payload.taskId
+        payload.runTaskId
       );
 
       const processState = (await taskSession.pollProcess()) as TaskSessionState;
@@ -423,73 +798,80 @@ async function runScriptedTask(
     const client = createWorkerDatabaseClient(env);
 
     try {
-      const sessionEvents = await listSessionEvents(client, {
-        tenantId: payload.tenantId,
-        sessionId: taskSessionId
-      });
-      const logLines = sessionEvents
-        .filter(
-          (sessionEvent) =>
-            sessionEvent.eventType === "sandbox.process.stdout" ||
-            sessionEvent.eventType === "sandbox.process.stderr"
-        )
-        .map((sessionEvent) =>
-          JSON.stringify({
-            timestamp: sessionEvent.ts.toISOString(),
-            eventType: sessionEvent.eventType,
-            chunk: sessionEvent.payload.chunk ?? ""
-          })
-        )
-        .join("\n");
-      const artifact = await putArtifactBytes(
-        env.ARTIFACTS_BUCKET,
-        "keystone-artifacts-dev",
-        taskLogArtifactKey(
-          payload.tenantId,
-          payload.runId,
-          payload.taskId,
-          latestProcessState.processId
-        ),
-        logLines,
-        {
-          httpMetadata: {
-            contentType: "application/x-ndjson; charset=utf-8"
-          }
-        }
+      const artifactKey = taskLogArtifactKey(
+        payload.tenantId,
+        payload.runId,
+        runTaskId,
+        latestProcessState.processId
       );
+      const storageUri = `r2://keystone-artifacts-dev/${artifactKey}`;
+      const existingArtifactRef = await findArtifactRefByObjectKey(client, {
+        tenantId: payload.tenantId,
+        bucket: "keystone-artifacts-dev",
+        objectKey: artifactKey,
+        runId: payload.runId,
+        runTaskId,
+        artifactKind: "task_log"
+      });
+
+      if (existingArtifactRef) {
+        return existingArtifactRef.artifactRefId;
+      }
+
+      const taskSession = getTaskSessionStub(
+        env,
+        payload.tenantId,
+        payload.runId,
+        taskSessionId,
+        payload.runTaskId
+      );
+      const processLogs = (await taskSession.getProcessLogs()) as
+        | {
+            processId: string;
+            stdout: string;
+            stderr: string;
+          }
+        | null;
+      const recordedProcessLogs =
+        processLogs ?? {
+          processId: latestProcessState.processId,
+          stdout: "",
+          stderr: ""
+        };
+      const existingArtifact = await getArtifactBytes(env.ARTIFACTS_BUCKET, storageUri);
+      const artifact =
+        existingArtifact ??
+        (await putArtifactBytes(
+          env.ARTIFACTS_BUCKET,
+          "keystone-artifacts-dev",
+          artifactKey,
+          buildProcessLogArtifactBody(recordedProcessLogs),
+          {
+            httpMetadata: {
+              contentType: "application/x-ndjson; charset=utf-8"
+            }
+          }
+        ));
+
       const artifactRef = await createArtifactRef(client, {
         tenantId: payload.tenantId,
+        projectId: payload.project.projectId,
         runId: payload.runId,
-        sessionId: taskSessionId,
-        taskId: payload.taskId,
-        kind: "task_log",
+        runTaskId,
+        artifactKind: "task_log",
         storageBackend: artifact.storageBackend,
-        storageUri: artifact.storageUri,
+        bucket: "keystone-artifacts-dev",
+        objectKey: artifact.key,
+        objectVersion: artifact.objectVersion,
+        etag: artifact.etag,
         contentType: "application/x-ndjson; charset=utf-8",
-        sizeBytes: artifact.sizeBytes,
-        metadata: {
-          key: artifact.key,
-          etag: artifact.etag
-        }
+        sha256: artifact.sha256,
+        sizeBytes: artifact.sizeBytes
       });
 
       if (!artifactRef) {
         throw new Error(`Task log artifact ref could not be created for ${payload.taskId}.`);
       }
-
-      await appendAndPublishRunEvent(client, env, {
-        tenantId: payload.tenantId,
-        runId: payload.runId,
-        sessionId: taskSessionId,
-        taskId: payload.taskId,
-        eventType: "artifact.put",
-        artifactRefId: artifactRef.artifactRefId,
-        payload: {
-          kind: "task_log",
-          storageUri: artifact.storageUri
-        },
-        status: latestProcessState.exitCode === 0 ? "active" : "failed"
-      });
 
       return artifactRef.artifactRefId;
     } finally {
@@ -566,7 +948,8 @@ function buildThinkImplementerPrompt(
       : null;
 
   return [
-    `Decision package: ${handoff.decisionPackageId}`,
+    `Run ID: ${handoff.runId}`,
+    `Run task ID: ${handoff.runTaskId}`,
     `Task ID: ${handoff.task.taskId}`,
     `Task: ${handoff.task.title}`,
     `Depends on: ${dependencySummary}`,
@@ -583,7 +966,7 @@ function buildThinkImplementerPrompt(
     ...(testRules ? ["", testRules] : []),
     ...(componentRules ? ["", componentRules] : []),
     "",
-    "Projected decision_package, run_plan, and task_handoff artifacts are available under /artifacts/in if you need broader context before editing.",
+    "Projected run planning documents, run_plan, and task_handoff artifacts are available under /artifacts/in if you need broader context before editing.",
     "",
     "When you finish, stage a concise durable handoff note under /artifacts/out and leave the workspace in a test-passing state."
   ].join("\n");
@@ -592,16 +975,14 @@ function buildThinkImplementerPrompt(
 function resolveThinkTurnInput(
   projectExecution: ProjectExecutionSnapshot,
   handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>,
-  options: RunExecutionOptions
+  executionEngine: ExecutionEngine
 ) {
   if (
     projectExecution.components.length === 1 &&
     projectExecution.components[0]?.type === "inline" &&
-    projectExecution.components[0].repoUrl === "fixture://demo-target" &&
-    handoff.decisionPackageId === demoDecisionPackageFixture.decisionPackageId &&
-    handoff.task.dependsOn.length === 0
+    projectExecution.components[0].repoUrl === "fixture://demo-target"
   ) {
-    if (options.thinkMode === "live") {
+    if (executionEngine === "think_live") {
       return {};
     }
 
@@ -611,14 +992,14 @@ function resolveThinkTurnInput(
   }
 
   throw new NonRetryableError(
-    "The Think runtime currently supports only independent fixture-scoped compiled demo handoffs."
+    "The Think runtime currently supports only fixture-scoped compiled demo handoffs."
   );
 }
 
 function buildPromotedArtifactKey(
   tenantId: string,
   runId: string,
-  taskId: string,
+  runTaskId: string,
   stagedPath: string
 ) {
   const relativePath = path.relative("/artifacts/out", path.normalize(stagedPath));
@@ -627,7 +1008,7 @@ function buildPromotedArtifactKey(
     throw new Error(`Staged artifact ${stagedPath} is outside /artifacts/out.`);
   }
 
-  return `${tenantRunPrefix(tenantId, runId)}/tasks/${encodeURIComponent(taskId)}/artifacts/${relativePath
+  return `${tenantRunPrefix(tenantId, runId)}/tasks/${encodeURIComponent(runTaskId)}/artifacts/${relativePath
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/")}`;
@@ -638,7 +1019,9 @@ async function promoteStagedArtifacts(
   client: ReturnType<typeof createWorkerDatabaseClient>,
   input: {
     tenantId: string;
+    projectId: string;
     runId: string;
+    runTaskId: string;
     sessionId: string;
     taskId: string;
     sandboxId: string;
@@ -650,86 +1033,93 @@ async function promoteStagedArtifacts(
     return [];
   }
 
-  const { session } = await ensureSandboxSession({
-    env,
-    sandboxId: input.sandboxId,
-    sessionId: input.sessionId
-  });
   const artifactRefIds: string[] = [];
+  let sandboxSession: Awaited<ReturnType<typeof ensureSandboxSession>>["session"] | null = null;
 
   for (const stagedArtifact of input.stagedArtifacts) {
-    const file = await readSandboxAgentFile(
-      {
-        session,
-        bridge: input.agentBridge
-      },
+    const artifactKey = buildPromotedArtifactKey(
+      input.tenantId,
+      input.runId,
+      input.runTaskId,
       stagedArtifact.path
     );
-    const contentType =
-      file.mimeType ??
+    const storageUri = `r2://keystone-artifacts-dev/${artifactKey}`;
+    const existingArtifactRef = await findArtifactRefByObjectKey(client, {
+      tenantId: input.tenantId,
+      bucket: "keystone-artifacts-dev",
+      objectKey: artifactKey,
+      runId: input.runId,
+      runTaskId: input.runTaskId,
+      artifactKind: stagedArtifact.kind
+    });
+
+    if (existingArtifactRef) {
+      artifactRefIds.push(existingArtifactRef.artifactRefId);
+      continue;
+    }
+
+    const existingArtifact = await getArtifactBytes(env.ARTIFACTS_BUCKET, storageUri);
+    let contentType =
+      existingArtifact?.contentType ??
       stagedArtifact.contentType ??
-      (file.isBinary ? "application/octet-stream" : "text/plain; charset=utf-8");
-    const artifact = await putArtifactBytes(
-      env.ARTIFACTS_BUCKET,
-      "keystone-artifacts-dev",
-      buildPromotedArtifactKey(
-        input.tenantId,
-        input.runId,
-        input.taskId,
-        stagedArtifact.path
-      ),
-      decodeArtifactBody(file.content, file.encoding),
-      {
-        httpMetadata: {
-          contentType
+      "application/octet-stream";
+    const artifact =
+      existingArtifact ??
+      (await (async () => {
+        if (!sandboxSession) {
+          sandboxSession = (
+            await ensureSandboxSession({
+              env,
+              sandboxId: input.sandboxId,
+              sessionId: input.sessionId
+            })
+          ).session;
         }
-      }
-    );
-    const artifactRef =
-      (await findArtifactRefByStorageUri(client, {
-        tenantId: input.tenantId,
-        runId: input.runId,
-        sessionId: input.sessionId,
-        taskId: input.taskId,
-        kind: stagedArtifact.kind,
-        storageUri: artifact.storageUri
-      })) ??
-      (await createArtifactRef(client, {
-        tenantId: input.tenantId,
-        runId: input.runId,
-        sessionId: input.sessionId,
-        taskId: input.taskId,
-        kind: stagedArtifact.kind,
-        storageBackend: artifact.storageBackend,
-        storageUri: artifact.storageUri,
-        contentType,
-        sizeBytes: artifact.sizeBytes,
-        metadata: {
-          ...(stagedArtifact.metadata ?? {}),
-          key: artifact.key,
-          etag: artifact.etag,
-          stagedPath: stagedArtifact.path
-        }
-      }));
+
+        const file = await readSandboxAgentFile(
+          {
+            session: sandboxSession,
+            bridge: input.agentBridge
+          },
+          stagedArtifact.path
+        );
+
+        contentType =
+          file.mimeType ??
+          stagedArtifact.contentType ??
+          (file.isBinary ? "application/octet-stream" : "text/plain; charset=utf-8");
+
+        return putArtifactBytes(
+          env.ARTIFACTS_BUCKET,
+          "keystone-artifacts-dev",
+          artifactKey,
+          decodeArtifactBody(file.content, file.encoding),
+          {
+            httpMetadata: {
+              contentType
+            }
+          }
+        );
+      })());
+    const artifactRef = await createArtifactRef(client, {
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      runId: input.runId,
+      runTaskId: input.runTaskId,
+      artifactKind: stagedArtifact.kind,
+      storageBackend: artifact.storageBackend,
+      bucket: "keystone-artifacts-dev",
+      objectKey: artifact.key,
+      objectVersion: artifact.objectVersion,
+      etag: artifact.etag,
+      contentType,
+      sha256: artifact.sha256,
+      sizeBytes: artifact.sizeBytes
+    });
 
     if (!artifactRef) {
       throw new Error(`Artifact ref could not be created for ${stagedArtifact.path}.`);
     }
-
-    await appendAndPublishRunEvent(client, env, {
-      tenantId: input.tenantId,
-      runId: input.runId,
-      sessionId: input.sessionId,
-      taskId: input.taskId,
-      eventType: "artifact.put",
-      artifactRefId: artifactRef.artifactRefId,
-      payload: {
-        kind: stagedArtifact.kind,
-        storageUri: artifact.storageUri,
-        stagedPath: stagedArtifact.path
-      },
-      status: "active"
-    });
 
     artifactRefIds.push(artifactRef.artifactRefId);
   }

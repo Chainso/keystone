@@ -13,7 +13,7 @@ export const routeAvailabilityValues = [
   "legacy_debug"
 ] as const;
 export const routeResponseKindValues = ["detail", "collection", "action", "stream"] as const;
-export const httpMethodValues = ["GET", "POST", "PUT"] as const;
+export const httpMethodValues = ["GET", "POST", "PUT", "PATCH"] as const;
 
 export const resourceImplementationSchema = z.enum(resourceImplementationValues);
 export const routeAvailabilitySchema = z.enum(routeAvailabilityValues);
@@ -55,14 +55,10 @@ export interface ApiRouteDefinition {
 }
 
 export function buildResourceSchema<const TResourceType extends string, TShape extends z.ZodRawShape>(
-  resourceType: TResourceType,
+  _resourceType: TResourceType,
   shape: TShape
 ) {
-  return z.object({
-    resourceType: z.literal(resourceType),
-    scaffold: resourceScaffoldSchema,
-    ...shape
-  });
+  return z.object(shape);
 }
 
 export function buildDetailEnvelopeSchema<TSchema extends z.ZodTypeAny>(

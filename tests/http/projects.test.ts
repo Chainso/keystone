@@ -1,14 +1,107 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createDocumentRepositoryClient } from "./document-db-fixture";
+
+const projectDocumentFixture = {
+  tenantId: "tenant-read",
+  projectId: "project-123",
+  documentId: "doc-project-spec",
+  runId: null,
+  scopeType: "project" as const,
+  kind: "specification" as const,
+  path: "product/specification",
+  currentRevisionId: "revision-project-spec-v1",
+  conversationAgentClass: "PlanningDocumentAgent",
+  conversationAgentName: "project-specification",
+  createdAt: new Date("2026-04-17T10:45:00.000Z"),
+  updatedAt: new Date("2026-04-17T11:15:00.000Z")
+};
+
+const projectDocumentRevisionFixture = {
+  documentRevisionId: "revision-project-spec-v1",
+  documentId: "doc-project-spec",
+  artifactRefId: "artifact-project-spec-v1",
+  revisionNumber: 1,
+  title: "Project Specification v1",
+  createdAt: new Date("2026-04-17T11:15:00.000Z")
+};
+
+const projectDocumentRepositoryFixture = {
+  projects: [
+    {
+      tenantId: "tenant-read",
+      projectId: "project-123"
+    }
+  ],
+  runs: [],
+  documents: [projectDocumentFixture],
+  documentRevisions: [projectDocumentRevisionFixture]
+};
+
+const projectRunTaskFixture = {
+  runTaskId: "run-task-implementation",
+  runId: "run-123",
+  name: "Implement execution plan",
+  description: "Apply the approved change in a reviewable way.",
+  status: "active",
+  conversationAgentClass: "KeystoneThinkAgent",
+  conversationAgentName: "tenant:tenant-read:run:run-123:task:run-task-implementation",
+  startedAt: new Date("2026-04-17T10:45:00.000Z"),
+  endedAt: null,
+  createdAt: new Date("2026-04-17T10:40:00.000Z"),
+  updatedAt: new Date("2026-04-17T10:45:00.000Z")
+};
+
+const projectRunArtifactFixture = {
+  tenantId: "tenant-read",
+  artifactRefId: "artifact-run-summary",
+  projectId: "project-123",
+  runId: "run-123",
+  runTaskId: null,
+  artifactKind: "run_summary",
+  storageBackend: "r2",
+  bucket: "keystone-artifacts-dev",
+  objectKey: "tenants/tenant-read/runs/run-123/release/run-summary.json",
+  objectVersion: null,
+  etag: "etag-run-summary",
+  contentType: "application/json; charset=utf-8",
+  sha256: null,
+  sizeBytes: 128,
+  createdAt: new Date("2026-04-17T11:30:00.000Z")
+};
+
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
 
   return {
     close,
-    createWorkerDatabaseClient: vi.fn(() => ({
-      close,
-      db: {},
-      sql: {}
+    bucketGet: vi.fn(async () => null),
+    bucketDelete: vi.fn(async () => undefined),
+    bucketPut: vi.fn(async () => ({
+      httpEtag: "etag-project-spec-v2",
+      size: 27
+    })),
+    createWorkerDatabaseClient: vi.fn(() =>
+      createDocumentRepositoryClient(projectDocumentRepositoryFixture, close)
+    ),
+    deleteArtifactRef: vi.fn(async () => null),
+    getArtifactText: vi.fn(async (): Promise<string | null> => null),
+    createArtifactRef: vi.fn(async (_client, input) => ({
+      tenantId: input.tenantId,
+      artifactRefId: "artifact-project-spec-v2",
+      projectId: input.projectId ?? null,
+      runId: input.runId ?? `project:${input.projectId}`,
+      runTaskId: null,
+      artifactKind: input.artifactKind,
+      storageBackend: input.storageBackend,
+      bucket: input.bucket ?? "keystone-artifacts-dev",
+      objectKey: input.objectKey ?? "documents/project/project-123/doc-project-spec/revision-project-spec-v2",
+      objectVersion: null,
+      etag: input.etag ?? null,
+      contentType: input.contentType,
+      sha256: null,
+      sizeBytes: input.sizeBytes ?? null,
+      createdAt: new Date("2026-04-17T11:45:00.000Z")
     })),
     createProject: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
@@ -19,8 +112,6 @@ const mocked = vi.hoisted(() => {
       ruleSet: input.config.ruleSet,
       components: input.config.components,
       envVars: input.config.envVars,
-      integrationBindings: input.config.integrationBindings,
-      metadata: input.config.metadata,
       createdAt: new Date("2026-04-17T10:00:00.000Z"),
       updatedAt: new Date("2026-04-17T10:00:00.000Z")
     })),
@@ -46,35 +137,16 @@ const mocked = vi.hoisted(() => {
             kind: "git_repository" as const,
             config: {
               localPath: "./fixtures/demo-target",
-              defaultRef: "main"
-            },
-            metadata: {
-              source: "fixture"
+              ref: "main"
             }
           }
         ],
         envVars: [
           {
             name: "KEYSTONE_FIXTURE_PROJECT",
-            value: "1",
-            metadata: {
-              source: "test"
-            }
+            value: "1"
           }
         ],
-        integrationBindings: [
-          {
-            bindingKey: "github-primary",
-            tenantIntegrationId: "tenant-int-123",
-            overrides: {
-              repoOwner: "example"
-            },
-            metadata: {}
-          }
-        ],
-        metadata: {
-          source: "tests"
-        },
         createdAt: new Date("2026-04-17T10:00:00.000Z"),
         updatedAt: new Date("2026-04-17T11:00:00.000Z")
       };
@@ -101,16 +173,11 @@ const mocked = vi.hoisted(() => {
             kind: "git_repository" as const,
             config: {
               localPath: "./fixtures/demo-target",
-              defaultRef: "main"
-            },
-            metadata: {
-              source: "fixture"
+              ref: "main"
             }
           }
         ],
         envVars: [],
-        integrationBindings: [],
-        metadata: {},
         createdAt: new Date("2026-04-17T10:00:00.000Z"),
         updatedAt: new Date("2026-04-17T11:00:00.000Z")
       };
@@ -135,31 +202,67 @@ const mocked = vi.hoisted(() => {
         updatedAt: new Date("2026-04-17T09:30:00.000Z")
       }
     ]),
-    listProjectRunSessions: vi.fn(async (_client, input) => [
+    listProjectRuns: vi.fn(async (_client, input) => [
       {
         tenantId: input.tenantId,
-        sessionId: "run-session-123",
         runId: "run-123",
-        sessionType: "run" as const,
+        projectId: input.projectId,
+        workflowInstanceId: "workflow-run-123",
+        executionEngine: "think_mock",
+        sandboxId: null,
         status: "archived",
-        parentSessionId: null,
+        compiledSpecRevisionId: null,
+        compiledArchitectureRevisionId: null,
+        compiledExecutionPlanRevisionId: null,
+        compiledAt: null,
+        startedAt: new Date("2026-04-17T10:35:00.000Z"),
+        endedAt: new Date("2026-04-17T11:30:00.000Z"),
         createdAt: new Date("2026-04-17T10:30:00.000Z"),
-        updatedAt: new Date("2026-04-17T11:30:00.000Z"),
-        metadata: {
-          project: {
-            projectId: input.projectId,
-            projectKey: "fixture-demo-project",
-            displayName: "Fixture Demo Project"
-          },
-          decisionPackageId: "decision-package-ui-first-api",
-          runtime: "think",
-          options: {
-            thinkMode: "mock",
-            preserveSandbox: false
-          }
-        }
+        updatedAt: new Date("2026-04-17T11:30:00.000Z")
       }
     ]),
+    listRunTasks: vi.fn(async () => [projectRunTaskFixture]),
+    listRunTaskDependencies: vi.fn(async () => []),
+    listRunArtifacts: vi.fn(async () => []),
+    createDocument: vi.fn(async (_client, input) => ({
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      documentId: "doc-project-architecture",
+      runId: input.runId ?? null,
+      scopeType: input.scopeType,
+      kind: input.kind,
+      path: input.path,
+      currentRevisionId: null,
+      conversationAgentClass: input.conversationAgentClass ?? null,
+      conversationAgentName: input.conversationAgentName ?? null,
+      createdAt: new Date("2026-04-17T11:30:00.000Z"),
+      updatedAt: new Date("2026-04-17T11:30:00.000Z")
+    })),
+    createDocumentRevision: vi.fn(async (_client, input) => ({
+      documentRevisionId: input.documentRevisionId ?? "revision-project-spec-v2",
+      documentId: input.documentId,
+      artifactRefId: input.artifactRefId,
+      revisionNumber: 2,
+      title: input.title,
+      createdAt: new Date("2026-04-17T11:45:00.000Z")
+    })),
+    getRunRecord: vi.fn(async () => ({
+      tenantId: "tenant-read",
+      runId: "run-123",
+      projectId: "project-123",
+      workflowInstanceId: "workflow-run-123",
+      executionEngine: "think_mock",
+      sandboxId: null,
+      status: "configured",
+      compiledSpecRevisionId: null,
+      compiledArchitectureRevisionId: null,
+      compiledExecutionPlanRevisionId: null,
+      compiledAt: null,
+      startedAt: null,
+      endedAt: null,
+      createdAt: new Date("2026-04-17T10:30:00.000Z"),
+      updatedAt: new Date("2026-04-17T10:30:00.000Z")
+    })),
     updateProject: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       projectId: input.projectId,
@@ -169,8 +272,6 @@ const mocked = vi.hoisted(() => {
       ruleSet: input.config.ruleSet,
       components: input.config.components,
       envVars: input.config.envVars,
-      integrationBindings: input.config.integrationBindings,
-      metadata: input.config.metadata,
       createdAt: new Date("2026-04-17T10:00:00.000Z"),
       updatedAt: new Date("2026-04-17T12:00:00.000Z")
     }))
@@ -190,18 +291,52 @@ vi.mock("../../src/lib/db/projects", () => ({
 }));
 
 vi.mock("../../src/lib/db/runs", () => ({
-  listProjectRunSessions: mocked.listProjectRunSessions
+  getRunRecord: mocked.getRunRecord,
+  listProjectRuns: mocked.listProjectRuns,
+  listRunTaskDependencies: mocked.listRunTaskDependencies,
+  listRunTasks: mocked.listRunTasks
 }));
 
-vi.mock("../../src/http/handlers/runs", () => ({
-  createRunHandler: vi.fn(),
-  getRunEventsHandler: vi.fn(),
-  getRunHandler: vi.fn()
-}));
+vi.mock("../../src/lib/db/artifacts", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/db/artifacts")>(
+    "../../src/lib/db/artifacts"
+  );
 
-vi.mock("../../src/http/handlers/approvals", () => ({
-  resolveApprovalHandler: vi.fn()
-}));
+  return {
+    ...actual,
+    createArtifactRef: mocked.createArtifactRef,
+    deleteArtifactRef: mocked.deleteArtifactRef,
+    listRunArtifacts: mocked.listRunArtifacts
+  };
+});
+
+vi.mock("../../src/lib/db/documents", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/db/documents")>(
+    "../../src/lib/db/documents"
+  );
+
+  return {
+    ...actual,
+    createDocument: mocked.createDocument,
+    createDocumentRevision: mocked.createDocumentRevision,
+    getProjectDocument: vi.fn(actual.getProjectDocument),
+    getRunDocument: vi.fn(actual.getRunDocument),
+    getDocumentWithCurrentRevision: vi.fn(actual.getDocumentWithCurrentRevision),
+    listProjectDocumentsWithCurrentRevision: vi.fn(actual.listProjectDocumentsWithCurrentRevision),
+    listRunDocumentsWithCurrentRevision: vi.fn(actual.listRunDocumentsWithCurrentRevision)
+  };
+});
+
+vi.mock("../../src/lib/artifacts/r2", async () => {
+  const actual = await vi.importActual<typeof import("../../src/lib/artifacts/r2")>(
+    "../../src/lib/artifacts/r2"
+  );
+
+  return {
+    ...actual,
+    getArtifactText: mocked.getArtifactText
+  };
+});
 
 vi.mock("../../src/http/handlers/ws", () => ({
   runWebSocketHandler: vi.fn()
@@ -219,9 +354,15 @@ vi.mock("../../src/http/handlers/dev-think", () => ({
   runThinkSmokeHandler: vi.fn()
 }));
 
+const documentsDb = await import("../../src/lib/db/documents");
 const { app } = await import("../../src/http/app");
 
 const env = {
+  ARTIFACTS_BUCKET: {
+    get: mocked.bucketGet,
+    delete: mocked.bucketDelete,
+    put: mocked.bucketPut
+  } as unknown as R2Bucket,
   HYPERDRIVE: {
     connectionString: "postgres://test"
   },
@@ -245,17 +386,11 @@ function buildProjectPayload() {
         kind: "git_repository" as const,
         config: {
           localPath: "./fixtures/demo-target",
-          defaultRef: "main"
+          ref: "main"
         },
         ruleOverride: {
           reviewInstructions: ["Focus on app code paths."],
-          testInstructions: ["Run demo-target tests first."],
-          metadata: {
-            owner: "app-team"
-          }
-        },
-        metadata: {
-          source: "fixture"
+          testInstructions: ["Run demo-target tests first."]
         }
       },
       {
@@ -264,64 +399,32 @@ function buildProjectPayload() {
         kind: "git_repository" as const,
         config: {
           gitUrl: "https://example.com/demo-support.git",
-          defaultRef: "develop"
-        },
-        metadata: {
-          source: "supporting-fixture"
+          ref: "develop"
         }
       }
     ],
     envVars: [
       {
         name: "KEYSTONE_FIXTURE_PROJECT",
-        value: "1",
-        metadata: {
-          source: "test"
-        }
+        value: "1"
       },
       {
         name: "LOG_LEVEL",
-        value: "debug",
-        metadata: {
-          scope: "demo"
-        }
+        value: "debug"
       }
-    ],
-    integrationBindings: [
-      {
-        bindingKey: "github-primary",
-        tenantIntegrationId: "tenant-int-123",
-        overrides: {
-          repoOwner: "example"
-        },
-        metadata: {
-          purpose: "source-control"
-        }
-      },
-      {
-        bindingKey: "slack-alerts",
-        tenantIntegrationId: "tenant-int-456",
-        overrides: {
-          channel: "#keystone-demo"
-        },
-        metadata: {}
-      }
-    ],
-    metadata: {
-      source: "tests",
-      tier: "fixture"
-    }
+    ]
   };
 }
 
 describe("project API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.createWorkerDatabaseClient.mockReturnValue({
-      close: mocked.close,
-      db: {},
-      sql: {}
-    });
+    mocked.createWorkerDatabaseClient.mockImplementation(() =>
+      createDocumentRepositoryClient(projectDocumentRepositoryFixture, mocked.close)
+    );
+    mocked.listRunTasks.mockResolvedValue([projectRunTaskFixture] as never);
+    mocked.listRunTaskDependencies.mockResolvedValue([] as never);
+    mocked.listRunArtifacts.mockResolvedValue([] as never);
   });
 
   it("lists tenant-scoped projects", async () => {
@@ -342,12 +445,10 @@ describe("project API", () => {
         total: 2,
         items: [
           {
-            tenantId: "tenant-fixture",
             projectId: "project-123",
             projectKey: "fixture-demo-project"
           },
           {
-            tenantId: "tenant-fixture",
             projectId: "project-456",
             projectKey: "secondary-project"
           }
@@ -385,7 +486,6 @@ describe("project API", () => {
         total: 1,
         items: [
           {
-            tenantId: "tenant-filtered",
             projectId: "project-123",
             projectKey: "fixture-demo-project"
           }
@@ -426,24 +526,20 @@ describe("project API", () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        tenantId: "tenant-create",
         projectId: "project-created",
         projectKey: "fixture-demo-project",
         ruleSet: payload.ruleSet,
         components: expect.arrayContaining([
           expect.objectContaining({
             componentKey: "demo-target",
-            ruleOverride: payload.components[0]?.ruleOverride,
-            metadata: payload.components[0]?.metadata
+            ruleOverride: payload.components[0]?.ruleOverride
           }),
           expect.objectContaining({
             componentKey: "demo-support",
             config: payload.components[1]?.config
           })
         ]),
-        envVars: payload.envVars,
-        integrationBindings: payload.integrationBindings,
-        metadata: payload.metadata
+        envVars: payload.envVars
       },
       meta: {
         apiVersion: "v1",
@@ -530,6 +626,36 @@ describe("project API", () => {
 
   it("rejects duplicate env var names at the request-contract layer", async () => {
     const payload = buildProjectPayload();
+    mocked.createProject.mockRejectedValueOnce({
+      code: "23505"
+    });
+
+    const response = await app.request(
+      "http://example.com/v1/projects",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-create"
+        },
+        body: JSON.stringify(payload)
+      },
+      env
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "project_key_conflict",
+        message: "Project key fixture-demo-project already exists for tenant tenant-create."
+      }
+    });
+    expect(mocked.createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects duplicate project keys at the request-contract layer only through stored uniqueness, not payload shape", async () => {
+    const payload = buildProjectPayload();
     const duplicateEnvVar = payload.envVars[1]!;
     payload.envVars[1] = {
       ...duplicateEnvVar,
@@ -567,45 +693,6 @@ describe("project API", () => {
     expect(mocked.createProject).not.toHaveBeenCalled();
   });
 
-  it("rejects duplicate integration binding keys at the request-contract layer", async () => {
-    const payload = buildProjectPayload();
-    const duplicateBinding = payload.integrationBindings[1]!;
-    payload.integrationBindings[1] = {
-      ...duplicateBinding,
-      bindingKey: "github-primary"
-    };
-
-    const response = await app.request(
-      "http://example.com/v1/projects",
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer secret-dev-token",
-          "Content-Type": "application/json",
-          "X-Keystone-Tenant-Id": "tenant-create"
-        },
-        body: JSON.stringify(payload)
-      },
-      env
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: "invalid_request",
-        message: "Project request validation failed.",
-        details: {
-          issues: expect.arrayContaining([
-            expect.objectContaining({
-              path: ["integrationBindings", 1, "bindingKey"]
-            })
-          ])
-        }
-      }
-    });
-    expect(mocked.createProject).not.toHaveBeenCalled();
-  });
-
   it("returns a project by id", async () => {
     const response = await app.request(
       "http://example.com/v1/projects/project-123",
@@ -621,7 +708,6 @@ describe("project API", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        tenantId: "tenant-read",
         projectId: "project-123",
         projectKey: "fixture-demo-project"
       },
@@ -641,7 +727,7 @@ describe("project API", () => {
     const response = await app.request(
       "http://example.com/v1/projects/project-123",
       {
-        method: "PUT",
+        method: "PATCH",
         headers: {
           Authorization: "Bearer secret-dev-token",
           "Content-Type": "application/json",
@@ -655,7 +741,6 @@ describe("project API", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        tenantId: "tenant-update",
         projectId: "project-123",
         displayName: "Fixture Demo Project v2",
         ruleSet: payload.ruleSet,
@@ -665,9 +750,7 @@ describe("project API", () => {
             ruleOverride: payload.components[0]?.ruleOverride
           })
         ]),
-        envVars: payload.envVars,
-        integrationBindings: payload.integrationBindings,
-        metadata: payload.metadata
+        envVars: payload.envVars
       },
       meta: {
         apiVersion: "v1",
@@ -732,54 +815,279 @@ describe("project API", () => {
     });
   });
 
-  it("returns stub project documents and decision-package collections", async () => {
-    const [documentsResponse, decisionPackagesResponse] = await Promise.all([
-      app.request(
-        "http://example.com/v1/projects/project-123/documents",
-        {
-          headers: {
-            Authorization: "Bearer secret-dev-token",
-            "X-Keystone-Tenant-Id": "tenant-read"
-          }
-        },
-        env
-      ),
-      app.request(
-        "http://example.com/v1/projects/project-123/decision-packages",
-        {
-          headers: {
-            Authorization: "Bearer secret-dev-token",
-            "X-Keystone-Tenant-Id": "tenant-read"
-          }
-        },
-        env
-      )
-    ]);
+  it("lists persisted project documents", async () => {
+    const documentsResponse = await app.request(
+      "http://example.com/v1/projects/project-123/documents",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
 
     expect(documentsResponse.status).toBe(200);
     await expect(documentsResponse.json()).resolves.toMatchObject({
       data: {
-        total: 0,
-        items: []
+        total: 1,
+        items: [
+          {
+            documentId: "doc-project-spec",
+            scopeType: "project",
+            kind: "specification",
+            path: "product/specification",
+            currentRevisionId: "revision-project-spec-v1",
+            conversation: {
+              agentClass: "PlanningDocumentAgent",
+              agentName: "project-specification"
+            }
+          }
+        ]
       },
       meta: {
-        resourceType: "project_document"
+        resourceType: "document"
       }
     });
+    expect(documentsDb.listProjectDocumentsWithCurrentRevision).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        projectId: "project-123"
+      })
+    );
 
-    expect(decisionPackagesResponse.status).toBe(200);
-    await expect(decisionPackagesResponse.json()).resolves.toMatchObject({
+  });
+
+  it("creates a project document identity", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-write"
+        },
+        body: JSON.stringify({
+          kind: "architecture",
+          path: "technical/architecture",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "project-architecture"
+          }
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
       data: {
-        total: 0,
-        items: []
+        documentId: "doc-project-architecture",
+        scopeType: "project",
+        kind: "architecture",
+        path: "technical/architecture",
+        currentRevisionId: null,
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: "project-architecture"
+        }
       },
       meta: {
-        resourceType: "decision_package"
+        resourceType: "document"
+      }
+    });
+    expect(mocked.createDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-write",
+        projectId: "project-123",
+        scopeType: "project",
+        kind: "architecture",
+        path: "technical/architecture"
+      })
+    );
+  });
+
+  it("maps unexpected document creation failures to internal_error responses", async () => {
+    mocked.createDocument.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-write"
+        },
+        body: JSON.stringify({
+          kind: "architecture",
+          path: "technical/architecture"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "internal_error",
+        message: "Document persistence failed."
       }
     });
   });
 
-  it("lists projected runs for a project", async () => {
+  it("returns a project document detail", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents/doc-project-spec",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        documentId: "doc-project-spec",
+        kind: "specification",
+        path: "product/specification",
+        currentRevisionId: "revision-project-spec-v1"
+      },
+      meta: {
+        resourceType: "document"
+      }
+    });
+  });
+
+  it("creates a project document revision backed by an artifact", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents/doc-project-spec/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        },
+        body: JSON.stringify({
+          title: "Project Specification v2",
+          body: "# Revised specification\n",
+          contentType: "text/markdown; charset=utf-8"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        documentRevisionId: expect.any(String),
+        revisionNumber: 2,
+        title: "Project Specification v2",
+        artifactId: "artifact-project-spec-v2"
+      },
+      meta: {
+        resourceType: "document_revision"
+      }
+    });
+    expect(mocked.bucketPut).toHaveBeenCalled();
+    expect(mocked.createArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        projectId: "project-123",
+        runId: null,
+        artifactKind: "document_revision"
+      })
+    );
+    expect(mocked.createDocumentRevision).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        documentId: "doc-project-spec",
+        title: "Project Specification v2"
+      })
+    );
+  });
+
+  it("deletes uploaded project revision artifacts when persistence fails downstream", async () => {
+    mocked.createDocumentRevision.mockRejectedValueOnce(new Error("document revision insert failed"));
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents/doc-project-spec/revisions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        },
+        body: JSON.stringify({
+          title: "Project Specification v2",
+          body: "# Revised specification\n",
+          contentType: "text/markdown; charset=utf-8"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "internal_error",
+        message: "Document persistence failed."
+      }
+    });
+    expect(mocked.deleteArtifactRef).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        artifactRefId: "artifact-project-spec-v2"
+      })
+    );
+    expect(mocked.bucketDelete).toHaveBeenCalledWith(
+      expect.stringMatching(/^documents\/project\/project-123\/doc-project-spec\//)
+    );
+  });
+
+  it("rejects invalid canonical project document paths", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/documents",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-write"
+        },
+        body: JSON.stringify({
+          kind: "specification",
+          path: "notes/specification"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+        message:
+          "project-scoped specification documents must use the canonical path product/specification."
+      }
+    });
+    expect(mocked.createDocument).not.toHaveBeenCalled();
+  });
+
+  it("lists project runs from authoritative run, task, and artifact rows", async () => {
+    mocked.listRunArtifacts.mockResolvedValueOnce([projectRunArtifactFixture] as never);
+
     const response = await app.request(
       "http://example.com/v1/projects/project-123/runs",
       {
@@ -799,7 +1107,7 @@ describe("project API", () => {
           {
             runId: "run-123",
             projectId: "project-123",
-            decisionPackageId: "decision-package-ui-first-api",
+            executionEngine: "think_mock",
             status: "archived"
           }
         ]
@@ -808,12 +1116,13 @@ describe("project API", () => {
         resourceType: "run"
       }
     });
-    expect(mocked.listProjectRunSessions).toHaveBeenCalledWith(
+    expect(mocked.listProjectRuns).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantId: "tenant-read",
         projectId: "project-123"
       })
     );
+    expect(mocked.listRunTasks).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,8 @@ import {
   buildWorkspaceCodeRoot,
   buildWorkspaceId,
   buildWorkspaceRoot,
+  buildTaskWorkspaceTargetPathWithIdentity,
+  buildWorkspaceCodeRootWithIdentity,
   slugifySegment
 } from "./worktree";
 import { ensureTaskWorktree, getHeadSha, initializeGitRepository } from "./git";
@@ -424,7 +426,8 @@ function resolveWorkspaceComponentRefs(source: WorkspaceMaterializationSource) {
 function createMaterializedWorkspace(
   input: {
     runId: string;
-    sessionId: string;
+    taskId: string;
+    runTaskId: string;
     workspaceRoot: string;
     components: MaterializedWorkspaceComponent[];
   }
@@ -435,19 +438,28 @@ function createMaterializedWorkspace(
     throw new Error("At least one workspace component is required.");
   }
 
-  const codeRoot = buildWorkspaceCodeRoot(input.workspaceRoot);
+  const workspaceTargetPath = buildTaskWorkspaceTargetPathWithIdentity(
+    input.workspaceRoot,
+    input.taskId,
+    input.runTaskId
+  );
+  const codeRoot = buildWorkspaceCodeRootWithIdentity(
+    input.workspaceRoot,
+    input.taskId,
+    input.runTaskId
+  );
   const defaultCwd =
-    input.components.length === 1 ? defaultComponent.worktreePath : input.workspaceRoot;
+    input.components.length === 1 ? defaultComponent.worktreePath : workspaceTargetPath;
 
   return {
-    workspaceId: buildWorkspaceId(input.runId, input.sessionId),
+    workspaceId: buildWorkspaceId(input.runId),
     strategy: "worktree",
     defaultComponentKey: defaultComponent.componentKey,
     repoUrl: defaultComponent.repoUrl,
     repoRef: defaultComponent.repoRef,
     baseRef: defaultComponent.baseRef,
     workspaceRoot: input.workspaceRoot,
-    workspaceTargetPath: input.workspaceRoot,
+    workspaceTargetPath,
     codeRoot,
     defaultCwd,
     repositoryPath: defaultComponent.repositoryPath,
@@ -464,29 +476,39 @@ export async function ensureWorkspaceMaterialized(
   input:
     | {
         runId: string;
-        sessionId: string;
         taskId: string;
+        runTaskId: string;
         source: WorkspaceSource;
         components?: never;
       }
     | {
         runId: string;
-        sessionId: string;
         taskId: string;
+        runTaskId: string;
         source?: never;
         components: WorkspaceMaterializationSource[];
       }
 ): Promise<MaterializedWorkspace> {
-  const workspaceRoot = buildWorkspaceRoot(input.runId, input.sessionId);
-  const branchName = buildTaskBranchName(input.taskId);
+  const workspaceRoot = buildWorkspaceRoot(input.runId);
+  const branchName = buildTaskBranchName(input.taskId, input.runTaskId);
   const componentSources = normalizeWorkspaceSources(input);
   const materializedComponents: MaterializedWorkspaceComponent[] = [];
+  const taskCodeRoot = buildWorkspaceCodeRootWithIdentity(
+    workspaceRoot,
+    input.taskId,
+    input.runTaskId
+  );
 
-  await session.mkdir(buildWorkspaceCodeRoot(workspaceRoot), { recursive: true });
+  await session.mkdir(taskCodeRoot, { recursive: true });
 
   for (const component of componentSources) {
     const repositoryPath = buildComponentRepositoryPath(workspaceRoot, component.componentKey);
-    const worktreePath = buildComponentWorktreePath(workspaceRoot, component.componentKey);
+    const worktreePath = buildComponentWorktreePath(
+      workspaceRoot,
+      input.taskId,
+      input.runTaskId,
+      component.componentKey
+    );
     const { repoRef, baseRef } = resolveWorkspaceComponentRefs(component);
 
     if (component.type === "inline") {
@@ -516,7 +538,8 @@ export async function ensureWorkspaceMaterialized(
 
   return createMaterializedWorkspace({
     runId: input.runId,
-    sessionId: input.sessionId,
+    taskId: input.taskId,
+    runTaskId: input.runTaskId,
     workspaceRoot,
     components: materializedComponents
   });

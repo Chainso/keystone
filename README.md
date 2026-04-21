@@ -3,14 +3,15 @@
 Keystone is a single Cloudflare Worker project that currently proves:
 
 - durable `Project` objects as the backend boundary for code components, non-secret env vars, and review/test defaults
-- tenant-scoped run intake over HTTP
+- project-scoped run intake over HTTP
 - durable run and task orchestration with Cloudflare Workflows
-- realtime run projection with Durable Objects and WebSockets
 - file-first artifact persistence in R2 with Postgres as the operational index
-- sandboxed task execution with session sandboxes and task worktrees
+- sandboxed execution with one sandbox per run and task-specific worktrees inside that sandbox
 - provider-backed compile and Think live-model turns using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
-- a runtime selector that keeps `scripted` as the default path, preserves a deterministic `think/mock` validation mode, and enables a fixture-scoped live compile plus Think task demo through the same `/v1/runs` entrypoint
+- an `executionEngine` selector that keeps `scripted` as the default path and supports `think_mock` plus `think_live`
 - a structure-first React workspace shell served from the same Worker deployable, now including minimal board-shaped `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces over the canonical route tree
+
+The authoritative target-model contract for contributors is [.ultrakit/developer-docs/keystone-target-model-handoff.md](./.ultrakit/developer-docs/keystone-target-model-handoff.md). Read that first before changing persistence, API, run orchestration, or document behavior.
 
 ## Core Commands
 
@@ -79,39 +80,42 @@ Current UI boundary:
 
 - the scaffold is served from the same Worker deployable as the `v1` API
 - the UI still uses fixed scaffold data instead of live backend adapters
-- documentation collections, decision packages, evidence, integration, release, and project editing flows remain unwired behind the stable route tree
+- documentation collections, evidence, integration, release, and project editing flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend
 
 The current backend contract is project-first:
 
-- `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:projectId`, and `PUT /v1/projects/:projectId` manage durable project config and now return canonical `data`/`meta` envelopes
-- `POST /v1/runs` now requires `projectId` plus a typed `decisionPackage` reference; direct repo-backed run intake is no longer supported
-- project components materialize under `/workspace/code/<component-key>`
+- `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:projectId`, and `PATCH /v1/projects/:projectId` manage durable project config and now return canonical `data`/`meta` envelopes
+- `GET /v1/projects/:projectId/runs` and `POST /v1/projects/:projectId/runs` manage project-scoped run collections
+- project components materialize into the run sandbox and task-specific worktrees under `/workspace/runs/<run>/tasks/<task>/code/<component>`
 - project env vars are non-secret only in `v1`
 
 The current UI-first `v1` surface is centered on:
 
+- `POST /v1/projects`
+- `GET /v1/projects`
+- `GET /v1/projects/:projectId`
 - `GET /v1/projects/:projectId/documents`
-- `GET /v1/projects/:projectId/decision-packages`
 - `GET /v1/projects/:projectId/runs`
-- `POST /v1/runs`
+- `POST /v1/projects/:projectId/runs`
 - `GET /v1/runs/:runId`
-- `GET /v1/runs/:runId/graph`
+- `POST /v1/runs/:runId/compile`
+- `GET /v1/runs/:runId/documents`
+- `POST /v1/runs/:runId/documents`
+- `GET /v1/runs/:runId/workflow`
 - `GET /v1/runs/:runId/tasks`
 - `GET /v1/runs/:runId/tasks/:taskId`
-- `GET /v1/runs/:runId/tasks/:taskId/conversation`
-- `POST /v1/runs/:runId/tasks/:taskId/conversation/messages`
-- `GET /v1/runs/:runId/tasks/:taskId/artifacts`
-- `GET /v1/runs/:runId/approvals`
-- `GET /v1/runs/:runId/approvals/:approvalId`
-- `GET /v1/runs/:runId/evidence`
-- `GET /v1/runs/:runId/integration`
-- `GET /v1/runs/:runId/release`
 - `GET /v1/artifacts/:artifactId`
 - `GET /v1/artifacts/:artifactId/content`
 
-`GET /v1/runs/:runId/stream` is the canonical UI stream path. `GET /v1/runs/:runId/events` and `GET /v1/runs/:runId/ws` are still available as legacy/debug seams during the transition.
+Removed from the target model and current backend contract:
+
+- legacy run-package resources
+- approval-gated repo access
+- run event streams / live update surfaces
+- release / evidence / integration placeholder resources
+- public task-message write APIs
 
 For local validation, the fixture bootstrap helper converges on one deterministic fixture project per tenant:
 
@@ -141,103 +145,81 @@ npm run demo:run
 npm run demo:validate
 ```
 
-These commands cover three distinct contracts today:
+These commands cover three execution-engine contracts today:
 
 - `npm run demo:run` plus `npm run demo:validate`: the default scripted fixture path.
-- `KEYSTONE_AGENT_RUNTIME=think npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think npm run demo:validate`: the deterministic mock-backed Think validation path on the current fixture-project workflow contract.
-- `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:run` plus `KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate`: the live full-workflow Think proof on the current fixture-project happy path.
+- `KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:run` plus `KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:validate`: the deterministic mock-backed Think validation path.
+- `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run` plus `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate`: the live full-workflow Think proof on the current fixture-project happy path.
 
-All three flows create project-backed runs through the stored `fixture-demo-project`. The demo helper now reads the committed fixture decision package locally and posts it as an inline `decisionPackage: { source: "inline", payload: ... }` reference to `/v1/runs`.
+All three flows create project-backed runs through the stored `fixture-demo-project`, seed the three run planning documents (`specification`, `architecture`, `execution_plan`), then call explicit compile before polling the run to completion.
 
-For a zero-argument live rerun after you have exported the runtime once, use:
+For a zero-argument live rerun after you have exported the execution engine once, use:
 
 ```bash
-export KEYSTONE_AGENT_RUNTIME=think
-export KEYSTONE_THINK_DEMO_MODE=live
+export KEYSTONE_EXECUTION_ENGINE=think_live
 npm run demo:run
 npm run demo:validate
 ```
 
-That live pair now proves the current end-to-end happy path from `/v1/runs` input through:
+That live pair now proves the current end-to-end happy path from project-scoped run creation through:
 
+- run document creation and revision persistence
 - live compile
-- persisted `run_plan` and `task_handoff` artifacts
 - compiled Think task execution
-- promoted `run_note`
-- archived `run_summary`
+- archived completion with pinned compile provenance and task conversation locators
 
 The proof remains intentionally narrow:
 
 - `scripted` stays the default runtime
-- `runtime=think` without an explicit mode still defaults to deterministic `thinkMode=mock`
-- the live proof is fixture-scoped to the stored `fixture-demo-project` plus committed decision package
-- the compiled plan must stay on the approved single independent task shape, with no `dependsOn`
+- `executionEngine=think_mock` remains the deterministic Think validation path
+- the live proof is fixture-scoped to the stored `fixture-demo-project` plus committed planning document fixtures
+- compile requires the run `specification`, `architecture`, and `execution_plan` documents to exist
 
 `demo:run` persists only the last successful archived run under `.keystone/demo-last-run.json`. `demo:validate` reuses that state only when you do not supply `--run-id` or `KEYSTONE_RUN_ID`.
 
-For ad hoc manual validation when you need to supply the run id yourself, the convenience form is:
+For ad hoc manual validation when you need to supply the run id yourself, export the same `KEYSTONE_BASE_URL` first if Wrangler is not on `8787`, then use:
 
 ```bash
+export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 npm run demo:validate -- --run-id=<run-id-from-demo-run>
 ```
 
-The scripted path stays the default runtime and should yield a `task_log` artifact. The deterministic Think pair is still:
+The scripted path stays the default execution engine and should yield a `task_log` artifact. The deterministic Think pair is:
 
 ```bash
-KEYSTONE_AGENT_RUNTIME=think npm run demo:run
-KEYSTONE_AGENT_RUNTIME=think npm run demo:validate
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:run
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:validate
 ```
 
-That Think pair remains the stable validation path because `thinkMode` defaults to `mock`.
+That Think pair remains the stable validation path because it avoids live-model variability.
 
-For a live-model Think turn that keeps the sandbox available for inspection after the run finishes, use:
+For a live-model Think run through the current fixture-scoped path, use:
 
 ```bash
 npm run demo:run:think-live
-KEYSTONE_AGENT_RUNTIME=think npm run sandbox:shell
 ```
 
-`demo:run:think-live` is the inspection-oriented convenience wrapper for the same live compile plus compiled Think task path. It also forces sandbox preservation on the run so the container is not destroyed at the end of the task workflow.
+`demo:run:think-live` is the convenience wrapper for the same live compile plus compiled Think task path using `executionEngine=think_live`.
 
 For ad hoc manual Think validation when you need to supply the run id explicitly, use:
 
 ```bash
-KEYSTONE_AGENT_RUNTIME=think KEYSTONE_THINK_DEMO_MODE=live npm run demo:validate -- --run-id=<run-id-from-demo-run>
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate -- --run-id=<run-id-from-demo-run>
 ```
 
 The current Think path is intentionally narrow:
 
-- runtime selection is accepted through `X-Keystone-Agent-Runtime` and defaults to `scripted`
-- `thinkMode=mock` is the deterministic validation default for Think requests
-- `thinkMode=live` now means live compile plus compiled Think task execution on the approved fixture-project happy path
-- the live proof still accepts only the fixture-project single independent task shape and rejects compiled `dependsOn` edges
+- `executionEngine` defaults to `scripted`
+- `think_mock` is the deterministic validation path
+- `think_live` means live compile plus compiled Think task execution on the approved fixture-project happy path
 - the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
-- final run success is still anchored on a `run_summary` artifact and an archived run session
+- final run success is anchored on a `run_summary` artifact and an archived run row
 
-For manual API validation outside the helper scripts, create or update a project first and then submit `/v1/runs` with `projectId` plus a typed decision-package reference. The currently launchable path is inline payloads:
+For manual API validation outside the helper scripts, create or update a project first, create a run under that project, create the three run planning documents plus their initial revisions, and then call compile:
 
 ```json
 {
-  "projectId": "<project-id>",
-  "decisionPackage": {
-    "source": "inline",
-    "payload": {
-      "decisionPackageId": "demo-greeting-update",
-      "summary": "Update the deterministic demo target.",
-      "objectives": ["Keep fixture tests passing."],
-      "tasks": [
-        {
-          "taskId": "task-greeting-tone",
-          "title": "Adjust the greeting implementation",
-          "acceptanceCriteria": ["Fixture tests remain green."]
-        }
-      ]
-    }
-  },
-  "options": {
-    "thinkMode": "mock",
-    "preserveSandbox": false
-  }
+  "executionEngine": "think_mock"
 }
 ```
 

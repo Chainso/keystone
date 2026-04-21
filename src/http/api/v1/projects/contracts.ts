@@ -5,13 +5,11 @@ import {
   buildDetailEnvelopeSchema,
   buildResourceSchema,
   isoTimestampSchema,
-  metadataSchema,
   resourceIdSchema
 } from "../common/contracts";
 import { projectConfigSchema, type StoredProject } from "../../../../keystone/projects/contracts";
 
 export const projectListItemSchema = buildResourceSchema("project", {
-  tenantId: resourceIdSchema,
   projectId: resourceIdSchema,
   projectKey: resourceIdSchema,
   displayName: z.string().trim().min(1),
@@ -21,7 +19,6 @@ export const projectListItemSchema = buildResourceSchema("project", {
 });
 
 export const projectResourceSchema = buildResourceSchema("project", {
-  tenantId: resourceIdSchema,
   projectId: resourceIdSchema,
   projectKey: resourceIdSchema,
   displayName: z.string().trim().min(1),
@@ -29,31 +26,8 @@ export const projectResourceSchema = buildResourceSchema("project", {
   ruleSet: projectConfigSchema.shape.ruleSet,
   components: projectConfigSchema.shape.components,
   envVars: projectConfigSchema.shape.envVars,
-  integrationBindings: projectConfigSchema.shape.integrationBindings,
-  metadata: metadataSchema.default({}),
   createdAt: isoTimestampSchema,
   updatedAt: isoTimestampSchema
-});
-
-export const projectDocumentKindValues = [
-  "product_spec",
-  "adr",
-  "task_contract",
-  "review_note",
-  "test_summary",
-  "release_note",
-  "other"
-] as const;
-
-export const projectDocumentResourceSchema = buildResourceSchema("project_document", {
-  tenantId: resourceIdSchema,
-  projectId: resourceIdSchema,
-  documentId: resourceIdSchema,
-  documentKind: z.enum(projectDocumentKindValues),
-  title: z.string().trim().min(1).nullable(),
-  path: z.string().trim().min(1).nullable(),
-  summary: z.string().trim().min(1).nullable(),
-  updatedAt: isoTimestampSchema.nullable()
 });
 
 export const projectDetailEnvelopeSchema = buildDetailEnvelopeSchema(
@@ -64,17 +38,11 @@ export const projectCollectionEnvelopeSchema = buildCollectionEnvelopeSchema(
   "project",
   projectListItemSchema
 );
-export const projectDocumentCollectionEnvelopeSchema = buildCollectionEnvelopeSchema(
-  "project_document",
-  projectDocumentResourceSchema
-);
 
 export type ProjectListItem = z.infer<typeof projectListItemSchema>;
 export type ProjectResource = z.infer<typeof projectResourceSchema>;
-export type ProjectDocumentResource = z.infer<typeof projectDocumentResourceSchema>;
 
 export function serializeProjectListItem(project: {
-  tenantId: string;
   projectId: string;
   projectKey: string;
   displayName: string;
@@ -88,7 +56,6 @@ export function serializeProjectListItem(project: {
       implementation: "reused",
       note: null
     },
-    tenantId: project.tenantId,
     projectId: project.projectId,
     projectKey: project.projectKey,
     displayName: project.displayName,
@@ -105,7 +72,6 @@ export function serializeProjectResource(project: StoredProject): ProjectResourc
       implementation: "reused",
       note: null
     },
-    tenantId: project.tenantId,
     projectId: project.projectId,
     projectKey: project.projectKey,
     displayName: project.displayName,
@@ -113,8 +79,6 @@ export function serializeProjectResource(project: StoredProject): ProjectResourc
     ruleSet: project.ruleSet,
     components: project.components,
     envVars: project.envVars,
-    integrationBindings: project.integrationBindings,
-    metadata: project.metadata ?? metadataSchema.parse({}),
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString()
   });

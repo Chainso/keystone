@@ -11,8 +11,8 @@ export function slugifySegment(value: string) {
   return slug.slice(0, MAX_SEGMENT_LENGTH) || "default";
 }
 
-export function buildWorkspaceId(runId: string, sessionId: string) {
-  return `workspace-${slugifySegment(runId)}-${sessionId.slice(0, 8)}`;
+export function buildWorkspaceId(runId: string) {
+  return `workspace-${slugifySegment(runId)}`;
 }
 
 export function buildSandboxId(tenantId: string, runId: string, sessionId: string) {
@@ -23,12 +23,47 @@ export function buildSandboxId(tenantId: string, runId: string, sessionId: strin
   return sandboxId || "kt-default";
 }
 
-export function buildWorkspaceRoot(runId: string, sessionId: string) {
-  return `/workspace/runs/${slugifySegment(runId)}-${sessionId.slice(0, 8)}`;
+export function buildRunSandboxId(tenantId: string, runId: string) {
+  return buildSandboxId(tenantId, runId, runId);
 }
 
-export function buildWorkspaceCodeRoot(workspaceRoot: string) {
-  return `${workspaceRoot}/code`;
+export function buildWorkspaceRoot(runId: string) {
+  return `/workspace/runs/${slugifySegment(runId)}`;
+}
+
+export function buildTaskWorkspaceTargetPath(workspaceRoot: string, taskId: string) {
+  return `${workspaceRoot}/tasks/${encodeURIComponent(taskId)}`;
+}
+
+export function buildWorkspaceCodeRoot(workspaceRoot: string, taskId?: string) {
+  if (!taskId) {
+    return `${workspaceRoot}/code`;
+  }
+
+  return `${buildTaskWorkspaceTargetPath(workspaceRoot, taskId)}/code`;
+}
+
+function buildTaskWorkspaceSegment(taskId: string, runTaskId: string) {
+  const taskSlug = slugifySegment(taskId);
+  const runTaskSlug = slugifySegment(runTaskId).slice(0, 8) || "task";
+
+  return `${taskSlug}-${runTaskSlug}`;
+}
+
+export function buildTaskWorkspaceTargetPathWithIdentity(
+  workspaceRoot: string,
+  taskId: string,
+  runTaskId: string
+) {
+  return `${workspaceRoot}/tasks/${buildTaskWorkspaceSegment(taskId, runTaskId)}`;
+}
+
+export function buildWorkspaceCodeRootWithIdentity(
+  workspaceRoot: string,
+  taskId: string,
+  runTaskId: string
+) {
+  return `${buildTaskWorkspaceTargetPathWithIdentity(workspaceRoot, taskId, runTaskId)}/code`;
 }
 
 export function buildComponentPathSegment(componentKey: string) {
@@ -45,10 +80,18 @@ export function buildComponentRepositoryPath(workspaceRoot: string, componentKey
   return `${workspaceRoot}/repositories/${buildComponentPathSegment(componentKey)}`;
 }
 
-export function buildComponentWorktreePath(workspaceRoot: string, componentKey: string) {
-  return `${buildWorkspaceCodeRoot(workspaceRoot)}/${buildComponentPathSegment(componentKey)}`;
+export function buildComponentWorktreePath(
+  workspaceRoot: string,
+  taskId: string,
+  runTaskId: string,
+  componentKey: string
+) {
+  return `${buildWorkspaceCodeRootWithIdentity(workspaceRoot, taskId, runTaskId)}/${buildComponentPathSegment(componentKey)}`;
 }
 
-export function buildTaskBranchName(taskId: string) {
-  return `keystone/${slugifySegment(taskId)}`;
+export function buildTaskBranchName(taskId: string, runTaskId: string) {
+  const taskSlug = slugifySegment(taskId);
+  const runTaskSlug = slugifySegment(runTaskId).slice(0, 8) || "task";
+
+  return `keystone/${taskSlug}-${runTaskSlug}`;
 }
