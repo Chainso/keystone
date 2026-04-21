@@ -746,7 +746,7 @@ describe("App shell", () => {
     },
     {
       path: "/workstreams",
-      heading: "Active and queued project work"
+      heading: "Project work across runs"
     },
     {
       path: "/projects/new",

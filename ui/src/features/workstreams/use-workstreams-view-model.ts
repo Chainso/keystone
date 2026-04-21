@@ -15,6 +15,7 @@ export type WorkstreamFilterId = ProjectTaskFilter;
 
 const defaultFilterId: WorkstreamFilterId = "active";
 const pageSize = 25;
+const workstreamsTitle = "Project work across runs";
 
 const filterDefinitions: Array<{
   filterId: WorkstreamFilterId;
@@ -169,14 +170,22 @@ function formatTaskUpdatedLabel(task: ProjectTaskRecord) {
 }
 
 function buildRangeLabel(page: ProjectTaskCollectionRecord | null) {
-  if (!page || page.total === 0) {
+  if (!page) {
     return "Showing 0 of 0 tasks";
+  }
+
+  if (page.total === 0 || page.items.length === 0) {
+    return `Showing 0 of ${page.total} tasks`;
   }
 
   const rangeStart = (page.page - 1) * page.pageSize + 1;
   const rangeEnd = rangeStart + page.items.length - 1;
 
   return `Showing ${rangeStart}-${rangeEnd} of ${page.total} tasks`;
+}
+
+function isOutOfRangePage(page: ProjectTaskCollectionRecord) {
+  return page.total > 0 && page.items.length === 0 && page.page > page.pageCount;
 }
 
 export function buildEmptyState(
@@ -265,6 +274,24 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       })
       .then((nextPage) => {
         if (requestIdRef.current !== requestId) {
+          return;
+        }
+
+        if (isOutOfRangePage(nextPage)) {
+          const resetPage = nextPage.pageCount;
+
+          setSnapshot({
+            errorMessage: null,
+            page: null,
+            requestKey: buildWorkstreamRequestKey(projectId, filter, resetPage),
+            status: "loading"
+          });
+          startTransition(() => {
+            setPaginationState({
+              page: resetPage,
+              selectionKey: buildWorkstreamSelectionKey(projectId, filter)
+            });
+          });
           return;
         }
 
@@ -391,6 +418,6 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         });
       });
     },
-    title: "Active and queued project work"
+    title: workstreamsTitle
   };
 }
