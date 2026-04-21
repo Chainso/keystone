@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { StatusPill } from "../../../shared/layout/status-pill";
@@ -6,6 +7,32 @@ import type {
   TaskDetailViewModel,
   TaskDependencyViewModel
 } from "../use-execution-view-model";
+import { useRunManagementApi } from "../../runs/run-detail-context";
+
+type ArtifactPreviewState =
+  | { status: "idle" | "loading" }
+  | { content: string; status: "ready" }
+  | { message: string; status: "error" | "unsupported" };
+
+function isTextArtifactContentType(contentType: string) {
+  const normalized = contentType.toLowerCase();
+
+  return (
+    normalized.startsWith("text/") ||
+    normalized.includes("json") ||
+    normalized.includes("xml") ||
+    normalized.includes("yaml") ||
+    normalized.includes("javascript")
+  );
+}
+
+function getArtifactPreviewErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unable to load artifact content.";
+}
 
 function TaskDependencyList({
   label,
@@ -34,6 +61,50 @@ function TaskDependencyList({
 }
 
 function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel; open: boolean }) {
+  const api = useRunManagementApi();
+  const previewSupported = isTextArtifactContentType(artifact.contentType);
+  const requestIdRef = useRef(0);
+  const [preview, setPreview] = useState<ArtifactPreviewState>(() =>
+    previewSupported
+      ? { status: "idle" }
+      : {
+          message: "Artifact preview is currently limited to text content in the live run view.",
+          status: "unsupported"
+        }
+  );
+
+  async function loadPreview() {
+    if (!previewSupported) {
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setPreview({ status: "loading" });
+
+    try {
+      const content = await api.getArtifactContent(artifact.contentUrl);
+
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      setPreview({
+        content,
+        status: "ready"
+      });
+    } catch (error) {
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      setPreview({
+        message: getArtifactPreviewErrorMessage(error),
+        status: "error"
+      });
+    }
+  }
+
   return (
     <details className="review-file-card" open={open}>
       <summary className="review-file-summary">
@@ -44,9 +115,44 @@ function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel;
         <p className="document-line">Content type: {artifact.contentType}</p>
         <p className="document-line">Size: {artifact.sizeLabel}</p>
         {artifact.sha256 ? <p className="document-line">SHA-256: {artifact.sha256}</p> : null}
-        <p className="document-line">
-          <a href={artifact.contentUrl}>Open artifact content</a>
+        <p className="document-card-summary">
+          Artifact content in this view loads through the authenticated run API. Direct browser
+          links are not available here yet.
         </p>
+        {preview.status === "unsupported" ? (
+          <p className="document-card-summary">{preview.message}</p>
+        ) : preview.status === "ready" ? (
+          <>
+            <p className="document-card-summary">Loaded through the run API seam.</p>
+            <pre className="document-copy">
+              <code>{preview.content}</code>
+            </pre>
+          </>
+        ) : preview.status === "error" ? (
+          <>
+            <p className="document-card-summary">{preview.message}</p>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                void loadPreview();
+              }}
+            >
+              Retry preview
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={preview.status === "loading"}
+            onClick={() => {
+              void loadPreview();
+            }}
+          >
+            {preview.status === "loading" ? "Loading preview..." : "Load content preview"}
+          </button>
+        )}
       </div>
     </details>
   );

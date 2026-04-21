@@ -220,6 +220,10 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
   },
   "run-104": {
     ...createRunFixture("run-104", {
+      artifactContents: {
+        "/v1/artifacts/artifact-task-032-diff/content":
+          "--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n+ keep artifact access inside the authenticated run API seam\n"
+      },
       run: {
         compiledFrom: {
           architectureRevisionId: "run-104-architecture-v1",
@@ -359,6 +363,257 @@ function createRunApi(overrides: Partial<RunManagementApi> = {}): RunManagementA
   };
 }
 
+function createJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json"
+    }
+  });
+}
+
+function createTextResponse(body: string, contentType = "text/plain; charset=utf-8") {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": contentType
+    }
+  });
+}
+
+function getRequestHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  return request instanceof Request ? request.headers : new Headers(init?.headers);
+}
+
+function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  const headers = getRequestHeaders(request, init);
+
+  expect(headers.get("authorization")).toBe("Bearer change-me-local-token");
+  expect(headers.get("x-keystone-tenant-id")).toBe("tenant-dev-local");
+}
+
+function createErrorResponse(input: { code: string; message: string; status: number }) {
+  return createJsonResponse(
+    {
+      error: {
+        code: input.code,
+        message: input.message,
+        details: null
+      }
+    },
+    input.status
+  );
+}
+
+function createBrowserRunFetch(
+  overrides: Record<string, (() => Promise<Response> | Response) | undefined> = {}
+) {
+  const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof request === "string" ? request : request.toString();
+    const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+    expect(method).toBe("GET");
+    expectDevAuthHeaders(request, init);
+
+    const override = overrides[url];
+
+    if (override) {
+      return await override();
+    }
+
+    const runMatch = url.match(/^\/v1\/runs\/([^/]+)$/);
+
+    if (runMatch) {
+      const runId = decodeURIComponent(runMatch[1]!);
+      const run = runFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: run.run,
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "detail" as const,
+              resourceType: "run" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    const runDocumentsMatch = url.match(/^\/v1\/runs\/([^/]+)\/documents$/);
+
+    if (runDocumentsMatch) {
+      const runId = decodeURIComponent(runDocumentsMatch[1]!);
+      const run = runFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: {
+              items: run.documents ?? [],
+              total: run.documents?.length ?? 0
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "collection" as const,
+              resourceType: "document" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    const runDocumentRevisionMatch = url.match(
+      /^\/v1\/runs\/([^/]+)\/documents\/([^/]+)\/revisions\/([^/]+)$/
+    );
+
+    if (runDocumentRevisionMatch) {
+      const runId = decodeURIComponent(runDocumentRevisionMatch[1]!);
+      const documentId = decodeURIComponent(runDocumentRevisionMatch[2]!);
+      const documentRevisionId = decodeURIComponent(runDocumentRevisionMatch[3]!);
+      const run = runFixtures[runId];
+      const revision = run?.revisions?.find(
+        (candidate) =>
+          candidate.revision.documentRevisionId === documentRevisionId &&
+          run.documents?.some((document) => document.documentId === documentId)
+      );
+
+      return revision
+        ? createJsonResponse({
+            data: revision.revision,
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "detail" as const,
+              resourceType: "document_revision" as const
+            }
+          })
+        : createErrorResponse({
+            code: "document_revision_not_found",
+            message: `Document revision ${documentRevisionId} was not found for run ${runId}.`,
+            status: 404
+          });
+    }
+
+    const runWorkflowMatch = url.match(/^\/v1\/runs\/([^/]+)\/workflow$/);
+
+    if (runWorkflowMatch) {
+      const runId = decodeURIComponent(runWorkflowMatch[1]!);
+      const run = runFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: run.workflow ?? {
+              edges: [],
+              nodes: [],
+              summary: {
+                activeTasks: 0,
+                cancelledTasks: 0,
+                completedTasks: 0,
+                failedTasks: 0,
+                pendingTasks: 0,
+                readyTasks: 0,
+                totalTasks: 0
+              }
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "detail" as const,
+              resourceType: "workflow_graph" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    const runTasksMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks$/);
+
+    if (runTasksMatch) {
+      const runId = decodeURIComponent(runTasksMatch[1]!);
+      const run = runFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: {
+              items: run.tasks ?? [],
+              total: run.tasks?.length ?? 0
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "collection" as const,
+              resourceType: "task" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    const runTaskArtifactsMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks\/([^/]+)\/artifacts$/);
+
+    if (runTaskArtifactsMatch) {
+      const runId = decodeURIComponent(runTaskArtifactsMatch[1]!);
+      const taskId = decodeURIComponent(runTaskArtifactsMatch[2]!);
+      const run = runFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: {
+              items: run.taskArtifacts?.[taskId] ?? [],
+              total: run.taskArtifacts?.[taskId]?.length ?? 0
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "collection" as const,
+              resourceType: "artifact" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    for (const run of Object.values(runFixtures)) {
+      const revisionRecord = run.revisions?.find(
+        (candidate) => candidate.revision.contentUrl === url
+      );
+
+      if (revisionRecord) {
+        return createTextResponse(revisionRecord.content);
+      }
+
+      const artifactContent = run.artifactContents?.[url];
+
+      if (artifactContent) {
+        const artifact = Object.values(run.taskArtifacts ?? {})
+          .flat()
+          .find((candidate) => candidate.contentUrl === url);
+
+        return createTextResponse(artifactContent, artifact?.contentType);
+      }
+    }
+
+    throw new Error(`Unexpected fetch request: ${method} ${url}`);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return {
+    fetchMock
+  };
+}
+
 describe("Run routes", () => {
   it("redirects /runs/:runId to execution when compiled workflow data exists", async () => {
     const { router } = renderRunRoute("/runs/run-104");
@@ -375,7 +630,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
   });
 
-  it("redirects a run without compile provenance to its most advanced current document", async () => {
+  it("redirects a run without compile provenance to the first incomplete planning step", async () => {
     const { router: planRouter } = renderRunRoute("/runs/run-102");
 
     expect(await screen.findByRole("heading", { name: "run-102" })).toBeInTheDocument();
@@ -387,14 +642,14 @@ describe("Run routes", () => {
 
     expect(await screen.findByRole("heading", { name: "run-103" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(architectureRouter.state.location.pathname).toBe("/runs/run-103/architecture");
+      expect(architectureRouter.state.location.pathname).toBe("/runs/run-103/execution-plan");
     });
 
     const { router: specificationRouter } = renderRunRoute("/runs/run-101");
 
     expect(await screen.findByRole("heading", { name: "run-101" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(specificationRouter.state.location.pathname).toBe("/runs/run-101/specification");
+      expect(specificationRouter.state.location.pathname).toBe("/runs/run-101/architecture");
     });
   });
 
@@ -413,6 +668,35 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
   });
 
+  it("resets the run-detail provider immediately when navigation switches runs", async () => {
+    const deferredRun = createDeferred<StaticRunDetailRecord["run"]>();
+    const runApi = createRunApi({
+      getRun: vi.fn(async (runId) => {
+        if (runId === "run-104") {
+          return deferredRun.promise;
+        }
+
+        return staticRunApi.getRun(runId);
+      })
+    });
+    const { router } = renderRunRoute("/runs/run-101/specification", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-101" })).toBeInTheDocument();
+
+    void router.navigate("/runs/run-104/specification");
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+    });
+
+    expect(screen.getByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "run-101" })).not.toBeInTheDocument();
+
+    deferredRun.resolve(runFixtures["run-104"]!.run);
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+  });
+
   it("renders truthful planning document content from the live run API", async () => {
     renderRunRoute("/runs/run-104/specification");
 
@@ -425,6 +709,25 @@ describe("Run routes", () => {
     );
     expect(screen.getByText("- Replace scaffold run detail with live data.")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Message composer" })).not.toBeInTheDocument();
+  });
+
+  it("renders live architecture and execution-plan pages through the browser run provider", async () => {
+    const { fetchMock } = createBrowserRunFetch();
+
+    renderRoute("/runs/run-104/architecture");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
+    expect(screen.getByText("- Keep route files thin.")).toBeInTheDocument();
+
+    cleanup();
+
+    renderRoute("/runs/run-104/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Execution Plan" })).toBeInTheDocument();
+    expect(screen.getByText("- Cut over the live provider seam.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("renders a read-only empty state when a planning document has no current revision", async () => {
@@ -456,6 +759,31 @@ describe("Run routes", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
+  it("surfaces browser-backed run not-found states without the static seam", async () => {
+    createBrowserRunFetch();
+
+    renderRoute("/runs/run-404/specification");
+
+    expect(await screen.findByRole("heading", { name: "Run not found" })).toBeInTheDocument();
+    expect(screen.getByText("Run run-404 was not found.")).toBeInTheDocument();
+  });
+
+  it("surfaces browser-backed run load failures without falling through to stale content", async () => {
+    createBrowserRunFetch({
+      "/v1/runs/run-104": () =>
+        createErrorResponse({
+          code: "request_failed",
+          message: "Run detail load exploded.",
+          status: 503
+        })
+    });
+
+    renderRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expect(screen.getByText("Run detail load exploded.")).toBeInTheDocument();
+  });
+
   it("renders the execution DAG shell from live workflow data", async () => {
     renderRunRoute("/runs/run-104/execution");
 
@@ -484,9 +812,16 @@ describe("Run routes", () => {
     expect(
       screen.getByText("Execution becomes available after this run has been compiled.")
     ).toBeInTheDocument();
+    const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
+    const executionStep = within(phaseNavigation)
+      .getByText("Execution")
+      .closest('[aria-disabled="true"]');
+
+    expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
+    expect(executionStep).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("renders a live task-detail shell with artifact metadata instead of scaffold diffs", async () => {
+  it("renders task artifacts and loads preview content through the authenticated run API seam", async () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
@@ -497,10 +832,16 @@ describe("Run routes", () => {
     expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
     expect(await screen.findByText("artifact-task-032-diff")).toBeInTheDocument();
     expect(screen.getByText("Content type: text/plain; charset=utf-8")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open artifact content" })).toHaveAttribute(
-      "href",
-      "/v1/artifacts/artifact-task-032-diff/content"
-    );
+    expect(screen.getByText(/Artifact content in this view loads through the authenticated run API/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open artifact content" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load content preview" }));
+
+    expect(
+      await screen.findByText((content) =>
+        content.includes("keep artifact access inside the authenticated run API seam")
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
     expect(screen.queryByText("+ keep task detail scoped to the selected run")).not.toBeInTheDocument();
   });

@@ -26,7 +26,7 @@ export function RunDetailLayout() {
   const { runId } = useRequiredRunParams();
 
   return (
-    <RunDetailProvider runId={runId}>
+    <RunDetailProvider key={runId} runId={runId}>
       <RunDetailLayoutContent />
     </RunDetailProvider>
   );

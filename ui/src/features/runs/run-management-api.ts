@@ -24,6 +24,7 @@ export interface StaticRunDocumentRevisionRecord {
 }
 
 export interface StaticRunDetailRecord {
+  artifactContents?: Record<string, string>;
   documents?: DocumentResource[];
   revisions?: StaticRunDocumentRevisionRecord[];
   run: RunResource;
@@ -33,6 +34,7 @@ export interface StaticRunDetailRecord {
 }
 
 export interface RunManagementApi {
+  getArtifactContent: (contentUrl: string) => Promise<string>;
   getDocumentContent: (contentUrl: string) => Promise<string>;
   getRun: (runId: string) => Promise<RunResource>;
   getRunDocumentRevision: (
@@ -137,24 +139,28 @@ async function buildApiError(
 export function createBrowserRunManagementApi(
   fetchImplementation: typeof fetch = currentFetchImplementation
 ): RunManagementApi {
+  async function getProtectedTextContent(contentUrl: string, fallbackMessage: string) {
+    const response = await fetchImplementation(contentUrl, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: buildProtectedBrowserHeaders({
+        accept: "text/plain, text/markdown, application/octet-stream;q=0.9"
+      })
+    });
+
+    if (!response.ok) {
+      throw await buildApiError(response, fallbackMessage);
+    }
+
+    return response.text();
+  }
+
   return {
+    async getArtifactContent(contentUrl) {
+      return getProtectedTextContent(contentUrl, "Unable to load artifact content.");
+    },
     async getDocumentContent(contentUrl) {
-      const response = await fetchImplementation(contentUrl, {
-        method: "GET",
-        credentials: "same-origin",
-        headers: buildProtectedBrowserHeaders({
-          accept: "text/plain, text/markdown, application/octet-stream;q=0.9"
-        })
-      });
-
-      if (!response.ok) {
-        throw await buildApiError(
-          response,
-          `Unable to load document content (${response.status}).`
-        );
-      }
-
-      return response.text();
+      return getProtectedTextContent(contentUrl, "Unable to load document content.");
     },
     async getRun(runId) {
       const response = await fetchImplementation(`/v1/runs/${encodeURIComponent(runId)}`, {
@@ -304,19 +310,32 @@ export function createStaticRunManagementApi(
     return run;
   }
 
-  return {
-    async getDocumentContent(contentUrl) {
-      for (const run of runRecords.values()) {
-        const revisionRecord = run.revisions?.find(
-          (candidate) => candidate.revision.contentUrl === contentUrl
-        );
+  function getStaticContent(contentUrl: string) {
+    for (const run of runRecords.values()) {
+      const revisionRecord = run.revisions?.find(
+        (candidate) => candidate.revision.contentUrl === contentUrl
+      );
 
-        if (revisionRecord) {
-          return revisionRecord.content;
-        }
+      if (revisionRecord) {
+        return revisionRecord.content;
       }
 
-      throw new Error(`Document content ${contentUrl} was not found.`);
+      const artifactContent = run.artifactContents?.[contentUrl];
+
+      if (artifactContent) {
+        return artifactContent;
+      }
+    }
+
+    throw new Error(`Artifact content ${contentUrl} was not found.`);
+  }
+
+  return {
+    async getArtifactContent(contentUrl) {
+      return getStaticContent(contentUrl);
+    },
+    async getDocumentContent(contentUrl) {
+      return getStaticContent(contentUrl);
     },
     async getRun(runId) {
       return getStaticRunRecord(runId).run;

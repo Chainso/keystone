@@ -14,6 +14,11 @@ type ConversationLocator = {
   agentClass: string;
   agentName: string;
 };
+const runPlanningPhaseOrder: RunPlanningPhaseId[] = [
+  "specification",
+  "architecture",
+  "execution-plan"
+];
 
 export interface RunHeaderViewModel {
   displayId: string;
@@ -272,15 +277,12 @@ export function useRunDefaultPhasePath() {
     return buildRunPhasePath(run.runId, "execution");
   }
 
-  if (state.planningDocuments["execution-plan"].document?.currentRevisionId) {
-    return buildRunPhasePath(run.runId, "execution-plan");
-  }
+  const firstIncompletePhase =
+    runPlanningPhaseOrder.find(
+      (phaseId) => !state.planningDocuments[phaseId].document?.currentRevisionId
+    ) ?? "execution-plan";
 
-  if (state.planningDocuments.architecture.document?.currentRevisionId) {
-    return buildRunPhasePath(run.runId, "architecture");
-  }
-
-  return buildRunPhasePath(run.runId, "specification");
+  return buildRunPhasePath(run.runId, firstIncompletePhase);
 }
 
 export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPlanningPhaseViewModel {
