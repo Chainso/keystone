@@ -1,13 +1,363 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
+import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
 import { renderRoute } from "./render-route";
+
+const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
+const liveProject = {
+  projectId: "project-keystone-cloudflare",
+  projectKey: "keystone-cloudflare",
+  displayName: "Keystone Cloudflare",
+  description: "Internal operator workspace for the Keystone Cloudflare project."
+};
+
+interface LiveRunFixture {
+  compiledFrom: {
+    specificationRevisionId: string;
+    architectureRevisionId: string;
+    executionPlanRevisionId: string;
+    compiledAt: string;
+  } | null;
+  endedAt: string | null;
+  executionEngine: "scripted" | "think_mock" | "think_live";
+  projectId: string;
+  runId: string;
+  startedAt: string | null;
+  status: string;
+  workflowInstanceId: string;
+}
+
+interface LiveTaskFixture {
+  conversation: {
+    agentClass: string;
+    agentName: string;
+  } | null;
+  dependsOn: string[];
+  description: string;
+  endedAt: string | null;
+  logicalTaskId: string;
+  name: string;
+  startedAt: string | null;
+  status: string;
+  taskId: string;
+  updatedAt: string;
+}
+
+interface LiveArtifactFixture {
+  artifactId: string;
+  contentType: string;
+  contentUrl: string;
+  kind: string;
+  sha256: string | null;
+  sizeBytes: number | null;
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
+
+function createJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json"
+    }
+  });
+}
+
+function getRequestHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  return request instanceof Request ? request.headers : new Headers(init?.headers);
+}
+
+function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
+  const headers = getRequestHeaders(request, init);
+
+  expect(headers.get("authorization")).toBe("Bearer change-me-local-token");
+  expect(headers.get("x-keystone-tenant-id")).toBe("tenant-dev-local");
+}
+
+function buildProjectsResponse() {
+  return {
+    data: {
+      items: [
+        serializeProjectListItem({
+          projectId: liveProject.projectId,
+          projectKey: liveProject.projectKey,
+          displayName: liveProject.displayName,
+          description: liveProject.description,
+          createdAt: defaultTimestamp,
+          updatedAt: defaultTimestamp
+        })
+      ],
+      total: 1
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "project" as const
+    }
+  };
+}
+
+function createLiveRunFixture(overrides: Partial<LiveRunFixture> = {}): LiveRunFixture {
+  return {
+    compiledFrom: null,
+    endedAt: null,
+    executionEngine: "scripted",
+    projectId: liveProject.projectId,
+    runId: "run-live-201",
+    startedAt: "2026-04-20T12:00:00.000Z",
+    status: "running",
+    workflowInstanceId: "wf-live-201",
+    ...overrides
+  };
+}
+
+function createLiveTaskFixture(overrides: Partial<LiveTaskFixture> = {}): LiveTaskFixture {
+  return {
+    conversation: null,
+    dependsOn: [],
+    description: "Live task detail for execution cutover tests.",
+    endedAt: null,
+    logicalTaskId: "TASK-LIVE-001",
+    name: "Compile execution context",
+    startedAt: null,
+    status: "ready",
+    taskId: "task-live-001",
+    updatedAt: "2026-04-20T12:00:00.000Z",
+    ...overrides
+  };
+}
+
+function createLiveArtifactFixture(overrides: Partial<LiveArtifactFixture> = {}): LiveArtifactFixture {
+  return {
+    artifactId: "artifact-task-log-1",
+    contentType: "text/plain",
+    contentUrl: "/v1/artifacts/artifact-task-log-1/content",
+    kind: "task_log",
+    sha256: "sha256-task-log-1",
+    sizeBytes: 128,
+    ...overrides
+  };
+}
+
+function buildRunResource(run: LiveRunFixture) {
+  return {
+    resourceType: "run" as const,
+    scaffold: {
+      implementation: "reused" as const,
+      note: null
+    },
+    runId: run.runId,
+    projectId: run.projectId,
+    workflowInstanceId: run.workflowInstanceId,
+    executionEngine: run.executionEngine,
+    status: run.status,
+    compiledFrom: run.compiledFrom,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt
+  };
+}
+
+function buildTaskResource(runId: string, task: LiveTaskFixture) {
+  return {
+    resourceType: "task" as const,
+    scaffold: {
+      implementation: "reused" as const,
+      note: null
+    },
+    runId,
+    taskId: task.taskId,
+    logicalTaskId: task.logicalTaskId,
+    name: task.name,
+    description: task.description,
+    status: task.status,
+    dependsOn: task.dependsOn,
+    conversation: task.conversation,
+    updatedAt: task.updatedAt,
+    startedAt: task.startedAt,
+    endedAt: task.endedAt
+  };
+}
+
+function buildWorkflowResource(runId: string, tasks: LiveTaskFixture[]) {
+  return {
+    resourceType: "workflow_graph" as const,
+    scaffold: {
+      implementation: "projected" as const,
+      note: "Projected from run_tasks and run_task_dependencies."
+    },
+    nodes: tasks.map((task) => ({
+      taskId: task.taskId,
+      name: task.name,
+      status: task.status,
+      dependsOn: task.dependsOn
+    })),
+    edges: tasks.flatMap((task) =>
+      task.dependsOn.map((dependencyId) => ({
+        fromTaskId: dependencyId,
+        toTaskId: task.taskId
+      }))
+    ),
+    summary: {
+      totalTasks: tasks.length,
+      activeTasks: tasks.filter((task) => task.status === "active").length,
+      pendingTasks: tasks.filter((task) => task.status === "pending").length,
+      completedTasks: tasks.filter((task) => task.status === "completed").length,
+      readyTasks: tasks.filter((task) => task.status === "ready").length,
+      failedTasks: tasks.filter((task) => task.status === "failed").length,
+      cancelledTasks: tasks.filter((task) => task.status === "cancelled").length
+    }
+  };
+}
+
+function buildArtifactResource(artifact: LiveArtifactFixture) {
+  return {
+    resourceType: "artifact" as const,
+    scaffold: {
+      implementation: "reused" as const,
+      note: null
+    },
+    artifactId: artifact.artifactId,
+    kind: artifact.kind,
+    contentType: artifact.contentType,
+    sizeBytes: artifact.sizeBytes,
+    sha256: artifact.sha256,
+    contentUrl: artifact.contentUrl
+  };
+}
+
+function stubLiveRunRouteFetch(input: {
+  artifactsByTaskId?: Record<string, LiveArtifactFixture[]>;
+  run?: LiveRunFixture;
+  taskDetailsByTaskId?: Record<string, LiveTaskFixture>;
+  tasks: LiveTaskFixture[];
+}) {
+  const run = input.run ?? createLiveRunFixture();
+  const taskDetailsByTaskId = input.taskDetailsByTaskId ?? {};
+  const artifactsByTaskId = input.artifactsByTaskId ?? {};
+  const taskCollection = input.tasks.map((task) => buildTaskResource(run.runId, task));
+  const workflow = buildWorkflowResource(run.runId, input.tasks);
+
+  const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof request === "string" ? request : request.toString();
+    const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+    expectDevAuthHeaders(request, init);
+
+    if (url === "/v1/projects" && method === "GET") {
+      return createJsonResponse(buildProjectsResponse());
+    }
+
+    if (url === `/v1/runs/${run.runId}` && method === "GET") {
+      return createJsonResponse({
+        data: buildRunResource(run),
+        meta: {
+          apiVersion: "v1" as const,
+          envelope: "detail" as const,
+          resourceType: "run" as const
+        }
+      });
+    }
+
+    if (url === `/v1/runs/${run.runId}/workflow` && method === "GET") {
+      return createJsonResponse({
+        data: workflow,
+        meta: {
+          apiVersion: "v1" as const,
+          envelope: "detail" as const,
+          resourceType: "workflow_graph" as const
+        }
+      });
+    }
+
+    if (url === `/v1/runs/${run.runId}/tasks` && method === "GET") {
+      return createJsonResponse({
+        data: {
+          items: taskCollection,
+          total: taskCollection.length
+        },
+        meta: {
+          apiVersion: "v1" as const,
+          envelope: "collection" as const,
+          resourceType: "task" as const
+        }
+      });
+    }
+
+    const taskArtifactMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks\/([^/]+)\/artifacts$/);
+
+    if (taskArtifactMatch && method === "GET") {
+      const requestedRunId = decodeURIComponent(taskArtifactMatch[1]!);
+      const taskId = decodeURIComponent(taskArtifactMatch[2]!);
+
+      if (requestedRunId !== run.runId) {
+        throw new Error(`Unexpected fetch request: ${method} ${url}`);
+      }
+
+      return createJsonResponse({
+        data: {
+          items: (artifactsByTaskId[taskId] ?? []).map(buildArtifactResource),
+          total: (artifactsByTaskId[taskId] ?? []).length
+        },
+        meta: {
+          apiVersion: "v1" as const,
+          envelope: "collection" as const,
+          resourceType: "artifact" as const
+        }
+      });
+    }
+
+    const taskMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks\/([^/]+)$/);
+
+    if (taskMatch && method === "GET") {
+      const requestedRunId = decodeURIComponent(taskMatch[1]!);
+      const taskId = decodeURIComponent(taskMatch[2]!);
+
+      if (requestedRunId !== run.runId) {
+        throw new Error(`Unexpected fetch request: ${method} ${url}`);
+      }
+
+      const task =
+        taskDetailsByTaskId[taskId] ?? input.tasks.find((candidate) => candidate.taskId === taskId);
+
+      if (!task) {
+        return createJsonResponse(
+          {
+            error: {
+              code: "task_not_found",
+              message: `Task ${taskId} was not found for run ${run.runId}.`
+            }
+          },
+          404
+        );
+      }
+
+      return createJsonResponse({
+        data: buildTaskResource(run.runId, task),
+        meta: {
+          apiVersion: "v1" as const,
+          envelope: "detail" as const,
+          resourceType: "task" as const
+        }
+      });
+    }
+
+    throw new Error(`Unexpected fetch request: ${method} ${url}`);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return fetchMock;
+}
 
 describe("Run routes", () => {
   it("redirects /runs/:runId to the derived default phase", async () => {
@@ -235,5 +585,164 @@ describe("Run routes", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("cuts live runs over to execution and disables planning phases", async () => {
+    const liveRun = createLiveRunFixture();
+    const liveTasks = [
+      createLiveTaskFixture({
+        logicalTaskId: "TASK-LIVE-001",
+        name: "Compile execution context",
+        status: "completed",
+        taskId: "task-live-001"
+      }),
+      createLiveTaskFixture({
+        conversation: {
+          agentClass: "task_session",
+          agentName: "task-session-live-002"
+        },
+        dependsOn: ["task-live-001"],
+        logicalTaskId: "TASK-LIVE-002",
+        name: "Run execution shell",
+        startedAt: "2026-04-20T12:10:00.000Z",
+        status: "active",
+        taskId: "task-live-002",
+        updatedAt: "2026-04-20T12:14:00.000Z"
+      }),
+      createLiveTaskFixture({
+        dependsOn: ["task-live-002"],
+        logicalTaskId: "task-live-003",
+        name: "Task detail drill-in",
+        status: "blocked",
+        taskId: "task-live-003",
+        updatedAt: "2026-04-20T12:16:00.000Z"
+      }),
+      createLiveTaskFixture({
+        dependsOn: ["task-live-003"],
+        logicalTaskId: "TASK-LIVE-004",
+        name: "Workstreams follow-on",
+        status: "pending",
+        taskId: "task-live-004",
+        updatedAt: "2026-04-20T12:18:00.000Z"
+      })
+    ];
+
+    stubLiveRunRouteFetch({
+      run: liveRun,
+      tasks: liveTasks
+    });
+
+    const { router } = renderRoute(`/runs/${liveRun.runId}`, { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: liveRun.runId })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(`/runs/${liveRun.runId}/execution`);
+    });
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(screen.queryByText("Project workspace navigation")).not.toBeInTheDocument();
+
+    const navigation = screen.getByRole("navigation", { name: "Run phases" });
+
+    expect(within(navigation).getByRole("link", { name: "Execution" })).toHaveAttribute(
+      "href",
+      `/runs/${liveRun.runId}/execution`
+    );
+    expect(within(navigation).getByText("Specification").closest(".run-step-link")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(within(navigation).getByText("Architecture").closest(".run-step-link")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(within(navigation).getByText("Execution Plan").closest(".run-step-link")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    expect(await screen.findByRole("link", { name: /Run execution shell/i })).toHaveAttribute(
+      "href",
+      `/runs/${liveRun.runId}/execution/tasks/task-live-002`
+    );
+    expect(await screen.findByRole("link", { name: /Task detail drill-in/i })).toHaveAttribute(
+      "href",
+      `/runs/${liveRun.runId}/execution/tasks/task-live-003`
+    );
+  });
+
+  it("renders live task detail with dependency resolution and raw artifact links", async () => {
+    const liveRun = createLiveRunFixture();
+    const liveTasks = [
+      createLiveTaskFixture({
+        logicalTaskId: "TASK-LIVE-001",
+        name: "Compile execution context",
+        status: "completed",
+        taskId: "task-live-001"
+      }),
+      createLiveTaskFixture({
+        conversation: {
+          agentClass: "task_session",
+          agentName: "task-session-live-002"
+        },
+        dependsOn: ["task-live-001"],
+        logicalTaskId: "TASK-LIVE-002",
+        name: "Run execution shell",
+        startedAt: "2026-04-20T12:10:00.000Z",
+        status: "active",
+        taskId: "task-live-002",
+        updatedAt: "2026-04-20T12:14:00.000Z"
+      }),
+      createLiveTaskFixture({
+        dependsOn: ["task-live-002"],
+        logicalTaskId: "task-live-003",
+        name: "Task detail drill-in",
+        status: "blocked",
+        taskId: "task-live-003",
+        updatedAt: "2026-04-20T12:16:00.000Z"
+      }),
+      createLiveTaskFixture({
+        dependsOn: ["task-live-003"],
+        logicalTaskId: "TASK-LIVE-004",
+        name: "Workstreams follow-on",
+        status: "pending",
+        taskId: "task-live-004",
+        updatedAt: "2026-04-20T12:18:00.000Z"
+      })
+    ];
+
+    stubLiveRunRouteFetch({
+      artifactsByTaskId: {
+        "task-live-003": [createLiveArtifactFixture()]
+      },
+      run: liveRun,
+      tasks: liveTasks
+    });
+
+    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-003`, {
+      useBrowserProjectApi: true
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: `${liveRun.runId} / task-live-003` })
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Conversation status")).toHaveTextContent(
+      "No conversation is attached to this task yet."
+    );
+    expect(await screen.findByText("Execution artifacts")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("TASK-LIVE-002")).toBeInTheDocument();
+    expect(screen.getByText("TASK-LIVE-004")).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-log-1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to DAG" })).toHaveAttribute(
+      "href",
+      `/runs/${liveRun.runId}/execution`
+    );
+    expect(screen.getByRole("link", { name: "Open raw artifact" })).toHaveAttribute(
+      "href",
+      "/v1/artifacts/artifact-task-log-1/content"
+    );
   });
 });

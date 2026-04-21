@@ -6,5 +6,5 @@ export function TaskDetailRoute() {
   const { runId, taskId } = useRequiredRunParams();
   const model = useTaskDetailViewModel(runId, taskId);
 
-  return <TaskDetailWorkspace {...model} />;
+  return <TaskDetailWorkspace model={model} />;
 }

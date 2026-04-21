@@ -6,5 +6,5 @@ export function ExecutionRoute() {
   const { runId } = useRequiredRunParams();
   const model = useRunExecutionViewModel(runId);
 
-  return <ExecutionWorkspace {...model} />;
+  return <ExecutionWorkspace model={model} />;
 }

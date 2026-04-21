@@ -26,7 +26,7 @@ The current UI is no longer scaffold-only for project management:
 The current live/scaffold split is still intentional:
 
 - `Documentation` and `Workstreams` remain scaffold-backed and show explicit compatibility states for non-scaffold live projects
-- live non-scaffold runs do not yet have a truthful run-detail cutover, so the UI avoids broken deep links for those rows
+- live non-scaffold runs now have a truthful `Execution` and task drill-in cutover under `/runs/:runId/execution`, while planning phases still stay scaffold-only
 - project documents, release/evidence/integration content, and broader destination live-data cutovers are still out of scope for the current UI slice
 
 ## Authoritative Persistence

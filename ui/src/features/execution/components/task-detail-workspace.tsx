@@ -7,6 +7,10 @@ import type {
   TaskDetailViewModel
 } from "../use-execution-view-model";
 
+interface TaskDetailWorkspaceProps {
+  model: TaskDetailViewModel;
+}
+
 function TaskDependencyList({
   label,
   tasks
@@ -37,30 +41,27 @@ function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel;
   return (
     <details className="review-file-card" open={open}>
       <summary className="review-file-summary">
-        <span>{artifact.path}</span>
+        <span>{artifact.title}</span>
         <span className="review-file-note">{artifact.summary}</span>
       </summary>
-      <pre className="review-file-diff">{artifact.diff.join("\n")}</pre>
+      {artifact.details.length > 0 ? (
+        <pre className="review-file-diff">{artifact.details.join("\n")}</pre>
+      ) : null}
+      {artifact.href ? (
+        <p className="document-card-summary">
+          <a href={artifact.href}>Open raw artifact</a>
+        </p>
+      ) : null}
     </details>
   );
 }
 
-export function TaskDetailWorkspace({
-  runDisplayId,
-  taskDisplayId,
-  title,
-  status,
-  backPath,
-  conversationLocator,
-  dependsOn,
-  blockedBy,
-  artifacts
-}: TaskDetailViewModel) {
+export function TaskDetailWorkspace({ model }: TaskDetailWorkspaceProps) {
   return (
     <div className="page-stage">
       <header className="run-detail-header">
         <h1 className="run-detail-title">
-          {runDisplayId} / {taskDisplayId}
+          {model.runDisplayId} / {model.taskDisplayId}
         </h1>
       </header>
 
@@ -70,31 +71,51 @@ export function TaskDetailWorkspace({
             <div>
               <h2 className="workspace-panel-title">Task conversation</h2>
             </div>
-            <StatusPill label={status} />
+            <StatusPill label={model.status} />
           </header>
 
-          <p className="task-detail-title">{title}</p>
+          {model.compatibilityState ? (
+            <>
+              <section className="empty-state-card">
+                <h3 className="document-card-title">{model.compatibilityState.heading}</h3>
+                <p className="document-card-summary">{model.compatibilityState.message}</p>
+                {model.compatibilityState.actionLabel ? (
+                  <button type="button" className="secondary-button" onClick={model.retry}>
+                    {model.compatibilityState.actionLabel}
+                  </button>
+                ) : null}
+              </section>
 
-          <section className="document-card" aria-label="Conversation status">
-            <p className="review-sidebar-label">Conversation status</p>
-            {conversationLocator ? (
-              <>
-                <p className="message-card-speaker">Conversation attached to this task.</p>
-                <p className="document-card-summary">
-                  Task updates will resolve through the attached conversation when chat transport is added.
-                </p>
-              </>
-            ) : (
-              <p className="document-card-summary">No conversation is attached to this task yet.</p>
-            )}
-          </section>
+              <Link to={model.backPath} className="back-link">
+                Back to DAG
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="task-detail-title">{model.title}</p>
 
-          <TaskDependencyList label="Depends on" tasks={dependsOn} />
-          <TaskDependencyList label="Blocked by" tasks={blockedBy} />
+              <section className="document-card" aria-label="Conversation status">
+                <p className="review-sidebar-label">Conversation status</p>
+                {model.conversationLocator ? (
+                  <>
+                    <p className="message-card-speaker">Conversation attached to this task.</p>
+                    <p className="document-card-summary">
+                      Task updates will resolve through the attached conversation when chat transport is added.
+                    </p>
+                  </>
+                ) : (
+                  <p className="document-card-summary">No conversation is attached to this task yet.</p>
+                )}
+              </section>
 
-          <Link to={backPath} className="back-link">
-            Back to DAG
-          </Link>
+              <TaskDependencyList label="Depends on" tasks={model.dependsOn} />
+              <TaskDependencyList label="Blocked by" tasks={model.blockedBy} />
+
+              <Link to={model.backPath} className="back-link">
+                Back to DAG
+              </Link>
+            </>
+          )}
         </section>
 
         <section className="workspace-panel workspace-panel-review">
@@ -104,13 +125,14 @@ export function TaskDetailWorkspace({
             </div>
           </header>
 
-          <p className="review-sidebar-label">Changed files</p>
+          <p className="review-sidebar-label">{model.artifactSectionLabel}</p>
+          {model.artifactNotice ? <p className="document-card-summary">{model.artifactNotice}</p> : null}
 
-          {artifacts.length === 0 ? (
-            <p className="document-card-summary">No artifacts recorded for this task yet.</p>
+          {model.artifacts.length === 0 ? (
+            <p className="document-card-summary">{model.artifactEmptyMessage}</p>
           ) : (
             <div className="review-file-stack">
-              {artifacts.map((artifact, index) => (
+              {model.artifacts.map((artifact, index) => (
                 <TaskArtifactCard key={artifact.artifactId} artifact={artifact} open={index === 0} />
               ))}
             </div>

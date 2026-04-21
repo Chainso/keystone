@@ -72,6 +72,7 @@ Compatibility that **is** required:
 - 2026-04-20, orchestration: execution started after plan approval; active index moved to `In Progress` and Phase 1 was prepared for implementation handoff.
 - 2026-04-20, Phase 1: added `GET /v1/projects/:projectId/tasks`, enriched the shared task resource with `logicalTaskId` and `updatedAt`, reused compiled run-plan artifacts to recover logical task ids without changing persistence, and validated the backend contract with `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts`.
 - 2026-04-20, Phase 1 fix pass: made logical-task-id recovery fail-open for unreadable run-plan artifacts, replaced the project-task count path with an aggregate plus deterministic `createdAt`/`runTaskId` ordering, strengthened the HTTP suites with fail-open and repository-level bucket/pagination coverage, and revalidated with `rtk npm run test -- tests/http/projects.test.ts tests/http/app.test.ts`.
+- 2026-04-20, Phase 2: cut over `/runs/:runId/execution` and `/runs/:runId/execution/tasks/:taskId` to live browser fetches behind a feature-owned execution API seam, kept scaffold-mode route behavior intact, added truthful live header/stepper decisions under the existing run tree, and revalidated with `rtk npm run test -- ui/src/test/runs-routes.test.tsx` plus `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 
 ## Progress
 
@@ -79,7 +80,8 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Phase 1 started: backend projection handoff prepared for implementation.
 - [x] 2026-04-20 Phase 1 completed: the project task collection route, filter/pagination contract, and enriched shared task resource landed with focused HTTP coverage.
 - [x] 2026-04-20 Phase 1 fix pass completed: logical task ids now fail open to `runTaskId` when run-plan artifacts are unreadable, and project-task pagination is deterministic under stable ordering.
-- [ ] Phase 2: Cut over the live execution graph and task-detail routes under the existing run route tree.
+- [x] 2026-04-20 Phase 2 started: live execution/task drill-in handoff prepared with the Phase 1 contract and logical-id fallback constraints.
+- [x] 2026-04-20 Phase 2 completed: live execution and task-detail routes now load through browser APIs while scaffold runs keep the static dataset path.
 - [ ] Phase 3: Cut over the `Workstreams` UI to the live task collection while preserving scaffold mode for the static harness.
 - [ ] Phase 4: Update durable docs/notes, rerun validation, and archive the plan.
 
@@ -91,6 +93,8 @@ Compatibility that **is** required:
 - There is currently no `GET /v1/projects/:projectId/tasks` route, even though the earlier archived target-model UI plan anticipated that shape.
 - The compiled run-plan artifact already carries the logical task ids needed by Workstreams, but the mapping is only trustworthy when keyed by persisted `runTaskId`. Reusing that artifact projection let Phase 1 expose `logicalTaskId` without adding a new database column or altering the existing run-task routes.
 - The run-plan artifact is not part of route correctness. The fix pass confirmed the projection must treat artifact read, parse, and schema failures as optional enhancement misses; otherwise one bad artifact can break otherwise valid DB-backed task routes.
+- The live task artifact contract is much thinner than the scaffold review mock. `GET /v1/runs/:runId/tasks/:taskId/artifacts` exposes artifact ids, kinds, content types, and raw content URLs, but not changed-file paths or diff hunks, so the Phase 2 review sidebar has to stay honest and show raw artifact links plus a note instead of pretending file-level review metadata exists.
+- The cleanest UI seam for the run-detail cutover was a feature-owned execution API context under `ui/src/features/execution/` rather than pushing live fetch state into the generic scaffold/resource-model provider. That kept scaffold tests unchanged while letting the live execution/task routes opt into browser data.
 - The worktree baseline initially lacked local dependencies. After `rtk npm install`, the current baseline is:
   - `rtk npm run test` passes (`35` files passed, `2` skipped; `203` tests passed, `18` skipped),
   - `rtk npm run lint` fails with pre-existing unrelated backend/script lint errors,
@@ -118,6 +122,14 @@ Phase 1 fix-pass outcome on 2026-04-20:
 - Logical task id recovery now fails open for unreadable or invalid run-plan artifacts, so task routes still return authoritative DB-backed rows with fallback logical ids.
 - The project-task repository now derives `total` from a count aggregate instead of materializing every matching id, and it pages with deterministic ordering by `run_tasks.created_at` plus `run_task_id`.
 - The focused test suites now cover route-level fail-open behavior plus repository-level `running`, `queued`, and `blocked` bucket behavior and stable pagination slices.
+
+Phase 2 outcome on 2026-04-20:
+
+- Live non-scaffold run detail now cuts over truthfully for `Execution` and task drill-in while keeping the existing `/runs/:runId/...` route tree intact.
+- The run header and phase stepper now make a live-aware decision: live runs default to `Execution` and disable scaffold-only planning phases instead of trying to reuse missing scaffold documents.
+- `ui/src/features/execution/execution-api.tsx` now owns the browser fetch seam for `GET /v1/runs/:runId`, `GET /v1/runs/:runId/workflow`, `GET /v1/runs/:runId/tasks`, `GET /v1/runs/:runId/tasks/:taskId`, and `GET /v1/runs/:runId/tasks/:taskId/artifacts`, so live execution data stays out of the generic scaffold provider.
+- The live task detail route now resolves dependency and reverse-dependency context from the authoritative run task collection, tolerates best-effort `logicalTaskId` fallback to `runTaskId`, and shows raw artifact links when file-level review metadata is unavailable.
+- Focused validation passed with `rtk npm run test -- ui/src/test/runs-routes.test.tsx` and `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 
 ## Context and Orientation
 
@@ -335,7 +347,7 @@ This plan is accepted only when all of the following are true:
 
 ### Phase Handoff
 
-- **Status:** Pending
+- **Status:** Completed
 - **Goal:** Make `/runs/:runId/execution` and `/runs/:runId/execution/tasks/:taskId` truthful for live runs under the existing route tree.
 - **Scope Boundary:** In scope: live run header/stepper decisions, live execution graph loading, live task detail loading, and route/test harness changes required for those surfaces. Out of scope: planning-document live cutover, documentation route changes, and Workstreams list rendering.
 - **Read First:**
@@ -367,7 +379,9 @@ This plan is accepted only when all of the following are true:
 - **Plan / Docs To Update:** Update `Execution Log`, `Progress`, `Surprises & Discoveries`, `Outcomes & Retrospective`, and this phase handoff.
 - **Deliverables:** Truthful live execution graph and live task detail route support under the existing run route tree.
 - **Commit Expectation:** `Cut over live execution task routes`
-- **Known Constraints / Baseline Failures:** Keep route files thin. Do not push live fetching state into the generic scaffold provider. Do not expand this phase into live specification/architecture/execution-plan surfaces.
+- **Known Constraints / Baseline Failures:** Keep route files thin. Do not push live fetching state into the generic scaffold provider. Do not expand this phase into live specification/architecture/execution-plan surfaces. Treat `logicalTaskId` as best-effort display data and preserve the backend fallback to `runTaskId` when compiled run-plan artifacts are unreadable or invalid.
+- **Completion Notes:** Added `ui/src/features/execution/execution-api.tsx` as a feature-owned browser API seam, wrapped the app providers with an optional execution API context so scaffold tests stay static by default, and made the run detail header/default-phase/stepper hooks live-aware without mutating the scaffold provider. `/runs/:runId/execution` now loads the live workflow graph plus run tasks and renders explicit loading/error/empty states, while `/runs/:runId/execution/tasks/:taskId` now loads the live task detail, resolves dependency and reverse-dependency labels from the live task collection, and shows raw artifact links with an honest note that changed-file review metadata is not in the current live contract. The focused route suite now covers live default redirect, live stepper disablement for planning phases, logical-task-id fallback behavior, and raw artifact-link rendering, while the existing scaffold route expectations still pass.
+- **Next Starter Context:** Phase 3 can assume live Workstreams row drill-in already lands on truthful `/runs/:runId/execution/tasks/:taskId` routes. Reuse the Phase 1 project task collection for `/workstreams`, keep logical task ids best-effort in the UI, use `runId` for the `Run` column, and preserve the scaffold/static harness path by keeping live list state inside a feature-owned Workstreams hook rather than inside the resource-model provider.
 
 ## Phase 3: Workstreams UI Cutover
 
