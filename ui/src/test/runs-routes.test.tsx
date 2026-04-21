@@ -362,6 +362,25 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
     ...createRunFixture("run-106"),
     documents: [],
     revisions: []
+  },
+  "run-107": {
+    ...createRunFixture("run-107", {
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-107-architecture-v1",
+          compiledAt: "2026-04-20T12:50:00.000Z",
+          executionPlanRevisionId: "run-107-execution-plan-v1",
+          specificationRevisionId: "run-107-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "scripted",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-107",
+        startedAt: null,
+        status: "configured",
+        workflowInstanceId: "wf-run-107"
+      }
+    })
   }
 };
 
@@ -828,7 +847,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
   });
 
-  it("redirects a run without compile provenance to the first incomplete planning step", async () => {
+  it("redirects an uncompiled or workflow-empty run to the first incomplete planning step", async () => {
     const { router: planRouter } = renderRunRoute("/runs/run-102");
 
     expect(await screen.findByRole("heading", { name: "run-102" })).toBeInTheDocument();
@@ -849,6 +868,16 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(specificationRouter.state.location.pathname).toBe("/runs/run-101/architecture");
     });
+
+    const { router: workflowEmptyRouter } = renderRunRoute("/runs/run-107");
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(workflowEmptyRouter.state.location.pathname).toBe("/runs/run-107/execution-plan");
+    });
+    const phaseNavigation = screen.getAllByRole("navigation", { name: "Run phases" }).at(-1)!;
+
+    expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
   });
 
   it("renders the loading state before the live run provider resolves", async () => {

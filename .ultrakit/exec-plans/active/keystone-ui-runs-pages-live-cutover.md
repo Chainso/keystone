@@ -157,6 +157,16 @@ Compatibility that **is** required:
   **Decision:** Close the targeted review findings by making planning-document create/save mutations single-flight per phase inside `RunDetailProvider`, reloading authoritative document state when create returns `document_path_conflict`, and extending route coverage for rapid repeat activation plus explicit `architecture` and `execution-plan` current-revision loads.
   **Rationale:** The original Phase 3 cutover correctly exposed live authoring, but review found that rapid repeat activation could still race before React disabled the controls and that create conflicts could strand the surface in a stale `missing_document` state. Keeping the fix in the provider preserves the settled state/actions/meta seam while letting the existing view-model transitions consume refreshed backend truth.
 
+- **Date:** 2026-04-20
+  **Phase:** Phase 4
+  **Decision:** Add `POST /v1/projects/:projectId/runs` to the run-owned browser API seam, keep create-run single-flight inside the runs-index view model, and navigate successful creates directly to `/runs/:runId/specification` instead of bouncing through `/runs/:runId`.
+  **Rationale:** Run creation is a run-domain mutation, and the route event handler should own navigation explicitly. Landing straight on `Specification` reuses the settled Phase 3 empty/editor flow without introducing an avoidable redirect/loading hop for a brand-new empty run.
+
+- **Date:** 2026-04-20
+  **Phase:** Phase 4
+  **Decision:** Treat `Execution` as available only when live workflow graph data exists, not merely when `run.compiledFrom` is present.
+  **Rationale:** The workflow route is the truthful source for whether execution content exists. Gating default redirects and the stepper on `workflow.summary.totalTasks > 0` keeps `/runs/:runId` honest for runs that have provenance metadata but no compiled task graph yet.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the run routes, current UI architecture, backend run/document/task/artifact contracts, the active design markdown files, and the relevant completed plans.
@@ -182,6 +192,7 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Phase 2 fix pass completed: corrected `/runs/:runId` to land on the first incomplete planning step unless compiled workflow state exists, keyed `RunDetailProvider` by `runId` to avoid stale cross-run renders, replaced raw task-artifact links with authenticated preview loading through `RunManagementApi`, expanded browser-backed/failure route coverage, updated the stale scaffold-era `/runs/...` assertions in `ui/src/test/destination-scaffolds.test.tsx`, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` plus `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`.
 - [x] 2026-04-20 Phase 3 completed: added live planning empty/editor/viewer states, wired run document create/save mutations through the run-detail seam, updated the planning route tests for create/save/discard behavior across all three planning pages, updated `.ultrakit/developer-docs/m1-architecture.md` for the new live authoring boundary, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
 - [x] 2026-04-20 Phase 3 fix pass completed: made planning-document create/save mutations single-flight to block rapid repeat POSTs, reloaded authoritative planning-document state when create returned `document_path_conflict`, added focused route coverage for duplicate activation plus explicit `architecture` and `execution-plan` revision loads, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
+- [x] 2026-04-20 Phase 4 completed: wired `+ New run` through the live run API, added single-flight create-run mutation state on the runs index, routed successful creates directly into the new run's live `Specification` page without seeding planning documents, tightened `/runs/:runId` plus the phase stepper to require compiled workflow graph data before enabling `Execution`, updated `.ultrakit/developer-docs/m1-architecture.md`, and passed `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`.
 
 ## Surprises & Discoveries
 
@@ -196,10 +207,11 @@ Compatibility that **is** required:
 - The task collection route already carries enough task metadata for the read-only task shell (`name`, `description`, `status`, `dependsOn`, `conversation`), so Phase 2 only needed one lazy browser read for per-task artifacts instead of another eager task-detail fetch path.
 - The backend artifact collection is intentionally metadata-only today. A truthful live task inspector therefore cannot preserve scaffold-only changed-file paths or inline diffs; it has to present artifact records plus content links until richer artifact projections exist.
 - Planning authoring did not need draft persistence in the provider. Keying the local editor reset off the loaded document/revision snapshot was enough to keep create, save, and discard behavior honest without introducing autosave or cross-route draft storage.
+- The live run-detail seam can observe `run.compiledFrom` before any workflow graph nodes exist. Default routing and `Execution` availability therefore need to key off compiled workflow data (`workflow.summary.totalTasks > 0`), not compile provenance alone.
 
 ## Outcomes & Retrospective
 
-Phases 2 and 3 are now closed. The UI reads real run, planning-document, workflow, task, and task-artifact data through feature-owned run providers and API adapters, `/runs/:runId` lands on the first incomplete planning step until compiled workflow state exists, planning pages can now create missing run documents and save new current revisions in place without route churn, and task-artifact content stays inside the authenticated API seam instead of exposing broken raw links. Phase 4 remains to make `+ New run` real and align default navigation for freshly created or partially configured runs.
+Phases 2, 3, and 4 are now closed. The UI reads real run, planning-document, workflow, task, and task-artifact data through feature-owned run providers and API adapters, `+ New run` now creates a real project-scoped run and lands directly in the new run's live `Specification` page with honest empty-state authoring, `/runs/:runId` now routes to `Execution` only when compiled workflow graph data exists, and task-artifact content stays inside the authenticated API seam instead of exposing broken raw links. Phase 5 remains to add the explicit compile transition and finish the live execution review path.
 
 ## Context and Orientation
 
@@ -667,11 +679,11 @@ Update `Progress`, `Execution Log`, and `Surprises & Discoveries`.
 - Run creation must not auto-seed planning documents.
 - New-run UX should rely on the empty-state/editor flows from Phase 3.
 
-**Status:** Pending approval
+**Status:** Completed
 
-**Completion Notes:** Not started.
+**Completion Notes:** Added `createRun()` to the run-owned browser/static API seam, updated the runs-index view model and route so `+ New run` is a real single-flight mutation with visible pending/error state, routed successful creates directly to `/runs/:runId/specification` so the Phase 3 empty/editor flow handles brand-new runs without seeded planning documents, tightened the default-phase helper and phase stepper to require compiled workflow graph data before enabling `Execution`, updated focused browser/route coverage in `ui/src/test/app-shell.test.tsx` and `ui/src/test/runs-routes.test.tsx`, and refreshed `.ultrakit/developer-docs/m1-architecture.md` to record that live run creation is now shipped. Validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`.
 
-**Next Starter Context:** The product model already supports empty run records. The UI should embrace that instead of trying to hide it.
+**Next Starter Context:** Phase 5 can assume new runs now arrive on the live `Specification` page with no seeded planning content, and that `/runs/:runId` plus the phase stepper only expose `Execution` when workflow graph data exists. The remaining execution cutover should therefore focus on explicit compile gating, post-compile refresh/routing, and richer task review behavior rather than reopening create-run or default-navigation ownership.
 
 ## Phase 5: Compile Action And Live Execution Review
 

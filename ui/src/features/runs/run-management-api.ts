@@ -15,8 +15,10 @@ import {
 } from "../../../../src/http/api/v1/documents/contracts";
 import {
   runDetailEnvelopeSchema,
+  runCreateRequestSchema,
   taskCollectionEnvelopeSchema,
   workflowGraphDetailEnvelopeSchema,
+  type RunCreateRequest,
   type RunResource,
   type TaskResource,
   type WorkflowGraphResource
@@ -40,6 +42,7 @@ export interface StaticRunDetailRecord {
 }
 
 export interface RunManagementApi {
+  createRun: (projectId: string, input?: RunCreateRequest) => Promise<RunResource>;
   createRunDocument: (runId: string, input: DocumentCreateRequest) => Promise<DocumentResource>;
   createRunDocumentRevision: (
     runId: string,
@@ -168,6 +171,29 @@ export function createBrowserRunManagementApi(
   }
 
   return {
+    async createRun(projectId, input) {
+      const payload = runCreateRequestSchema.parse(input ?? {});
+      const response = await fetchImplementation(
+        `/v1/projects/${encodeURIComponent(projectId)}/runs`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: buildProtectedBrowserHeaders({
+            accept: "application/json",
+            "content-type": "application/json"
+          }),
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (!response.ok) {
+        throw await buildApiError(response, `Unable to create run (${response.status}).`);
+      }
+
+      const envelope = runDetailEnvelopeSchema.parse(await response.json());
+
+      return envelope.data;
+    },
     async createRunDocument(runId, input) {
       const payload = documentCreateRequestSchema.parse(input);
       const response = await fetchImplementation(`/v1/runs/${encodeURIComponent(runId)}/documents`, {
@@ -414,6 +440,44 @@ export function createStaticRunManagementApi(
   }
 
   return {
+    async createRun(projectId, input) {
+      const payload = runCreateRequestSchema.parse(input ?? {});
+      const runId = `run-generated-${runRecords.size + 1}`;
+      const run: RunResource = {
+        compiledFrom: null,
+        endedAt: null,
+        executionEngine: payload.executionEngine,
+        projectId,
+        runId,
+        startedAt: null,
+        status: "configured",
+        workflowInstanceId: `wf-${runId}`
+      };
+
+      runRecords.set(runId, {
+        artifactContents: {},
+        documents: [],
+        revisions: [],
+        run,
+        taskArtifacts: {},
+        tasks: [],
+        workflow: {
+          edges: [],
+          nodes: [],
+          summary: {
+            activeTasks: 0,
+            cancelledTasks: 0,
+            completedTasks: 0,
+            failedTasks: 0,
+            pendingTasks: 0,
+            readyTasks: 0,
+            totalTasks: 0
+          }
+        }
+      });
+
+      return run;
+    },
     async createRunDocument(runId, input) {
       const payload = documentCreateRequestSchema.parse(input);
       const run = getStaticRunRecord(runId);

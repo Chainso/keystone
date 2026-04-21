@@ -189,13 +189,26 @@ function buildHeaderViewModel(run: NonNullable<ReturnType<typeof useReadyRunDeta
   };
 }
 
+function hasCompiledWorkflowData(input: {
+  compiledFrom: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>["compiledFrom"];
+  workflow: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["workflow"]>;
+}) {
+  return input.compiledFrom !== null && input.workflow.summary.totalTasks > 0;
+}
+
 function buildPhaseStepperViewModel(
-  run: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>
+  input: {
+    run: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>;
+    workflow: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["workflow"]>;
+  }
 ): RunPhaseStepViewModel[] {
-  const executionAvailable = run.compiledFrom !== null;
+  const executionAvailable = hasCompiledWorkflowData({
+    compiledFrom: input.run.compiledFrom,
+    workflow: input.workflow
+  });
 
   return runPhaseDefinitions.map((phase) => ({
-    href: buildRunPhasePath(run.runId, phase.id),
+    href: buildRunPhasePath(input.run.runId, phase.id),
     isAvailable: phase.id === "execution" ? executionAvailable : true,
     label: phase.label,
     phaseId: phase.id
@@ -318,7 +331,10 @@ export function useRunPhaseStepperViewModel() {
   const { state } = useReadyRunDetail();
 
   return {
-    steps: buildPhaseStepperViewModel(state.run!)
+    steps: buildPhaseStepperViewModel({
+      run: state.run!,
+      workflow: state.workflow!
+    })
   };
 }
 
@@ -361,7 +377,10 @@ export function useRunDetailLayoutViewModel(): RunDetailLayoutViewModel {
 
   return {
     header: buildHeaderViewModel(state.run),
-    phaseSteps: buildPhaseStepperViewModel(state.run),
+    phaseSteps: buildPhaseStepperViewModel({
+      run: state.run,
+      workflow: state.workflow!
+    }),
     state: "ready"
   };
 }
@@ -370,7 +389,12 @@ export function useRunDefaultPhasePath() {
   const { state } = useReadyRunDetail();
   const run = state.run!;
 
-  if (run.compiledFrom) {
+  if (
+    hasCompiledWorkflowData({
+      compiledFrom: run.compiledFrom,
+      workflow: state.workflow!
+    })
+  ) {
     return buildRunPhasePath(run.runId, "execution");
   }
 
