@@ -46,7 +46,7 @@ interface RunsSnapshot {
 export interface RunsIndexViewModel {
   canCreateRun: boolean;
   compatibilityState?: RunsCompatibilityState;
-  createRun: () => Promise<string>;
+  createRun: () => Promise<string | null>;
   createRunErrorMessage: string | null;
   isCreatingRun: boolean;
   liveRuns: LiveRunRowViewModel[];
@@ -119,7 +119,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
   const currentProject = state.currentProject;
   const requestIdRef = useRef(0);
   const createRunRequestIdRef = useRef(0);
-  const createRunRequestRef = useRef<Promise<string> | null>(null);
+  const createRunRequestRef = useRef<Promise<string | null> | null>(null);
   const [snapshot, setSnapshot] = useState<RunsSnapshot>({
     errorMessage: null,
     presentation: "live",
@@ -202,9 +202,11 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
             errorMessage: null,
             status: "idle"
           });
+
+          return run.runId;
         }
 
-        return run.runId;
+        return null;
       } catch (error) {
         if (createRunRequestIdRef.current === requestId) {
           setCreateRunState({

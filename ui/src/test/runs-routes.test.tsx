@@ -1203,7 +1203,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
   });
 
-  it("redirects an uncompiled or workflow-empty run to the first incomplete planning step", async () => {
+  it("redirects an uncompiled run to the first incomplete planning step", async () => {
     const { router: planRouter } = renderRunRoute("/runs/run-102");
 
     expect(await screen.findByRole("heading", { name: "run-102" })).toBeInTheDocument();
@@ -1224,16 +1224,27 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(specificationRouter.state.location.pathname).toBe("/runs/run-101/architecture");
     });
+  });
 
-    const { router: workflowEmptyRouter } = renderRunRoute("/runs/run-107");
+  it("redirects a compiled run with a materializing workflow into execution", async () => {
+    const { router } = renderRunRoute("/runs/run-107");
 
     expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(workflowEmptyRouter.state.location.pathname).toBe("/runs/run-107/execution-plan");
+      expect(router.state.location.pathname).toBe("/runs/run-107/execution");
     });
-    const phaseNavigation = screen.getAllByRole("navigation", { name: "Run phases" }).at(-1)!;
-
-    expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
+    expect(screen.getByText("Execution is materializing")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Compile was accepted for this run. Keystone is still materializing the live execution graph."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh execution" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
+        name: "Execution"
+      })
+    ).toHaveAttribute("href", "/runs/run-107/execution");
   });
 
   it("redirects a brand-new run with no planning documents to specification", async () => {
@@ -1638,6 +1649,18 @@ describe("Run routes", () => {
         "Current planning revisions are newer than the execution graph. Recompile to refresh Execution with the latest live documents."
       )
     ).toBeInTheDocument();
+
+    cleanup();
+
+    renderRunRoute("/runs/run-107/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Compile was accepted for this run. Keystone is waiting for the live execution graph to become available."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
   });
 
   it("compiles a ready run, refreshes live state, and routes into execution", async () => {
@@ -1668,7 +1691,7 @@ describe("Run routes", () => {
     ).toBe(1);
   });
 
-  it("waits for delayed workflow availability after compile returns 202 accepted", async () => {
+  it("routes into execution and waits there while a delayed compile materializes the workflow", async () => {
     const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
       edges: [],
       nodes: [],
@@ -1728,96 +1751,67 @@ describe("Run routes", () => {
 
     expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
 
-    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
 
-    try {
-      fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
-
-      await vi.advanceTimersByTimeAsync(2_000);
-      vi.useRealTimers();
-
+    await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-108/execution");
-      expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-      expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
-    } finally {
-      vi.useRealTimers();
-    }
+    });
+    expect(await screen.findByText("Execution is materializing")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh execution" }));
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
   });
 
-  it("does not navigate back into an older run when a delayed compile completes after switching routes", async () => {
-    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
-      edges: [],
-      nodes: [],
-      summary: {
-        activeTasks: 0,
-        cancelledTasks: 0,
-        completedTasks: 0,
-        failedTasks: 0,
-        pendingTasks: 0,
-        readyTasks: 0,
-        totalTasks: 0
-      }
-    };
+  it("does not navigate back into an older run when compile acceptance resolves after switching routes", async () => {
     const compiledRun = {
       ...runFixtures["run-108"]!.run,
       compiledFrom: buildCompiledFrom(runFixtures["run-108"]!)
     };
-    const compiledTasks = runFixtures["run-108"]!.tasks ?? [];
-    const compiledWorkflow = runFixtures["run-108"]!.workflow!;
-    let workflowRequestCount = 0;
+    const deferredCompileResponse = createDeferred<Response>();
     let compileAccepted = false;
 
     createBrowserRunFetch({
       "/v1/runs/run-108": () =>
         createRunDetailResponse(compileAccepted ? compiledRun : runFixtures["run-108"]!.run),
       "/v1/runs/run-108/compile": () => {
-        compileAccepted = true;
-
-        return createJsonResponse(
-          {
-            data: {
-              run: compiledRun,
-              status: "accepted",
-              workflowInstanceId: compiledRun.workflowInstanceId
-            },
-            meta: {
-              apiVersion: "v1" as const,
-              envelope: "action" as const,
-              resourceType: "run" as const
-            }
-          },
-          202
-        );
-      },
-      "/v1/runs/run-108/workflow": () => {
-        workflowRequestCount += 1;
-
-        return createWorkflowDetailResponse(
-          workflowRequestCount >= 4 ? compiledWorkflow : emptyWorkflow
-        );
-      },
-      "/v1/runs/run-108/tasks": () =>
-        createTaskCollectionResponse(workflowRequestCount >= 4 ? compiledTasks : [])
+        return deferredCompileResponse.promise;
+      }
     });
 
     const { router } = renderRoute("/runs/run-108/execution-plan");
 
     expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
 
-    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
 
-    try {
-      fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
+    await router.navigate("/runs/run-104/specification");
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/runs/run-104/specification");
 
-      await router.navigate("/runs/run-104/specification");
+    compileAccepted = true;
+    deferredCompileResponse.resolve(
+      createJsonResponse(
+        {
+          data: {
+            run: compiledRun,
+            status: "accepted",
+            workflowInstanceId: compiledRun.workflowInstanceId
+          },
+          meta: {
+            apiVersion: "v1" as const,
+            envelope: "action" as const,
+            resourceType: "run" as const
+          }
+        },
+        202
+      )
+    );
+
+    await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-104/specification");
-
-      await vi.advanceTimersByTimeAsync(5_000);
-
-      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
-    } finally {
-      vi.useRealTimers();
-    }
+    });
   });
 
   it("renders a planning-page error state when the current revision cannot be read", async () => {

@@ -736,6 +736,103 @@ describe("App shell", () => {
     });
   });
 
+  it("does not navigate into a stale run when the current project changes before + New run resolves", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+    const createdRun = createLiveRunFixture("project-keystone-cloudflare", {
+      runId: "run-203",
+      startedAt: null,
+      status: "configured",
+      workflowInstanceId: "wf-run-203"
+    });
+    const deferredCreateResponse = createDeferredResponse();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = input instanceof Request ? input.method : init?.method ?? "GET";
+
+      expectDevAuthHeaders(input, init);
+
+      if (url === "/v1/projects" && method === "GET") {
+        return createJsonResponse(buildProjectsResponse(projects));
+      }
+
+      if (url === "/v1/projects/project-keystone-cloudflare/runs" && method === "GET") {
+        return createJsonResponse(buildRunsResponse([]));
+      }
+
+      if (url === "/v1/projects/project-alt/runs" && method === "GET") {
+        return createJsonResponse(
+          buildRunsResponse([
+            createLiveRunFixture("project-alt", {
+              runId: "run-alt-401",
+              workflowInstanceId: "wf-run-alt-401"
+            })
+          ])
+        );
+      }
+
+      if (url === "/v1/projects/project-keystone-cloudflare/runs" && method === "POST") {
+        return deferredCreateResponse.promise;
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}` && method === "GET") {
+        return createJsonResponse(buildRunDetailResponse(createdRun));
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}/documents` && method === "GET") {
+        return createJsonResponse(buildEmptyRunDocumentsResponse());
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}/workflow` && method === "GET") {
+        return createJsonResponse(buildEmptyRunWorkflowResponse());
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}/tasks` && method === "GET") {
+        return createJsonResponse(buildEmptyRunTasksResponse());
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { router } = renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
+    expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
+    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    });
+    expect(await screen.findByText("run-alt-401")).toBeInTheDocument();
+
+    deferredCreateResponse.resolve(createJsonResponse(buildRunDetailResponse(createdRun), 201));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs");
+    });
+    expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(screen.getByText("run-alt-401")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "run-203" })).not.toBeInTheDocument();
+  });
+
   it("surfaces create-run failures on the index and restores the button state", async () => {
     const project: CurrentProject = {
       projectId: "project-keystone-cloudflare",

@@ -90,6 +90,7 @@ export interface RunDetailMeta {
 export interface RunCompileResult {
   cancelled?: boolean;
   executionAvailable: boolean;
+  workflowPending?: boolean;
 }
 
 export interface RunDetailValue {
@@ -137,6 +138,22 @@ function buildEmptyRunDetailState(): RunDetailState {
     taskArtifacts: {},
     tasks: [],
     workflow: null
+  };
+}
+
+function buildEmptyWorkflowGraph(): WorkflowGraphResource {
+  return {
+    edges: [],
+    nodes: [],
+    summary: {
+      activeTasks: 0,
+      cancelledTasks: 0,
+      completedTasks: 0,
+      failedTasks: 0,
+      pendingTasks: 0,
+      readyTasks: 0,
+      totalTasks: 0
+    }
   };
 }
 
@@ -256,14 +273,6 @@ async function fetchRunDetailSnapshot(api: RunManagementApi, runId: string): Pro
   };
 }
 
-function delay(milliseconds: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-const executionAvailabilityPollDelaysMs = [250, 500, 1_000, 1_500, 2_000, 2_000];
-
 export function RunManagementApiProvider({
   api = browserRunManagementApi,
   children
@@ -312,6 +321,7 @@ export function RunDetailProvider({
     new Map<RunPlanningPhaseId, Promise<DocumentResource>>()
   );
   const compileRunRequestRef = useRef<Promise<RunCompileResult> | null>(null);
+  const refreshRunDetailRequestRef = useRef<Promise<RunCompileResult> | null>(null);
   const savePlanningDocumentRequestsRef = useRef(
     new Map<RunPlanningPhaseId, Promise<DocumentRevisionResource>>()
   );
@@ -382,55 +392,83 @@ export function RunDetailProvider({
     return isMountedRef.current && requestIdRef.current === requestId;
   }
 
-  async function refreshRunDetail(
-    options: {
-      waitForExecution?: boolean;
-    } = {}
-  ): Promise<RunCompileResult> {
+  function seedAcceptedCompileState(run: RunResource) {
+    setValue((current) => {
+      if (current.meta.status !== "ready") {
+        return current;
+      }
+
+      return {
+        ...current,
+        state: {
+          ...current.state,
+          run,
+          taskArtifacts: {},
+          tasks: [],
+          workflow: buildEmptyWorkflowGraph()
+        }
+      };
+    });
+  }
+
+  async function refreshRunDetail(): Promise<RunCompileResult> {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     taskArtifactRequestIdsRef.current.clear();
-    const pollDelays = options.waitForExecution ? executionAvailabilityPollDelaysMs : [];
 
-    for (let attempt = 0; attempt <= pollDelays.length; attempt += 1) {
-      if (!isCurrentRunDetailRequest(requestId)) {
-        return {
-          cancelled: true,
-          executionAvailable: false
-        };
-      }
-
-      const latestSnapshot = await fetchRunDetailSnapshot(api, runId);
-
-      if (!isCurrentRunDetailRequest(requestId)) {
-        return {
-          cancelled: true,
-          executionAvailable: false
-        };
-      }
-
-      const executionAvailable = hasCompiledWorkflowData({
-        run: latestSnapshot.run,
-        workflow: latestSnapshot.workflow
-      });
-
-      if (!options.waitForExecution || executionAvailable || attempt === pollDelays.length) {
-        const applied = setRunDetailSnapshot(latestSnapshot, {
-          requestId
-        });
-
-        return {
-          cancelled: !applied,
-          executionAvailable
-        };
-      }
-
-      await delay(pollDelays[attempt]!);
+    if (!isCurrentRunDetailRequest(requestId)) {
+      return {
+        cancelled: true,
+        executionAvailable: false
+      };
     }
 
+    const latestSnapshot = await fetchRunDetailSnapshot(api, runId);
+
+    if (!isCurrentRunDetailRequest(requestId)) {
+      return {
+        cancelled: true,
+        executionAvailable: false
+      };
+    }
+
+    const executionAvailable = hasCompiledWorkflowData({
+      run: latestSnapshot.run,
+      workflow: latestSnapshot.workflow
+    });
+    const applied = setRunDetailSnapshot(latestSnapshot, {
+      requestId
+    });
+
     return {
-      executionAvailable: false
+      cancelled: !applied,
+      executionAvailable
     };
+  }
+
+  async function reloadRunDetail() {
+    if (valueRef.current.meta.status !== "ready") {
+      await loadRunDetail();
+      return;
+    }
+
+    const existingRequest = refreshRunDetailRequestRef.current;
+
+    if (existingRequest) {
+      await existingRequest;
+      return;
+    }
+
+    const refreshRequest = refreshRunDetail();
+    refreshRunDetailRequestRef.current = refreshRequest;
+
+    try {
+      await refreshRequest;
+    } finally {
+      if (refreshRunDetailRequestRef.current === refreshRequest) {
+        refreshRunDetailRequestRef.current = null;
+      }
+    }
   }
 
   async function loadRunDetail() {
@@ -486,11 +524,14 @@ export function RunDetailProvider({
         throw new Error("Run detail is still loading.");
       }
 
-      await api.compileRun(runId);
+      const compileAction = await api.compileRun(runId);
+      seedAcceptedCompileState(compileAction.run);
+      const refreshed = await refreshRunDetail();
 
-      return refreshRunDetail({
-        waitForExecution: true
-      });
+      return {
+        ...refreshed,
+        workflowPending: compileAction.run.compiledFrom !== null && !refreshed.executionAvailable
+      };
     })();
 
     compileRunRequestRef.current = compileRequest;
@@ -715,6 +756,7 @@ export function RunDetailProvider({
       isMountedRef.current = false;
       requestIdRef.current += 1;
       taskArtifactRequestIdsRef.current.clear();
+      refreshRunDetailRequestRef.current = null;
     };
   }, [api, runId]);
 
@@ -723,7 +765,7 @@ export function RunDetailProvider({
       compileRun,
       createPlanningDocument,
       loadTaskArtifacts,
-      reload: loadRunDetail,
+      reload: reloadRunDetail,
       savePlanningDocument
     },
     meta: value.meta,

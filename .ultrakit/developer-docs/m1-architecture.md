@@ -25,7 +25,7 @@ The current UI is no longer scaffold-only for project management:
 - `+ New run` now creates real run records through `POST /v1/projects/:projectId/runs` and routes directly into the new run's live `Specification` page without seeding planning documents
 - live run detail under `/runs/:runId/**` now reads real run, planning-document, workflow, task, and task-artifact data through feature-owned UI providers
 - `Specification`, `Architecture`, and `Execution Plan` can create missing run-scoped documents and save new current revisions in place through `POST /v1/runs/:runId/documents` and `POST /v1/runs/:runId/documents/:documentId/revisions`
-- `Execution Plan` now exposes the explicit `Compile run` action through `POST /v1/runs/:runId/compile`, refreshes the live run snapshot after compile, and routes into `Execution` once compiled workflow data is available
+- `Execution Plan` now exposes the explicit `Compile run` action through `POST /v1/runs/:runId/compile`, seeds compile provenance into the live run state immediately after acceptance, and routes into `Execution`, where the UI keeps refreshing until the live workflow graph is available
 - task detail now lists live task artifacts, lazily loads supported text previews through the authenticated run API seam, and shows explicit compatibility messaging for unsupported content types
 - the planning pages keep explicit empty, error, viewer, and editor states in the shared split layout instead of falling back to scaffold placeholders
 

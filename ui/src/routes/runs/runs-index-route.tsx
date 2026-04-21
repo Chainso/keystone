@@ -31,6 +31,10 @@ export function RunsIndexRoute() {
     try {
       const runId = await model.createRun();
 
+      if (!runId) {
+        return;
+      }
+
       navigate(buildRunPhasePath(runId, "specification"));
     } catch {
       // The view model owns the visible error state for create-run failures.

@@ -51,6 +51,16 @@ export function ExecutionPlanWorkspace({ model }: { model: ExecutionPlanWorkspac
                 {model.compile.actionLabel}
               </Link>
             </div>
+          ) : model.compile.refresh && model.compile.refreshLabel ? (
+            <div className="shell-state-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={model.compile.refresh}
+              >
+                {model.compile.refreshLabel}
+              </button>
+            </div>
           ) : null}
         </div>
       </section>

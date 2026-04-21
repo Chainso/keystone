@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { buildRunPhasePath, buildRunTaskPath } from "../../shared/navigation/run-phases";
 import { useRunDetail } from "../runs/run-detail-context";
@@ -33,9 +33,17 @@ export interface RunExecutionEmptyViewModel {
   state: "empty";
 }
 
+export interface RunExecutionPendingViewModel {
+  message: string;
+  refresh: () => void;
+  refreshLabel: string;
+  state: "pending";
+}
+
 export type RunExecutionViewModel =
   | RunExecutionReadyViewModel
-  | RunExecutionEmptyViewModel;
+  | RunExecutionEmptyViewModel
+  | RunExecutionPendingViewModel;
 
 export interface TaskArtifactViewModel {
   artifactId: string;
@@ -189,8 +197,43 @@ function buildTaskRelationshipMap(tasks: ReturnType<typeof useReadyRunDetail>["s
 }
 
 export function useRunExecutionViewModel(): RunExecutionViewModel {
-  const { state } = useReadyRunDetail();
+  const { actions, state } = useReadyRunDetail();
   const run = state.run!;
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const executionPending =
+    run.compiledFrom !== null &&
+    (state.workflow!.summary.totalTasks === 0 || state.tasks.length === 0);
+
+  function refreshExecution() {
+    if (isRefreshing) {
+      return;
+    }
+
+    setIsRefreshing(true);
+
+    void actions
+      .reload()
+      .catch(() => {
+        // The provider owns the next visible state after reload failures.
+      })
+      .finally(() => {
+        setIsRefreshing(false);
+      });
+  }
+
+  useEffect(() => {
+    if (!executionPending || isRefreshing) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      refreshExecution();
+    }, 2_000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [executionPending, isRefreshing, refreshExecution, run.compiledFrom?.compiledAt]);
 
   if (!run.compiledFrom) {
     return {
@@ -199,10 +242,12 @@ export function useRunExecutionViewModel(): RunExecutionViewModel {
     };
   }
 
-  if (state.tasks.length === 0) {
+  if (executionPending) {
     return {
-      message: "This run is compiled, but no workflow tasks are available yet.",
-      state: "empty"
+      message: "Compile was accepted for this run. Keystone is still materializing the live execution graph.",
+      refresh: refreshExecution,
+      refreshLabel: isRefreshing ? "Refreshing execution..." : "Refresh execution",
+      state: "pending"
     };
   }
 

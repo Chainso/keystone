@@ -129,6 +129,8 @@ export interface ExecutionPlanCompileBlockedViewModel {
   actionHref?: string | undefined;
   actionLabel?: string | undefined;
   helperMessage: string;
+  refresh?: (() => void) | undefined;
+  refreshLabel?: string | undefined;
   state: "blocked";
   title: string;
 }
@@ -235,6 +237,12 @@ function hasCompiledWorkflowData(input: {
   return input.compiledFrom !== null && input.workflow.summary.totalTasks > 0;
 }
 
+function hasCompileProvenance(
+  run: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>
+) {
+  return run.compiledFrom !== null;
+}
+
 function hasCurrentCompiledPlanningRevisions(input: {
   planningDocuments: ReturnType<typeof useReadyRunDetail>["state"]["planningDocuments"];
   run: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>;
@@ -268,7 +276,7 @@ function buildPhaseStepperViewModel(
 
   return runPhaseDefinitions.map((phase) => ({
     href: buildRunPhasePath(input.run.runId, phase.id),
-    isAvailable: phase.id === "execution" ? executionAvailable : true,
+    isAvailable: phase.id === "execution" ? hasCompileProvenance(input.run) : true,
     label: phase.label,
     phaseId: phase.id
   }));
@@ -499,12 +507,7 @@ export function useRunDefaultPhasePath() {
   const { state } = useReadyRunDetail();
   const run = state.run!;
 
-  if (
-    hasCompiledWorkflowData({
-      compiledFrom: run.compiledFrom,
-      workflow: state.workflow!
-    })
-  ) {
+  if (hasCompileProvenance(run)) {
     return buildRunPhasePath(run.runId, "execution");
   }
 
@@ -773,7 +776,7 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
         return;
       }
 
-      if (!result.executionAvailable) {
+      if (!result.executionAvailable && !result.workflowPending) {
         setIsCompiling(false);
         setSubmitErrorMessage(
           "Compile was accepted, but the execution graph is not ready yet. Refresh the run and try opening Execution again."
@@ -828,6 +831,12 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
         planningState: planning.state,
         runStatus: run.status
       }),
+      refresh: compileAcceptedWithoutWorkflow
+        ? () => {
+            void actions.reload();
+          }
+        : undefined,
+      refreshLabel: compileAcceptedWithoutWorkflow ? "Refresh run" : undefined,
       state: "blocked",
       title: planningChangedSinceCompile ? "Recompile unavailable" : "Compile unavailable"
     };

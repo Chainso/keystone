@@ -37,10 +37,23 @@ export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
         </div>
       </header>
 
-      {model.state === "empty" ? (
+      {model.state === "empty" || model.state === "pending" ? (
         <section className="empty-state-card">
-          <h3 className="document-card-title">Execution is read-only</h3>
+          <h3 className="document-card-title">
+            {model.state === "pending" ? "Execution is materializing" : "Execution is read-only"}
+          </h3>
           <p className="document-card-summary">{model.message}</p>
+          {model.state === "pending" ? (
+            <div className="shell-state-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={model.refresh}
+              >
+                {model.refreshLabel}
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : (
         <div className="execution-board" aria-label="Execution workflow graph">
