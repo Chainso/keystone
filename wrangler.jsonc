@@ -21,10 +21,6 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "RUN_COORDINATOR",
-        "class_name": "RunCoordinatorDO"
-      },
-      {
         "name": "TASK_SESSION",
         "class_name": "TaskSessionDO"
       },
@@ -62,6 +58,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["KeystoneThinkAgent"]
+    },
+    {
+      "tag": "v4",
+      "deleted_classes": ["RunCoordinatorDO"]
     }
   ],
   "vars": {

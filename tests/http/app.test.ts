@@ -395,7 +395,6 @@ const env = {
     create: mocked.runWorkflowCreate,
     get: mocked.runWorkflowGet
   } as unknown as Workflow<unknown>,
-  RUN_COORDINATOR: {} as DurableObjectNamespace,
   SANDBOX: {} as DurableObjectNamespace,
   TASK_SESSION: {} as DurableObjectNamespace,
   KEYSTONE_THINK_AGENT: {} as DurableObjectNamespace
