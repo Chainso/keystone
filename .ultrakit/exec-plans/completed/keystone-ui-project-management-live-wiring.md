@@ -1062,4 +1062,4 @@ Completed on 2026-04-20.
 
 #### Next Starter Context
 
-- This plan is complete and archived. The remaining active plan is `keystone-target-model-migration`, and any future UI work should start from the now-documented live/scaffold split rather than assuming the project-management shell is still scaffold-only.
+- This plan is complete and archived. The target-model migration is also archived, and any future UI work should start from the now-documented live/scaffold split rather than assuming the project-management shell is still scaffold-only.
