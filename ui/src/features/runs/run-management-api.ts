@@ -3,9 +3,14 @@ import {
   type ArtifactResource
 } from "../../../../src/http/api/v1/artifacts/contracts";
 import {
+  documentCreateRequestSchema,
   documentCollectionEnvelopeSchema,
+  documentDetailEnvelopeSchema,
+  documentRevisionCreateRequestSchema,
   documentRevisionDetailEnvelopeSchema,
+  type DocumentCreateRequest,
   type DocumentResource,
+  type DocumentRevisionCreateRequest,
   type DocumentRevisionResource
 } from "../../../../src/http/api/v1/documents/contracts";
 import {
@@ -20,6 +25,7 @@ import { buildProtectedBrowserHeaders } from "../projects/project-management-api
 
 export interface StaticRunDocumentRevisionRecord {
   content: string;
+  documentId?: string;
   revision: DocumentRevisionResource;
 }
 
@@ -34,6 +40,12 @@ export interface StaticRunDetailRecord {
 }
 
 export interface RunManagementApi {
+  createRunDocument: (runId: string, input: DocumentCreateRequest) => Promise<DocumentResource>;
+  createRunDocumentRevision: (
+    runId: string,
+    documentId: string,
+    input: DocumentRevisionCreateRequest
+  ) => Promise<DocumentRevisionResource>;
   getArtifactContent: (contentUrl: string) => Promise<string>;
   getDocumentContent: (contentUrl: string) => Promise<string>;
   getRun: (runId: string) => Promise<RunResource>;
@@ -156,6 +168,54 @@ export function createBrowserRunManagementApi(
   }
 
   return {
+    async createRunDocument(runId, input) {
+      const payload = documentCreateRequestSchema.parse(input);
+      const response = await fetchImplementation(`/v1/runs/${encodeURIComponent(runId)}/documents`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: buildProtectedBrowserHeaders({
+          accept: "application/json",
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw await buildApiError(response, `Unable to create run document (${response.status}).`);
+      }
+
+      const envelope = documentDetailEnvelopeSchema.parse(await response.json());
+
+      return envelope.data;
+    },
+    async createRunDocumentRevision(runId, documentId, input) {
+      const payload = documentRevisionCreateRequestSchema.parse(input);
+      const response = await fetchImplementation(
+        `/v1/runs/${encodeURIComponent(runId)}/documents/${encodeURIComponent(
+          documentId
+        )}/revisions`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: buildProtectedBrowserHeaders({
+            accept: "application/json",
+            "content-type": "application/json"
+          }),
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (!response.ok) {
+        throw await buildApiError(
+          response,
+          `Unable to save document revision (${response.status}).`
+        );
+      }
+
+      const envelope = documentRevisionDetailEnvelopeSchema.parse(await response.json());
+
+      return envelope.data;
+    },
     async getArtifactContent(contentUrl) {
       return getProtectedTextContent(contentUrl, "Unable to load artifact content.");
     },
@@ -292,8 +352,8 @@ export function createStaticRunManagementApi(
 ): RunManagementApi {
   const runRecords = new Map(
     Array.isArray(runs)
-      ? runs.map((run) => [run.run.runId, run] as const)
-      : Object.entries(runs)
+      ? runs.map((run) => [run.run.runId, structuredClone(run)] as const)
+      : Object.entries(runs).map(([runId, run]) => [runId, structuredClone(run)] as const)
   );
 
   function getStaticRunRecord(runId: string) {
@@ -308,6 +368,29 @@ export function createStaticRunManagementApi(
     }
 
     return run;
+  }
+
+  function getStaticRunDocument(run: StaticRunDetailRecord, documentId: string) {
+    return run.documents?.find((document) => document.documentId === documentId) ?? null;
+  }
+
+  function hasStaticDocumentRevision(
+    run: StaticRunDetailRecord,
+    documentId: string,
+    documentRevisionId: string
+  ) {
+    return run.revisions?.some((candidate) => {
+      if (candidate.documentId) {
+        return (
+          candidate.documentId === documentId &&
+          candidate.revision.documentRevisionId === documentRevisionId
+        );
+      }
+
+      const document = getStaticRunDocument(run, documentId);
+
+      return document?.currentRevisionId === candidate.revision.documentRevisionId;
+    });
   }
 
   function getStaticContent(contentUrl: string) {
@@ -331,6 +414,83 @@ export function createStaticRunManagementApi(
   }
 
   return {
+    async createRunDocument(runId, input) {
+      const payload = documentCreateRequestSchema.parse(input);
+      const run = getStaticRunRecord(runId);
+      const existingDocument =
+        run.documents?.find((document) => document.path === payload.path) ?? null;
+
+      if (existingDocument) {
+        throw new RunManagementApiError({
+          code: "document_path_conflict",
+          message: "A document with that logical path already exists in this scope.",
+          status: 409
+        });
+      }
+
+      const createdDocument: DocumentResource = {
+        conversation: payload.conversation ?? null,
+        currentRevisionId: null,
+        documentId: `${runId}-${payload.path.replace(/\//g, "-")}`,
+        kind: payload.kind,
+        path: payload.path,
+        scopeType: "run"
+      };
+
+      run.documents = [...(run.documents ?? []), createdDocument];
+
+      return createdDocument;
+    },
+    async createRunDocumentRevision(runId, documentId, input) {
+      const payload = documentRevisionCreateRequestSchema.parse(input);
+      const run = getStaticRunRecord(runId);
+      const document = getStaticRunDocument(run, documentId);
+
+      if (!document) {
+        throw new RunManagementApiError({
+          code: "document_not_found",
+          message: `Document ${documentId} was not found for run ${runId}.`,
+          status: 404
+        });
+      }
+
+      const currentRevision = document.currentRevisionId
+        ? run.revisions?.find(
+            (candidate) => candidate.revision.documentRevisionId === document.currentRevisionId
+          ) ?? null
+        : null;
+      const revisionNumber = (currentRevision?.revision.revisionNumber ?? 0) + 1;
+      const artifactId = `${document.documentId}-artifact-v${revisionNumber}`;
+      const contentUrl = `/v1/artifacts/${artifactId}/content`;
+      const createdRevision: StaticRunDocumentRevisionRecord = {
+        content: payload.body,
+        documentId: document.documentId,
+        revision: {
+          artifactId,
+          contentUrl,
+          createdAt: new Date().toISOString(),
+          documentRevisionId: `${document.documentId}-v${revisionNumber}`,
+          revisionNumber,
+          title: payload.title
+        }
+      };
+
+      run.revisions = [...(run.revisions ?? []), createdRevision];
+      run.documents = (run.documents ?? []).map((candidate) =>
+        candidate.documentId === document.documentId
+          ? {
+              ...candidate,
+              currentRevisionId: createdRevision.revision.documentRevisionId
+            }
+          : candidate
+      );
+      run.artifactContents = {
+        ...(run.artifactContents ?? {}),
+        [contentUrl]: payload.body
+      };
+
+      return createdRevision.revision;
+    },
     async getArtifactContent(contentUrl) {
       return getStaticContent(contentUrl);
     },
@@ -345,7 +505,7 @@ export function createStaticRunManagementApi(
       const revision = run.revisions?.find(
         (candidate) =>
           candidate.revision.documentRevisionId === documentRevisionId &&
-          run.documents?.some((document) => document.documentId === documentId)
+          hasStaticDocumentRevision(run, documentId, documentRevisionId)
       );
 
       if (!revision) {

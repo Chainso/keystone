@@ -75,6 +75,7 @@ function createRunFixture(
     revisions: [
       {
         content: "# Specification\n- Replace scaffold run detail with live data.\n",
+        documentId: specificationDocumentId,
         revision: {
           artifactId: `${runId}-specification-artifact`,
           contentUrl: `/v1/artifacts/${runId}-specification-artifact/content`,
@@ -86,6 +87,7 @@ function createRunFixture(
       },
       {
         content: "# Architecture\n- Keep route files thin.\n",
+        documentId: architectureDocumentId,
         revision: {
           artifactId: `${runId}-architecture-artifact`,
           contentUrl: `/v1/artifacts/${runId}-architecture-artifact/content`,
@@ -97,6 +99,7 @@ function createRunFixture(
       },
       {
         content: "# Execution Plan\n- Cut over the live provider seam.\n",
+        documentId: executionPlanDocumentId,
         revision: {
           artifactId: `${runId}-execution-plan-artifact`,
           contentUrl: `/v1/artifacts/${runId}-execution-plan-artifact/content`,
@@ -155,6 +158,7 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
     revisions: [
       {
         content: "# Specification\n- One planning document exists.\n",
+        documentId: "run-101-specification",
         revision: {
           artifactId: "run-101-specification-artifact",
           contentUrl: "/v1/artifacts/run-101-specification-artifact/content",
@@ -196,6 +200,7 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
     revisions: [
       {
         content: "# Specification\n- Architecture is the current focus.\n",
+        documentId: "run-103-specification",
         revision: {
           artifactId: "run-103-specification-artifact",
           contentUrl: "/v1/artifacts/run-103-specification-artifact/content",
@@ -207,6 +212,7 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
       },
       {
         content: "# Architecture\n- Execution plan is still missing.\n",
+        documentId: "run-103-architecture",
         revision: {
           artifactId: "run-103-architecture-artifact",
           contentUrl: "/v1/artifacts/run-103-architecture-artifact/content",
@@ -337,6 +343,7 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
     revisions: [
       {
         content: "# Specification\n- Architecture has not been written yet.\n",
+        documentId: "run-105-specification",
         revision: {
           artifactId: "run-105-specification-artifact",
           contentUrl: "/v1/artifacts/run-105-specification-artifact/content",
@@ -347,6 +354,11 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
         }
       }
     ]
+  },
+  "run-106": {
+    ...createRunFixture("run-106"),
+    documents: [],
+    revisions: []
   }
 };
 
@@ -405,17 +417,71 @@ function createErrorResponse(input: { code: string; message: string; status: num
   );
 }
 
+function cloneRunFixtures() {
+  return structuredClone(runFixtures);
+}
+
+function getRunRequestUrl(request: RequestInfo | URL) {
+  return typeof request === "string" ? request : request.toString();
+}
+
+function getRunRequestMethod(request: RequestInfo | URL, init?: RequestInit) {
+  return request instanceof Request ? request.method : init?.method ?? "GET";
+}
+
+async function parseRequestJson(request: RequestInfo | URL, init?: RequestInit) {
+  if (request instanceof Request) {
+    return request.json();
+  }
+
+  if (typeof init?.body !== "string") {
+    throw new Error("Expected JSON request body.");
+  }
+
+  return JSON.parse(init.body);
+}
+
+function findRunDocument(run: StaticRunDetailRecord, documentId: string) {
+  return run.documents?.find((document) => document.documentId === documentId) ?? null;
+}
+
+function findRunRevision(
+  run: StaticRunDetailRecord,
+  documentId: string,
+  documentRevisionId: string
+) {
+  return (
+    run.revisions?.find((candidate) => {
+      if (candidate.documentId) {
+        return (
+          candidate.documentId === documentId &&
+          candidate.revision.documentRevisionId === documentRevisionId
+        );
+      }
+
+      return findRunDocument(run, documentId)?.currentRevisionId === candidate.revision.documentRevisionId;
+    }) ?? null
+  );
+}
+
+function getFetchRequests(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.map(([request, init]) => ({
+    method: getRunRequestMethod(request, init),
+    url: getRunRequestUrl(request)
+  }));
+}
+
 function createBrowserRunFetch(
   overrides: Record<string, (() => Promise<Response> | Response) | undefined> = {}
 ) {
+  const browserRunFixtures = cloneRunFixtures();
   const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof request === "string" ? request : request.toString();
-    const method = request instanceof Request ? request.method : init?.method ?? "GET";
+    const url = getRunRequestUrl(request);
+    const method = getRunRequestMethod(request, init);
 
-    expect(method).toBe("GET");
     expectDevAuthHeaders(request, init);
 
-    const override = overrides[url];
+    const override = overrides[`${method} ${url}`] ?? overrides[url];
 
     if (override) {
       return await override();
@@ -425,7 +491,7 @@ function createBrowserRunFetch(
 
     if (runMatch) {
       const runId = decodeURIComponent(runMatch[1]!);
-      const run = runFixtures[runId];
+      const run = browserRunFixtures[runId];
 
       return run
         ? createJsonResponse({
@@ -447,25 +513,69 @@ function createBrowserRunFetch(
 
     if (runDocumentsMatch) {
       const runId = decodeURIComponent(runDocumentsMatch[1]!);
-      const run = runFixtures[runId];
+      const run = browserRunFixtures[runId];
 
-      return run
-        ? createJsonResponse({
-            data: {
-              items: run.documents ?? [],
-              total: run.documents?.length ?? 0
-            },
+      if (!run) {
+        return createErrorResponse({
+          code: "run_not_found",
+          message: `Run ${runId} was not found.`,
+          status: 404
+        });
+      }
+
+      if (method === "POST") {
+        const input = (await parseRequestJson(request, init)) as {
+          conversation?: StaticRunDetailRecord["documents"] extends Array<infer T>
+            ? T["conversation"]
+            : never;
+          kind: NonNullable<StaticRunDetailRecord["documents"]>[number]["kind"];
+          path: string;
+        };
+
+        if (run.documents?.some((document) => document.path === input.path)) {
+          return createErrorResponse({
+            code: "document_path_conflict",
+            message: "A document with that logical path already exists in this scope.",
+            status: 409
+          });
+        }
+
+        const documentId = `${runId}-${input.path.replace(/\//g, "-")}`;
+        const createdDocument = {
+          conversation: input.conversation ?? null,
+          currentRevisionId: null,
+          documentId,
+          kind: input.kind,
+          path: input.path,
+          scopeType: "run" as const
+        };
+
+        run.documents = [...(run.documents ?? []), createdDocument];
+
+        return createJsonResponse(
+          {
+            data: createdDocument,
             meta: {
               apiVersion: "v1" as const,
-              envelope: "collection" as const,
+              envelope: "detail" as const,
               resourceType: "document" as const
             }
-          })
-        : createErrorResponse({
-            code: "run_not_found",
-            message: `Run ${runId} was not found.`,
-            status: 404
-          });
+          },
+          201
+        );
+      }
+
+      return createJsonResponse({
+        data: {
+          items: run.documents ?? [],
+          total: run.documents?.length ?? 0
+        },
+        meta: {
+          apiVersion: "v1" as const,
+          envelope: "collection" as const,
+          resourceType: "document" as const
+        }
+      });
     }
 
     const runDocumentRevisionMatch = url.match(
@@ -476,12 +586,8 @@ function createBrowserRunFetch(
       const runId = decodeURIComponent(runDocumentRevisionMatch[1]!);
       const documentId = decodeURIComponent(runDocumentRevisionMatch[2]!);
       const documentRevisionId = decodeURIComponent(runDocumentRevisionMatch[3]!);
-      const run = runFixtures[runId];
-      const revision = run?.revisions?.find(
-        (candidate) =>
-          candidate.revision.documentRevisionId === documentRevisionId &&
-          run.documents?.some((document) => document.documentId === documentId)
-      );
+      const run = browserRunFixtures[runId];
+      const revision = run ? findRunRevision(run, documentId, documentRevisionId) : null;
 
       return revision
         ? createJsonResponse({
@@ -499,11 +605,88 @@ function createBrowserRunFetch(
           });
     }
 
+    const runDocumentRevisionsCollectionMatch = url.match(
+      /^\/v1\/runs\/([^/]+)\/documents\/([^/]+)\/revisions$/
+    );
+
+    if (runDocumentRevisionsCollectionMatch) {
+      const runId = decodeURIComponent(runDocumentRevisionsCollectionMatch[1]!);
+      const documentId = decodeURIComponent(runDocumentRevisionsCollectionMatch[2]!);
+      const run = browserRunFixtures[runId];
+
+      if (!run) {
+        return createErrorResponse({
+          code: "run_not_found",
+          message: `Run ${runId} was not found.`,
+          status: 404
+        });
+      }
+
+      if (method !== "POST") {
+        throw new Error(`Unexpected method ${method} for ${url}`);
+      }
+
+      const document = findRunDocument(run, documentId);
+
+      if (!document) {
+        return createErrorResponse({
+          code: "document_not_found",
+          message: `Document ${documentId} was not found for run ${runId}.`,
+          status: 404
+        });
+      }
+
+      const input = (await parseRequestJson(request, init)) as {
+        body: string;
+        title: string;
+      };
+      const currentRevision = document.currentRevisionId
+        ? run.revisions?.find(
+            (candidate) => candidate.revision.documentRevisionId === document.currentRevisionId
+          ) ?? null
+        : null;
+      const revisionNumber = (currentRevision?.revision.revisionNumber ?? 0) + 1;
+      const createdRevision = {
+        content: input.body,
+        documentId: document.documentId,
+        revision: {
+          artifactId: `${document.documentId}-artifact-v${revisionNumber}`,
+          contentUrl: `/v1/artifacts/${document.documentId}-artifact-v${revisionNumber}/content`,
+          createdAt: new Date().toISOString(),
+          documentRevisionId: `${document.documentId}-v${revisionNumber}`,
+          revisionNumber,
+          title: input.title
+        }
+      };
+
+      run.revisions = [...(run.revisions ?? []), createdRevision];
+      run.documents = (run.documents ?? []).map((candidate) =>
+        candidate.documentId === document.documentId
+          ? {
+              ...candidate,
+              currentRevisionId: createdRevision.revision.documentRevisionId
+            }
+          : candidate
+      );
+
+      return createJsonResponse(
+        {
+          data: createdRevision.revision,
+          meta: {
+            apiVersion: "v1" as const,
+            envelope: "detail" as const,
+            resourceType: "document_revision" as const
+          }
+        },
+        201
+      );
+    }
+
     const runWorkflowMatch = url.match(/^\/v1\/runs\/([^/]+)\/workflow$/);
 
     if (runWorkflowMatch) {
       const runId = decodeURIComponent(runWorkflowMatch[1]!);
-      const run = runFixtures[runId];
+      const run = browserRunFixtures[runId];
 
       return run
         ? createJsonResponse({
@@ -537,7 +720,7 @@ function createBrowserRunFetch(
 
     if (runTasksMatch) {
       const runId = decodeURIComponent(runTasksMatch[1]!);
-      const run = runFixtures[runId];
+      const run = browserRunFixtures[runId];
 
       return run
         ? createJsonResponse({
@@ -563,7 +746,7 @@ function createBrowserRunFetch(
     if (runTaskArtifactsMatch) {
       const runId = decodeURIComponent(runTaskArtifactsMatch[1]!);
       const taskId = decodeURIComponent(runTaskArtifactsMatch[2]!);
-      const run = runFixtures[runId];
+      const run = browserRunFixtures[runId];
 
       return run
         ? createJsonResponse({
@@ -584,7 +767,7 @@ function createBrowserRunFetch(
           });
     }
 
-    for (const run of Object.values(runFixtures)) {
+    for (const run of Object.values(browserRunFixtures)) {
       const revisionRecord = run.revisions?.find(
         (candidate) => candidate.revision.contentUrl === url
       );
@@ -697,8 +880,9 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
   });
 
-  it("renders truthful planning document content from the live run API", async () => {
-    renderRunRoute("/runs/run-104/specification");
+  it("loads the current specification revision and saves a new revision without route churn", async () => {
+    const { fetchMock } = createBrowserRunFetch();
+    const { router } = renderRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
@@ -708,36 +892,147 @@ describe("Run routes", () => {
       "Conversation attached to this document."
     );
     expect(screen.getByText("- Replace scaffold run detail with live data.")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Message composer" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+      target: {
+        value: "Run Specification v2"
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value:
+          "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Specification v2" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Save current revisions without route churn.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+    expect(getFetchRequests(fetchMock)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "POST",
+          url: "/v1/runs/run-104/documents/run-104-specification/revisions"
+        })
+      ])
+    );
   });
 
-  it("renders live architecture and execution-plan pages through the browser run provider", async () => {
-    const { fetchMock } = createBrowserRunFetch();
+  it.each([
+    {
+      defaultTitle: "Run Specification",
+      documentId: "run-106-specification",
+      emptyTitle: "No specification document yet",
+      expectedLine: "- Define the live planning specification.",
+      path: "/runs/run-106/specification"
+    },
+    {
+      defaultTitle: "Run Architecture",
+      documentId: "run-106-architecture",
+      emptyTitle: "No architecture document yet",
+      expectedLine: "- Keep the shared planning layout stable.",
+      path: "/runs/run-106/architecture"
+    },
+    {
+      defaultTitle: "Execution Plan",
+      documentId: "run-106-execution-plan",
+      emptyTitle: "No execution plan document yet",
+      expectedLine: "- Save the current execution plan without leaving the route.",
+      path: "/runs/run-106/execution-plan"
+    }
+  ])(
+    "creates and saves a missing planning document for $path without route churn",
+    async ({ defaultTitle, documentId, emptyTitle, expectedLine, path }) => {
+      const { fetchMock } = createBrowserRunFetch();
+      const { router } = renderRoute(path);
 
-    renderRoute("/runs/run-104/architecture");
+      expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
+      expect(screen.getByText(emptyTitle)).toBeInTheDocument();
 
-    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
-    expect(screen.getByText("- Keep route files thin.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Create`, "i") }));
 
-    cleanup();
+      expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
+        defaultTitle
+      );
 
-    renderRoute("/runs/run-104/execution-plan");
+      fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+        target: {
+          value: `${defaultTitle}\n${expectedLine}\n`
+        }
+      });
 
-    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Execution Plan" })).toBeInTheDocument();
-    expect(screen.getByText("- Cut over the live provider seam.")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalled();
-  });
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-  it("renders a read-only empty state when a planning document has no current revision", async () => {
-    renderRunRoute("/runs/run-105/architecture");
+      expect(await screen.findByRole("heading", { name: defaultTitle })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+      });
+      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(path);
+
+      expect(getFetchRequests(fetchMock)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "POST",
+            url: `/v1/runs/run-106/documents`
+          }),
+          expect.objectContaining({
+            method: "POST",
+            url: `/v1/runs/run-106/documents/${documentId}/revisions`
+          })
+        ])
+      );
+    }
+  );
+
+  it("lets a planning page with no current revision enter the editor, discard changes, and save", async () => {
+    const { router } = renderRunRoute(
+      "/runs/run-105/architecture",
+      createStaticRunManagementApi(cloneRunFixtures())
+    );
 
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
     expect(screen.getByText("No current architecture revision")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Editing is not available on the live run path yet\./i)
-    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+
+    expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
+      "Run Architecture"
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Discarded draft changes.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+    expect(screen.getByText("No current architecture revision")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Document body" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Save the first architecture revision.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Save the first architecture revision.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
   });
 
   it("renders a planning-page error state when the current revision cannot be read", async () => {

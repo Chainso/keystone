@@ -68,8 +68,16 @@ export interface RunDetailState {
 }
 
 export interface RunDetailActions {
+  createPlanningDocument: (phaseId: RunPlanningPhaseId) => Promise<DocumentResource>;
   loadTaskArtifacts: (taskId: string, options?: { force?: boolean }) => Promise<void>;
   reload: () => Promise<void>;
+  savePlanningDocument: (
+    phaseId: RunPlanningPhaseId,
+    input: {
+      body: string;
+      title: string;
+    }
+  ) => Promise<DocumentRevisionResource>;
 }
 
 export interface RunDetailMeta {
@@ -92,6 +100,12 @@ const planningPhaseDocumentKind: Record<RunPlanningPhaseId, DocumentResource["ki
   specification: "specification",
   architecture: "architecture",
   "execution-plan": "execution_plan"
+};
+
+const planningPhaseDocumentPath: Record<RunPlanningPhaseId, string> = {
+  specification: "specification",
+  architecture: "architecture",
+  "execution-plan": "execution-plan"
 };
 
 function buildEmptyPlanningDocumentState(
@@ -227,8 +241,14 @@ export function RunDetailProvider({
   const api = useRunManagementApi();
   const [value, setValue] = useState<RunDetailValue>(() => ({
     actions: {
+      async createPlanningDocument() {
+        throw new Error("Run detail is still loading.");
+      },
       async loadTaskArtifacts() {},
-      async reload() {}
+      async reload() {},
+      async savePlanningDocument() {
+        throw new Error("Run detail is still loading.");
+      }
     },
     meta: {
       errorMessage: null,
@@ -298,6 +318,97 @@ export function RunDetailProvider({
         state: buildEmptyRunDetailState()
       }));
     }
+  }
+
+  async function createPlanningDocument(phaseId: RunPlanningPhaseId) {
+    const existingDocument = value.state.planningDocuments[phaseId].document;
+
+    if (existingDocument) {
+      return existingDocument;
+    }
+
+    const createdDocument = await api.createRunDocument(runId, {
+      kind: planningPhaseDocumentKind[phaseId],
+      path: planningPhaseDocumentPath[phaseId]
+    });
+
+    setValue((current) => {
+      if (current.meta.status !== "ready") {
+        return current;
+      }
+
+      return {
+        ...current,
+        state: {
+          ...current.state,
+          planningDocuments: {
+            ...current.state.planningDocuments,
+            [phaseId]: {
+              document: createdDocument,
+              phaseId,
+              reason: "missing_revision",
+              revision: null,
+              status: "empty"
+            }
+          }
+        }
+      };
+    });
+
+    return createdDocument;
+  }
+
+  async function savePlanningDocument(
+    phaseId: RunPlanningPhaseId,
+    input: {
+      body: string;
+      title: string;
+    }
+  ) {
+    const planningDocument = value.state.planningDocuments[phaseId].document;
+
+    if (!planningDocument) {
+      throw new Error("Create the document before saving a revision.");
+    }
+
+    const revision = await api.createRunDocumentRevision(runId, planningDocument.documentId, {
+      body: input.body,
+      title: input.title
+    });
+
+    setValue((current) => {
+      if (current.meta.status !== "ready") {
+        return current;
+      }
+
+      const currentPlanningDocument = current.state.planningDocuments[phaseId].document;
+
+      if (!currentPlanningDocument) {
+        return current;
+      }
+
+      return {
+        ...current,
+        state: {
+          ...current.state,
+          planningDocuments: {
+            ...current.state.planningDocuments,
+            [phaseId]: {
+              content: input.body,
+              document: {
+                ...currentPlanningDocument,
+                currentRevisionId: revision.documentRevisionId
+              },
+              phaseId,
+              revision,
+              status: "ready"
+            }
+          }
+        }
+      };
+    });
+
+    return revision;
   }
 
   async function loadTaskArtifacts(taskId: string, options: { force?: boolean } = {}) {
@@ -402,8 +513,10 @@ export function RunDetailProvider({
 
   const providedValue: RunDetailValue = {
     actions: {
+      createPlanningDocument,
       loadTaskArtifacts,
-      reload: loadRunDetail
+      reload: loadRunDetail,
+      savePlanningDocument
     },
     meta: value.meta,
     state: value.state

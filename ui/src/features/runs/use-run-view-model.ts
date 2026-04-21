@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 import {
   buildRunPhasePath,
   getRunPhaseDefinition,
@@ -54,19 +56,24 @@ export type RunDetailLayoutViewModel =
 interface RunPlanningPhaseBaseViewModel {
   conversationLocator: ConversationLocator | null;
   documentPath: string;
+  panelTitle: string;
   phaseSummary: string;
   phaseTitle: string;
 }
 
 export interface RunPlanningPhaseReadyViewModel extends RunPlanningPhaseBaseViewModel {
   documentLines: string[];
-  documentTitle: string;
+  editDocument: () => void;
   state: "ready";
 }
 
 export interface RunPlanningPhaseEmptyViewModel extends RunPlanningPhaseBaseViewModel {
+  actionErrorMessage: string | null;
+  actionLabel: string;
   emptyMessage: string;
   emptyTitle: string;
+  isCreating: boolean;
+  startEditing: () => void;
   state: "empty";
 }
 
@@ -77,8 +84,31 @@ export interface RunPlanningPhaseErrorViewModel extends RunPlanningPhaseBaseView
   state: "error";
 }
 
+export interface RunPlanningPhaseEditingViewModel extends RunPlanningPhaseBaseViewModel {
+  bodyField: {
+    label: string;
+    onChange: (value: string) => void;
+    value: string;
+  };
+  canSave: boolean;
+  discardChanges: () => void;
+  hasUnsavedChanges: boolean;
+  helperMessage: string;
+  isSubmitting: boolean;
+  saveChanges: () => void;
+  saveLabel: string;
+  submitErrorMessage: string | null;
+  titleField: {
+    label: string;
+    onChange: (value: string) => void;
+    value: string;
+  };
+  state: "editing";
+}
+
 export type RunPlanningPhaseViewModel =
   | RunPlanningPhaseReadyViewModel
+  | RunPlanningPhaseEditingViewModel
   | RunPlanningPhaseEmptyViewModel
   | RunPlanningPhaseErrorViewModel;
 
@@ -86,6 +116,12 @@ const canonicalDocumentPathByPhase: Record<RunPlanningPhaseId, string> = {
   specification: "specification",
   architecture: "architecture",
   "execution-plan": "execution-plan"
+};
+
+const defaultRevisionTitleByPhase: Record<RunPlanningPhaseId, string> = {
+  specification: "Run Specification",
+  architecture: "Run Architecture",
+  "execution-plan": "Execution Plan"
 };
 
 function formatRunTimestamp(value: string) {
@@ -175,38 +211,99 @@ function buildPhaseBaseViewModel(
   return {
     conversationLocator: planningState.document?.conversation ?? null,
     documentPath: planningState.document?.path ?? canonicalDocumentPathByPhase[phaseId],
+    panelTitle:
+      planningState.status === "ready"
+        ? planningState.revision.title
+        : `${phase.label} document`,
     phaseSummary: phase.summary,
     phaseTitle: `${phase.label} conversation`
+  };
+}
+
+function buildPlanningDocumentSourceKey(
+  input: {
+    documentId: string | null;
+    reason: "missing_document" | "missing_revision" | null;
+    revisionId: string | null;
+    status: RunPlanningDocumentState["status"];
+  }
+) {
+  return [
+    input.status,
+    input.documentId ?? "missing-document",
+    input.revisionId ?? "missing-revision",
+    input.reason ?? "none"
+  ].join(":");
+}
+
+function getPlanningDocumentSourceKey(planningState: RunPlanningDocumentState) {
+  return buildPlanningDocumentSourceKey({
+    documentId: planningState.document?.documentId ?? null,
+    reason: planningState.status === "empty" ? planningState.reason : null,
+    revisionId: planningState.revision?.documentRevisionId ?? null,
+    status: planningState.status
+  });
+}
+
+function buildPlanningDraftSource(
+  phaseId: RunPlanningPhaseId,
+  planningState: RunPlanningDocumentState
+) {
+  if (planningState.status === "ready") {
+    return {
+      body: planningState.content,
+      title: planningState.revision.title
+    };
+  }
+
+  return {
+    body: "",
+    title: defaultRevisionTitleByPhase[phaseId]
   };
 }
 
 function buildPlanningEmptyViewModel(
   phaseId: RunPlanningPhaseId,
   planningState: Extract<RunPlanningDocumentState, { status: "empty" }>,
-  base: ReturnType<typeof buildPhaseBaseViewModel>
+  base: ReturnType<typeof buildPhaseBaseViewModel>,
+  input: {
+    actionErrorMessage: string | null;
+    isCreating: boolean;
+    startEditing: () => void;
+  }
 ): RunPlanningPhaseEmptyViewModel {
   const phase = getRunPhaseDefinition(phaseId);
   const label = phase.label.toLowerCase();
 
   if (planningState.reason === "missing_document") {
     return {
+      actionErrorMessage: input.actionErrorMessage,
+      actionLabel: input.isCreating ? "Creating document..." : `Create ${label} document`,
       conversationLocator: base.conversationLocator,
       documentPath: base.documentPath,
-      emptyMessage: `This run does not have a ${label} document yet. Editing is not available on the live run path yet.`,
+      emptyMessage: `This run does not have a ${label} document yet. Create it to start writing the current ${label}.`,
       emptyTitle: `No ${label} document yet`,
+      isCreating: input.isCreating,
       phaseSummary: base.phaseSummary,
       phaseTitle: base.phaseTitle,
+      panelTitle: base.panelTitle,
+      startEditing: input.startEditing,
       state: "empty"
     };
   }
 
   return {
+    actionErrorMessage: input.actionErrorMessage,
+    actionLabel: "Write first revision",
     conversationLocator: base.conversationLocator,
     documentPath: base.documentPath,
-    emptyMessage: `This ${label} document exists, but it does not have a current revision yet. Editing is not available on the live run path yet.`,
+    emptyMessage: `This ${label} document exists, but it does not have a current revision yet. Write the first revision to make it the current document surface.`,
     emptyTitle: `No current ${label} revision`,
+    isCreating: input.isCreating,
     phaseSummary: base.phaseSummary,
     phaseTitle: base.phaseTitle,
+    panelTitle: base.panelTitle,
+    startEditing: input.startEditing,
     state: "empty"
   };
 }
@@ -289,13 +386,136 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   const { actions, state } = useReadyRunDetail();
   const planningState = state.planningDocuments[phaseId];
   const base = buildPhaseBaseViewModel(phaseId, planningState);
+  const phase = getRunPhaseDefinition(phaseId);
+  const sourceDraft = buildPlanningDraftSource(phaseId, planningState);
+  const sourceKey = getPlanningDocumentSourceKey(planningState);
+  const [title, setTitle] = useState(sourceDraft.title);
+  const [body, setBody] = useState(sourceDraft.body);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
+  const pendingEditorSourceKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const shouldEnterEditor = pendingEditorSourceKeyRef.current === sourceKey;
+
+    pendingEditorSourceKeyRef.current = null;
+    setBody(sourceDraft.body);
+    setIsCreating(false);
+    setIsEditing(shouldEnterEditor);
+    setIsSubmitting(false);
+    setSubmitErrorMessage(null);
+    setTitle(sourceDraft.title);
+  }, [sourceDraft.body, sourceDraft.title, sourceKey]);
+
+  async function startEditing() {
+    setSubmitErrorMessage(null);
+
+    if (planningState.status === "empty" && planningState.reason === "missing_document") {
+      setIsCreating(true);
+
+      try {
+        const document = await actions.createPlanningDocument(phaseId);
+
+        pendingEditorSourceKeyRef.current = buildPlanningDocumentSourceKey({
+          documentId: document.documentId,
+          reason: "missing_revision",
+          revisionId: null,
+          status: "empty"
+        });
+      } catch (error) {
+        setIsCreating(false);
+        setSubmitErrorMessage(
+          error instanceof Error && error.message
+            ? error.message
+            : `Unable to create ${phase.label.toLowerCase()} document.`
+        );
+      }
+
+      return;
+    }
+
+    setIsEditing(true);
+  }
+
+  function discardChanges() {
+    setBody(sourceDraft.body);
+    setIsEditing(false);
+    setIsSubmitting(false);
+    setSubmitErrorMessage(null);
+    setTitle(sourceDraft.title);
+  }
+
+  const hasUnsavedChanges = body !== sourceDraft.body || title !== sourceDraft.title;
+  const canSave =
+    title.trim().length > 0 &&
+    body.trim().length > 0 &&
+    hasUnsavedChanges &&
+    !isSubmitting;
+
+  async function saveChanges() {
+    if (!canSave) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitErrorMessage(null);
+
+    try {
+      await actions.savePlanningDocument(phaseId, {
+        body,
+        title: title.trim()
+      });
+    } catch (error) {
+      setIsSubmitting(false);
+      setSubmitErrorMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : `Unable to save ${phase.label.toLowerCase()}.`
+      );
+    }
+  }
+
+  if (isEditing) {
+    return {
+      bodyField: {
+        label: "Document body",
+        onChange: setBody,
+        value: body
+      },
+      canSave,
+      conversationLocator: base.conversationLocator,
+      discardChanges,
+      documentPath: base.documentPath,
+      hasUnsavedChanges,
+      helperMessage:
+        planningState.status === "ready"
+          ? "Saving creates a new current revision for this run document."
+          : "Saving creates the first current revision for this run document.",
+      isSubmitting,
+      panelTitle: title.trim() || base.panelTitle,
+      phaseSummary: base.phaseSummary,
+      phaseTitle: base.phaseTitle,
+      saveChanges,
+      saveLabel: isSubmitting ? "Saving changes..." : "Save changes",
+      state: "editing",
+      submitErrorMessage,
+      titleField: {
+        label: "Document title",
+        onChange: setTitle,
+        value: title
+      }
+    };
+  }
 
   if (planningState.status === "ready") {
     return {
       conversationLocator: base.conversationLocator,
       documentLines: planningState.content.split(/\r?\n/),
+      editDocument: startEditing,
       documentPath: base.documentPath,
-      documentTitle: planningState.revision.title,
+      panelTitle: planningState.revision.title,
       phaseSummary: base.phaseSummary,
       phaseTitle: base.phaseTitle,
       state: "ready"
@@ -310,6 +530,7 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
       documentPath: base.documentPath,
       errorMessage: planningState.errorMessage,
       errorTitle: `Unable to load ${phase.label.toLowerCase()}`,
+      panelTitle: base.panelTitle,
       phaseSummary: base.phaseSummary,
       phaseTitle: base.phaseTitle,
       retry: () => {
@@ -319,5 +540,9 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     };
   }
 
-  return buildPlanningEmptyViewModel(phaseId, planningState, base);
+  return buildPlanningEmptyViewModel(phaseId, planningState, base, {
+    actionErrorMessage: submitErrorMessage,
+    isCreating,
+    startEditing
+  });
 }

@@ -147,6 +147,11 @@ Compatibility that **is** required:
   **Decision:** Close the Phase 2 review findings by making `/runs/:runId` prefer the first incomplete planning step, keying the run-detail provider by `runId`, and routing task-artifact content through the authenticated run API seam instead of raw anchors. Add focused browser-path coverage plus updated destination-scaffold assertions so the live seam is tested end to end.
   **Rationale:** The original cutover landed the live read path, but review showed three contract gaps: default redirects still behaved like a deepest-document chooser, task artifacts exposed unauthenticated content links, and run-to-run navigation could briefly render stale state. The fix pass stays within the original read-only scope while making the seam truthful under real browser loading and route transitions.
 
+- **Date:** 2026-04-20
+  **Phase:** Phase 3
+  **Decision:** Keep planning-document mutation ownership in `RunDetailProvider`, but keep editor draft state local to the planning view model so create/save/discard behavior can update the living document surface without reopening route or provider ownership.
+  **Rationale:** The provider already owns the authoritative run snapshot and document collections. Adding explicit `createPlanningDocument` and `savePlanningDocument` actions keeps browser mutations centralized, while route-local editor drafts avoid inventing cross-route persistence or effect-driven autosave just to support the right-pane editor/viewer toggle.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the run routes, current UI architecture, backend run/document/task/artifact contracts, the active design markdown files, and the relevant completed plans.
@@ -170,6 +175,7 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Phase 1 fix pass completed: added focused HTTP 404 assertions for `document_revision_not_found` and `task_not_found` on the new read routes, reran `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`, and closed the review finding without widening scope.
 - [x] 2026-04-20 Phase 2 completed: landed `ui/src/features/runs/run-management-api.ts` plus `run-detail-context.tsx`, cut live run header/stepper/default-phase logic over to backend data, rewired planning/execution/task routes to truthful read-only live states, updated route/app-shell tests, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
 - [x] 2026-04-20 Phase 2 fix pass completed: corrected `/runs/:runId` to land on the first incomplete planning step unless compiled workflow state exists, keyed `RunDetailProvider` by `runId` to avoid stale cross-run renders, replaced raw task-artifact links with authenticated preview loading through `RunManagementApi`, expanded browser-backed/failure route coverage, updated the stale scaffold-era `/runs/...` assertions in `ui/src/test/destination-scaffolds.test.tsx`, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` plus `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`.
+- [x] 2026-04-20 Phase 3 completed: added live planning empty/editor/viewer states, wired run document create/save mutations through the run-detail seam, updated the planning route tests for create/save/discard behavior across all three planning pages, updated `.ultrakit/developer-docs/m1-architecture.md` for the new live authoring boundary, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
 
 ## Surprises & Discoveries
 
@@ -183,10 +189,11 @@ Compatibility that **is** required:
 - The design guidance is explicit that `Specification`, `Architecture`, and `Execution Plan` are one shared structural layout. The current scaffold components already reflect that visually, which makes them good view shells but poor data owners.
 - The task collection route already carries enough task metadata for the read-only task shell (`name`, `description`, `status`, `dependsOn`, `conversation`), so Phase 2 only needed one lazy browser read for per-task artifacts instead of another eager task-detail fetch path.
 - The backend artifact collection is intentionally metadata-only today. A truthful live task inspector therefore cannot preserve scaffold-only changed-file paths or inline diffs; it has to present artifact records plus content links until richer artifact projections exist.
+- Planning authoring did not need draft persistence in the provider. Keying the local editor reset off the loaded document/revision snapshot was enough to keep create, save, and discard behavior honest without introducing autosave or cross-route draft storage.
 
 ## Outcomes & Retrospective
 
-Phase 2 is now closed with the live run-detail cutover and its targeted fix pass in place. The UI reads real run, planning-document, workflow, task, and task-artifact data through feature-owned run providers and API adapters, `/runs/:runId` now lands on the first incomplete planning step until compiled workflow state exists, run-to-run navigation no longer reuses stale provider state, and task-artifact content now stays inside the authenticated API seam instead of exposing broken raw links. Phase 3 remains to add planning-document authoring and compile behavior on top of the new live read seam.
+Phases 2 and 3 are now closed. The UI reads real run, planning-document, workflow, task, and task-artifact data through feature-owned run providers and API adapters, `/runs/:runId` lands on the first incomplete planning step until compiled workflow state exists, planning pages can now create missing run documents and save new current revisions in place without route churn, and task-artifact content stays inside the authenticated API seam instead of exposing broken raw links. Phase 4 remains to make `+ New run` real and align default navigation for freshly created or partially configured runs.
 
 ## Context and Orientation
 
@@ -377,6 +384,14 @@ This plan is safe to execute incrementally if each phase keeps its seam additive
 - Phase 2 validation artifacts:
   - `ui/src/test/runs-routes.test.tsx`
   - `ui/src/test/app-shell.test.tsx`
+  - `.ultrakit/developer-docs/m1-architecture.md`
+
+- Phase 3 authoring seams and validation artifacts:
+  - `ui/src/features/runs/run-management-api.ts`
+  - `ui/src/features/runs/run-detail-context.tsx`
+  - `ui/src/features/runs/use-run-view-model.ts`
+  - `ui/src/features/runs/components/planning-workspace.tsx`
+  - `ui/src/test/runs-routes.test.tsx`
   - `.ultrakit/developer-docs/m1-architecture.md`
 
 ## Interfaces and Dependencies
@@ -589,11 +604,11 @@ Update `Progress`, `Execution Log`, and `Artifacts and Notes`.
 - Do not auto-save from effects.
 - Do not invent local draft persistence unless the phase proves it is necessary.
 
-**Status:** Pending approval
+**Status:** Completed
 
-**Completion Notes:** Not started.
+**Completion Notes:** Added live planning authoring on top of the Phase 2 run-detail seam. `RunManagementApi` and `RunDetailProvider` now expose run-document create/save mutations, the planning view model now supports explicit empty, editor, viewer, and error variants with local discardable drafts, `planning-workspace.tsx` keeps the shared split layout while turning the right pane into the living document surface, and `ui/src/test/runs-routes.test.tsx` now covers existing-revision saves, missing-document create+save flows for all three planning pages, and first-revision discard/save behavior without route churn. Validation passed with `rtk npm run test -- ui/src/test/runs-routes.test.tsx`, and `.ultrakit/developer-docs/m1-architecture.md` now records that planning authoring is live.
 
-**Next Starter Context:** The right pane should remain the living document surface. Editing can happen there without changing the left-pane conversation/document relationship.
+**Next Starter Context:** Phase 4 can treat the planning pages as truthful live authoring surfaces. New-run routing should rely on the now-settled behaviors that missing planning documents render explicit empty states, create in place through the run document API, and return to viewer mode after saving the new current revision without navigating away.
 
 ## Phase 4: New Run Flow And Default Navigation
 
