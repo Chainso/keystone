@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   buildRunPhasePath,
@@ -111,6 +112,40 @@ export type RunPlanningPhaseViewModel =
   | RunPlanningPhaseEditingViewModel
   | RunPlanningPhaseEmptyViewModel
   | RunPlanningPhaseErrorViewModel;
+
+export interface ExecutionPlanCompileReadyViewModel {
+  actionLabel: string;
+  compileRun: () => void;
+  helperMessage: string;
+  isSubmitting: boolean;
+  state: "ready";
+  submitErrorMessage: string | null;
+  title: string;
+}
+
+export interface ExecutionPlanCompileBlockedViewModel {
+  helperMessage: string;
+  state: "blocked";
+  title: string;
+}
+
+export interface ExecutionPlanCompileCompletedViewModel {
+  actionHref: string;
+  actionLabel: string;
+  helperMessage: string;
+  state: "compiled";
+  title: string;
+}
+
+export type ExecutionPlanCompileViewModel =
+  | ExecutionPlanCompileReadyViewModel
+  | ExecutionPlanCompileBlockedViewModel
+  | ExecutionPlanCompileCompletedViewModel;
+
+export interface ExecutionPlanWorkspaceViewModel {
+  compile: ExecutionPlanCompileViewModel;
+  planning: RunPlanningPhaseViewModel;
+}
 
 const canonicalDocumentPathByPhase: Record<RunPlanningPhaseId, string> = {
   specification: "specification",
@@ -273,6 +308,41 @@ function buildPlanningDraftSource(
     body: "",
     title: defaultRevisionTitleByPhase[phaseId]
   };
+}
+
+function getCompileBlockingMessage(input: {
+  hasCompileProvenance: boolean;
+  missingPhaseLabels: string[];
+  planningState: RunPlanningPhaseViewModel["state"];
+  runStatus: string;
+}) {
+  if (input.planningState === "editing") {
+    return "Save or discard the current execution-plan draft before compiling this run.";
+  }
+
+  if (input.planningState === "error") {
+    return "Reload the current execution plan before compiling so Keystone is using the live document state.";
+  }
+
+  if (input.missingPhaseLabels.length > 0) {
+    const missingList = input.missingPhaseLabels.join(", ");
+
+    return `Compile becomes available once current revisions exist for: ${missingList}.`;
+  }
+
+  if (input.hasCompileProvenance) {
+    return "Compile was accepted for this run. Keystone is waiting for the live execution graph to become available.";
+  }
+
+  if (input.runStatus === "active") {
+    return "This run is already executing. Open Execution to inspect the live workflow.";
+  }
+
+  if (["archived", "failed", "cancelled"].includes(input.runStatus)) {
+    return `Run status is ${formatStatusLabel(input.runStatus)}. This run cannot be compiled again.`;
+  }
+
+  return "Compile is unavailable until Keystone can confirm the latest planning state.";
 }
 
 function buildPlanningEmptyViewModel(
@@ -587,4 +657,124 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     isCreating,
     startEditing
   });
+}
+
+export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceViewModel {
+  const navigate = useNavigate();
+  const { actions, state } = useReadyRunDetail();
+  const planning = useRunPlanningPhaseViewModel("execution-plan");
+  const run = state.run!;
+  const workflow = state.workflow!;
+  const executionPath = buildRunPhasePath(run.runId, "execution");
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
+  const compileInFlightRef = useRef(false);
+  const compileSourceKey = [
+    run.runId,
+    run.status,
+    run.compiledFrom?.compiledAt ?? "not-compiled",
+    workflow.summary.totalTasks,
+    planning.state,
+    ...runPlanningPhaseOrder.map((phaseId) =>
+      state.planningDocuments[phaseId].document?.currentRevisionId ?? "missing"
+    )
+  ].join(":");
+
+  useEffect(() => {
+    compileInFlightRef.current = false;
+    setIsCompiling(false);
+    setSubmitErrorMessage(null);
+  }, [compileSourceKey]);
+
+  const executionAvailable = hasCompiledWorkflowData({
+    compiledFrom: run.compiledFrom,
+    workflow
+  });
+  const compileAcceptedWithoutWorkflow = run.compiledFrom !== null && !executionAvailable;
+  const missingPhaseLabels = runPlanningPhaseOrder.flatMap((phaseId) =>
+    state.planningDocuments[phaseId].document?.currentRevisionId
+      ? []
+      : [getRunPhaseDefinition(phaseId).label]
+  );
+
+  async function compileRun() {
+    if (compileInFlightRef.current) {
+      return;
+    }
+
+    compileInFlightRef.current = true;
+    setIsCompiling(true);
+    setSubmitErrorMessage(null);
+
+    try {
+      const result = await actions.compileRun();
+
+      if (!result.executionAvailable) {
+        setIsCompiling(false);
+        setSubmitErrorMessage(
+          "Compile was accepted, but the execution graph is not ready yet. Refresh the run and try opening Execution again."
+        );
+        return;
+      }
+
+      navigate(executionPath);
+    } catch (error) {
+      setIsCompiling(false);
+      setSubmitErrorMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "Unable to compile this run."
+      );
+    } finally {
+      compileInFlightRef.current = false;
+    }
+  }
+
+  let compile: ExecutionPlanCompileViewModel;
+
+  if (executionAvailable) {
+    compile = {
+      actionHref: executionPath,
+      actionLabel: "Open execution",
+      helperMessage: "Execution is enabled for this run. Open the DAG to inspect live task state.",
+      state: "compiled",
+      title: "Execution ready"
+    };
+  } else if (
+    planning.state === "editing" ||
+    planning.state === "error" ||
+    compileAcceptedWithoutWorkflow ||
+    missingPhaseLabels.length > 0 ||
+    run.status === "active" ||
+    ["archived", "failed", "cancelled"].includes(run.status)
+  ) {
+    compile = {
+      helperMessage: getCompileBlockingMessage({
+        hasCompileProvenance: compileAcceptedWithoutWorkflow,
+        missingPhaseLabels,
+        planningState: planning.state,
+        runStatus: run.status
+      }),
+      state: "blocked",
+      title: "Compile unavailable"
+    };
+  } else {
+    compile = {
+      actionLabel: isCompiling ? "Compiling run..." : "Compile run",
+      compileRun: () => {
+        void compileRun();
+      },
+      helperMessage:
+        "Compile persists the execution graph from the current specification, architecture, and execution plan.",
+      isSubmitting: isCompiling,
+      state: "ready",
+      submitErrorMessage,
+      title: "Compile run"
+    };
+  }
+
+  return {
+    compile,
+    planning
+  };
 }

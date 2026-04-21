@@ -68,6 +68,7 @@ export interface RunDetailState {
 }
 
 export interface RunDetailActions {
+  compileRun: () => Promise<RunCompileResult>;
   createPlanningDocument: (phaseId: RunPlanningPhaseId) => Promise<DocumentResource>;
   loadTaskArtifacts: (taskId: string, options?: { force?: boolean }) => Promise<void>;
   reload: () => Promise<void>;
@@ -84,6 +85,10 @@ export interface RunDetailMeta {
   errorMessage: string | null;
   runId: string;
   status: "loading" | "ready" | "not_found" | "error";
+}
+
+export interface RunCompileResult {
+  executionAvailable: boolean;
 }
 
 export interface RunDetailValue {
@@ -132,6 +137,13 @@ function buildEmptyRunDetailState(): RunDetailState {
     tasks: [],
     workflow: null
   };
+}
+
+interface LoadedRunDetailSnapshot {
+  planningDocuments: Record<RunPlanningPhaseId, RunPlanningDocumentState>;
+  run: RunResource;
+  tasks: TaskResource[];
+  workflow: WorkflowGraphResource;
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -219,6 +231,36 @@ async function loadPlanningDocumentStates(
   return Object.fromEntries(states) as Record<RunPlanningPhaseId, RunPlanningDocumentState>;
 }
 
+function hasCompiledWorkflowData(input: {
+  run: RunResource;
+  workflow: WorkflowGraphResource;
+}) {
+  return input.run.compiledFrom !== null && input.workflow.summary.totalTasks > 0;
+}
+
+async function fetchRunDetailSnapshot(api: RunManagementApi, runId: string): Promise<LoadedRunDetailSnapshot> {
+  const [run, documents, workflow, tasks] = await Promise.all([
+    api.getRun(runId),
+    api.listRunDocuments(runId),
+    api.getRunWorkflow(runId),
+    api.listRunTasks(runId)
+  ]);
+  const planningDocuments = await loadPlanningDocumentStates(api, runId, documents);
+
+  return {
+    planningDocuments,
+    run,
+    tasks,
+    workflow
+  };
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
 export function RunManagementApiProvider({
   api = browserRunManagementApi,
   children
@@ -241,6 +283,9 @@ export function RunDetailProvider({
   const api = useRunManagementApi();
   const [value, setValue] = useState<RunDetailValue>(() => ({
     actions: {
+      async compileRun() {
+        throw new Error("Run detail is still loading.");
+      },
       async createPlanningDocument() {
         throw new Error("Run detail is still loading.");
       },
@@ -262,6 +307,7 @@ export function RunDetailProvider({
   const createPlanningDocumentRequestsRef = useRef(
     new Map<RunPlanningPhaseId, Promise<DocumentResource>>()
   );
+  const compileRunRequestRef = useRef<Promise<RunCompileResult> | null>(null);
   const savePlanningDocumentRequestsRef = useRef(
     new Map<RunPlanningPhaseId, Promise<DocumentRevisionResource>>()
   );
@@ -299,11 +345,78 @@ export function RunDetailProvider({
     return planningDocumentState;
   }
 
+  function setRunDetailSnapshot(
+    snapshot: LoadedRunDetailSnapshot,
+    options: {
+      requestId: number;
+    }
+  ) {
+    if (requestIdRef.current !== options.requestId) {
+      return false;
+    }
+
+    setValue((current) => ({
+      ...current,
+      meta: {
+        errorMessage: null,
+        runId,
+        status: "ready"
+      },
+      state: {
+        planningDocuments: snapshot.planningDocuments,
+        run: snapshot.run,
+        taskArtifacts: {},
+        tasks: snapshot.tasks,
+        workflow: snapshot.workflow
+      }
+    }));
+
+    return true;
+  }
+
+  async function refreshRunDetail(
+    options: {
+      waitForExecution?: boolean;
+    } = {}
+  ): Promise<RunCompileResult> {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    taskArtifactRequestIdsRef.current.clear();
+
+    const maxAttempts = options.waitForExecution ? 8 : 1;
+    let latestSnapshot: LoadedRunDetailSnapshot | null = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      latestSnapshot = await fetchRunDetailSnapshot(api, runId);
+      const executionAvailable = hasCompiledWorkflowData({
+        run: latestSnapshot.run,
+        workflow: latestSnapshot.workflow
+      });
+
+      if (!options.waitForExecution || executionAvailable || attempt === maxAttempts - 1) {
+        setRunDetailSnapshot(latestSnapshot, {
+          requestId
+        });
+
+        return {
+          executionAvailable
+        };
+      }
+
+      await delay(250);
+    }
+
+    return {
+      executionAvailable: false
+    };
+  }
+
   async function loadRunDetail() {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     taskArtifactRequestIdsRef.current.clear();
     createPlanningDocumentRequestsRef.current.clear();
+    compileRunRequestRef.current = null;
     savePlanningDocumentRequestsRef.current.clear();
 
     setValue((current) => ({
@@ -317,33 +430,11 @@ export function RunDetailProvider({
     }));
 
     try {
-      const [run, documents, workflow, tasks] = await Promise.all([
-        api.getRun(runId),
-        api.listRunDocuments(runId),
-        api.getRunWorkflow(runId),
-        api.listRunTasks(runId)
-      ]);
-      const planningDocuments = await loadPlanningDocumentStates(api, runId, documents);
+      const snapshot = await fetchRunDetailSnapshot(api, runId);
 
-      if (requestIdRef.current !== requestId) {
-        return;
-      }
-
-      setValue((current) => ({
-        ...current,
-        meta: {
-          errorMessage: null,
-          runId,
-          status: "ready"
-        },
-        state: {
-          planningDocuments,
-          run,
-          taskArtifacts: {},
-          tasks,
-          workflow
-        }
-      }));
+      setRunDetailSnapshot(snapshot, {
+        requestId
+      });
     } catch (error) {
       if (requestIdRef.current !== requestId) {
         return;
@@ -358,6 +449,36 @@ export function RunDetailProvider({
         },
         state: buildEmptyRunDetailState()
       }));
+    }
+  }
+
+  async function compileRun() {
+    const existingRequest = compileRunRequestRef.current;
+
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const compileRequest = (async () => {
+      if (valueRef.current.meta.status !== "ready") {
+        throw new Error("Run detail is still loading.");
+      }
+
+      await api.compileRun(runId);
+
+      return refreshRunDetail({
+        waitForExecution: true
+      });
+    })();
+
+    compileRunRequestRef.current = compileRequest;
+
+    try {
+      return await compileRequest;
+    } finally {
+      if (compileRunRequestRef.current === compileRequest) {
+        compileRunRequestRef.current = null;
+      }
     }
   }
 
@@ -569,6 +690,7 @@ export function RunDetailProvider({
 
   const providedValue: RunDetailValue = {
     actions: {
+      compileRun,
       createPlanningDocument,
       loadTaskArtifacts,
       reload: loadRunDetail,

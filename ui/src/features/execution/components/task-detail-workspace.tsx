@@ -12,18 +12,39 @@ import { useRunManagementApi } from "../../runs/run-detail-context";
 type ArtifactPreviewState =
   | { status: "idle" | "loading" }
   | { content: string; status: "ready" }
-  | { message: string; status: "error" | "unsupported" };
+  | { message: string; status: "empty" | "error" | "unsupported" };
 
-function isTextArtifactContentType(contentType: string) {
+function getArtifactPreviewCompatibility(contentType: string) {
   const normalized = contentType.toLowerCase();
+  const supportedTextIndicators = [
+    "json",
+    "xml",
+    "yaml",
+    "yml",
+    "javascript",
+    "typescript",
+    "sql",
+    "markdown",
+    "csv",
+    "toml",
+    "x-sh"
+  ];
 
-  return (
+  const previewSupported =
     normalized.startsWith("text/") ||
-    normalized.includes("json") ||
-    normalized.includes("xml") ||
-    normalized.includes("yaml") ||
-    normalized.includes("javascript")
-  );
+    supportedTextIndicators.some((indicator) => normalized.includes(indicator));
+
+  if (previewSupported) {
+    return {
+      helperMessage: "Text preview is available for this artifact and loads on demand through the run API seam.",
+      previewSupported
+    };
+  }
+
+  return {
+    helperMessage: `Preview unavailable in this view because ${contentType} is not text-compatible.`,
+    previewSupported
+  };
 }
 
 function getArtifactPreviewErrorMessage(error: unknown) {
@@ -62,19 +83,19 @@ function TaskDependencyList({
 
 function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel; open: boolean }) {
   const api = useRunManagementApi();
-  const previewSupported = isTextArtifactContentType(artifact.contentType);
+  const previewCompatibility = getArtifactPreviewCompatibility(artifact.contentType);
   const requestIdRef = useRef(0);
   const [preview, setPreview] = useState<ArtifactPreviewState>(() =>
-    previewSupported
+    previewCompatibility.previewSupported
       ? { status: "idle" }
       : {
-          message: "Artifact preview is currently limited to text content in the live run view.",
+          message: previewCompatibility.helperMessage,
           status: "unsupported"
         }
   );
 
   async function loadPreview() {
-    if (!previewSupported) {
+    if (!previewCompatibility.previewSupported) {
       return;
     }
 
@@ -86,6 +107,15 @@ function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel;
       const content = await api.getArtifactContent(artifact.contentUrl);
 
       if (requestIdRef.current !== requestId) {
+        return;
+      }
+
+      if (!content.trim()) {
+        setPreview({
+          message: "Artifact content is empty.",
+          status: "empty"
+        });
+
         return;
       }
 
@@ -115,19 +145,19 @@ function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel;
         <p className="document-line">Content type: {artifact.contentType}</p>
         <p className="document-line">Size: {artifact.sizeLabel}</p>
         {artifact.sha256 ? <p className="document-line">SHA-256: {artifact.sha256}</p> : null}
+        <p className="document-card-summary">{previewCompatibility.helperMessage}</p>
         <p className="document-card-summary">
-          Artifact content in this view loads through the authenticated run API. Direct browser
-          links are not available here yet.
+          Direct browser links are not available here yet.
         </p>
-        {preview.status === "unsupported" ? (
-          <p className="document-card-summary">{preview.message}</p>
-        ) : preview.status === "ready" ? (
+        {preview.status === "unsupported" ? null : preview.status === "ready" ? (
           <>
             <p className="document-card-summary">Loaded through the run API seam.</p>
             <pre className="document-copy">
               <code>{preview.content}</code>
             </pre>
           </>
+        ) : preview.status === "empty" ? (
+          <p className="document-card-summary">{preview.message}</p>
         ) : preview.status === "error" ? (
           <>
             <p className="document-card-summary">{preview.message}</p>
@@ -150,7 +180,7 @@ function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel;
               void loadPreview();
             }}
           >
-            {preview.status === "loading" ? "Loading preview..." : "Load content preview"}
+            {preview.status === "loading" ? "Loading text preview..." : "Load text preview"}
           </button>
         )}
       </div>

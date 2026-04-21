@@ -14,10 +14,12 @@ import {
   type DocumentRevisionResource
 } from "../../../../src/http/api/v1/documents/contracts";
 import {
+  runCompileActionEnvelopeSchema,
   runDetailEnvelopeSchema,
   runCreateRequestSchema,
   taskCollectionEnvelopeSchema,
   workflowGraphDetailEnvelopeSchema,
+  type RunCompileAcceptedAction,
   type RunCreateRequest,
   type RunResource,
   type TaskResource,
@@ -42,6 +44,7 @@ export interface StaticRunDetailRecord {
 }
 
 export interface RunManagementApi {
+  compileRun: (runId: string) => Promise<RunCompileAcceptedAction>;
   createRun: (projectId: string, input?: RunCreateRequest) => Promise<RunResource>;
   createRunDocument: (runId: string, input: DocumentCreateRequest) => Promise<DocumentResource>;
   createRunDocumentRevision: (
@@ -171,6 +174,26 @@ export function createBrowserRunManagementApi(
   }
 
   return {
+    async compileRun(runId) {
+      const payload = {};
+      const response = await fetchImplementation(`/v1/runs/${encodeURIComponent(runId)}/compile`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: buildProtectedBrowserHeaders({
+          accept: "application/json",
+          "content-type": "application/json"
+        }),
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw await buildApiError(response, `Unable to compile run (${response.status}).`);
+      }
+
+      const envelope = runCompileActionEnvelopeSchema.parse(await response.json());
+
+      return envelope.data;
+    },
     async createRun(projectId, input) {
       const payload = runCreateRequestSchema.parse(input ?? {});
       const response = await fetchImplementation(
@@ -439,7 +462,75 @@ export function createStaticRunManagementApi(
     throw new Error(`Artifact content ${contentUrl} was not found.`);
   }
 
+  function getStaticPlanningDocument(run: StaticRunDetailRecord, path: string) {
+    return run.documents?.find((document) => document.path === path) ?? null;
+  }
+
+  function buildStaticCompiledFrom(run: StaticRunDetailRecord) {
+    const specification = getStaticPlanningDocument(run, "specification");
+    const architecture = getStaticPlanningDocument(run, "architecture");
+    const executionPlan = getStaticPlanningDocument(run, "execution-plan");
+
+    if (
+      !specification?.currentRevisionId ||
+      !architecture?.currentRevisionId ||
+      !executionPlan?.currentRevisionId
+    ) {
+      throw new RunManagementApiError({
+        code: "run_documents_incomplete",
+        message:
+          "Run compilation requires specification, architecture, and execution-plan documents.",
+        status: 409
+      });
+    }
+
+    return {
+      architectureRevisionId: architecture.currentRevisionId,
+      compiledAt: new Date().toISOString(),
+      executionPlanRevisionId: executionPlan.currentRevisionId,
+      specificationRevisionId: specification.currentRevisionId
+    } satisfies NonNullable<RunResource["compiledFrom"]>;
+  }
+
   return {
+    async compileRun(runId) {
+      const run = getStaticRunRecord(runId);
+
+      if (run.run.status === "active") {
+        throw new RunManagementApiError({
+          code: "run_already_active",
+          message: `Run ${runId} is already executing.`,
+          status: 409
+        });
+      }
+
+      if (["archived", "failed", "cancelled"].includes(run.run.status)) {
+        throw new RunManagementApiError({
+          code: "run_not_compilable",
+          message: `Run ${runId} is already ${run.run.status} and cannot be compiled again.`,
+          status: 409
+        });
+      }
+
+      const compiledFrom = buildStaticCompiledFrom(run);
+      const hasInFlightTasks = (run.tasks ?? []).some((task) => {
+        const normalized = task.status.toLowerCase();
+
+        return normalized.includes("active") || normalized.includes("pending") || normalized.includes("ready");
+      });
+
+      run.run = {
+        ...run.run,
+        compiledFrom,
+        status: hasInFlightTasks ? "active" : run.run.status
+      };
+
+      return {
+        run: run.run,
+        status: "accepted",
+        workflowInstanceId: run.run.workflowInstanceId
+      };
+    },
     async createRun(projectId, input) {
       const payload = runCreateRequestSchema.parse(input ?? {});
       const runId = `run-generated-${runRecords.size + 1}`;
