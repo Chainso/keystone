@@ -149,6 +149,11 @@ Compatibility that **is** required:
   **Decision:** Finish the live project-context seam by introducing a fetch-backed project-management provider above the shell, while keeping scaffold destinations alive through an explicit compatibility bridge and a static route-test provider helper.  
   **Rationale:** The sidebar and shell needed truthful live project ownership now, but Phase 1 still had to avoid pulling Runs, Documentation, Workstreams, or project-form data into live APIs before their later phases.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 1 Fix Pass  
+  **Decision:** Relax the shell gate only for the zero-project `/projects/new` recovery route and add a parent-layout compatibility state for `/settings` when the selected live project has no scaffold-backed settings data.  
+  **Rationale:** The review round found that the Phase 1 shell gate accidentally blocked the visible `New project` recovery path and that non-scaffold current projects could still crash `Project settings`. Both fixes belonged inside Phase 1’s shell/provider boundary and did not require pulling real settings APIs forward.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -171,6 +176,10 @@ Compatibility that **is** required:
   - `ui/src/shared/layout/{app-shell,shell-sidebar}.tsx` now render honest loading, empty, and error shell states plus a live sidebar project switcher.
   - `ui/src/features/resource-model/context.tsx` now acts as a scaffold compatibility seam instead of the canonical owner of live project selection.
   - Focused UI tests now cover stale local-storage fallback, empty project collections, and sidebar project switching with explicit `fetch` stubs.
+- [x] 2026-04-20 Phase 1 targeted fix pass completed:
+  - `/projects/new` remains reachable when the live project list is empty.
+  - `/settings` now renders an explicit compatibility state instead of throwing for non-scaffold live projects.
+  - Focused shell tests now cover loading, error/retry recovery, valid stored-project rehydration, zero-project recovery routing, and non-scaffold settings safety.
 
 ## Surprises & Discoveries
 
@@ -189,6 +198,8 @@ Compatibility that **is** required:
 - `Documentation` and `Workstreams` still depend on scaffold dataset assumptions around the current project, so project switching cannot simply stop at the sidebar; the provider seam has to keep non-live destinations renderable for non-scaffold projects.
 - [ui/src/test/render-route.tsx](../../ui/src/test/render-route.tsx) only injects a project override today. API-backed UI phases will need explicit `fetch` stubs and `localStorage` reset discipline in jsdom tests.
 - Phase 1 exposed a new repo-level validation mismatch: after restoring dependencies in this worktree, the exact required `rtk npm run typecheck` command now fails outside the UI scope in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`. The Phase 1 UI surface still compiles with `./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
+- The first Phase 1 shell gate was too aggressive: it blocked the visible zero-project recovery route at `/projects/new`, which only showed up once the review pass exercised the route directly instead of just the empty shell CTA.
+- `Project settings` needed its own non-scaffold compatibility state even before live settings APIs exist, because the parent shell/provider seam alone does not stop the scaffold-only settings view models from throwing.
 
 ## Outcomes & Retrospective
 
@@ -208,6 +219,12 @@ Phase 1 outcome on 2026-04-20:
 - The sidebar project switcher is now live and persisted through `keystone.ui.current-project.v1`.
 - The route-test harness now defaults back to a static scaffold provider unless a test explicitly opts into the browser API path, which keeps non-Phase-1 route tests stable while live project tests stub `fetch` honestly.
 - The required targeted UI tests pass, but the repo-wide `rtk npm run typecheck` command is currently blocked by an unrelated worker-binding type mismatch outside this phase.
+
+Phase 1 targeted fix pass outcome on 2026-04-20:
+
+- The zero-project shell now preserves the visible recovery route into `New project` instead of trapping the operator behind the empty shell state.
+- `Project settings` now fails honestly for non-scaffold live projects with a compatibility state instead of crashing through scaffold-only selectors.
+- The focused shell test suite now covers the missing loading, retry, valid rehydration, and non-scaffold settings cases that the review round called out.
 
 ## Context and Orientation
 
@@ -500,6 +517,10 @@ Completed on 2026-04-20.
 - Added `ui/src/features/projects/project-management-api.ts` and rewired [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) into a live project-management provider with persisted selection and a scaffold compatibility seam.
 - Updated [ui/src/shared/layout/app-shell.tsx](../../ui/src/shared/layout/app-shell.tsx) and [ui/src/shared/layout/shell-sidebar.tsx](../../ui/src/shared/layout/shell-sidebar.tsx) so the shell handles loading/empty/error states and the sidebar exposes a real disclosure-style project switcher.
 - Updated [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx), [ui/src/test/resource-model-selectors.test.tsx](../../ui/src/test/resource-model-selectors.test.tsx), and [ui/src/test/render-route.tsx](../../ui/src/test/render-route.tsx) for fetch-backed provider tests plus static fallback route helpers.
+- Targeted fix pass:
+  - [ui/src/shared/layout/app-shell.tsx](../../ui/src/shared/layout/app-shell.tsx) now lets `/projects/new` render when the live project list is empty.
+  - [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/routes/projects/project-configuration-layout.tsx](../../ui/src/routes/projects/project-configuration-layout.tsx), and [ui/src/shared/layout/project-configuration-scaffold.tsx](../../ui/src/shared/layout/project-configuration-scaffold.tsx) now expose an honest compatibility state for non-scaffold project settings.
+  - [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) now covers loading, retry, valid current-project rehydration, zero-project recovery, and non-scaffold settings safety.
 - Validation:
   - `rtk npm install` passed after this worktree unexpectedly lost `node_modules`.
   - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed.

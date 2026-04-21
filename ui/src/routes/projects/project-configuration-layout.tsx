@@ -28,7 +28,14 @@ function ProjectSettingsConfigurationLayout() {
 
   return (
     <ProjectConfigurationScaffold title={model.title} tabs={model.tabs}>
-      <Outlet />
+      {model.compatibilityState ? (
+        <section className="empty-state-card">
+          <h2 className="document-card-title">{model.compatibilityState.heading}</h2>
+          <p className="document-card-summary">{model.compatibilityState.message}</p>
+        </section>
+      ) : (
+        <Outlet />
+      )}
     </ProjectConfigurationScaffold>
   );
 }

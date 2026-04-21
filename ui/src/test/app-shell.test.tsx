@@ -46,16 +46,30 @@ function buildProjectsResponse(projects: CurrentProject[]) {
 }
 
 function stubProjectListFetch(projects: CurrentProject[]) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = typeof input === "string" ? input : input.toString();
-
-    if (url === "/v1/projects") {
-      return new Response(JSON.stringify(buildProjectsResponse(projects)), {
+  return stubProjectListFetchSequence([
+    () =>
+      new Response(JSON.stringify(buildProjectsResponse(projects)), {
         status: 200,
         headers: {
           "content-type": "application/json"
         }
-      });
+      })
+  ]);
+}
+
+function stubProjectListFetchSequence(
+  responses: Array<() => Promise<Response> | Response>
+) {
+  let callIndex = 0;
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+
+    if (url === "/v1/projects") {
+      const responseFactory =
+        responses[Math.min(callIndex, responses.length - 1)];
+      callIndex += 1;
+
+      return await responseFactory!();
     }
 
     throw new Error(`Unexpected fetch request: ${url}`);
@@ -64,6 +78,27 @@ function stubProjectListFetch(projects: CurrentProject[]) {
   vi.stubGlobal("fetch", fetchMock);
 
   return fetchMock;
+}
+
+function createDeferredProjectsResponse(projects: CurrentProject[]) {
+  let resolveResponse: ((response: Response) => void) | null = null;
+  const promise = new Promise<Response>((resolve) => {
+    resolveResponse = resolve;
+  });
+
+  return {
+    promise,
+    resolve() {
+      resolveResponse?.(
+        new Response(JSON.stringify(buildProjectsResponse(projects)), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        })
+      );
+    }
+  };
 }
 
 describe("App shell", () => {
@@ -117,6 +152,92 @@ describe("App shell", () => {
     expect(screen.queryByRole("heading", { name: "Project documentation" })).not.toBeInTheDocument();
   });
 
+  it("renders the loading state before the project list resolves", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const deferredResponse = createDeferredProjectsResponse([scaffoldProject]);
+
+    stubProjectListFetchSequence([() => deferredResponse.promise]);
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(screen.getByRole("heading", { name: "Loading projects" })).toBeInTheDocument();
+
+    deferredResponse.resolve();
+
+    expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
+  });
+
+  it("renders the error state and recovers after retry", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const fetchMock = stubProjectListFetchSequence([
+      async () => {
+        throw new Error("Project list failed.");
+      },
+      () =>
+        new Response(JSON.stringify(buildProjectsResponse([scaffoldProject])), {
+          status: 200,
+          headers: {
+            "content-type": "application/json"
+          }
+        })
+    ]);
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Unable to load projects" })).toBeInTheDocument();
+    expect(screen.getByText("Project list failed.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rehydrates a valid stored project id on startup", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+
+    window.localStorage.setItem(currentProjectStorageKey, "project-alt");
+    stubProjectListFetch(projects);
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
+  });
+
+  it("keeps the zero-project recovery path reachable at /projects/new", async () => {
+    stubProjectListFetch([]);
+
+    renderRoute("/projects/new", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "No projects yet" })).not.toBeInTheDocument();
+  });
+
   it("switches the current project from the live sidebar selector", async () => {
     const projects: CurrentProject[] = [
       {
@@ -145,6 +266,37 @@ describe("App shell", () => {
       expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
     });
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
+  });
+
+  it("renders a safe compatibility state for settings on a non-scaffold project", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+
+    window.localStorage.setItem(currentProjectStorageKey, "project-alt");
+    stubProjectListFetch(projects);
+
+    renderRoute("/settings", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Project settings: Alt Project" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Settings are not available for this project yet" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Project settings currently depend on scaffold-backed configuration data\./i)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Project configuration tabs")).not.toBeInTheDocument();
   });
 
   it.each([

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { useProjectManagement } from "../../features/projects/project-context";
@@ -66,12 +66,16 @@ function ProjectShellState() {
 
 export function AppShell({ children }: AppShellProps) {
   const { meta } = useProjectManagement();
+  const location = useLocation();
+  const allowProjectRecoveryRoute =
+    meta.status === "empty" && location.pathname.startsWith("/projects/new");
+  const shouldRenderChildren = meta.status === "ready" || allowProjectRecoveryRoute;
 
   return (
     <div className="workspace-shell">
       <ShellSidebar />
       <main className="workspace-stage">
-        {meta.status === "ready" ? children : <ProjectShellState />}
+        {shouldRenderChildren ? children : <ProjectShellState />}
       </main>
     </div>
   );

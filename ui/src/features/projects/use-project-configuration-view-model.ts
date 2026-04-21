@@ -17,6 +17,10 @@ import { useCurrentProject } from "./project-context";
 import { useResourceModel } from "../resource-model/context";
 
 interface ProjectConfigurationShellViewModel {
+  compatibilityState?: {
+    heading: string;
+    message: string;
+  };
   title: string;
   tabs: Array<{
     label: string;
@@ -188,11 +192,22 @@ export function useNewProjectConfigurationShellViewModel(): ProjectConfiguration
 }
 
 export function useProjectSettingsConfigurationShellViewModel(): ProjectConfigurationShellViewModel {
+  const { state } = useResourceModel();
   const project = useCurrentProject();
+  const hasScaffoldConfiguration = Boolean(getProjectConfiguration(project.projectId, state.dataset));
 
   return {
+    ...(hasScaffoldConfiguration
+      ? {}
+      : {
+          compatibilityState: {
+            heading: "Settings are not available for this project yet",
+            message:
+              "Project settings currently depend on scaffold-backed configuration data. Switch to a scaffold-backed project to use this screen."
+          }
+        }),
     title: `Project settings: ${project.displayName}`,
-    tabs: buildProjectConfigurationTabs("settings")
+    tabs: hasScaffoldConfiguration ? buildProjectConfigurationTabs("settings") : []
   };
 }
 
