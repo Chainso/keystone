@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { buildRunPath } from "../../shared/navigation/run-phases";
 import {
   useProjectManagement,
   useProjectManagementApi
@@ -16,6 +17,7 @@ interface RunsCompatibilityState {
 }
 
 interface LiveRunRowViewModel {
+  detailPath: string;
   executionEngine: string;
   latestActivityLabel: string;
   runId: string;
@@ -84,6 +86,7 @@ function getRunsErrorMessage(error: unknown) {
 
 function normalizeLiveRuns(runs: ApiProjectRunRecord[]): LiveRunRowViewModel[] {
   return runs.map((run) => ({
+    detailPath: buildRunPath(run.runId),
     executionEngine: run.executionEngine,
     latestActivityLabel: buildLiveRunActivityLabel(run),
     runId: run.runId,

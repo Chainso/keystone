@@ -327,18 +327,14 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
-    expect(screen.getByText("run-104")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "run-104" })).toHaveAttribute("href", "/runs/run-104");
     expect(screen.getByText("wf-run-104")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
     expectShellLinkTarget("Workstreams", "/workstreams");
     expectShellLinkTarget("New project", "/projects/new");
     expectShellLinkTarget("Project settings", "/settings");
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
-    expect(
-      screen.getByText(/Live runs are listed without deep links until the run-detail route can render API-backed run data truthfully\./i)
-    ).toBeInTheDocument();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/destination content is intentionally scaffold-only/i)

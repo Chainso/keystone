@@ -1,20 +1,33 @@
 import { Outlet } from "react-router-dom";
 
 import {
-  useRunHeaderViewModel,
-  useRunPhaseStepperViewModel
+  useRunDetailLayoutViewModel
 } from "../../features/runs/use-run-view-model";
 import { RunDetailScaffold } from "../../features/runs/components/run-detail-scaffold";
+import { RunDetailProvider } from "../../features/runs/run-detail-context";
+import { RunDetailState } from "../../features/runs/components/run-detail-state";
 import { useRequiredRunParams } from "./use-required-run-params";
+
+function RunDetailLayoutContent() {
+  const model = useRunDetailLayoutViewModel();
+
+  if (model.state !== "ready") {
+    return <RunDetailState model={model} />;
+  }
+
+  return (
+    <RunDetailScaffold {...model.header} phaseSteps={model.phaseSteps}>
+      <Outlet />
+    </RunDetailScaffold>
+  );
+}
 
 export function RunDetailLayout() {
   const { runId } = useRequiredRunParams();
-  const headerModel = useRunHeaderViewModel(runId);
-  const stepperModel = useRunPhaseStepperViewModel(runId);
 
   return (
-    <RunDetailScaffold {...headerModel} phaseSteps={stepperModel.steps}>
-      <Outlet />
-    </RunDetailScaffold>
+    <RunDetailProvider runId={runId}>
+      <RunDetailLayoutContent />
+    </RunDetailProvider>
   );
 }

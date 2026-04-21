@@ -5,23 +5,34 @@ import {
   type CurrentProject
 } from "../features/projects/project-context";
 import type { ProjectManagementApi } from "../features/projects/project-management-api";
+import {
+  RunManagementApiProvider
+} from "../features/runs/run-detail-context";
+import type { RunManagementApi } from "../features/runs/run-management-api";
 
 interface AppProvidersProps {
   children: ReactNode;
   projectApi?: ProjectManagementApi;
   project?: CurrentProject;
+  runApi?: RunManagementApi;
 }
 
-export function AppProviders({ children, project, projectApi }: AppProvidersProps) {
+export function AppProviders({ children, project, projectApi, runApi }: AppProvidersProps) {
   const providerProps = projectApi ? { api: projectApi } : {};
 
   if (project === undefined) {
-    return <CurrentProjectProvider {...providerProps}>{children}</CurrentProjectProvider>;
+    return (
+      <RunManagementApiProvider {...(runApi ? { api: runApi } : {})}>
+        <CurrentProjectProvider {...providerProps}>{children}</CurrentProjectProvider>
+      </RunManagementApiProvider>
+    );
   }
 
   return (
-    <CurrentProjectProvider {...providerProps} project={project}>
-      {children}
-    </CurrentProjectProvider>
+    <RunManagementApiProvider {...(runApi ? { api: runApi } : {})}>
+      <CurrentProjectProvider {...providerProps} project={project}>
+        {children}
+      </CurrentProjectProvider>
+    </RunManagementApiProvider>
   );
 }

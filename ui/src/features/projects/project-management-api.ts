@@ -121,7 +121,7 @@ function resolveBrowserDevAuth() {
   };
 }
 
-function buildProtectedBrowserHeaders(headers?: HeadersInit) {
+export function buildProtectedBrowserHeaders(headers?: HeadersInit) {
   const nextHeaders = new Headers(headers);
   const auth = resolveBrowserDevAuth();
 

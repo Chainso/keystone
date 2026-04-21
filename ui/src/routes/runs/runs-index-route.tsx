@@ -104,8 +104,16 @@ export function RunsIndexRoute() {
                 </thead>
                 <tbody>
                   {model.liveRuns.map((run) => (
-                    <tr key={run.runId}>
-                      <td>{run.runId}</td>
+                    <tr
+                      key={run.runId}
+                      className="table-clickable-row"
+                      onClick={(event) => handleRowClick(event, run.detailPath)}
+                    >
+                      <td>
+                        <Link to={run.detailPath} className="table-primary-link">
+                          {run.runId}
+                        </Link>
+                      </td>
                       <td>{run.workflowInstanceId}</td>
                       <td>{run.executionEngine}</td>
                       <td>
@@ -118,10 +126,6 @@ export function RunsIndexRoute() {
               </table>
             </div>
 
-            <p className="page-section-copy">
-              Live runs are listed without deep links until the run-detail route can render API-backed
-              run data truthfully.
-            </p>
           </>
         )}
       </section>

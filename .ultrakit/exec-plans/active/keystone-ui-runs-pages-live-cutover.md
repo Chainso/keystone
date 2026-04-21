@@ -132,6 +132,16 @@ Compatibility that **is** required:
   **Decision:** Close the Phase 1 review pass with route-specific HTTP assertions for `document_revision_not_found` on the run document revision read and `task_not_found` on the mounted task-artifacts collection route.  
   **Rationale:** The implementation was already correct, but the reviewer identified that the new route-specific 404 branches were still untested. The existing fixtures can exercise both branches directly, so the fix stays test-only and within the original phase boundary.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 2  
+  **Decision:** Keep live run detail state in a run-owned provider that preloads run, document, workflow, and task collections, then lazy-load task artifacts per selected task.  
+  **Rationale:** The layout header, phase stepper, default-phase redirect, and planning routes all need the same base snapshot, but task artifacts are only needed on the task-detail branch. This keeps the provider seam feature-owned without widening the initial load to every artifact collection.
+
+- **Date:** 2026-04-20  
+  **Phase:** Phase 2  
+  **Decision:** Reuse the protected browser-header helper from `ui/src/features/projects/project-management-api.ts` inside the new run API seam.  
+  **Rationale:** The repo already records that protected browser requests should not duplicate local dev-auth header logic. Reusing the existing helper keeps auth wiring centralized while the new run feature remains the owner of run-detail reads.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the run routes, current UI architecture, backend run/document/task/artifact contracts, the active design markdown files, and the relevant completed plans.
@@ -153,6 +163,7 @@ Compatibility that **is** required:
 - [x] 2026-04-20 User approved execution of the active runs-page plan.
 - [x] 2026-04-20 Phase 1 completed: added run document revision reads, mounted run task artifact collection reads, updated the shared document-revision contract with `contentUrl`, and passed `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`.
 - [x] 2026-04-20 Phase 1 fix pass completed: added focused HTTP 404 assertions for `document_revision_not_found` and `task_not_found` on the new read routes, reran `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`, and closed the review finding without widening scope.
+- [x] 2026-04-20 Phase 2 completed: landed `ui/src/features/runs/run-management-api.ts` plus `run-detail-context.tsx`, cut live run header/stepper/default-phase logic over to backend data, rewired planning/execution/task routes to truthful read-only live states, updated route/app-shell tests, and passed `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
 
 ## Surprises & Discoveries
 
@@ -164,10 +175,12 @@ Compatibility that **is** required:
 - The current live `Runs` index already knows the backend's authoritative live shape (`runId`, `workflowInstanceId`, `executionEngine`, `status`, `compiledFrom`, `startedAt`, `endedAt`), so this plan should not try to recreate scaffold-only fields such as `displayId` or `summary`.
 - `ui/src/features/projects/project-context.tsx` still wraps the app with `ResourceModelProvider` as a compatibility layer. That is acceptable for still-scaffolded destinations, but it is the wrong abstraction for live run detail ownership.
 - The design guidance is explicit that `Specification`, `Architecture`, and `Execution Plan` are one shared structural layout. The current scaffold components already reflect that visually, which makes them good view shells but poor data owners.
+- The task collection route already carries enough task metadata for the read-only task shell (`name`, `description`, `status`, `dependsOn`, `conversation`), so Phase 2 only needed one lazy browser read for per-task artifacts instead of another eager task-detail fetch path.
+- The backend artifact collection is intentionally metadata-only today. A truthful live task inspector therefore cannot preserve scaffold-only changed-file paths or inline diffs; it has to present artifact records plus content links until richer artifact projections exist.
 
 ## Outcomes & Retrospective
 
-Execution is underway. Phase 1 is now closed cleanly with additive backend read seams for live run pages: the backend exposes run document revision detail reads, run task artifact collection reads, a shared `document_revision.contentUrl` field that points at artifact content, and focused HTTP coverage for both the happy paths and the route-specific not-found branches. Remaining phases are still required to cut the UI off scaffold selectors and use those live routes end to end.
+Phase 2 is now closed with the live run-detail cutover in place. The UI reads real run, planning-document, workflow, task, and task-artifact data through feature-owned run providers and API adapters, the `/runs` index now deep-links live rows into truthful read-only run detail, and the planning/execution/task surfaces now expose explicit loading, empty, and error states instead of scaffold selector failures. Phase 3 remains to add planning-document authoring and compile behavior on top of the new live read seam.
 
 ## Context and Orientation
 
@@ -341,12 +354,24 @@ This plan is safe to execute incrementally if each phase keeps its seam additive
   - `ui/src/features/execution/use-execution-view-model.ts`
   - `ui/src/features/resource-model/selectors.ts`
 
+- Live run-detail seams landed in Phase 2:
+  - `ui/src/features/runs/run-management-api.ts`
+  - `ui/src/features/runs/run-detail-context.tsx`
+  - `ui/src/features/runs/use-run-view-model.ts`
+  - `ui/src/features/execution/use-execution-view-model.ts`
+  - `ui/src/routes/runs/run-detail-layout.tsx`
+
 - Backend files most relevant to the missing live read gaps:
   - `src/http/api/v1/runs/router.ts`
   - `src/http/api/v1/runs/handlers.ts`
   - `src/http/api/v1/documents/contracts.ts`
   - `src/http/api/v1/artifacts/contracts.ts`
   - `src/http/api/v1/artifacts/handlers.ts`
+
+- Phase 2 validation artifacts:
+  - `ui/src/test/runs-routes.test.tsx`
+  - `ui/src/test/app-shell.test.tsx`
+  - `.ultrakit/developer-docs/m1-architecture.md`
 
 ## Interfaces and Dependencies
 
@@ -496,11 +521,11 @@ Update `Progress`, `Execution Log`, `Surprises & Discoveries`, and `Artifacts an
 - Do not push run-detail business logic into `ui/src/shared/`.
 - The current-project provider should remain the owner of selected-project state only.
 
-**Status:** Pending approval
+**Status:** Completed
 
-**Completion Notes:** Not started.
+**Completion Notes:** Added `ui/src/features/runs/run-management-api.ts` and `run-detail-context.tsx`, reused the protected browser-header seam from project management, rewired `run-detail-layout`, default-phase routing, planning routes, execution DAG, and task detail to live run data, updated the runs index to deep-link live rows, replaced scaffold-only task diffs with truthful artifact metadata/content links, refreshed the route harness to inject a run API, updated the focused UI tests, and updated `.ultrakit/developer-docs/m1-architecture.md` to reflect the new live/read-only run-detail boundary. Validation passed with `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
 
-**Next Starter Context:** The main architectural goal is to stop using `resource-model` for live run pages without destabilizing the still-scaffolded destinations.
+**Next Starter Context:** Phase 3 should build on the new live read seam rather than reopening provider ownership. Planning authoring can now layer on top of `RunDetailProvider` plus `GET /v1/runs/:runId/documents`, `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId`, and artifact-content reads, while keeping the current-project provider scoped to project selection only and preserving the truthful read-only fallbacks on any still-unwired controls.
 
 ## Phase 3: Planning Document Authoring
 

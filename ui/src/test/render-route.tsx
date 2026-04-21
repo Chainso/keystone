@@ -6,6 +6,7 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { AppProviders } from "../app/app-providers";
 import type { CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
+import type { RunManagementApi } from "../features/runs/run-management-api";
 import {
   createProjectOverrideDataset,
   selectCurrentProjectSummary
@@ -14,6 +15,7 @@ import { appRoutes } from "../routes/router";
 
 interface RenderRouteOptions {
   project?: CurrentProject;
+  runApi?: RunManagementApi;
   useBrowserProjectApi?: boolean;
 }
 
@@ -34,6 +36,7 @@ export function renderRoute(initialEntry: string, options: RenderRouteOptions = 
     <AppProviders
       {...providerProps}
       {...(options.project ? { project: options.project } : {})}
+      {...(options.runApi ? { runApi: options.runApi } : {})}
     >
       <RouterProvider router={router} />
     </AppProviders>

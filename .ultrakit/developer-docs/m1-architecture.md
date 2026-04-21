@@ -22,11 +22,12 @@ The current UI is no longer scaffold-only for project management:
 - `New project` creates real projects through `POST /v1/projects`
 - `Project settings` loads and saves through `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`
 - the `Runs` index follows the selected project through `GET /v1/projects/:projectId/runs`
+- live run detail under `/runs/:runId/**` now reads real run, planning-document, workflow, task, and task-artifact data through feature-owned UI providers and keeps truthful read-only empty/error states where authoring is still out of scope
 
 The current live/scaffold split is still intentional:
 
 - `Documentation` and `Workstreams` remain scaffold-backed and show explicit compatibility states for non-scaffold live projects
-- live non-scaffold runs do not yet have a truthful run-detail cutover, so the UI avoids broken deep links for those rows
+- live run detail is read-only: planning authoring, compile, run creation, and other mutation flows are still separate follow-up work
 - project documents, release/evidence/integration content, and broader destination live-data cutovers are still out of scope for the current UI slice
 
 ## Authoritative Persistence
