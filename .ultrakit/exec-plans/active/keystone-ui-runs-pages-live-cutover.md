@@ -127,6 +127,11 @@ Compatibility that **is** required:
   **Decision:** Expose run revision reads at `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId` and reuse the existing artifact content route via an additive `contentUrl` field on document revisions. Mount task artifact reads at `GET /v1/runs/:runId/tasks/:taskId/artifacts`.  
   **Rationale:** This is the smallest truthful browser contract that keeps document and artifact ownership explicit. The UI can read current revision metadata from a dedicated route and fetch revision bodies from the already-public artifact content surface without inventing scaffold data or redesigning the document system.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 1  
+  **Decision:** Close the Phase 1 review pass with route-specific HTTP assertions for `document_revision_not_found` on the run document revision read and `task_not_found` on the mounted task-artifacts collection route.  
+  **Rationale:** The implementation was already correct, but the reviewer identified that the new route-specific 404 branches were still untested. The existing fixtures can exercise both branches directly, so the fix stays test-only and within the original phase boundary.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the run routes, current UI architecture, backend run/document/task/artifact contracts, the active design markdown files, and the relevant completed plans.
@@ -147,6 +152,7 @@ Compatibility that **is** required:
 - [x] 2026-04-20 Active execution plan written and registered.
 - [x] 2026-04-20 User approved execution of the active runs-page plan.
 - [x] 2026-04-20 Phase 1 completed: added run document revision reads, mounted run task artifact collection reads, updated the shared document-revision contract with `contentUrl`, and passed `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`.
+- [x] 2026-04-20 Phase 1 fix pass completed: added focused HTTP 404 assertions for `document_revision_not_found` and `task_not_found` on the new read routes, reran `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`, and closed the review finding without widening scope.
 
 ## Surprises & Discoveries
 
@@ -161,7 +167,7 @@ Compatibility that **is** required:
 
 ## Outcomes & Retrospective
 
-Execution is underway. Phase 1 closed with additive backend read seams for live run pages: the backend now exposes run document revision detail reads, run task artifact collection reads, and a shared `document_revision.contentUrl` field that points at artifact content. Remaining phases are still required to cut the UI off scaffold selectors and use those live routes end to end.
+Execution is underway. Phase 1 is now closed cleanly with additive backend read seams for live run pages: the backend exposes run document revision detail reads, run task artifact collection reads, a shared `document_revision.contentUrl` field that points at artifact content, and focused HTTP coverage for both the happy paths and the route-specific not-found branches. Remaining phases are still required to cut the UI off scaffold selectors and use those live routes end to end.
 
 ## Context and Orientation
 
@@ -424,9 +430,9 @@ Update `Progress`, `Execution Log`, and `Surprises & Discoveries`. Update `Conte
 
 **Status:** Completed
 
-**Completion Notes:** Added `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId` in the run router/handlers, mounted `GET /v1/runs/:runId/tasks/:taskId/artifacts`, added shared `document_revision.contentUrl`, updated focused HTTP coverage in `tests/http/app.test.ts`, and extended the shared revision-contract assertion in `tests/http/projects.test.ts`. Validation passed with `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`.
+**Completion Notes:** Added `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId` in the run router/handlers, mounted `GET /v1/runs/:runId/tasks/:taskId/artifacts`, added shared `document_revision.contentUrl`, updated focused HTTP coverage in `tests/http/app.test.ts` including the review-driven `document_revision_not_found` and `task_not_found` assertions, and extended the shared revision-contract assertion in `tests/http/projects.test.ts`. Validation passed with `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts`.
 
-**Next Starter Context:** Phase 2 can rely on `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId` for live planning-document revision metadata and `GET /v1/runs/:runId/tasks/:taskId/artifacts` for task artifact collections. Revision bodies still flow through `/v1/artifacts/:artifactId/content`, with the shared `document_revision.contentUrl` field now pointing there directly.
+**Next Starter Context:** Phase 2 can rely on `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId` for live planning-document revision metadata and `GET /v1/runs/:runId/tasks/:taskId/artifacts` for task artifact collections. Revision bodies still flow through `/v1/artifacts/:artifactId/content`, with the shared `document_revision.contentUrl` field now pointing there directly, and the backend seam now has focused coverage for both the success cases and the new route-specific 404 branches.
 
 ## Phase 2: Live Run Detail Provider And Read-Only Cutover
 

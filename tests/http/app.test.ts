@@ -889,6 +889,27 @@ describe("app", () => {
     });
   });
 
+  it("returns document_revision_not_found when the requested run document revision is missing", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan/revisions/revision-missing",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "document_revision_not_found",
+        message: "Document revision revision-missing was not found for run run-123 document doc-run-plan."
+      }
+    });
+  });
+
   it("returns run_not_found for nested run-document routes when the run is missing", async () => {
     mocked.getRunRecord.mockResolvedValueOnce(undefined as never);
 
@@ -1167,6 +1188,27 @@ describe("app", () => {
       },
       meta: {
         resourceType: "artifact"
+      }
+    });
+  });
+
+  it("returns task_not_found when requesting artifacts for a missing run task", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/tasks/run-task-missing/artifacts",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "task_not_found",
+        message: "Task run-task-missing was not found for run run-123."
       }
     });
   });
