@@ -14,6 +14,21 @@ Keystone is one TypeScript Worker project with these backend responsibilities:
 
 The same deployable also serves the current UI shell from Wrangler's `ASSETS` binding.
 
+## Current UI Boundary
+
+The current UI is no longer scaffold-only for project management:
+
+- the shell/sidebar owns a live project list plus persisted current-project selection
+- `New project` creates real projects through `POST /v1/projects`
+- `Project settings` loads and saves through `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`
+- the `Runs` index follows the selected project through `GET /v1/projects/:projectId/runs`
+
+The current live/scaffold split is still intentional:
+
+- `Documentation` and `Workstreams` remain scaffold-backed and show explicit compatibility states for non-scaffold live projects
+- live non-scaffold runs do not yet have a truthful run-detail cutover, so the UI avoids broken deep links for those rows
+- project documents, release/evidence/integration content, and broader destination live-data cutovers are still out of scope for the current UI slice
+
 ## Authoritative Persistence
 
 The target model is no longer session- or event-centric.
@@ -162,3 +177,13 @@ Two host-specific constraints still matter in this repo:
 
 - `wrangler dev` with container bindings must be run outside the Codex sandbox boundary on this host
 - `npm run build` still needs a normal host shell on this machine when Wrangler's dry-run deploy needs writable home-directory paths under `~/.config/.wrangler` and `~/.docker`
+
+The local UI also depends on the shared dev-auth header seam for protected browser API requests:
+
+- `Authorization: Bearer <KEYSTONE_DEV_TOKEN>`
+- `X-Keystone-Tenant-Id: <tenant-id>`
+
+Local defaults stay aligned with `.dev.vars.example`:
+
+- `KEYSTONE_DEV_TOKEN=change-me-local-token`
+- `KEYSTONE_DEV_TENANT_ID=tenant-dev-local`

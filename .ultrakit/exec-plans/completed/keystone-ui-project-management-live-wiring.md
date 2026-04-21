@@ -184,6 +184,11 @@ Compatibility that **is** required:
   **Decision:** Move local dev auth headers into the shared browser API seam and make the settings provider treat project identity as part of the draft/save contract, so project switches and late saves cannot keep stale forms interactive or snap shell selection backward.  
   **Rationale:** The review round exposed two linked gaps: browser requests were missing the repo's required dev auth headers, and the first settings-save implementation still assumed the selected project would stay stable during load/save. Both fixes belonged in the provider/API seam, not in route-level conditionals.
 
+- **Date:** 2026-04-20  
+  **Phase:** Phase 5  
+  **Decision:** Treat closeout as doc-truth plus validation-truth work, including archive bookkeeping and broad-suite drift fixes when those tests no longer match the shipped live project-management shell.  
+  **Rationale:** The final phase is the last point to reconcile the durable docs, the active/completed plan registry, and the broad validation story. Leaving stale route-test expectations or stale archive metadata behind would make the plan look finished while the repo state still said otherwise.
+
 ## Progress
 
 - [x] 2026-04-20 Discovery completed across the UI scaffold, workspace spec, backend project contracts, and current project-context wiring.
@@ -211,41 +216,46 @@ Compatibility that **is** required:
   - `/settings` now renders an explicit compatibility state instead of throwing for non-scaffold live projects.
   - Focused shell tests now cover loading, error/retry recovery, valid stored-project rehydration, zero-project recovery routing, and non-scaffold settings safety.
 - [x] 2026-04-20 Phase 2 completed:
-  - [ui/src/features/runs/use-runs-index-view-model.ts](../../ui/src/features/runs/use-runs-index-view-model.ts) now loads `GET /v1/projects/:projectId/runs` through the shared project-management API seam, exposes loading/error/empty states, and keeps live rows free of broken run-detail links.
-  - [ui/src/routes/runs/runs-index-route.tsx](../../ui/src/routes/runs/runs-index-route.tsx) now renders truthful live run columns plus a visible no-detail limitation note, while preserving scaffold-backed run rows for the static test harness.
-  - [ui/src/features/documentation/use-documentation-view-model.ts](../../ui/src/features/documentation/use-documentation-view-model.ts) and [ui/src/features/workstreams/use-workstreams-view-model.ts](../../ui/src/features/workstreams/use-workstreams-view-model.ts) now render explicit compatibility states for non-scaffold projects instead of falling through to scaffold defaults or throwing.
+  - [ui/src/features/runs/use-runs-index-view-model.ts](../../../ui/src/features/runs/use-runs-index-view-model.ts) now loads `GET /v1/projects/:projectId/runs` through the shared project-management API seam, exposes loading/error/empty states, and keeps live rows free of broken run-detail links.
+  - [ui/src/routes/runs/runs-index-route.tsx](../../../ui/src/routes/runs/runs-index-route.tsx) now renders truthful live run columns plus a visible no-detail limitation note, while preserving scaffold-backed run rows for the static test harness.
+  - [ui/src/features/documentation/use-documentation-view-model.ts](../../../ui/src/features/documentation/use-documentation-view-model.ts) and [ui/src/features/workstreams/use-workstreams-view-model.ts](../../../ui/src/features/workstreams/use-workstreams-view-model.ts) now render explicit compatibility states for non-scaffold projects instead of falling through to scaffold defaults or throwing.
   - Focused shell and destination tests now prove stored-project rehydration into a no-runs state, sidebar-driven live run refresh, and non-scaffold safety for Documentation and Workstreams.
 - [x] 2026-04-20 Phase 2 targeted fix pass completed:
-  - [ui/src/features/workstreams/components/workstreams-board.tsx](../../ui/src/features/workstreams/components/workstreams-board.tsx) now keeps the filter controls visible when an active filter yields zero rows and renders a filter-specific empty state instead of hiding the controls.
-  - [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) now covers `/v1/projects/:projectId/runs` failure plus Retry recovery and asserts the `Latest activity` labels for ended, compiled-only, and idle live runs.
-  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now includes a direct zero-row Workstreams board test so the filter-bar regression stays covered without broadening the route surface.
+  - [ui/src/features/workstreams/components/workstreams-board.tsx](../../../ui/src/features/workstreams/components/workstreams-board.tsx) now keeps the filter controls visible when an active filter yields zero rows and renders a filter-specific empty state instead of hiding the controls.
+  - [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx) now covers `/v1/projects/:projectId/runs` failure plus Retry recovery and asserts the `Latest activity` labels for ended, compiled-only, and idle live runs.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx) now includes a direct zero-row Workstreams board test so the filter-bar regression stays covered without broadening the route surface.
 - [x] 2026-04-20 Phase 3 completed:
-  - [ui/src/features/projects/new-project-context.tsx](../../ui/src/features/projects/new-project-context.tsx) now owns the tab-persistent `New project` draft, client validation, and user-triggered create/cancel actions.
-  - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now support `POST /v1/projects` plus the required list refresh before switching the current project.
-  - [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-component-card.tsx) and [ui/src/shared/forms/](../../ui/src/shared/forms/) now expose real editable overview, components, rules, and environment controls with honest field/list component names instead of `placeholder-*`.
-  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now covers live create success, validation failures, and the post-create `/runs` landing flow.
+  - [ui/src/features/projects/new-project-context.tsx](../../../ui/src/features/projects/new-project-context.tsx) now owns the tab-persistent `New project` draft, client validation, and user-triggered create/cancel actions.
+  - [ui/src/features/projects/project-management-api.ts](../../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) now support `POST /v1/projects` plus the required list refresh before switching the current project.
+  - [ui/src/features/projects/components/project-configuration-tabs.tsx](../../../ui/src/features/projects/components/project-component-card.tsx) and [ui/src/shared/forms/](../../../ui/src/shared/forms/) now expose real editable overview, components, rules, and environment controls with honest field/list component names instead of `placeholder-*`.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx) now covers live create success, validation failures, and the post-create `/runs` landing flow.
 - [x] 2026-04-20 Phase 3 targeted fix pass completed:
-  - [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now falls back to the project returned by `POST /v1/projects` when the immediate list refresh fails, preserving the new current-project selection instead of dropping the shell into an error state.
-  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now proves the POST-success/refresh-failure recovery path, adds explicit required-project-key validation coverage, and exercises the new-project add/remove instruction controls directly.
+  - [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) now falls back to the project returned by `POST /v1/projects` when the immediate list refresh fails, preserving the new current-project selection instead of dropping the shell into an error state.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx) now proves the POST-success/refresh-failure recovery path, adds explicit required-project-key validation coverage, and exercises the new-project add/remove instruction controls directly.
 - [x] 2026-04-20 Phase 4 completed:
-  - [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) now owns live settings detail loading, retry, shared draft state, save/discard actions, and save-state tracking for the current project.
-  - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now support `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`, then refresh the selected project summary in-place from the trusted `PATCH` response.
-  - [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-configuration-tabs.tsx), and [ui/src/routes/projects/project-configuration-layout.tsx](../../ui/src/routes/projects/project-configuration-layout.tsx) now render real editable settings tabs with loading/error/retry states instead of scaffold-only compatibility gating.
+  - [ui/src/features/projects/project-settings-context.tsx](../../../ui/src/features/projects/project-settings-context.tsx) now owns live settings detail loading, retry, shared draft state, save/discard actions, and save-state tracking for the current project.
+  - [ui/src/features/projects/project-management-api.ts](../../../ui/src/features/projects/project-management-api.ts) and [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) now support `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`, then refresh the selected project summary in-place from the trusted `PATCH` response.
+  - [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/features/projects/components/project-configuration-tabs.tsx](../../../ui/src/features/projects/components/project-configuration-tabs.tsx), and [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx) now render real editable settings tabs with loading/error/retry states instead of scaffold-only compatibility gating.
   - Focused shell and destination tests now cover settings load retry, live settings save progress, and post-save shell summary refresh without route churn.
 - [x] 2026-04-20 Phase 4 targeted fix pass completed:
-  - [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) now injects the required local dev auth headers from one shared browser seam, with checked-in defaults that match `.dev.vars.example`.
-  - [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) and [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts) now treat project identity as part of the settings draft contract, clear stale drafts on project switches, keep fields non-interactive during save, and preserve nullable description round-tripping.
-  - [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now updates saved project list entries without forcing late `PATCH` responses to re-select a project the operator has already left.
+  - [ui/src/features/projects/project-management-api.ts](../../../ui/src/features/projects/project-management-api.ts) now injects the required local dev auth headers from one shared browser seam, with checked-in defaults that match `.dev.vars.example`.
+  - [ui/src/features/projects/project-settings-context.tsx](../../../ui/src/features/projects/project-settings-context.tsx) and [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts) now treat project identity as part of the settings draft contract, clear stale drafts on project switches, keep fields non-interactive during save, and preserve nullable description round-tripping.
+  - [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) now updates saved project list entries without forcing late `PATCH` responses to re-select a project the operator has already left.
   - Focused settings tests now cover the switched-project not-found path, stale-save race handling, sidebar option refresh after save, and the shared dev-auth headers on browser API requests.
+- [x] 2026-04-20 Phase 5 completed:
+  - [README.md](../../../README.md), [.ultrakit/developer-docs/m1-architecture.md](../../../.ultrakit/developer-docs/m1-architecture.md), [.ultrakit/developer-docs/m1-local-runbook.md](../../../.ultrakit/developer-docs/m1-local-runbook.md), and [.ultrakit/notes.md](../../../.ultrakit/notes.md) now describe the shipped live project-management loop, the shared dev-auth header seam, and the remaining scaffold-backed destination boundaries truthfully.
+  - [ui/src/test/runs-routes.test.tsx](../../../ui/src/test/runs-routes.test.tsx) now matches the live current-project shell timing and the current run-phase-link contract, so the broad test suite reflects the shipped UI instead of pre-live timing assumptions.
+  - The broad validation set was rerun and recorded exactly: `rtk npm run lint` still fails only in the pre-existing non-UI lint backlog, `rtk npm run typecheck` still fails only in the known worker-binding mismatch, `rtk npm run test` now passes (`35` files passed, `2` skipped; `204` tests passed, `18` skipped), and `rtk npm run build` still fails in the sandbox before passing from a host-permitted rerun.
+  - This plan is ready to archive under `.ultrakit/exec-plans/completed/`, and the active/completed indexes now reflect that closeout.
 
 ## Surprises & Discoveries
 
 - The current active plan index referenced `.ultrakit/exec-plans/active/keystone-ui-project-management-live-wiring.md`, but that file did not exist. The registry needed repair before this planning pass could be considered durable.
-- The global project switcher is still a disabled button in [ui/src/shared/layout/shell-sidebar.tsx](../../ui/src/shared/layout/shell-sidebar.tsx), even though `Runs` already keys its data off `currentProjectId`. The app has the idea of project context, but not a real project-management loop.
-- The current project-configuration surface in [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts) is still scaffold-only: fake seeds, local component-card state, disabled footer actions, and no network adapter.
+- The global project switcher is still a disabled button in [ui/src/shared/layout/shell-sidebar.tsx](../../../ui/src/shared/layout/shell-sidebar.tsx), even though `Runs` already keys its data off `currentProjectId`. The app has the idea of project context, but not a real project-management loop.
+- The current project-configuration surface in [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts) is still scaffold-only: fake seeds, local component-card state, disabled footer actions, and no network adapter.
 - The current shared form primitives are still named `placeholder-*`, which becomes actively misleading once the form is real.
-- [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) is not a true live project provider yet. For non-default projects it rewrites the scaffold dataset with `createProjectOverrideDataset()`, which would make all scaffold runs, docs, tasks, and settings follow whichever project is selected.
-- [src/http/api/v1/runs/contracts.ts](../../src/http/api/v1/runs/contracts.ts) exposes the live project-runs collection shape, and it omits scaffold presentation fields such as `displayId`, `summary`, and `updatedLabel`. Phase 2 must either adjust the `Runs` table to real fields or derive only clearly justified fallbacks from actual response data.
+- [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) is not a true live project provider yet. For non-default projects it rewrites the scaffold dataset with `createProjectOverrideDataset()`, which would make all scaffold runs, docs, tasks, and settings follow whichever project is selected.
+- [src/http/api/v1/runs/contracts.ts](../../../src/http/api/v1/runs/contracts.ts) exposes the live project-runs collection shape, and it omits scaffold presentation fields such as `displayId`, `summary`, and `updatedLabel`. Phase 2 must either adjust the `Runs` table to real fields or derive only clearly justified fallbacks from actual response data.
 - Live run detail remains out of scope for this plan. If a run exists only in the live API and not in the scaffold resource model, the `Runs` index must not render a broken `/runs/:runId` deep link.
 - After dependency restore, the worktree baseline is healthier than the initial missing-tool state but not fully green:
   - `typecheck` passes,
@@ -253,8 +263,8 @@ Compatibility that **is** required:
   - `test` is only blocked by the known `listen EPERM` demo-script failures,
   - host `build` passes once Wrangler and Docker are allowed to run outside the sandbox.
 - `Documentation` and `Workstreams` still depend on scaffold dataset assumptions around the current project, so project switching cannot simply stop at the sidebar; the provider seam has to keep non-live destinations renderable for non-scaffold projects.
-- [ui/src/test/render-route.tsx](../../ui/src/test/render-route.tsx) only injects a project override today. API-backed UI phases will need explicit `fetch` stubs and `localStorage` reset discipline in jsdom tests.
-- Phase 1 exposed a new repo-level validation mismatch: after restoring dependencies in this worktree, the exact required `rtk npm run typecheck` command now fails outside the UI scope in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`. The Phase 1 UI surface still compiles with `./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
+- [ui/src/test/render-route.tsx](../../../ui/src/test/render-route.tsx) only injects a project override today. API-backed UI phases will need explicit `fetch` stubs and `localStorage` reset discipline in jsdom tests.
+- Phase 1 exposed a new repo-level validation mismatch: after restoring dependencies in this worktree, the exact required `rtk npm run typecheck` command now fails outside the UI scope in [tests/lib/db-client-worker.test.ts](../../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`. The Phase 1 UI surface still compiles with `./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json`.
 - The first Phase 1 shell gate was too aggressive: it blocked the visible zero-project recovery route at `/projects/new`, which only showed up once the review pass exercised the route directly instead of just the empty shell CTA.
 - `Project settings` needed its own non-scaffold compatibility state even before live settings APIs exist, because the parent shell/provider seam alone does not stop the scaffold-only settings view models from throwing.
 - Phase 2 did not need a deeper `ResourceModelProvider` rewrite after all. Using `useCurrentProject()` plus direct dataset membership checks in Documentation and Workstreams was enough to detect non-scaffold selections honestly without changing the scaffold provider contract again.
@@ -264,6 +274,7 @@ Compatibility that **is** required:
 - Once `Project settings` stopped depending on scaffold selectors, the old `resource-model-selectors` settings probe tests were no longer valid as pure `ResourceModelProvider` tests. The static test harness needed to mount a real project-management provider plus the new settings provider to keep those probes truthful.
 - The local UI can no longer treat dev auth as a backend-only concern. Even in the current prototype, the shared browser API seam has to send `Authorization: Bearer <KEYSTONE_DEV_TOKEN>` and `X-Keystone-Tenant-Id: <tenant-id>` on protected project-management requests or local settings flows are not truthful.
 - `Project settings` needed project-aware draft ownership, not just route-aware loading. Without tracking which project a draft/save belongs to, a project switch can leave the old form interactive for one more frame and let a late `PATCH` response overwrite the live shell selection.
+- The broad `Runs` route suite was not actually regressing on product behavior; it was still asserting the pre-live shell timing and an older phase-stepper affordance. Closeout had to update those tests so the final repo truth matched the shipped live project shell instead of an outdated scaffold assumption.
 
 ## Outcomes & Retrospective
 
@@ -328,29 +339,39 @@ Phase 4 targeted fix pass outcome on 2026-04-20:
 - `Project settings` now clears stale drafts on project switches, disables in-flight saves coherently, preserves `description: null` when re-saving untouched nullable descriptions, and ignores late save responses when the operator has already switched to another project.
 - The focused validation picture remains the same aside from the expanded passing coverage: `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passes, `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes, and `rtk npm run typecheck` still fails only in the unrelated worker-binding test.
 
+Phase 5 outcome on 2026-04-20:
+
+- The durable docs and notes now match the shipped UI boundary: live project list/create/settings plus project-scoped runs are real, while `Documentation`, `Workstreams`, and live run detail remain intentionally compatibility-scoped or out of scope.
+- The final repo validation truth is now explicit instead of inherited from planning-time assumptions:
+  - `rtk npm run lint` fails with the pre-existing non-UI backlog in `scripts/`, `src/`, and `tests/`
+  - `rtk npm run typecheck` still fails only in [tests/lib/db-client-worker.test.ts](../../../tests/lib/db-client-worker.test.ts)
+  - `rtk npm run test` passes (`35` files passed, `2` skipped; `204` tests passed, `18` skipped)
+  - `rtk npm run build` still fails in the sandbox with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity`, then passes when rerun from a host-permitted shell
+- The active plan bookkeeping is now coherent: the stale active-index entry is removed, the completed-plan archive summary is updated, and this plan is ready to live under `.ultrakit/exec-plans/completed/`.
+
 ## Context and Orientation
 
 The current repository state relevant to this plan is:
 
-- [ui/AGENTS.md](../../ui/AGENTS.md) now records the UI-specific working rules: behavior/composition first, styling later, and auth out of scope unless explicitly requested.
-- [design/workspace-spec.md](../../design/workspace-spec.md) is still the UI structure source of truth. It defines the global sidebar project controls plus the tabbed `New project` and `Project settings` surfaces.
-- [ui/src/shared/layout/shell-sidebar.tsx](../../ui/src/shared/layout/shell-sidebar.tsx) renders the current project block, but the project switcher is disabled and only shows the scaffold project.
-- [ui/src/app/app-providers.tsx](../../ui/src/app/app-providers.tsx), [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx), and [ui/src/features/resource-model/context.tsx](../../ui/src/features/resource-model/context.tsx) own the current project/provider seam today.
-- [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) currently treats a custom project as a request to clone the scaffold dataset under a different project id. That behavior is useful for isolated scaffold tests, but it is the wrong long-term source of truth for live project selection.
-- [ui/src/features/resource-model/context.tsx](../../ui/src/features/resource-model/context.tsx) currently owns `currentProjectId` for scaffold destinations. After the live cutover, it should either remain a scaffold-only context or consume a bridge from the live project provider; it should not stay the authoritative owner of live project selection.
-- [ui/src/features/resource-model/selectors.ts](../../ui/src/features/resource-model/selectors.ts) contains scaffold selectors for runs, docs, workstreams, and project-configuration seeds. Future API-backed work should stop expanding these selectors for live data and instead use explicit API adapters plus compatibility hooks.
-- [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/features/projects/project-configuration-scaffold.ts](../../ui/src/features/projects/project-configuration-scaffold.ts), and [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-configuration-tabs.tsx) still drive `New project` and `Project settings` from scaffold data.
-- [ui/src/features/projects/components/project-component-card.tsx](../../ui/src/features/projects/components/project-component-card.tsx), [ui/src/shared/forms/placeholder-field.tsx](../../ui/src/shared/forms/placeholder-field.tsx), and [ui/src/shared/forms/placeholder-list-field.tsx](../../ui/src/shared/forms/placeholder-list-field.tsx) are the current fake form primitives.
-- [ui/src/features/runs/use-runs-index-view-model.ts](../../ui/src/features/runs/use-runs-index-view-model.ts) already uses `currentProjectId`, which makes it the natural first destination to cut over to live project-aware data.
-- [ui/src/routes/runs/runs-index-route.tsx](../../ui/src/routes/runs/runs-index-route.tsx) currently assumes every row can deep-link into a scaffold-backed run detail route. That assumption must be relaxed for live project runs until run-detail cutover exists.
-- [ui/src/features/documentation/use-documentation-view-model.ts](../../ui/src/features/documentation/use-documentation-view-model.ts) and [ui/src/features/workstreams/use-workstreams-view-model.ts](../../ui/src/features/workstreams/use-workstreams-view-model.ts) currently assume the selected project exists in the scaffold dataset and will throw or render misleadingly when it does not.
-- [src/keystone/projects/contracts.ts](../../src/keystone/projects/contracts.ts) defines the canonical `ProjectConfig` request contract and validation rules: one or more components, duplicate-key protection, env var uniqueness, and exactly one of `localPath` / `gitUrl` for `git_repository`.
-- [src/http/api/v1/projects/contracts.ts](../../src/http/api/v1/projects/contracts.ts) defines the canonical project response shapes.
-- [src/http/api/v1/runs/contracts.ts](../../src/http/api/v1/runs/contracts.ts) defines the canonical live run collection shape that the `Runs` index must honor.
-- [src/http/api/v1/projects/handlers.ts](../../src/http/api/v1/projects/handlers.ts) already implements `GET /v1/projects`, `POST /v1/projects`, `GET /v1/projects/:projectId`, `PATCH /v1/projects/:projectId`, and `GET /v1/projects/:projectId/runs`.
-- [tests/http/projects.test.ts](../../tests/http/projects.test.ts) already proves the backend project contract, so the UI plan should consume that contract rather than inventing a parallel one.
-- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx), [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx), and [ui/src/test/resource-model-selectors.test.tsx](../../ui/src/test/resource-model-selectors.test.tsx) are the main frontend safety net today.
-- [ui/src/test/render-route.tsx](../../ui/src/test/render-route.tsx) is the main route helper. It currently assumes provider-only setup and will likely need modest expansion or surrounding helper utilities for API-backed tests.
+- [ui/AGENTS.md](../../../ui/AGENTS.md) now records the UI-specific working rules: behavior/composition first, styling later, and auth out of scope unless explicitly requested.
+- [design/workspace-spec.md](../../../design/workspace-spec.md) is still the UI structure source of truth. It defines the global sidebar project controls plus the tabbed `New project` and `Project settings` surfaces.
+- [ui/src/shared/layout/shell-sidebar.tsx](../../../ui/src/shared/layout/shell-sidebar.tsx) renders the current project block, but the project switcher is disabled and only shows the scaffold project.
+- [ui/src/app/app-providers.tsx](../../../ui/src/app/app-providers.tsx), [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx), and [ui/src/features/resource-model/context.tsx](../../../ui/src/features/resource-model/context.tsx) own the current project/provider seam today.
+- [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) currently treats a custom project as a request to clone the scaffold dataset under a different project id. That behavior is useful for isolated scaffold tests, but it is the wrong long-term source of truth for live project selection.
+- [ui/src/features/resource-model/context.tsx](../../../ui/src/features/resource-model/context.tsx) currently owns `currentProjectId` for scaffold destinations. After the live cutover, it should either remain a scaffold-only context or consume a bridge from the live project provider; it should not stay the authoritative owner of live project selection.
+- [ui/src/features/resource-model/selectors.ts](../../../ui/src/features/resource-model/selectors.ts) contains scaffold selectors for runs, docs, workstreams, and project-configuration seeds. Future API-backed work should stop expanding these selectors for live data and instead use explicit API adapters plus compatibility hooks.
+- [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/features/projects/project-configuration-scaffold.ts](../../../ui/src/features/projects/project-configuration-scaffold.ts), and [ui/src/features/projects/components/project-configuration-tabs.tsx](../../../ui/src/features/projects/components/project-configuration-tabs.tsx) still drive `New project` and `Project settings` from scaffold data.
+- [ui/src/features/projects/components/project-component-card.tsx](../../../ui/src/features/projects/components/project-component-card.tsx), [ui/src/shared/forms/placeholder-field.tsx](../../../ui/src/shared/forms/placeholder-field.tsx), and [ui/src/shared/forms/placeholder-list-field.tsx](../../../ui/src/shared/forms/placeholder-list-field.tsx) are the current fake form primitives.
+- [ui/src/features/runs/use-runs-index-view-model.ts](../../../ui/src/features/runs/use-runs-index-view-model.ts) already uses `currentProjectId`, which makes it the natural first destination to cut over to live project-aware data.
+- [ui/src/routes/runs/runs-index-route.tsx](../../../ui/src/routes/runs/runs-index-route.tsx) currently assumes every row can deep-link into a scaffold-backed run detail route. That assumption must be relaxed for live project runs until run-detail cutover exists.
+- [ui/src/features/documentation/use-documentation-view-model.ts](../../../ui/src/features/documentation/use-documentation-view-model.ts) and [ui/src/features/workstreams/use-workstreams-view-model.ts](../../../ui/src/features/workstreams/use-workstreams-view-model.ts) currently assume the selected project exists in the scaffold dataset and will throw or render misleadingly when it does not.
+- [src/keystone/projects/contracts.ts](../../../src/keystone/projects/contracts.ts) defines the canonical `ProjectConfig` request contract and validation rules: one or more components, duplicate-key protection, env var uniqueness, and exactly one of `localPath` / `gitUrl` for `git_repository`.
+- [src/http/api/v1/projects/contracts.ts](../../../src/http/api/v1/projects/contracts.ts) defines the canonical project response shapes.
+- [src/http/api/v1/runs/contracts.ts](../../../src/http/api/v1/runs/contracts.ts) defines the canonical live run collection shape that the `Runs` index must honor.
+- [src/http/api/v1/projects/handlers.ts](../../../src/http/api/v1/projects/handlers.ts) already implements `GET /v1/projects`, `POST /v1/projects`, `GET /v1/projects/:projectId`, `PATCH /v1/projects/:projectId`, and `GET /v1/projects/:projectId/runs`.
+- [tests/http/projects.test.ts](../../../tests/http/projects.test.ts) already proves the backend project contract, so the UI plan should consume that contract rather than inventing a parallel one.
+- [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx), [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx), and [ui/src/test/resource-model-selectors.test.tsx](../../../ui/src/test/resource-model-selectors.test.tsx) are the main frontend safety net today.
+- [ui/src/test/render-route.tsx](../../../ui/src/test/render-route.tsx) is the main route helper. It currently assumes provider-only setup and will likely need modest expansion or surrounding helper utilities for API-backed tests.
 
 The main architectural gap is not only missing API wiring. It is the missing live project-management state and the lack of a cohesive ownership model between the shell controls, the project configuration tabs, and the project-scoped runs destination.
 
@@ -370,7 +391,7 @@ The final phase cleans up misleading placeholder names, updates durable docs and
 
 ## Concrete Steps
 
-Run these from `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare` unless stated otherwise.
+Run these from `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare` unless stated otherwise.
 
 Baseline commands already run during planning:
 
@@ -551,24 +572,24 @@ Out of scope:
 
 #### Read First
 
-- [ui/AGENTS.md](../../ui/AGENTS.md)
-- [design/workspace-spec.md](../../design/workspace-spec.md)
-- [ui/src/app/app-providers.tsx](../../ui/src/app/app-providers.tsx)
-- [ui/src/shared/layout/shell-sidebar.tsx](../../ui/src/shared/layout/shell-sidebar.tsx)
-- [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx)
-- [ui/src/features/resource-model/context.tsx](../../ui/src/features/resource-model/context.tsx)
-- [src/http/api/v1/projects/contracts.ts](../../src/http/api/v1/projects/contracts.ts)
-- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx)
-- [ui/src/test/resource-model-selectors.test.tsx](../../ui/src/test/resource-model-selectors.test.tsx)
+- [ui/AGENTS.md](../../../ui/AGENTS.md)
+- [design/workspace-spec.md](../../../design/workspace-spec.md)
+- [ui/src/app/app-providers.tsx](../../../ui/src/app/app-providers.tsx)
+- [ui/src/shared/layout/shell-sidebar.tsx](../../../ui/src/shared/layout/shell-sidebar.tsx)
+- [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx)
+- [ui/src/features/resource-model/context.tsx](../../../ui/src/features/resource-model/context.tsx)
+- [src/http/api/v1/projects/contracts.ts](../../../src/http/api/v1/projects/contracts.ts)
+- [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx)
+- [ui/src/test/resource-model-selectors.test.tsx](../../../ui/src/test/resource-model-selectors.test.tsx)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/app/app-providers.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/shared/layout/shell-sidebar.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/project-context.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/` (new provider/client helpers)
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/test/app-shell.test.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/test/resource-model-selectors.test.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/app/app-providers.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/shared/layout/shell-sidebar.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/project-context.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/` (new provider/client helpers)
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/test/app-shell.test.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/test/resource-model-selectors.test.tsx`
 
 #### Implementation Notes
 
@@ -616,13 +637,13 @@ Completed on 2026-04-20.
 
 #### Completion Notes
 
-- Added `ui/src/features/projects/project-management-api.ts` and rewired [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) into a live project-management provider with persisted selection and a scaffold compatibility seam.
-- Updated [ui/src/shared/layout/app-shell.tsx](../../ui/src/shared/layout/app-shell.tsx) and [ui/src/shared/layout/shell-sidebar.tsx](../../ui/src/shared/layout/shell-sidebar.tsx) so the shell handles loading/empty/error states and the sidebar exposes a real disclosure-style project switcher.
-- Updated [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx), [ui/src/test/resource-model-selectors.test.tsx](../../ui/src/test/resource-model-selectors.test.tsx), and [ui/src/test/render-route.tsx](../../ui/src/test/render-route.tsx) for fetch-backed provider tests plus static fallback route helpers.
+- Added `ui/src/features/projects/project-management-api.ts` and rewired [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) into a live project-management provider with persisted selection and a scaffold compatibility seam.
+- Updated [ui/src/shared/layout/app-shell.tsx](../../../ui/src/shared/layout/app-shell.tsx) and [ui/src/shared/layout/shell-sidebar.tsx](../../../ui/src/shared/layout/shell-sidebar.tsx) so the shell handles loading/empty/error states and the sidebar exposes a real disclosure-style project switcher.
+- Updated [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx), [ui/src/test/resource-model-selectors.test.tsx](../../../ui/src/test/resource-model-selectors.test.tsx), and [ui/src/test/render-route.tsx](../../../ui/src/test/render-route.tsx) for fetch-backed provider tests plus static fallback route helpers.
 - Targeted fix pass:
-  - [ui/src/shared/layout/app-shell.tsx](../../ui/src/shared/layout/app-shell.tsx) now lets `/projects/new` render when the live project list is empty.
-  - [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/routes/projects/project-configuration-layout.tsx](../../ui/src/routes/projects/project-configuration-layout.tsx), and [ui/src/shared/layout/project-configuration-scaffold.tsx](../../ui/src/shared/layout/project-configuration-scaffold.tsx) now expose an honest compatibility state for non-scaffold project settings.
-  - [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) now covers loading, retry, valid current-project rehydration, zero-project recovery, and non-scaffold settings safety.
+  - [ui/src/shared/layout/app-shell.tsx](../../../ui/src/shared/layout/app-shell.tsx) now lets `/projects/new` render when the live project list is empty.
+  - [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts), [ui/src/routes/projects/project-configuration-layout.tsx](../../../ui/src/routes/projects/project-configuration-layout.tsx), and [ui/src/shared/layout/project-configuration-scaffold.tsx](../../../ui/src/shared/layout/project-configuration-scaffold.tsx) now expose an honest compatibility state for non-scaffold project settings.
+  - [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx) now covers loading, retry, valid current-project rehydration, zero-project recovery, and non-scaffold settings safety.
 - Validation:
   - `rtk npm install` passed after this worktree unexpectedly lost `node_modules`.
   - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed.
@@ -660,22 +681,22 @@ Out of scope:
 
 #### Read First
 
-- [ui/src/features/runs/use-runs-index-view-model.ts](../../ui/src/features/runs/use-runs-index-view-model.ts)
-- [ui/src/routes/runs/runs-index-route.tsx](../../ui/src/routes/runs/runs-index-route.tsx)
-- [ui/src/features/resource-model/context.tsx](../../ui/src/features/resource-model/context.tsx)
-- [ui/src/features/resource-model/selectors.ts](../../ui/src/features/resource-model/selectors.ts)
-- [src/http/api/v1/projects/handlers.ts](../../src/http/api/v1/projects/handlers.ts)
-- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx)
-- [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx)
+- [ui/src/features/runs/use-runs-index-view-model.ts](../../../ui/src/features/runs/use-runs-index-view-model.ts)
+- [ui/src/routes/runs/runs-index-route.tsx](../../../ui/src/routes/runs/runs-index-route.tsx)
+- [ui/src/features/resource-model/context.tsx](../../../ui/src/features/resource-model/context.tsx)
+- [ui/src/features/resource-model/selectors.ts](../../../ui/src/features/resource-model/selectors.ts)
+- [src/http/api/v1/projects/handlers.ts](../../../src/http/api/v1/projects/handlers.ts)
+- [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx)
+- [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/runs/use-runs-index-view-model.ts`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/routes/runs/runs-index-route.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/resource-model/context.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/resource-model/selectors.ts`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/test/app-shell.test.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/test/destination-scaffolds.test.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/runs/use-runs-index-view-model.ts`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/routes/runs/runs-index-route.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/resource-model/context.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/resource-model/selectors.ts`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/test/app-shell.test.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/test/destination-scaffolds.test.tsx`
 
 #### Implementation Notes
 
@@ -720,16 +741,16 @@ Completed on 2026-04-20.
 
 #### Completion Notes
 
-- Added project-scoped run loading to [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts), [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx), [ui/src/features/runs/use-runs-index-view-model.ts](../../ui/src/features/runs/use-runs-index-view-model.ts), and [ui/src/routes/runs/runs-index-route.tsx).
-- Updated [ui/src/features/documentation/use-documentation-view-model.ts](../../ui/src/features/documentation/use-documentation-view-model.ts), [ui/src/features/documentation/components/documentation-workspace.tsx](../../ui/src/features/documentation/components/documentation-workspace.tsx), [ui/src/features/workstreams/use-workstreams-view-model.ts](../../ui/src/features/workstreams/use-workstreams-view-model.ts), and [ui/src/features/workstreams/components/workstreams-board.tsx](../../ui/src/features/workstreams/components/workstreams-board.tsx) with explicit non-scaffold compatibility states.
+- Added project-scoped run loading to [ui/src/features/projects/project-management-api.ts](../../../ui/src/features/projects/project-management-api.ts), [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx), [ui/src/features/runs/use-runs-index-view-model.ts](../../../ui/src/features/runs/use-runs-index-view-model.ts), and [ui/src/routes/runs/runs-index-route.tsx).
+- Updated [ui/src/features/documentation/use-documentation-view-model.ts](../../../ui/src/features/documentation/use-documentation-view-model.ts), [ui/src/features/documentation/components/documentation-workspace.tsx](../../../ui/src/features/documentation/components/documentation-workspace.tsx), [ui/src/features/workstreams/use-workstreams-view-model.ts](../../../ui/src/features/workstreams/use-workstreams-view-model.ts), and [ui/src/features/workstreams/components/workstreams-board.tsx](../../../ui/src/features/workstreams/components/workstreams-board.tsx) with explicit non-scaffold compatibility states.
 - Focused validation:
   - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed.
-  - `rtk npm run typecheck` still fails outside Phase 2 scope in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
+  - `rtk npm run typecheck` still fails outside Phase 2 scope in [tests/lib/db-client-worker.test.ts](../../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now expects `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
   - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passed.
 - Targeted fix pass:
-  - [ui/src/features/workstreams/components/workstreams-board.tsx](../../ui/src/features/workstreams/components/workstreams-board.tsx) now preserves the filter controls across zero-row states and renders a filter-specific empty-state message when appropriate.
-  - [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) now covers run-fetch failure plus Retry recovery and the remaining live-run `Latest activity` branches.
-  - [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now covers the zero-row Workstreams filter state directly.
+  - [ui/src/features/workstreams/components/workstreams-board.tsx](../../../ui/src/features/workstreams/components/workstreams-board.tsx) now preserves the filter controls across zero-row states and renders a filter-specific empty-state message when appropriate.
+  - [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx) now covers run-fetch failure plus Retry recovery and the remaining live-run `Latest activity` branches.
+  - [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx) now covers the zero-row Workstreams filter state directly.
 
 #### Next Starter Context
 
@@ -764,27 +785,27 @@ Out of scope:
 
 #### Read First
 
-- [ui/AGENTS.md](../../ui/AGENTS.md)
-- [design/workspace-spec.md](../../design/workspace-spec.md)
-- [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts)
-- [ui/src/features/projects/project-configuration-scaffold.ts](../../ui/src/features/projects/project-configuration-scaffold.ts)
-- [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-configuration-tabs.tsx)
-- [ui/src/features/projects/components/project-component-card.tsx](../../ui/src/features/projects/components/project-component-card.tsx)
-- [ui/src/shared/forms/placeholder-field.tsx](../../ui/src/shared/forms/placeholder-field.tsx)
-- [ui/src/shared/forms/placeholder-list-field.tsx](../../ui/src/shared/forms/placeholder-list-field.tsx)
-- [src/keystone/projects/contracts.ts](../../src/keystone/projects/contracts.ts)
-- [src/http/api/v1/projects/contracts.ts](../../src/http/api/v1/projects/contracts.ts)
-- [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx)
+- [ui/AGENTS.md](../../../ui/AGENTS.md)
+- [design/workspace-spec.md](../../../design/workspace-spec.md)
+- [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts)
+- [ui/src/features/projects/project-configuration-scaffold.ts](../../../ui/src/features/projects/project-configuration-scaffold.ts)
+- [ui/src/features/projects/components/project-configuration-tabs.tsx](../../../ui/src/features/projects/components/project-configuration-tabs.tsx)
+- [ui/src/features/projects/components/project-component-card.tsx](../../../ui/src/features/projects/components/project-component-card.tsx)
+- [ui/src/shared/forms/placeholder-field.tsx](../../../ui/src/shared/forms/placeholder-field.tsx)
+- [ui/src/shared/forms/placeholder-list-field.tsx](../../../ui/src/shared/forms/placeholder-list-field.tsx)
+- [src/keystone/projects/contracts.ts](../../../src/keystone/projects/contracts.ts)
+- [src/http/api/v1/projects/contracts.ts](../../../src/http/api/v1/projects/contracts.ts)
+- [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/use-project-configuration-view-model.ts`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/project-configuration-scaffold.ts`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/components/project-configuration-tabs.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/components/project-component-card.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/shared/forms/` (renamed/reworked shared form primitives)
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/routes/projects/` (only if route plumbing needs a small submit/navigation seam)
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/test/destination-scaffolds.test.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/use-project-configuration-view-model.ts`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/project-configuration-scaffold.ts`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/components/project-configuration-tabs.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/components/project-component-card.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/shared/forms/` (renamed/reworked shared form primitives)
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/routes/projects/` (only if route plumbing needs a small submit/navigation seam)
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/test/destination-scaffolds.test.tsx`
 
 #### Implementation Notes
 
@@ -831,15 +852,15 @@ Completed on 2026-04-20.
 
 #### Completion Notes
 
-- Added a route-scoped [ui/src/features/projects/new-project-context.tsx](../../ui/src/features/projects/new-project-context.tsx) provider for persistent new-project draft state, canonical client validation, and explicit cancel/create handlers.
+- Added a route-scoped [ui/src/features/projects/new-project-context.tsx](../../../ui/src/features/projects/new-project-context.tsx) provider for persistent new-project draft state, canonical client validation, and explicit cancel/create handlers.
 - Added `createProject()` support to the shared project-management seam so successful create requests refresh `/v1/projects` before selecting the new project and routing to `/runs`.
-- Replaced the `placeholder-*` shared form layer with [ui/src/shared/forms/form-field.tsx](../../ui/src/shared/forms/form-field.tsx) and [ui/src/shared/forms/text-list-field.tsx](../../ui/src/shared/forms/text-list-field.tsx), then rewired the project tabs and component cards around those real controls.
+- Replaced the `placeholder-*` shared form layer with [ui/src/shared/forms/form-field.tsx](../../../ui/src/shared/forms/form-field.tsx) and [ui/src/shared/forms/text-list-field.tsx](../../../ui/src/shared/forms/text-list-field.tsx), then rewired the project tabs and component cards around those real controls.
 - The targeted fix pass now keeps the project returned by `POST /v1/projects` selected if the follow-up refresh fails, so the create flow does not devolve into a duplicate-submit trap.
 - The targeted fix pass also extended focused create-flow coverage for refresh-failure recovery, required-project-key validation, and the add/remove instruction controls.
 - Validation results for this phase:
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` passes.
   - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes.
-  - `rtk npm run typecheck` still fails outside this phase in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now requires `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
+  - `rtk npm run typecheck` still fails outside this phase in [tests/lib/db-client-worker.test.ts](../../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now requires `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
 
 #### Next Starter Context
 
@@ -871,22 +892,22 @@ Out of scope:
 
 #### Read First
 
-- [ui/src/features/projects/use-project-configuration-view-model.ts](../../ui/src/features/projects/use-project-configuration-view-model.ts)
-- [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx)
-- [ui/src/features/projects/components/project-configuration-tabs.tsx](../../ui/src/features/projects/components/project-configuration-tabs.tsx)
-- [src/http/api/v1/projects/contracts.ts](../../src/http/api/v1/projects/contracts.ts)
-- [src/http/api/v1/projects/handlers.ts](../../src/http/api/v1/projects/handlers.ts)
-- [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx)
-- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx)
+- [ui/src/features/projects/use-project-configuration-view-model.ts](../../../ui/src/features/projects/use-project-configuration-view-model.ts)
+- [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx)
+- [ui/src/features/projects/components/project-configuration-tabs.tsx](../../../ui/src/features/projects/components/project-configuration-tabs.tsx)
+- [src/http/api/v1/projects/contracts.ts](../../../src/http/api/v1/projects/contracts.ts)
+- [src/http/api/v1/projects/handlers.ts](../../../src/http/api/v1/projects/handlers.ts)
+- [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx)
+- [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/use-project-configuration-view-model.ts`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/project-context.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/features/projects/components/project-configuration-tabs.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/shared/layout/shell-sidebar.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/test/destination-scaffolds.test.tsx`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/ui/src/test/app-shell.test.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/use-project-configuration-view-model.ts`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/project-context.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/features/projects/components/project-configuration-tabs.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/shared/layout/shell-sidebar.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/test/destination-scaffolds.test.tsx`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/ui/src/test/app-shell.test.tsx`
 
 #### Implementation Notes
 
@@ -930,15 +951,15 @@ Completed on 2026-04-20.
 
 #### Completion Notes
 
-- Added [ui/src/features/projects/project-configuration-form.ts](../../ui/src/features/projects/project-configuration-form.ts) and [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) so settings can reuse the create-phase draft serialization/validation surface without becoming a generic mode-flag component.
-- [ui/src/features/projects/project-management-api.ts](../../ui/src/features/projects/project-management-api.ts) now exposes browser-safe `getProject()` / `updateProject()` helpers and matching static test-harness support for settings probes.
+- Added [ui/src/features/projects/project-configuration-form.ts](../../../ui/src/features/projects/project-configuration-form.ts) and [ui/src/features/projects/project-settings-context.tsx](../../../ui/src/features/projects/project-settings-context.tsx) so settings can reuse the create-phase draft serialization/validation surface without becoming a generic mode-flag component.
+- [ui/src/features/projects/project-management-api.ts](../../../ui/src/features/projects/project-management-api.ts) now exposes browser-safe `getProject()` / `updateProject()` helpers and matching static test-harness support for settings probes.
 - The shared browser API seam now sends the local dev auth headers automatically for protected project-management requests, using the repo defaults `change-me-local-token` and `tenant-dev-local`.
-- [ui/src/features/projects/project-settings-context.tsx](../../ui/src/features/projects/project-settings-context.tsx) and [ui/src/features/projects/project-context.tsx](../../ui/src/features/projects/project-context.tsx) now avoid stale draft interaction across project switches, prevent late `PATCH` responses from re-selecting an old project, and keep nullable descriptions honest across load/save.
-- [ui/src/test/app-shell.test.tsx](../../ui/src/test/app-shell.test.tsx) and [ui/src/test/destination-scaffolds.test.tsx](../../ui/src/test/destination-scaffolds.test.tsx) now cover settings load retry, switched-project not-found safety, save progress, stale-save race handling, nullable description round-tripping, and sidebar option refresh after save.
+- [ui/src/features/projects/project-settings-context.tsx](../../../ui/src/features/projects/project-settings-context.tsx) and [ui/src/features/projects/project-context.tsx](../../../ui/src/features/projects/project-context.tsx) now avoid stale draft interaction across project switches, prevent late `PATCH` responses from re-selecting an old project, and keep nullable descriptions honest across load/save.
+- [ui/src/test/app-shell.test.tsx](../../../ui/src/test/app-shell.test.tsx) and [ui/src/test/destination-scaffolds.test.tsx](../../../ui/src/test/destination-scaffolds.test.tsx) now cover settings load retry, switched-project not-found safety, save progress, stale-save race handling, nullable description round-tripping, and sidebar option refresh after save.
 - Validation results for this phase:
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passes.
   - `rtk ./node_modules/.bin/tsc --noEmit -p tsconfig.ui.json` passes.
-  - `rtk npm run typecheck` still fails outside this phase in [tests/lib/db-client-worker.test.ts](../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now requires `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
+  - `rtk npm run typecheck` still fails outside this phase in [tests/lib/db-client-worker.test.ts](../../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` now requires `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
 
 #### Next Starter Context
 
@@ -969,20 +990,20 @@ Out of scope:
 
 #### Read First
 
-- [README.md](../../README.md)
-- [.ultrakit/developer-docs/m1-architecture.md](../../.ultrakit/developer-docs/m1-architecture.md)
-- [.ultrakit/developer-docs/m1-local-runbook.md](../../.ultrakit/developer-docs/m1-local-runbook.md)
-- [.ultrakit/notes.md](../../.ultrakit/notes.md)
-- [ui/AGENTS.md](../../ui/AGENTS.md)
+- [README.md](../../../README.md)
+- [.ultrakit/developer-docs/m1-architecture.md](../../../.ultrakit/developer-docs/m1-architecture.md)
+- [.ultrakit/developer-docs/m1-local-runbook.md](../../../.ultrakit/developer-docs/m1-local-runbook.md)
+- [.ultrakit/notes.md](../../../.ultrakit/notes.md)
+- [ui/AGENTS.md](../../../ui/AGENTS.md)
 
 #### Files Expected To Change
 
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/README.md`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/.ultrakit/developer-docs/m1-architecture.md`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/.ultrakit/developer-docs/m1-local-runbook.md`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/.ultrakit/notes.md`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/.ultrakit/exec-plans/active/index.md`
-- `/home/chanzo/.codex/worktrees/8bf1/keystone-cloudflare/.ultrakit/exec-plans/completed/` (archive move at closeout)
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/README.md`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/.ultrakit/developer-docs/m1-architecture.md`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/.ultrakit/developer-docs/m1-local-runbook.md`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/.ultrakit/notes.md`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/.ultrakit/exec-plans/active/index.md`
+- `/home/chanzo/.codex/worktrees/3741/keystone-cloudflare/.ultrakit/exec-plans/completed/` (archive move at closeout)
 
 #### Implementation Notes
 
@@ -1025,12 +1046,20 @@ Success means final validation is rerun, results are recorded truthfully, and th
 
 #### Status
 
-Pending.
+Completed on 2026-04-20.
 
 #### Completion Notes
 
-- None yet.
+- Updated [README.md](../../../README.md), [.ultrakit/developer-docs/m1-architecture.md](../../../.ultrakit/developer-docs/m1-architecture.md), [.ultrakit/developer-docs/m1-local-runbook.md](../../../.ultrakit/developer-docs/m1-local-runbook.md), and [.ultrakit/notes.md](../../../.ultrakit/notes.md) so the current live project-management loop, shared dev-auth header seam, and remaining scaffold-backed boundaries are documented honestly.
+- Cleaned up stale closeout bookkeeping in this plan by fixing the old `8bf1` worktree-path references and recording the final broad validation truth.
+- Updated [ui/src/test/runs-routes.test.tsx](../../../ui/src/test/runs-routes.test.tsx) so the broad suite matches the shipped live current-project shell timing and current run-phase-link behavior.
+- Final validation results for closeout:
+  - `rtk npm run lint` fails with `23` pre-existing non-UI lint errors in `scripts/`, `src/`, and `tests/`.
+  - `rtk npm run typecheck` still fails outside this plan in [tests/lib/db-client-worker.test.ts](../../../tests/lib/db-client-worker.test.ts) because `WorkerBindings` requires `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
+  - `rtk npm run test` passes (`35` files passed, `2` skipped; `204` tests passed, `18` skipped).
+  - `rtk npm run build` still fails in the sandbox after `vite build` with `EROFS` under `~/.config/.wrangler` and `~/.docker/buildx/activity`, then passes from a host-permitted rerun.
+- Archived this plan under `.ultrakit/exec-plans/completed/`, removed it from the active-plan index, and added it to the completed-plan archive summary.
 
 #### Next Starter Context
 
-- Keep the docs honest about scope: live project management is in, styling and auth are still intentionally out.
+- This plan is complete and archived. The remaining active plan is `keystone-target-model-migration`, and any future UI work should start from the now-documented live/scaffold split rather than assuming the project-management shell is still scaffold-only.

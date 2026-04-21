@@ -25,7 +25,6 @@ import {
   type ProjectComponentKind,
   type ProjectConfigurationComponentDraft,
   type ProjectConfigurationDraft,
-  type ProjectConfigurationEnvVarDraft,
   type ProjectEnvVarField,
   type ProjectOverviewField,
   type ProjectRuleListKey
@@ -34,7 +33,6 @@ import { ProjectManagementApiError } from "./project-management-api";
 import { useProjectManagement } from "./project-context";
 type NewProjectDraft = ProjectConfigurationDraft;
 type NewProjectComponentDraft = ProjectConfigurationComponentDraft;
-type NewProjectEnvVarDraft = ProjectConfigurationEnvVarDraft;
 
 export interface NewProjectConfigurationState {
   draft: NewProjectDraft;
