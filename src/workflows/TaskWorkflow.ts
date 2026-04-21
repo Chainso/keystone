@@ -968,7 +968,7 @@ function buildThinkImplementerPrompt(
     "",
     "Projected run planning documents, run_plan, and task_handoff artifacts are available under /artifacts/in if you need broader context before editing.",
     "",
-    "When you finish, stage a concise durable handoff note under /artifacts/out and leave the workspace in a test-passing state."
+    "When you finish, if you changed workspace files, create a git commit in the task worktree with a concise message, then stage a concise durable handoff note under /artifacts/out and leave the workspace in a test-passing state."
   ].join("\n");
 }
 

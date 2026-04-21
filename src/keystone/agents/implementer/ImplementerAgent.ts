@@ -223,6 +223,7 @@ export function buildImplementerSystemPrompt(context: AgentTurnContext) {
     `Your writable roots are ${context.filesystem.workspaceRoot} and ${context.filesystem.artifactsOutRoot}.`,
     `Read projected inputs from ${context.filesystem.artifactsInRoot} and control files from ${context.filesystem.keystoneRoot}.`,
     `Read ${metadata.agentBridge.controlFiles.session} before acting and use ${metadata.agentBridge.controlFiles.artifacts} to inspect projected inputs such as run planning documents, run_plan, and task_handoff artifacts.`,
+    "If you change files under /workspace, create a git commit in the task worktree before handing off. Use a concise commit message and do not amend or rewrite existing commits.",
     "Stage durable handoff files only under /artifacts/out. Do not assume staged files are promoted automatically.",
     "Use bash sparingly and prefer direct file edits when that is simpler.",
     `Task prompt: ${metadata.prompt}`
