@@ -31,7 +31,7 @@ Follow the plan contract. Every section marked as required must be present. Key 
 
 **Backward Compatibility**: Record what you resolved during discovery. Explicit statement of whether backward compat is required and what the constraints are.
 
-**Design Decisions**: Record every architectural and pattern decision from discovery. Each entry needs: the decision, the rationale, alternatives considered, and the date. These are the decisions that constrain execution subagents. Execution subagents should never need to revisit these.
+**Design Decisions**: Record every architectural, dependency, and pattern decision from discovery. Each entry needs: the decision, the rationale, alternatives considered, and the date. These are the decisions that constrain execution subagents. Execution subagents should never need to revisit these.
 
 **Context and Orientation**: Write this for someone with zero context. Name the exact files, modules, and patterns that matter. If an execution subagent needs to understand something to do its job, it goes here.
 

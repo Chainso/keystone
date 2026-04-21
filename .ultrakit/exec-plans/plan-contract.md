@@ -68,7 +68,9 @@ State whether backward compatibility is required for this work and why. If it is
 
 Record architectural and pattern decisions made during planning. Each entry must include the decision, the rationale, alternatives considered, and the date.
 
-These must be resolved BEFORE execution begins. They include: technology choices, design patterns, approach decisions, API contracts, data models, and anything that constrains how execution subagents implement phases.
+These must be resolved BEFORE execution begins. They include: technology choices, material library or dependency choices, design patterns, approach decisions, API contracts, data models, and anything that constrains how execution subagents implement phases.
+
+Treat library and dependency choice as architecture when it materially affects boundaries, testability, operability, long-term maintenance, or implementation complexity. If the plan depends on reusing an existing library, adopting a new well-supported dependency, or deliberately avoiding one in favor of platform-native code, record that decision explicitly.
 
 If an execution subagent needs to make a design-level decision during execution, it should escalate to the orchestrator rather than recording it here. A subagent making design decisions is a sign that the plan was not detailed enough.
 
@@ -119,6 +121,8 @@ Keep the most useful small transcripts, diffs, examples, or path references here
 ### Interfaces and Dependencies
 
 Name the important modules, services, APIs, commands, or traits/interfaces involved in the change. Be prescriptive about what should exist at the end of the work when that matters.
+
+When a dependency choice materially shapes the solution, name the relevant libraries or platform primitives here and explain the role each one plays. If a new dependency is intentionally introduced, note the concrete value it provides over a homegrown or already-installed alternative.
 
 ## Writing Standard
 
@@ -210,6 +214,10 @@ If that review returns critical or important findings, the orchestrator may sche
 
 Minor findings may be deferred or captured as follow-up work when they are not worth blocking phase closure.
 
+After all phases are complete and before archive, the orchestrator runs one final comprehensive review across the entire completed work. This final review checks whole-plan acceptance, cross-phase integration, documentation truth, deferred-work truth, and archive readiness.
+
+If that final review returns critical or important findings, the orchestrator may schedule one final targeted closeout pass for the plan. After that closeout pass, the orchestrator verifies the reported fixes and validation evidence, then either archives or escalates. Do not start another automatic final review loop for the same plan.
+
 ## Documentation Phase
 
 The last phase or phases of every plan should address documentation impact. These phases follow the same single-review execution model as implementation phases.
@@ -227,10 +235,11 @@ Developer documentation describes architecture, contracts, and design rationale 
 Before moving a plan from `.ultrakit/exec-plans/active/` to `.ultrakit/exec-plans/completed/`, confirm all of the following:
 
 1. acceptance has been met or any remaining gap is explicitly documented,
-2. the living sections reflect the final state,
-3. `.ultrakit/exec-plans/active/index.md` no longer presents the plan as active,
-4. `.ultrakit/exec-plans/completed/README.md` or another relevant completed-plan index includes the archived file,
-5. references to the active-path location are updated if the completed path matters.
+2. the final comprehensive review is clean or any reported issues were verified in the final closeout pass,
+3. the living sections reflect the final state,
+4. `.ultrakit/exec-plans/active/index.md` no longer presents the plan as active,
+5. `.ultrakit/exec-plans/completed/README.md` or another relevant completed-plan index includes the archived file,
+6. references to the active-path location are updated if the completed path matters.
 
 ## Minimal Quality Bar
 
