@@ -12,12 +12,31 @@ import {
   runTasks,
   runs,
   type RunRow,
+  type RunTaskDependencyRow,
   type RunTaskRow
 } from "./schema";
 
 interface RunLookupInput {
   tenantId: string;
   runId: string;
+}
+
+export type ProjectTaskCollectionFilter = "all" | "active" | "running" | "queued" | "blocked";
+
+export interface ListProjectTasksInput {
+  tenantId: string;
+  projectId: string;
+  filter: ProjectTaskCollectionFilter;
+  page: number;
+  pageSize: number;
+}
+
+export interface ListProjectTasksResult {
+  items: RunTaskRow[];
+  dependencies: RunTaskDependencyRow[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface CreateRunRecordInput {
@@ -281,6 +300,22 @@ async function assertRunOwnership(db: RunDbExecutor, input: RunLookupInput) {
 
 function isTerminalRunStatus(status: string) {
   return status === "archived" || status === "failed" || status === "cancelled";
+}
+
+function resolveProjectTaskStatuses(filter: ProjectTaskCollectionFilter) {
+  switch (filter) {
+    case "active":
+      return ["active", "ready", "pending", "blocked"];
+    case "running":
+      return ["active"];
+    case "queued":
+      return ["ready", "pending"];
+    case "blocked":
+      return ["blocked"];
+    case "all":
+    default:
+      return null;
+  }
 }
 
 function deriveRunLifecycleTimestamps(
@@ -622,6 +657,60 @@ export async function listProjectRuns(
     where: and(eq(runs.tenantId, input.tenantId), eq(runs.projectId, input.projectId)),
     orderBy: [asc(runs.createdAt)]
   });
+}
+
+export async function listProjectTasks(
+  client: DatabaseClient,
+  input: ListProjectTasksInput
+): Promise<ListProjectTasksResult> {
+  await assertProjectOwnership(client.db, input);
+
+  const filteredStatuses = resolveProjectTaskStatuses(input.filter);
+  const whereClauses = [eq(runs.tenantId, input.tenantId), eq(runs.projectId, input.projectId)];
+
+  if (filteredStatuses) {
+    whereClauses.push(inArray(runTasks.status, filteredStatuses));
+  }
+
+  const offset = (input.page - 1) * input.pageSize;
+  const matchingTaskIds = await client.db
+    .select({
+      runTaskId: runTasks.runTaskId
+    })
+    .from(runTasks)
+    .innerJoin(runs, eq(runs.runId, runTasks.runId))
+    .where(and(...whereClauses));
+  const rows = await client.db
+    .select({
+      task: runTasks
+    })
+    .from(runTasks)
+    .innerJoin(runs, eq(runs.runId, runTasks.runId))
+    .where(and(...whereClauses))
+    .orderBy(asc(runs.createdAt), asc(runTasks.createdAt))
+    .limit(input.pageSize)
+    .offset(offset);
+  const items = rows.map((row) => row.task);
+  const runIds = [...new Set(items.map((task) => task.runId))];
+  const runTaskIds = items.map((task) => task.runTaskId);
+  const dependencies =
+    runIds.length === 0 || runTaskIds.length === 0
+      ? []
+      : await client.db.query.runTaskDependencies.findMany({
+          where: and(
+            inArray(runTaskDependencies.runId, runIds),
+            inArray(runTaskDependencies.childRunTaskId, runTaskIds)
+          ),
+          orderBy: [asc(runTaskDependencies.createdAt)]
+        });
+
+  return {
+    items,
+    dependencies,
+    total: matchingTaskIds.length,
+    page: input.page,
+    pageSize: input.pageSize
+  };
 }
 
 export async function updateRunRecord(client: DatabaseClient, input: UpdateRunRecordInput) {

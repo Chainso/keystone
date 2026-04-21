@@ -4,10 +4,12 @@ import {
   buildCollectionEnvelopeSchema,
   buildDetailEnvelopeSchema,
   buildResourceSchema,
+  collectionEnvelopeMetaSchema,
   isoTimestampSchema,
   resourceIdSchema
 } from "../common/contracts";
 import { projectConfigSchema, type StoredProject } from "../../../../keystone/projects/contracts";
+import { taskResourceSchema } from "../runs/contracts";
 
 export const projectListItemSchema = buildResourceSchema("project", {
   projectId: resourceIdSchema,
@@ -38,9 +40,37 @@ export const projectCollectionEnvelopeSchema = buildCollectionEnvelopeSchema(
   "project",
   projectListItemSchema
 );
+export const projectTaskFilterValues = [
+  "all",
+  "active",
+  "running",
+  "queued",
+  "blocked"
+] as const;
+export const projectTaskFilterSchema = z.enum(projectTaskFilterValues);
+export const projectTaskListQuerySchema = z.object({
+  filter: projectTaskFilterSchema.default("all"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).default(25)
+});
+export const projectTaskCollectionEnvelopeSchema = z.object({
+  data: z.object({
+    items: z.array(taskResourceSchema),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1),
+    pageCount: z.number().int().min(1),
+    filter: projectTaskFilterSchema
+  }),
+  meta: collectionEnvelopeMetaSchema.extend({
+    resourceType: z.literal("task")
+  })
+});
 
 export type ProjectListItem = z.infer<typeof projectListItemSchema>;
 export type ProjectResource = z.infer<typeof projectResourceSchema>;
+export type ProjectTaskFilter = z.infer<typeof projectTaskFilterSchema>;
+export type ProjectTaskListQuery = z.infer<typeof projectTaskListQuerySchema>;
 
 export function serializeProjectListItem(project: {
   projectId: string;

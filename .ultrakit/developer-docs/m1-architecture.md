@@ -89,6 +89,7 @@ The current operator-facing backend surface is:
 - `GET /v1/projects/:projectId/documents`
 - `POST /v1/projects/:projectId/documents`
 - `GET /v1/projects/:projectId/runs`
+- `GET /v1/projects/:projectId/tasks`
 - `POST /v1/projects/:projectId/runs`
 - `GET /v1/runs/:runId`
 - `POST /v1/runs/:runId/compile`
@@ -99,6 +100,8 @@ The current operator-facing backend surface is:
 - `GET /v1/runs/:runId/tasks/:taskId`
 - `GET /v1/artifacts/:artifactId`
 - `GET /v1/artifacts/:artifactId/content`
+
+Task resources now expose both the authoritative `taskId` (`runTaskId`) and the compiled-plan `logicalTaskId`, plus `updatedAt`, so project-scoped task listings and run-scoped task drill-in stay aligned on one contract.
 
 Removed from the backend surface:
 

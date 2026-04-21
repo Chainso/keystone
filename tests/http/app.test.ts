@@ -93,14 +93,17 @@ function buildRunDocumentRepositoryFixture(includeRequiredPlanningDocuments = fa
   };
 }
 
+const RUN_TASK_PREPARE_ID = "11111111-1111-4111-8111-111111111111";
+const RUN_TASK_IMPLEMENTATION_ID = "22222222-2222-4222-8222-222222222222";
+
 const activeTaskFixture = {
-  runTaskId: "run-task-implementation",
+  runTaskId: RUN_TASK_IMPLEMENTATION_ID,
   runId: "run-123",
   name: "Implement execution plan",
   description: "Apply the approved change in a reviewable way.",
   status: "active",
   conversationAgentClass: "KeystoneThinkAgent",
-  conversationAgentName: "tenant:tenant-fixture:run:run-123:task:run-task-implementation",
+  conversationAgentName: `tenant:tenant-fixture:run:run-123:task:${RUN_TASK_IMPLEMENTATION_ID}`,
   startedAt: new Date("2026-04-14T00:10:00.000Z"),
   endedAt: null,
   createdAt: new Date("2026-04-14T00:09:00.000Z"),
@@ -108,7 +111,7 @@ const activeTaskFixture = {
 };
 
 const readyTaskFixture = {
-  runTaskId: "run-task-prepare",
+  runTaskId: RUN_TASK_PREPARE_ID,
   runId: "run-123",
   name: "Prepare implementation context",
   description: "Review the planning documents and repo state.",
@@ -124,17 +127,46 @@ const readyTaskFixture = {
 const dependencyFixture = {
   runTaskDependencyId: "run-task-dependency-1",
   runId: "run-123",
-  parentRunTaskId: "run-task-prepare",
-  childRunTaskId: "run-task-implementation",
+  parentRunTaskId: RUN_TASK_PREPARE_ID,
+  childRunTaskId: RUN_TASK_IMPLEMENTATION_ID,
   createdAt: new Date("2026-04-14T00:08:30.000Z")
 };
+
+const compiledRunPlanFixture = {
+  summary: "Fixture compiled plan for run-123.",
+  sourceRevisionIds: {
+    specification: "revision-run-specification-v1",
+    architecture: "revision-run-architecture-v1",
+    executionPlan: "revision-run-plan-v1"
+  },
+  tasks: [
+    {
+      taskId: "TASK-001",
+      runTaskId: RUN_TASK_PREPARE_ID,
+      title: "Prepare implementation context",
+      summary: "Review the planning documents and repo state.",
+      instructions: ["Review the planning documents."],
+      acceptanceCriteria: ["Implementation context is ready."],
+      dependsOn: []
+    },
+    {
+      taskId: "TASK-002",
+      runTaskId: RUN_TASK_IMPLEMENTATION_ID,
+      title: "Implement execution plan",
+      summary: "Apply the approved change in a reviewable way.",
+      instructions: ["Implement the approved change."],
+      acceptanceCriteria: ["The implementation is complete."],
+      dependsOn: ["TASK-001"]
+    }
+  ]
+} as const;
 
 const runArtifactFixture = {
   tenantId: "tenant-fixture",
   artifactRefId: "artifact-implementer-note",
   projectId: "project-fixture",
   runId: "run-123",
-  runTaskId: "run-task-implementation",
+  runTaskId: RUN_TASK_IMPLEMENTATION_ID,
   artifactKind: "run_note",
   storageBackend: "r2",
   bucket: "keystone-artifacts-dev",
@@ -222,12 +254,13 @@ const mocked = vi.hoisted(() => {
       createdAt: new Date("2026-04-14T00:06:00.000Z")
     })),
     deleteArtifactRef: vi.fn(async () => null),
+    getArtifactText: vi.fn(async (): Promise<string | null> => null),
     getArtifactRef: vi.fn(async (_client, _tenantId, artifactId) => ({
       tenantId: "tenant-fixture",
       artifactRefId: artifactId,
       projectId: "project-fixture",
       runId: "run-123",
-      runTaskId: "run-task-implementation",
+      runTaskId: RUN_TASK_IMPLEMENTATION_ID,
       artifactKind: "run_note",
       storageBackend: "r2",
       bucket: "keystone-artifacts-dev",
@@ -360,6 +393,7 @@ vi.mock("../../src/lib/artifacts/r2", async () => {
 
   return {
     ...actual,
+    getArtifactText: mocked.getArtifactText,
     getArtifactBytes: mocked.getArtifactBytes
   };
 });
@@ -406,6 +440,7 @@ describe("app", () => {
     mocked.createWorkerDatabaseClient.mockImplementation(() =>
       createDocumentRepositoryClient(buildRunDocumentRepositoryFixture(false), mocked.close)
     );
+    mocked.getArtifactText.mockResolvedValue(JSON.stringify(compiledRunPlanFixture));
     mocked.getRunRecord.mockImplementation(async (_client, input) => {
       if (input.runId !== "run-123") {
         return undefined;
@@ -1012,7 +1047,7 @@ describe("app", () => {
           env
         ),
         app.request(
-          "http://example.com/v1/runs/run-123/tasks/run-task-implementation",
+          `http://example.com/v1/runs/run-123/tasks/${RUN_TASK_IMPLEMENTATION_ID}`,
           {
             headers: {
               Authorization: "Bearer secret-dev-token",
@@ -1022,7 +1057,7 @@ describe("app", () => {
           env
         ),
         app.request(
-          "http://example.com/v1/runs/run-123/tasks/run-task-implementation/conversation",
+          `http://example.com/v1/runs/run-123/tasks/${RUN_TASK_IMPLEMENTATION_ID}/conversation`,
           {
             headers: {
               Authorization: "Bearer secret-dev-token",
@@ -1038,19 +1073,19 @@ describe("app", () => {
       data: {
         nodes: [
           {
-            taskId: "run-task-prepare",
+            taskId: RUN_TASK_PREPARE_ID,
             status: "ready"
           },
           {
-            taskId: "run-task-implementation",
+            taskId: RUN_TASK_IMPLEMENTATION_ID,
             status: "pending",
-            dependsOn: ["run-task-prepare"]
+            dependsOn: [RUN_TASK_PREPARE_ID]
           }
         ],
         edges: [
           {
-            fromTaskId: "run-task-prepare",
-            toTaskId: "run-task-implementation"
+            fromTaskId: RUN_TASK_PREPARE_ID,
+            toTaskId: RUN_TASK_IMPLEMENTATION_ID
           }
         ],
         summary: {
@@ -1071,16 +1106,20 @@ describe("app", () => {
         total: 2,
         items: [
           {
-            taskId: "run-task-prepare",
-            status: "ready"
+            taskId: RUN_TASK_PREPARE_ID,
+            logicalTaskId: "TASK-001",
+            status: "ready",
+            updatedAt: "2026-04-14T00:08:00.000Z"
           },
           {
-            taskId: "run-task-implementation",
+            taskId: RUN_TASK_IMPLEMENTATION_ID,
+            logicalTaskId: "TASK-002",
             status: "pending",
-            dependsOn: ["run-task-prepare"],
+            dependsOn: [RUN_TASK_PREPARE_ID],
+            updatedAt: "2026-04-14T00:11:00.000Z",
             conversation: {
               agentClass: "KeystoneThinkAgent",
-              agentName: "tenant:tenant-fixture:run:run-123:task:run-task-implementation"
+              agentName: `tenant:tenant-fixture:run:run-123:task:${RUN_TASK_IMPLEMENTATION_ID}`
             }
           }
         ]
@@ -1090,11 +1129,13 @@ describe("app", () => {
     expect(taskResponse.status).toBe(200);
     await expect(taskResponse.json()).resolves.toMatchObject({
       data: {
-        taskId: "run-task-implementation",
+        taskId: RUN_TASK_IMPLEMENTATION_ID,
+        logicalTaskId: "TASK-002",
         name: "Implement execution plan",
+        updatedAt: "2026-04-14T00:11:00.000Z",
         conversation: {
           agentClass: "KeystoneThinkAgent",
-          agentName: "tenant:tenant-fixture:run:run-123:task:run-task-implementation"
+          agentName: `tenant:tenant-fixture:run:run-123:task:${RUN_TASK_IMPLEMENTATION_ID}`
         }
       }
     });
