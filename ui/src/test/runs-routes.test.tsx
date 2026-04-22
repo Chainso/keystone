@@ -654,6 +654,11 @@ function renderRunRoute(initialEntry: string, runApi: RunManagementApi = staticR
   return renderRoute(initialEntry, { runApi });
 }
 
+function expectRunDetailStateChrome() {
+  expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
+  expect(screen.getByText("Run workspace")).toBeInTheDocument();
+}
+
 function createRunApi(overrides: Partial<RunManagementApi> = {}): RunManagementApi {
   return {
     ...staticRunApi,
@@ -1297,6 +1302,7 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/specification", runApi);
 
     expect(await screen.findByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
 
     deferredRun.resolve(runFixtures["run-104"]!.run);
 
@@ -1325,6 +1331,7 @@ describe("Run routes", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.queryByRole("heading", { name: "run-101" })).not.toBeInTheDocument();
 
     deferredRun.resolve(runFixtures["run-104"]!.run);
@@ -2025,6 +2032,7 @@ describe("Run routes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh run" }));
 
     expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.getByText("Run detail refresh failed.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Refresh run" })).not.toBeInTheDocument();
     expect(
@@ -2263,6 +2271,7 @@ describe("Run routes", () => {
     renderRoute("/runs/run-404/specification");
 
     expect(await screen.findByRole("heading", { name: "Run not found" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.getByText("Run run-404 was not found.")).toBeInTheDocument();
   });
 
@@ -2279,6 +2288,7 @@ describe("Run routes", () => {
     renderRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.getByText("Run detail load exploded.")).toBeInTheDocument();
   });
 
