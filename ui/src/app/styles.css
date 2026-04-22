@@ -4,6 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -19,6 +21,7 @@
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -38,47 +41,118 @@
 
 :root {
   color-scheme: light;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  background: #f3f1ea;
-  color: #181817;
-  --surface-app: #f3f1ea;
-  --surface-panel: #ffffff;
-  --surface-muted: #faf8f1;
-  --surface-subtle: #f0ede3;
-  --border-strong: #8f8a7b;
-  --border-muted: #d7d1c2;
-  --text-primary: #181817;
-  --text-secondary: #47463f;
-  --text-muted: #6d6a5f;
-  --accent-fill: #ece5d4;
-  --accent-line: #b0a78c;
-  --radius: 0.625rem;
-  --background: 47 27.3% 93.5%;
-  --foreground: 60 2.1% 9.2%;
+  font-family: var(--font-sans);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  --font-sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+  --radius: 0.75rem;
+  --background: 42 30% 95%;
+  --foreground: 220 18% 12%;
   --card: 0 0% 100%;
-  --card-foreground: 60 2.1% 9.2%;
+  --card-foreground: 220 18% 12%;
   --popover: 0 0% 100%;
-  --popover-foreground: 60 2.1% 9.2%;
-  --primary: 45 18.6% 62%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 46 30.2% 91.6%;
-  --secondary-foreground: 53 6% 26.3%;
-  --muted: 47 47.4% 96.3%;
-  --muted-foreground: 47 6.9% 40%;
-  --accent: 42 38.7% 87.8%;
-  --accent-foreground: 60 2.1% 9.2%;
-  --destructive: 0 72.2% 50.6%;
-  --border: 43 20.8% 80.2%;
-  --input: 43 20.8% 80.2%;
-  --ring: 45 18.6% 62%;
-  --sidebar: 47 47.4% 96.3%;
-  --sidebar-foreground: 60 2.1% 9.2%;
-  --sidebar-primary: 45 18.6% 62%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 42 38.7% 87.8%;
-  --sidebar-accent-foreground: 60 2.1% 9.2%;
-  --sidebar-border: 45 8.2% 52.2%;
-  --sidebar-ring: 45 18.6% 62%;
+  --popover-foreground: 220 18% 12%;
+  --primary: 244 32% 43%;
+  --primary-foreground: 44 43% 97%;
+  --secondary: 42 24% 91%;
+  --secondary-foreground: 220 12% 28%;
+  --muted: 42 18% 90%;
+  --muted-foreground: 220 8% 42%;
+  --accent: 239 28% 89%;
+  --accent-foreground: 220 18% 16%;
+  --destructive: 8 61% 49%;
+  --destructive-foreground: 20 33% 97%;
+  --border: 35 16% 78%;
+  --input: 35 16% 78%;
+  --ring: 244 28% 45%;
+  --sidebar: 40 24% 93%;
+  --sidebar-foreground: 220 18% 15%;
+  --sidebar-primary: 244 32% 43%;
+  --sidebar-primary-foreground: 44 43% 97%;
+  --sidebar-accent: 43 27% 88%;
+  --sidebar-accent-foreground: 220 18% 16%;
+  --sidebar-border: 35 12% 64%;
+  --sidebar-ring: 244 28% 45%;
+  --surface-app: hsl(42 30% 95%);
+  --surface-panel: hsl(0 0% 100%);
+  --surface-muted: hsl(40 24% 93%);
+  --surface-subtle: hsl(42 18% 90%);
+  --surface-raised: hsl(42 26% 98%);
+  --border-strong: hsl(35 12% 62%);
+  --border-muted: hsl(35 16% 78%);
+  --text-primary: hsl(220 18% 12%);
+  --text-secondary: hsl(220 12% 28%);
+  --text-muted: hsl(220 8% 42%);
+  --accent-fill: hsl(44 31% 86%);
+  --accent-line: hsl(244 28% 45%);
+  --accent-strong: hsl(244 32% 43%);
+  --status-active-surface: hsl(44 31% 86%);
+  --status-active-border: hsl(41 31% 58%);
+  --status-complete-surface: hsl(132 23% 89%);
+  --status-complete-border: hsl(134 21% 56%);
+  --status-blocked-surface: hsl(14 44% 90%);
+  --status-blocked-border: hsl(9 36% 58%);
+  --status-queued-surface: hsl(44 34% 88%);
+  --status-queued-border: hsl(41 40% 56%);
+  --danger-surface: hsl(11 43% 90%);
+  --danger-border: hsl(9 36% 58%);
+  --danger-text: hsl(9 43% 42%);
+}
+
+:root.dark {
+  color-scheme: dark;
+  --background: 220 18% 9%;
+  --foreground: 40 22% 92%;
+  --card: 220 15% 12%;
+  --card-foreground: 40 22% 92%;
+  --popover: 220 15% 12%;
+  --popover-foreground: 40 22% 92%;
+  --primary: 244 44% 70%;
+  --primary-foreground: 220 18% 11%;
+  --secondary: 220 14% 17%;
+  --secondary-foreground: 40 18% 86%;
+  --muted: 220 13% 15%;
+  --muted-foreground: 40 9% 66%;
+  --accent: 236 28% 19%;
+  --accent-foreground: 40 20% 90%;
+  --destructive: 8 62% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 10% 24%;
+  --input: 220 10% 24%;
+  --ring: 244 44% 70%;
+  --sidebar: 220 16% 10%;
+  --sidebar-foreground: 40 18% 90%;
+  --sidebar-primary: 244 44% 70%;
+  --sidebar-primary-foreground: 220 18% 11%;
+  --sidebar-accent: 220 11% 18%;
+  --sidebar-accent-foreground: 40 20% 90%;
+  --sidebar-border: 220 10% 25%;
+  --sidebar-ring: 244 44% 70%;
+  --surface-app: hsl(220 18% 8%);
+  --surface-panel: hsl(220 15% 12%);
+  --surface-muted: hsl(220 16% 10%);
+  --surface-subtle: hsl(220 13% 15%);
+  --surface-raised: hsl(220 13% 17%);
+  --border-strong: hsl(220 10% 29%);
+  --border-muted: hsl(220 8% 22%);
+  --text-primary: hsl(40 22% 92%);
+  --text-secondary: hsl(40 12% 76%);
+  --text-muted: hsl(40 8% 60%);
+  --accent-fill: hsl(236 27% 18%);
+  --accent-line: hsl(244 44% 70%);
+  --accent-strong: hsl(244 44% 70%);
+  --status-active-surface: hsl(236 27% 18%);
+  --status-active-border: hsl(244 36% 61%);
+  --status-complete-surface: hsl(145 23% 18%);
+  --status-complete-border: hsl(145 26% 46%);
+  --status-blocked-surface: hsl(10 31% 19%);
+  --status-blocked-border: hsl(9 44% 53%);
+  --status-queued-surface: hsl(40 26% 18%);
+  --status-queued-border: hsl(40 38% 52%);
+  --danger-surface: hsl(10 31% 19%);
+  --danger-border: hsl(9 44% 53%);
+  --danger-text: hsl(11 75% 72%);
 }
 
 * {
@@ -464,23 +538,23 @@ pre {
 }
 
 .status-pill-active {
-  background: #ece8da;
-  border-color: #b0a78c;
+  background: var(--status-active-surface);
+  border-color: var(--status-active-border);
 }
 
 .status-pill-complete {
-  background: #e6efe3;
-  border-color: #8ca17f;
+  background: var(--status-complete-surface);
+  border-color: var(--status-complete-border);
 }
 
 .status-pill-blocked {
-  background: #f4e2de;
-  border-color: #c18e85;
+  background: var(--status-blocked-surface);
+  border-color: var(--status-blocked-border);
 }
 
 .status-pill-queued {
-  background: #f3ecdc;
-  border-color: #c7aa6b;
+  background: var(--status-queued-surface);
+  border-color: var(--status-queued-border);
 }
 
 .ghost-button,
@@ -757,8 +831,8 @@ pre {
 }
 
 .execution-node-blocked {
-  border-color: #c18e85;
-  background: #f4e2de;
+  border-color: var(--status-blocked-border);
+  background: var(--status-blocked-surface);
 }
 
 .execution-node-queued {
@@ -994,7 +1068,7 @@ pre {
 .form-field-error,
 .project-config-error {
   margin: 0;
-  color: #9f4f43;
+  color: var(--danger-text);
   font-size: 0.85rem;
   line-height: 1.45;
 }

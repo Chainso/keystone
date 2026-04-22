@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { AppProviders } from "../app/app-providers";
+import { useTheme } from "../app/theme-provider";
+import { themePreferenceStorageKey } from "../app/theme";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
+import { selectCurrentProjectSummary } from "../features/resource-model/selectors";
 import { resolveRunsSnapshotForProject } from "../features/runs/use-runs-index-view-model";
 import { renderRoute } from "./render-route";
 import {
@@ -31,6 +35,99 @@ interface LiveRunFixture {
 
 type ResponseFactory = () => Promise<Response> | Response;
 
+function createMatchMediaController(initialMatches = false) {
+  let matches = initialMatches;
+  const listeners = new Set<
+    EventListenerOrEventListenerObject | ((event: MediaQueryListEvent) => void)
+  >();
+  const mediaQueryList: MediaQueryList = {
+    get matches() {
+      return matches;
+    },
+    media: "(prefers-color-scheme: dark)",
+    onchange: null,
+    addEventListener(_type: string, listener: EventListenerOrEventListenerObject | null) {
+      if (listener) {
+        listeners.add(listener);
+      }
+    },
+    removeEventListener(_type: string, listener: EventListenerOrEventListenerObject | null) {
+      if (listener) {
+        listeners.delete(listener);
+      }
+    },
+    addListener(listener: ((event: MediaQueryListEvent) => void) | null) {
+      if (listener) {
+        listeners.add(listener);
+      }
+    },
+    removeListener(listener: ((event: MediaQueryListEvent) => void) | null) {
+      if (listener) {
+        listeners.delete(listener);
+      }
+    },
+    dispatchEvent() {
+      return true;
+    }
+  };
+
+  return {
+    matchMedia: vi.fn().mockImplementation(() => mediaQueryList),
+    setMatches(nextMatches: boolean) {
+      matches = nextMatches;
+      const event = {
+        matches: nextMatches,
+        media: mediaQueryList.media
+      } as MediaQueryListEvent;
+
+      listeners.forEach((listener) => {
+        if (typeof listener === "function") {
+          listener(event);
+          return;
+        }
+
+        listener.handleEvent(event);
+      });
+    }
+  };
+}
+
+function ThemeHarness() {
+  const { actions, meta, state } = useTheme();
+
+  return (
+    <div>
+      <p data-testid="theme-preference">{state.preference}</p>
+      <p data-testid="resolved-theme">{state.resolvedTheme}</p>
+      <p data-testid="system-theme">{meta.systemTheme}</p>
+      <button
+        type="button"
+        onClick={() => {
+          actions.setThemePreference("dark");
+        }}
+      >
+        Dark theme
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          actions.setThemePreference("system");
+        }}
+      >
+        System theme
+      </button>
+    </div>
+  );
+}
+
+function renderThemeHarness() {
+  return render(
+    <AppProviders project={selectCurrentProjectSummary()}>
+      <ThemeHarness />
+    </AppProviders>
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -38,6 +135,60 @@ afterEach(() => {
 
 beforeEach(() => {
   window.localStorage.clear();
+});
+
+describe("theme provider", () => {
+  it("defaults to the system theme on first load", () => {
+    const controller = createMatchMediaController(true);
+
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    renderThemeHarness();
+
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("system");
+    expect(screen.getByTestId("resolved-theme")).toHaveTextContent("dark");
+    expect(screen.getByTestId("system-theme")).toHaveTextContent("dark");
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBeNull();
+  });
+
+  it("prefers an explicit stored theme over the system theme", () => {
+    const controller = createMatchMediaController(true);
+
+    window.localStorage.setItem(themePreferenceStorageKey, "light");
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    renderThemeHarness();
+
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("light");
+    expect(screen.getByTestId("resolved-theme")).toHaveTextContent("light");
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  });
+
+  it("persists explicit theme changes and can return to system tracking", async () => {
+    const controller = createMatchMediaController(false);
+
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    renderThemeHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dark theme" }));
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBe("dark");
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+
+    fireEvent.click(screen.getByRole("button", { name: "System theme" }));
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBeNull();
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("system");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
+    controller.setMatches(true);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("resolved-theme")).toHaveTextContent("dark");
+      expect(screen.getByTestId("system-theme")).toHaveTextContent("dark");
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+  });
 });
 
 function expectShellLinkTarget(name: string, href: string) {

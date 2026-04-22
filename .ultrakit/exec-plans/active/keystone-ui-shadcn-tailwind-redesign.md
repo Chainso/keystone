@@ -230,6 +230,11 @@ Baseline compatibility facts already captured:
   **Decision:** Corrected the Phase 1 validation record so `rtk npx tsc --noEmit -p tsconfig.ui.json` stays classified as a pre-existing unrelated failure rather than a passing Phase 1 check.
   **Rationale:** Read-only verification showed the UI-specific TypeScript command still fails on existing typing drift in `ui/src/test/runs-routes.test.tsx` and `src/keystone/agents/implementer/ImplementerAgent.ts`, so the closeout notes needed to be made truthful before Phase 2 starts.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 2
+  **Decision:** Replaced the temporary stylesheet bridge with centralized light/dark semantic tokens, added a repo-owned theme provider plus browser storage/system detection seam, and removed the direct `@radix-ui/themes/styles.css` bootstrap import.
+  **Rationale:** The redesign needs one authoritative theme system before shell and destination rewrites begin, but that ownership must stay repo-controlled rather than pushing theme state into feature code or adding `next-themes`.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -240,8 +245,9 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-21 User approved execution to begin with Phase 1.
 - [x] 2026-04-21 Phase 1 completed: dependency install and build bootstrap.
 - [x] 2026-04-21 Phase 1 targeted fix pass completed: Tailwind/shadcn bootstrap made real, and the review findings were cleared.
+- [x] 2026-04-22 Phase 2 completed: centralized theme tokens, repo-owned theme provider, and direct Radix bootstrap exit.
 - [x] Phase 1: dependency install and build bootstrap.
-- [ ] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
+- [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [ ] Phase 3: Keystone wrapper inventory and workspace primitives.
 - [ ] Phase 4: global shell and project-scoped chrome.
 - [ ] Phase 5: runs index and run-detail structural frame.
@@ -269,6 +275,7 @@ Baseline compatibility facts already captured:
 - Phase 1 can defer the broader token migration, but it cannot leave `ui/src/app/styles.css` as legacy-only CSS. The real bootstrap minimum is `@import "tailwindcss"`, `@import "tw-animate-css"`, and a small semantic token bridge from the current palette into the shadcn variables already referenced by the generated primitives. The full token takeover, persisted theme model, and Radix bootstrap exit still belong to Phase 2.
 - `rtk npx tsc --noEmit -p tsconfig.ui.json` still fails outside Phase 1 on unrelated existing typing drift: the `git_diff` / `screenshot` artifact-kind fixture mismatch in `ui/src/test/runs-routes.test.tsx` and `projectedArtifacts[].kind` still typed as `string` in `src/keystone/agents/implementer/ImplementerAgent.ts`.
 - On this host, `npm run build` still needs a host shell because Wrangler and Docker hit sandbox write constraints after `vite build` succeeds.
+- The current shell sidebar still has no footer-owned theme-control slot, so Phase 2 should land the provider/storage seam and token system first, then let Phase 4 mount the visible toggle in the persistent left sidebar without inventing a second theme owner.
 
 ## Outcomes & Retrospective
 
@@ -288,6 +295,15 @@ Phase 1 outcome on 2026-04-21:
 - the review-triggered fix pass made the bootstrap honest by activating Tailwind and `tw-animate-css` in `ui/src/app/styles.css`, bridging the current palette into the minimal semantic token set the seeded primitives need, and correcting the Phase 1 dropdown/sidebar regressions without starting the broader Phase 2 theme migration
 - `rtk npm run build:ui` and the targeted UI route tests now pass; `rtk npx tsc --noEmit -p tsconfig.ui.json` still fails on unrelated existing typing drift in `ui/src/test/runs-routes.test.tsx` and `src/keystone/agents/implementer/ImplementerAgent.ts`, and `rtk npm run typecheck` still ends at the known repo baseline failures
 
+Phase 2 outcome on 2026-04-22:
+
+- `ui/src/app/styles.css` now owns the semantic light/dark token model for both the existing workspace CSS and the shadcn/Tailwind variables
+- the root app now uses a repo-owned `ThemeProvider` plus thin browser theme utilities for `system | light | dark` preference resolution, explicit user-preference persistence, and pre-mount document theme application
+- `ui/src/main.tsx` no longer imports `@radix-ui/themes/styles.css`, so direct Radix Themes bootstrap ownership is removed from the main UI entrypoint
+- targeted theme tests now cover system-default resolution, explicit preference override, and persistence/reset behavior through the real provider wiring
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` pass; `rtk npm run typecheck` still fails at the known baseline in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`, while `rtk npx tsc --noEmit -p tsconfig.ui.json` still shows only the pre-existing `runs-routes` artifact-kind fixture drift plus the same implementer typing drift
+- the visible sidebar theme toggle is intentionally deferred to Phase 4 shell work, where it can mount at the bottom of the persistent left sidebar on top of the Phase 2 provider seam instead of introducing out-of-scope shell churn here
+
 ## Context and Orientation
 
 The current repository has a real backend and a still-partial operator UI.
@@ -301,8 +317,8 @@ Key backend and runtime facts:
 
 Key UI facts:
 
-- `ui/src/main.tsx` still bootstraps Radix Themes CSS.
-- `ui/src/app/styles.css` is still the main stylesheet and should become the Tailwind token authority.
+- `ui/src/main.tsx` now applies the repo-owned resolved theme before React mounts and no longer bootstraps Radix Themes CSS.
+- `ui/src/app/styles.css` is the Tailwind token authority for the current UI shell and the generated shadcn variable surface.
 - `ui/src/routes/` is intentionally thin and should remain thin.
 - `ui/src/features/runs/components/planning-workspace.tsx` and `ui/src/features/execution/components/task-detail-workspace.tsx` still render placeholder conversation panes.
 - `ui/src/features/runs/run-management-api.ts` is now the real live run data seam. Do not route live run detail back through scaffold-only resource-model code.
@@ -528,7 +544,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Pending approval.
+- **Status:** Complete on 2026-04-22.
 - **Goal:** Move the UI onto the centralized token system, add the persisted theme preference model, and remove Radix Themes bootstrap ownership.
 - **Scope Boundary:** In scope are `ui/src/app/styles.css`, root theme provider/storage wiring, semantic token definition, and removal of `@radix-ui/themes/styles.css` from bootstrap. Out of scope are destination rewrites and live conversation work.
 - **Read First:** `design/design-guidelines.md`, `ui/src/main.tsx`, `ui/src/app/styles.css`, `ui/src/app/app-providers.tsx`, `components.json`.
@@ -538,7 +554,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** one centralized token system exists, both themes resolve through it, system-default first load works, explicit user preference persists, and Radix Themes CSS is no longer the main UI bootstrap.
 - **Commit Expectation:** `centralize theme tokens and remove radix bootstrap`
 - **Known Constraints / Baseline Failures:** the current stylesheet is large; focus on ownership and token structure first, not full screen polish.
-- **Next Starter Context:** later phases should consume tokens and wrappers, not invent surface styling.
+- **Completion Notes:** Replaced the temporary light-only semantic bridge in `ui/src/app/styles.css` with centralized light/dark theme tokens that drive both the existing workspace classes and the shadcn/Tailwind variable surface. Added repo-owned browser theme utilities plus `ThemeProvider` wiring under `ui/src/app/`, wrapped the app root with that provider, and applied the resolved theme to `document.documentElement` before React mounts so first paint follows the stored preference or the system theme. Removed the direct `@radix-ui/themes/styles.css` import from `ui/src/main.tsx`, added targeted provider tests in `ui/src/test/app-shell.test.tsx`, and added a default `matchMedia` test stub in `ui/src/test/setup.ts`. `rtk npm run build:ui` and the targeted route tests pass. `rtk npm run typecheck` still fails only on the known baseline issues in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. An extra `rtk npx tsc --noEmit -p tsconfig.ui.json` rerun still shows only the pre-existing `ui/src/test/runs-routes.test.tsx` artifact-kind drift plus the same implementer typing drift, so Phase 2 did not add new TypeScript failures. The visible theme toggle button is intentionally deferred to Phase 4 shell work; the provider/storage seam needed for that control now exists.
+- **Next Starter Context:** Phase 3 should consume the new semantic tokens instead of inventing surface colors, and Phase 4 shell work should mount the visible theme toggle at the bottom of the persistent left sidebar by reusing the Phase 2 `ThemeProvider` seam rather than introducing new theme state.
 
 ### Phase 3: Keystone Wrapper Layer And Workspace Primitives
 

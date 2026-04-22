@@ -47,7 +47,34 @@ function installStorage(name: "localStorage" | "sessionStorage") {
 installStorage("localStorage");
 installStorage("sessionStorage");
 
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  const matchMedia = (query: string): MediaQueryList => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent() {
+      return false;
+    }
+  });
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: matchMedia
+  });
+  Object.defineProperty(globalThis, "matchMedia", {
+    configurable: true,
+    value: matchMedia
+  });
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
+  document.documentElement.classList.remove("dark", "light");
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.colorScheme = "";
 });
