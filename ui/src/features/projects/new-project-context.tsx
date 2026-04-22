@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useRef,
   useState,
   type ReactNode
@@ -12,87 +10,27 @@ import {
 } from "../../../../src/keystone/projects/contracts";
 import { useResourceModel } from "../resource-model/context";
 import { getNewProjectConfiguration } from "../resource-model/selectors";
+import { buildNewProjectComponentDraft } from "./project-configuration-scaffold";
 import {
-  buildNewProjectComponentDraft,
-  type ProjectComponentSourceMode
-} from "./project-configuration-scaffold";
+  ProjectConfigurationContext,
+  buildProjectConfigurationModeMeta,
+  type ProjectConfigurationValue,
+  useProjectConfiguration
+} from "./project-configuration-context";
 import {
   buildProjectConfigurationFieldErrors,
   removeStringListItem,
   serializeProjectConfigurationDraft,
   updateStringList,
-  type ProjectComponentField,
   type ProjectComponentKind,
   type ProjectConfigurationComponentDraft,
-  type ProjectConfigurationDraft,
-  type ProjectEnvVarField,
-  type ProjectOverviewField,
-  type ProjectRuleListKey
+  type ProjectConfigurationDraft
 } from "./project-configuration-form";
 import { ProjectManagementApiError } from "./project-management-api";
 import { useProjectManagement } from "./project-context";
+
 type NewProjectDraft = ProjectConfigurationDraft;
 type NewProjectComponentDraft = ProjectConfigurationComponentDraft;
-
-export interface NewProjectConfigurationState {
-  draft: NewProjectDraft;
-  fieldErrors: Record<string, string>;
-}
-
-export interface NewProjectConfigurationActions {
-  addComponent: (kind: ProjectComponentKind) => void;
-  addComponentRuleInstruction: (
-    componentId: string,
-    ruleList: ProjectRuleListKey
-  ) => void;
-  addEnvVar: () => void;
-  addProjectRuleInstruction: (ruleList: ProjectRuleListKey) => void;
-  cancel: () => void;
-  removeComponent: (componentId: string) => void;
-  removeComponentRuleInstruction: (
-    componentId: string,
-    ruleList: ProjectRuleListKey,
-    index: number
-  ) => void;
-  removeEnvVar: (entryId: string) => void;
-  removeProjectRuleInstruction: (ruleList: ProjectRuleListKey, index: number) => void;
-  setComponentSourceMode: (
-    componentId: string,
-    sourceMode: ProjectComponentSourceMode
-  ) => void;
-  submit: () => Promise<boolean>;
-  updateComponentField: (
-    componentId: string,
-    field: ProjectComponentField,
-    value: string
-  ) => void;
-  updateComponentRuleInstruction: (
-    componentId: string,
-    ruleList: ProjectRuleListKey,
-    index: number,
-    value: string
-  ) => void;
-  updateEnvVar: (entryId: string, field: ProjectEnvVarField, value: string) => void;
-  updateOverviewField: (field: ProjectOverviewField, value: string) => void;
-  updateProjectRuleInstruction: (
-    ruleList: ProjectRuleListKey,
-    index: number,
-    value: string
-  ) => void;
-}
-
-export interface NewProjectConfigurationMeta {
-  isSubmitting: boolean;
-  submitError: string | null;
-}
-
-export interface NewProjectConfigurationValue {
-  actions: NewProjectConfigurationActions;
-  meta: NewProjectConfigurationMeta;
-  state: NewProjectConfigurationState;
-}
-
-const NewProjectConfigurationContext = createContext<NewProjectConfigurationValue | null>(null);
 
 function buildInitialDraft(dataset: ReturnType<typeof useResourceModel>["state"]["dataset"]): NewProjectDraft {
   const configuration = getNewProjectConfiguration(dataset);
@@ -170,10 +108,11 @@ export function NewProjectConfigurationProvider({
     setSubmitError(null);
   }
 
-  const value: NewProjectConfigurationValue = {
+  const value: ProjectConfigurationValue = {
     state: {
       draft,
-      fieldErrors
+      fieldErrors,
+      projectId: null
     },
     actions: {
       addComponent(kind) {
@@ -229,7 +168,8 @@ export function NewProjectConfigurationProvider({
           }
         }));
       },
-      cancel() {
+      retryLoad() {},
+      runSecondaryAction() {
         navigate("/runs");
       },
       removeComponent(componentId) {
@@ -398,26 +338,22 @@ export function NewProjectConfigurationProvider({
       }
     },
     meta: {
+      hasUnsavedChanges: false,
       isSubmitting,
+      loadError: null,
+      mode: buildProjectConfigurationModeMeta("new"),
+      status: "ready" as const,
       submitError
     }
   };
 
   return (
-    <NewProjectConfigurationContext.Provider value={value}>
+    <ProjectConfigurationContext.Provider value={value}>
       {children}
-    </NewProjectConfigurationContext.Provider>
+    </ProjectConfigurationContext.Provider>
   );
 }
 
 export function useNewProjectConfiguration() {
-  const value = useContext(NewProjectConfigurationContext);
-
-  if (!value) {
-    throw new Error(
-      "useNewProjectConfiguration must be used within NewProjectConfigurationProvider."
-    );
-  }
-
-  return value;
+  return useProjectConfiguration();
 }

@@ -2,27 +2,27 @@ import type { ReactNode } from "react";
 import type { NavLinkRenderProps } from "react-router-dom";
 import { NavLink } from "react-router-dom";
 
-import type { ProjectConfigurationTabId } from "../../features/projects/project-configuration-scaffold";
+import type { ProjectConfigurationTabId } from "../project-configuration-scaffold";
 
-interface ProjectConfigurationScaffoldProps {
-  title: string;
+interface ProjectConfigurationShellProps {
+  children: ReactNode;
   tabs: Array<{
-    tabId: ProjectConfigurationTabId;
     label: string;
     path: string;
+    tabId: ProjectConfigurationTabId;
   }>;
-  children: ReactNode;
+  title: string;
 }
 
 function getProjectTabClassName({ isActive }: NavLinkRenderProps) {
   return isActive ? "project-tab-link is-active" : "project-tab-link";
 }
 
-export function ProjectConfigurationScaffold({
-  title,
+export function ProjectConfigurationShell({
+  children,
   tabs,
-  children
-}: ProjectConfigurationScaffoldProps) {
+  title
+}: ProjectConfigurationShellProps) {
   return (
     <div className="page-stage">
       <section className="workspace-panel project-config-panel">

@@ -89,6 +89,16 @@ Allowed internal change:
   **Rationale:** The UI harness gate is now credible enough to support user-facing bug work without carrying unresolved validation ambiguity forward.
 
 - **Date:** 2026-04-21  
+  **Phase:** Phase 3 Start  
+  **Decision:** Advance to the project-configuration hierarchy cleanup after closing Phase 2 with one targeted fix pass for documentation hook safety and missing regression coverage.  
+  **Rationale:** The highest-value current UI bugs are now closed, so the next safe step is to remove the duplicated project-configuration composition that blocks clearer ownership and reuse.
+
+- **Date:** 2026-04-21  
+  **Phase:** Phase 3  
+  **Decision:** Keep explicit `New project` and `Project settings` provider variants, but make them both implement one shared `ProjectConfigurationContext` contract so routes, view models, and tab components no longer branch on mode.  
+  **Rationale:** The mode behavior still matters for labels, submit semantics, and settings loading state, but the surrounding shell and tab composition were duplicating nearly identical trees. A provider-injected `state/actions/meta` contract preserved the explicit modes without keeping parallel UI hierarchies.
+
+- **Date:** 2026-04-21  
   **Phase:** Phase 1  
   **Decision:** Split Vitest into explicit node and UI projects, add a repo-local browser storage setup file for UI suites, and include `worker-configuration.d.ts` in `tsconfig.ui.json` so the UI typecheck inherits the same generated Cloudflare types as the main workspace.  
   **Rationale:** The UI tests were failing before any assertions because the mixed environment setup did not provide a reliable `localStorage`, and the nominal UI typecheck was pulling root contract files without the generated Cloudflare declarations they already rely on in the main typecheck path.
@@ -120,7 +130,8 @@ Allowed internal change:
 - [x] 2026-04-21 Completed the Phase 2 bug-fix pass with a native shell project selector, guarded run-planning edits, URL-backed documentation/workstreams state, duplicate-key cleanup, and shared UTC formatting.
 - [x] 2026-04-21 Ran the one allowed Phase 2 fix pass, stabilized documentation hook order across mounted project switches, and added direct-mount URL-state plus pending-save guard coverage.
 - [x] Phase 2 complete: ship the user-facing bug-fix pass for navigation state, accessibility, and data formatting, with fix-pass revalidation.
-- [ ] Phase 3 complete: unify the project-configuration component hierarchy and provider contract.
+- [x] 2026-04-21 Completed the Phase 3 composition pass with a shared project-configuration context contract, one generic shell/tab composition path, and project-specific shell/type-picker ownership moved under `ui/src/features/projects/components/`.
+- [x] Phase 3 complete: unify the project-configuration component hierarchy and provider contract.
 - [ ] Phase 4 complete: simplify the runs/planning component hierarchy and supporting utilities.
 - [ ] Phase 5 complete: update durable docs/notes, rerun final validation, and prepare the plan for archival.
 
@@ -142,6 +153,8 @@ Allowed internal change:
 - In this repo, `rtk npx vitest ...` is not a truthful validation shorthand because RTK routes it through npm-script lookup and reports `Missing script: "vitest"`. Use direct `npx ...` commands or the RTK-native `rtk vitest` / `rtk lint` / `rtk tsc` wrappers instead.
 - During Phase 2, deriving `page = 1` for a project switch was not enough on its own for `Workstreams`; the new project could still issue one stale page fetch before the URL reset landed. The final fix had to suppress task loading until the page-reset search-param update committed.
 - During the Phase 2 fix pass, the documentation runtime issue was reproducible as a real mounted-route hazard: switching `/documentation` between a scaffold-backed project and a compatibility-only live project changes `useDocumentationViewModel` from returning a full tree to returning early, so every hook in that file has to stay above the compatibility returns.
+- For Phase 3, the provider duplication was easier to remove than the route duplication: once both variants were typed against one shared `ProjectConfigurationValue`, the repeated view-model typing and tab trees collapsed cleanly without introducing a new reducer or store layer.
+- `rtk proxy npx ...` works as a truthful way to honor the repo's RTK wrapper guidance while still running raw `npx vitest`, `npx eslint`, and `npx tsc` commands. The earlier failure is specific to `rtk npx ...`, not the proxy path.
 
 ## Outcomes & Retrospective
 
@@ -167,6 +180,12 @@ Phase 2 outcome on 2026-04-21:
 - Documentation and workstreams now treat selection/filter/pagination as URL state, with fix-pass coverage for mounted documentation project switches plus direct deep-link hydration and canonicalization.
 - Run-planning edits now warn on both in-app navigation and browser unload while dirty, and the fix pass now proves the same guard still blocks route changes while a save request is in flight.
 - The touched run/workstream surfaces share one UTC formatter instead of repeating ad hoc timestamp logic.
+
+Phase 3 outcome on 2026-04-21:
+
+- `ui/src/features/projects/project-configuration-context.tsx` now defines one feature-owned `state/actions/meta` contract, and both explicit mode providers implement that contract instead of forcing the rest of the feature through separate hooks and component trees.
+- The project-configuration routes now share one shell and one tab composition path; only the parent route still chooses between the explicit `new` and `settings` providers.
+- Project-only UI composition no longer lives under `ui/src/shared/`: the shell frame and component-type picker now live under `ui/src/features/projects/components/`, and the resource-model selector probe now exercises the unified components hook directly.
 
 ## Context and Orientation
 
@@ -317,6 +336,12 @@ Phase 1 fix-pass evidence from 2026-04-21:
 - `npx eslint ui/src vitest.config.ts` passed after the fix.
 - `npx tsc --noEmit -p tsconfig.ui.json` passed after the fix.
 
+Phase 3 execution evidence from 2026-04-21:
+
+- `rtk proxy npx vitest run ui/src/test/destination-scaffolds.test.tsx ui/src/test/resource-model-selectors.test.tsx ui/src/test/app-shell.test.tsx` passed with 3 files and 63 tests.
+- `rtk proxy npx eslint ui/src vitest.config.ts` passed.
+- `rtk proxy npx tsc --noEmit -p tsconfig.ui.json` passed.
+
 ## Interfaces and Dependencies
 
 Important interfaces and seams that should still exist after this plan:
@@ -401,24 +426,26 @@ Important interfaces and seams that should still exist after this plan:
 
 ### Phase Handoff
 
-- **Status:** Pending
+- **Status:** Complete (implemented on 2026-04-21)
 - **Goal:** Replace the duplicated `new`/`settings` project-configuration hierarchy with one clearer feature-owned composition model.
 - **Scope Boundary:** In scope: project-configuration providers, view models, feature components, and moving project-specific UI out of `shared/`. Out of scope: backend project API changes, route-path changes, or visual redesign.
 - **Read First:**
   - `ui/src/routes/projects/project-configuration-layout.tsx`
   - `ui/src/routes/projects/project-configuration-tab-route.tsx`
+  - `ui/src/features/projects/project-configuration-context.tsx`
   - `ui/src/features/projects/new-project-context.tsx`
   - `ui/src/features/projects/project-settings-context.tsx`
   - `ui/src/features/projects/use-project-configuration-view-model.ts`
+  - `ui/src/features/projects/components/project-configuration-shell.tsx`
   - `ui/src/features/projects/components/project-configuration-tabs.tsx`
+  - `ui/src/features/projects/components/project-component-type-picker.tsx`
   - `ui/src/features/projects/components/project-component-card.tsx`
-  - `ui/src/shared/layout/project-configuration-scaffold.tsx`
-  - `ui/src/shared/forms/component-type-picker.tsx`
   - `ui/src/test/destination-scaffolds.test.tsx`
   - `ui/src/test/resource-model-selectors.test.tsx`
 - **Files Expected To Change:**
   - `ui/src/routes/projects/project-configuration-layout.tsx`
   - `ui/src/routes/projects/project-configuration-tab-route.tsx`
+  - `ui/src/features/projects/project-configuration-context.tsx`
   - `ui/src/features/projects/new-project-context.tsx`
   - `ui/src/features/projects/project-settings-context.tsx`
   - `ui/src/features/projects/use-project-configuration-view-model.ts`
@@ -433,6 +460,8 @@ Important interfaces and seams that should still exist after this plan:
 - **Deliverables:** One project-configuration composition model with explicit mode behavior and cleaner feature/shared ownership.
 - **Commit Expectation:** `Refactor project configuration composition`
 - **Known Constraints / Baseline Failures:** Preserve explicit `New project` vs `Project settings` behavior and action semantics; do not replace them with a wizard flow.
+- **Completion Notes:** `ui/src/features/projects/project-configuration-context.tsx` now gives both explicit provider variants one shared `state/actions/meta` contract with mode metadata, so the route layer no longer needs separate shell or tab trees for `new` versus `settings`. `ui/src/features/projects/use-project-configuration-view-model.ts` now builds one mode-aware view-model set, `ui/src/features/projects/components/project-configuration-tabs.tsx` now renders one tab composition path, and the route shell now branches only at the provider boundary. Project-specific shell and picker UI moved from `ui/src/shared/` into `ui/src/features/projects/components/`, and `ui/src/test/resource-model-selectors.test.tsx` now probes the unified components hook directly. The Phase 3 gate passed with `rtk proxy npx vitest run ui/src/test/destination-scaffolds.test.tsx ui/src/test/resource-model-selectors.test.tsx ui/src/test/app-shell.test.tsx`, `rtk proxy npx eslint ui/src vitest.config.ts`, and `rtk proxy npx tsc --noEmit -p tsconfig.ui.json`.
+- **Next Starter Context:** Phase 4 should treat the new project-configuration provider boundary as settled: keep explicit mode behavior at the provider metadata layer and do not push project-specific shell/picker composition back into `ui/src/shared/`. The run-planning refactor can reuse the same pattern of thin routes plus feature-owned `state/actions/meta` contracts, but it should not reopen project route semantics, action labels, or the native project-selector work from Phase 2.
 
 ## Phase 4: Runs And Planning Composition Cleanup
 

@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -8,23 +6,22 @@ import {
 } from "react";
 
 import { projectConfigSchema } from "../../../../src/keystone/projects/contracts";
+import { buildProjectConfigurationComponentDraft } from "./project-configuration-scaffold";
 import {
-  buildProjectConfigurationComponentDraft,
-  type ProjectComponentSourceMode
-} from "./project-configuration-scaffold";
+  ProjectConfigurationContext,
+  buildProjectConfigurationModeMeta,
+  type ProjectConfigurationValue,
+  useProjectConfiguration
+} from "./project-configuration-context";
 import {
   buildProjectConfigurationDraft,
   buildProjectConfigurationFieldErrors,
   removeStringListItem,
   serializeProjectConfigurationDraft,
   updateStringList,
-  type ProjectComponentField,
   type ProjectComponentKind,
   type ProjectConfigurationComponentDraft,
-  type ProjectConfigurationDraft,
-  type ProjectEnvVarField,
-  type ProjectOverviewField,
-  type ProjectRuleListKey
+  type ProjectConfigurationDraft
 } from "./project-configuration-form";
 import { ProjectManagementApiError } from "./project-management-api";
 import {
@@ -32,72 +29,6 @@ import {
   useProjectManagement,
   useProjectManagementApi
 } from "./project-context";
-
-export interface ProjectSettingsConfigurationState {
-  draft: ProjectConfigurationDraft | null;
-  fieldErrors: Record<string, string>;
-  projectId: string | null;
-}
-
-export interface ProjectSettingsConfigurationActions {
-  addComponent: (kind: ProjectComponentKind) => void;
-  addComponentRuleInstruction: (
-    componentId: string,
-    ruleList: ProjectRuleListKey
-  ) => void;
-  addEnvVar: () => void;
-  addProjectRuleInstruction: (ruleList: ProjectRuleListKey) => void;
-  discardChanges: () => void;
-  removeComponent: (componentId: string) => void;
-  removeComponentRuleInstruction: (
-    componentId: string,
-    ruleList: ProjectRuleListKey,
-    index: number
-  ) => void;
-  removeEnvVar: (entryId: string) => void;
-  removeProjectRuleInstruction: (ruleList: ProjectRuleListKey, index: number) => void;
-  retryLoad: () => void;
-  setComponentSourceMode: (
-    componentId: string,
-    sourceMode: ProjectComponentSourceMode
-  ) => void;
-  submit: () => Promise<boolean>;
-  updateComponentField: (
-    componentId: string,
-    field: ProjectComponentField,
-    value: string
-  ) => void;
-  updateComponentRuleInstruction: (
-    componentId: string,
-    ruleList: ProjectRuleListKey,
-    index: number,
-    value: string
-  ) => void;
-  updateEnvVar: (entryId: string, field: ProjectEnvVarField, value: string) => void;
-  updateOverviewField: (field: ProjectOverviewField, value: string) => void;
-  updateProjectRuleInstruction: (
-    ruleList: ProjectRuleListKey,
-    index: number,
-    value: string
-  ) => void;
-}
-
-export interface ProjectSettingsConfigurationMeta {
-  hasUnsavedChanges: boolean;
-  isSubmitting: boolean;
-  loadError: string | null;
-  status: "loading" | "ready" | "error";
-  submitError: string | null;
-}
-
-export interface ProjectSettingsConfigurationValue {
-  actions: ProjectSettingsConfigurationActions;
-  meta: ProjectSettingsConfigurationMeta;
-  state: ProjectSettingsConfigurationState;
-}
-
-const ProjectSettingsConfigurationContext =
-  createContext<ProjectSettingsConfigurationValue | null>(null);
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
@@ -154,7 +85,7 @@ export function ProjectSettingsConfigurationProvider({
   const [loadedDraft, setLoadedDraft] = useState<ProjectConfigurationDraft | null>(null);
   const [loadedDraftProjectId, setLoadedDraftProjectId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<ProjectSettingsConfigurationMeta["status"]>("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -254,7 +185,7 @@ export function ProjectSettingsConfigurationProvider({
     submittingProjectId === null || submittingProjectId === project.projectId ? submitError : null;
   const effectiveIsSubmitting = isSubmitting && submittingProjectId === project.projectId;
 
-  const value: ProjectSettingsConfigurationValue = {
+  const value: ProjectConfigurationValue = {
     state: {
       draft: currentDraft,
       fieldErrors,
@@ -314,7 +245,7 @@ export function ProjectSettingsConfigurationProvider({
           }
         }));
       },
-      discardChanges() {
+      runSecondaryAction() {
         if (!currentLoadedDraft || effectiveIsSubmitting) {
           return;
         }
@@ -531,26 +462,21 @@ export function ProjectSettingsConfigurationProvider({
       hasUnsavedChanges: !areDraftsEqual(currentDraft, currentLoadedDraft),
       isSubmitting: effectiveIsSubmitting,
       loadError,
+      mode: buildProjectConfigurationModeMeta("settings", {
+        title: `Project settings: ${project.displayName}`
+      }),
       status: effectiveStatus,
       submitError: effectiveSubmitError
     }
   };
 
   return (
-    <ProjectSettingsConfigurationContext.Provider value={value}>
+    <ProjectConfigurationContext.Provider value={value}>
       {children}
-    </ProjectSettingsConfigurationContext.Provider>
+    </ProjectConfigurationContext.Provider>
   );
 }
 
 export function useProjectSettingsConfiguration() {
-  const value = useContext(ProjectSettingsConfigurationContext);
-
-  if (!value) {
-    throw new Error(
-      "useProjectSettingsConfiguration must be used within ProjectSettingsConfigurationProvider."
-    );
-  }
-
-  return value;
+  return useProjectConfiguration();
 }
