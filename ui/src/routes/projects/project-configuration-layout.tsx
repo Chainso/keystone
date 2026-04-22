@@ -5,30 +5,47 @@ import { NewProjectConfigurationProvider } from "../../features/projects/new-pro
 import { ProjectSettingsConfigurationProvider } from "../../features/projects/project-settings-context";
 import { ProjectConfigurationShell } from "../../features/projects/components/project-configuration-shell";
 import { useProjectConfigurationShellViewModel } from "../../features/projects/use-project-configuration-view-model";
+import { Button } from "../../components/ui/button";
+import {
+  WorkspaceEmptyState,
+  WorkspaceEmptyStateActions,
+  WorkspaceEmptyStateDescription,
+  WorkspaceEmptyStateTitle
+} from "../../components/workspace/workspace-empty-state";
 
 interface ProjectConfigurationLayoutProps {
   mode: ProjectConfigurationMode;
 }
 
-function ProjectConfigurationRouteShell() {
+function ProjectConfigurationRouteShell({
+  mode
+}: {
+  mode: ProjectConfigurationMode;
+}) {
   const model = useProjectConfigurationShellViewModel();
 
   return (
-    <ProjectConfigurationShell title={model.title} tabs={model.tabs}>
+    <ProjectConfigurationShell mode={mode} title={model.title} tabs={model.tabs}>
       {model.shellState ? (
-        <section className="empty-state-card">
-          <h2 className="document-card-title">{model.shellState.heading}</h2>
-          <p className="document-card-summary">{model.shellState.message}</p>
+        <WorkspaceEmptyState className="project-config-shell-state">
+          <WorkspaceEmptyStateTitle as="h2">
+            {model.shellState.heading}
+          </WorkspaceEmptyStateTitle>
+          <WorkspaceEmptyStateDescription>
+            {model.shellState.message}
+          </WorkspaceEmptyStateDescription>
           {model.shellState.actionLabel && model.shellState.onAction ? (
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={model.shellState.onAction}
-            >
-              {model.shellState.actionLabel}
-            </button>
+            <WorkspaceEmptyStateActions>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={model.shellState.onAction}
+              >
+                {model.shellState.actionLabel}
+              </Button>
+            </WorkspaceEmptyStateActions>
           ) : null}
-        </section>
+        </WorkspaceEmptyState>
       ) : (
         <Outlet />
       )}
@@ -44,7 +61,7 @@ export function ProjectConfigurationLayout({ mode }: ProjectConfigurationLayoutP
 
   return (
     <Provider>
-      <ProjectConfigurationRouteShell />
+      <ProjectConfigurationRouteShell mode={mode} />
     </Provider>
   );
 }

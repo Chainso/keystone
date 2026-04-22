@@ -325,6 +325,16 @@ Baseline compatibility facts already captured:
   **Decision:** Restored explicit task-status tone mapping on Workstreams rows while preserving the existing `Queued`/`Running`/`Blocked`/`Complete` labels, made the summary-chip cluster an explicit grouped contract, and tightened the focused destination tests to assert both the summary labels and blocked-tone handling for failed/cancelled rows.
   **Rationale:** Review found that the label-only `StatusPill` path could render failed or cancelled tasks with neutral treatment and that the new summary header region was not actually covered by the Phase 9 validation tests.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 10
+  **Decision:** Rebuilt `New project` and `Project settings` around a workspace header, richer tab chrome, shared section framing, description-aware form wrappers, denser list editors, and clearer component/environment cards while keeping route ownership, provider-owned state, and create/save semantics unchanged.
+  **Rationale:** Phase 10 needed the project configuration surfaces to match the redesigned system without changing backend payloads, deep links, or the non-wizard tab model.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 10
+  **Decision:** Preserved the exact source-mode radio names after the redesign by moving explanatory copy out of the radios' accessible names before rerunning the locked destination and shell validation.
+  **Rationale:** The richer component cards still needed to honor the existing exact-name interaction contract for `Local path` and `Git URL`, which the focused route tests prove directly.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -352,6 +362,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 8 targeted fix pass completed: review diffs now infer from real text artifact kinds, the sidebar invalidates stale loads across task switches and empty-review states, and the route suite now covers fallback, partial fetch failure, retry, and truthful task-to-task navigation.
 - [x] 2026-04-22 Phase 9 completed: `Workstreams` now uses the workspace-system header, shadcn single-select filters, status-pill rows, and explicit pagination/handoff framing while preserving server-driven filter/page state and direct task-detail routing.
 - [x] 2026-04-22 Phase 9 targeted fix pass completed: Workstreams rows now pass shared task tones explicitly, the summary header chips are a covered contract, and the locked Phase 9 validation commands reran green.
+- [x] 2026-04-22 Phase 10 completed: `New project` and `Project settings` now share the redesigned shell, section framing, component cards, and configuration form language while preserving deep links, direct create/save actions, and provider-owned payload truth.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -361,7 +372,7 @@ Baseline compatibility facts already captured:
 - [x] Phase 7: execution DAG workspace.
 - [x] Phase 8: task detail review workspace.
 - [x] Phase 9: workstreams surface.
-- [ ] Phase 10: project configuration surfaces.
+- [x] Phase 10: project configuration surfaces.
 - [ ] Phase 11: documentation surfaces via Plate.
 - [ ] Phase 12: planning locator completion and Cloudflare conversation binding.
 - [ ] Phase 13: assistant-ui planning and task chat cutover.
@@ -394,6 +405,7 @@ Baseline compatibility facts already captured:
 - Task artifact metadata alone is not enough to build the review sidebar: changed-file grouping and diff type have to be derived by loading reviewable text artifact `contentUrl` values and parsing whichever payloads contain unified diff text, because the list endpoint exposes only artifact-level metadata.
 - shadcn single-select `ToggleGroup` controls expose filter items as `radio` elements, not button-role toggles. Future route tests and accessibility assertions need to query the workstream filters through radio semantics once a destination adopts that primitive.
 - `StatusPill` label inference is not sufficient for task rows whose visible labels are intentionally normalized. On `Workstreams`, failed and cancelled task rows need the shared explicit task-tone mapping even though the page still collapses ready/pending states into the visible `Queued` label.
+- When project-configuration cards add explanatory copy inside radio-label containers, Testing Library's exact-name `radio` queries will include that copy unless it is marked `aria-hidden`. Keep the `Local path` / `Git URL` radios' accessible names exact because the route suite depends on that contract.
 
 ## Outcomes & Retrospective
 
@@ -483,6 +495,14 @@ Phase 9 outcome on 2026-04-22:
 - the table still routes directly into `/runs/:runId/execution/tasks/:taskId`, but rows now scan more cleanly through status pills and the destination now makes the `Runs > Execution` handoff explicit in both the operator summary and pagination framing
 - the targeted fix pass then restored explicit task-tone wiring on Workstreams rows without changing the Phase 9 visible status labels, made the summary-chip cluster a grouped header contract, and extended the focused destination suite so regressions in the summary labels or failed/cancelled task tones now fail fast
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 9 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 10 outcome on 2026-04-22:
+
+- `New project` and `Project settings` now share one redesigned configuration shell: the page uses a workspace header, richer tab chrome with stable deep links, and section-level framing that still keeps the route layer thin and the create/save action model direct
+- the project configuration tabs now read as real operator forms instead of scaffold placeholders: overview, rules, components, and environment each have explicit summaries, workspace-aligned empty states, and footer actions that preserve the existing create/save/discard/cancel behavior
+- shared form wrappers now support field descriptions and monospace treatment for stable keys, refs, paths, URLs, and environment variables without changing the underlying payload or null-description behavior owned by the project configuration providers
+- component configuration now uses clearer repository cards, an explicit type picker surface that still offers only `Git repository`, and a source-mode choice that preserves the exact `Local path` / `Git URL` radio contract even with richer explanatory copy
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 10 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
 
@@ -860,7 +880,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Pending approval.
+- **Status:** Complete on 2026-04-22.
 - **Goal:** Redesign `New project` and `Project settings` around the new design system while preserving their tab/action model.
 - **Scope Boundary:** In scope are the project configuration shell, tab chrome, forms, list inputs, cards, and type picker surfaces. Out of scope are backend contract changes or turning the flow into a wizard.
 - **Read First:** `design/workspace-spec.md`, `ui/src/routes/projects/project-configuration-layout.tsx`, `ui/src/features/projects/components/project-configuration-shell.tsx`, `ui/src/features/projects/components/project-configuration-tabs.tsx`, `ui/src/features/projects/components/project-component-card.tsx`.
@@ -870,7 +890,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** project configuration tabs and forms align with the redesign while preserving `New project` create semantics and `Project settings` save semantics.
 - **Commit Expectation:** `redesign project configuration surfaces`
 - **Known Constraints / Baseline Failures:** component type selection must stay explicit because backend support is still narrow.
-- **Next Starter Context:** this phase should lean heavily on shared form wrappers and avoid bespoke section chrome.
+- **Completion Notes:** `ui/src/features/projects/components/project-configuration-shell.tsx` and `ui/src/routes/projects/project-configuration-layout.tsx` now present `New project` and `Project settings` through the workspace header language, redesigned tab chrome, and truthful shared loading/error states while keeping the route layer thin. `ui/src/features/projects/components/project-configuration-tabs.tsx`, `project-component-card.tsx`, and `project-component-type-picker.tsx` now deliver section summaries, workspace-aligned empty states, clearer repository/env cards, and the explicit one-option type picker without changing the provider-owned draft or payload logic. `ui/src/shared/forms/form-field.tsx`, `text-list-field.tsx`, `ui/src/features/projects/project-configuration-scaffold.ts`, `use-project-configuration-view-model.ts`, and `ui/src/app/styles.css` now supply the richer field descriptions, monospace value treatment, tab summaries, and styling the shell/cards need while preserving exact source-mode radio names for `Local path` and `Git URL`. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 11 should treat the project configuration surface as stable. Keep the direct create/save semantics, `/projects/new/*` and `/settings/*` deep links, explicit `Git repository` type picker, exact `Local path` / `Git URL` radio names, and provider-owned payload/null-description handling intact while moving on to the project-scoped `Documentation` destination.
 
 ### Phase 11: Documentation Surfaces Via Plate
 
