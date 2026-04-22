@@ -8,4 +8,3 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
-| [keystone-target-model-dead-surface-cleanup](./keystone-target-model-dead-surface-cleanup.md) | In Progress | Codex | 2026-04-21 |
