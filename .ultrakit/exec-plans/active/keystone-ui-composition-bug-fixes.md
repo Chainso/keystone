@@ -88,6 +88,11 @@ Allowed internal change:
   **Decision:** Split Vitest into explicit node and UI projects, add a repo-local browser storage setup file for UI suites, and include `worker-configuration.d.ts` in `tsconfig.ui.json` so the UI typecheck inherits the same generated Cloudflare types as the main workspace.  
   **Rationale:** The UI tests were failing before any assertions because the mixed environment setup did not provide a reliable `localStorage`, and the nominal UI typecheck was pulling root contract files without the generated Cloudflare declarations they already rely on in the main typecheck path.
 
+- **Date:** 2026-04-21  
+  **Phase:** Phase 1 fix pass  
+  **Decision:** Keep Phase 1 closed only with a follow-up hardening pass that converts the remaining `runs-routes` transition assertions to awaited queries and re-runs the exact `npx` gate.  
+  **Rationale:** The exact Phase 1 Vitest gate re-ran green in this worktree, but conflicting review evidence showed the recorded closeout was not yet credible. `ui/src/test/runs-routes.test.tsx` still had synchronous assertions against asynchronous route transitions at the previously cited failure points, so the plan needed both truthful rerun evidence and a durability fix.
+
 ## Progress
 
 - [x] 2026-04-21 Installed workspace dependencies with `npm install`.
@@ -95,7 +100,8 @@ Allowed internal change:
 - [x] 2026-04-21 Reviewed the current UI composition seams, route ownership, and test harness constraints.
 - [x] 2026-04-21 Drafted this execution plan and registered it as the active plan.
 - [x] 2026-04-21 Received explicit approval to execute the plan.
-- [x] Phase 1 complete: stabilize the UI test harness and targeted validation path.
+- [x] 2026-04-21 Ran the one allowed Phase 1 fix pass, hardened the remaining `runs-routes` transition assertions, and revalidated the exact `npx` gate plus the standalone route suite.
+- [x] Phase 1 complete: stabilize the UI test harness and targeted validation path, with fix-pass revalidation.
 - [ ] Phase 2 complete: ship the user-facing bug-fix pass for navigation state, accessibility, and data formatting.
 - [ ] Phase 3 complete: unify the project-configuration component hierarchy and provider contract.
 - [ ] Phase 4 complete: simplify the runs/planning component hierarchy and supporting utilities.
@@ -113,6 +119,8 @@ Allowed internal change:
 - Contrary to the current note in `.ultrakit/notes.md`, `npm run build` completed successfully inside this sandboxed worktree on 2026-04-21, including the Wrangler dry-run and Docker image export path. This needs one more deliberate revalidation during the docs phase before notes are updated.
 - Running `npx vitest run ui/src/test/app-shell.test.tsx --environment jsdom` still produced the `window.localStorage.clear is not a function` failure. The test problem is not only the global `node` environment setting; the UI harness also lacks a stable storage implementation.
 - The earlier `runs-routes` suspicion around a mismatched `Loading run` assertion turned out to be harness noise. Once the UI suites had a stable jsdom project and storage seam, the full targeted route suite passed without any user-facing route changes.
+- The Phase 1 fix-pass rerun of the exact `npx vitest run ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx ui/src/test/resource-model-selectors.test.tsx ui/src/test/runs-routes.test.tsx` gate passed in this worktree before any new code change, so the reviewer-reported failure is not reproducible here as a persistent red baseline.
+- The remaining credibility gap was still real: `ui/src/test/runs-routes.test.tsx` kept synchronous transition assertions at the previously cited materializing-workflow and run-switch points. Even with a green rerun, the Phase 1 closeout was still too timing-dependent to trust until those checks awaited the rendered state.
 - `tsconfig.ui.json` was not actually UI-only in practice because the UI imports shared root contract modules. Without `worker-configuration.d.ts`, the command surfaced 82 root-file errors that do not appear in the main workspace typecheck because the generated Cloudflare declarations were missing from that config.
 - In this repo, `rtk npx vitest ...` is not a truthful validation shorthand because RTK routes it through npm-script lookup and reports `Missing script: "vitest"`. Use direct `npx ...` commands or the RTK-native `rtk vitest` / `rtk lint` / `rtk tsc` wrappers instead.
 
@@ -274,6 +282,15 @@ Phase 1 execution evidence from 2026-04-21:
 - `npx tsc --noEmit -p tsconfig.ui.json` passed after adding `worker-configuration.d.ts` to the UI config include list.
 - RTK-native equivalents `rtk vitest`, `rtk lint`, and `rtk tsc` also passed for the same Phase 1 surface.
 
+Phase 1 fix-pass evidence from 2026-04-21:
+
+- The exact required Vitest gate re-ran green in this worktree before the fix, but that result was not treated as sufficient closure because `ui/src/test/runs-routes.test.tsx` still used synchronous transition assertions at the previously reported failure points.
+- The fix pass changed only those route-transition checks so the test now awaits `Execution is materializing`, the materializing explanation copy, and the transient `Loading run` heading during cross-run navigation.
+- `npx vitest run ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx ui/src/test/resource-model-selectors.test.tsx ui/src/test/runs-routes.test.tsx` passed again with 4 files and 87 tests after the fix.
+- `npx vitest run ui/src/test/runs-routes.test.tsx` passed with 1 file and 28 tests after the fix.
+- `npx eslint ui/src vitest.config.ts` passed after the fix.
+- `npx tsc --noEmit -p tsconfig.ui.json` passed after the fix.
+
 ## Interfaces and Dependencies
 
 Important interfaces and seams that should still exist after this plan:
@@ -288,7 +305,7 @@ Important interfaces and seams that should still exist after this plan:
 
 ### Phase Handoff
 
-- **Status:** Complete (implemented on 2026-04-21)
+- **Status:** Complete (implemented on 2026-04-21; fix pass revalidated on 2026-04-21)
 - **Goal:** Make the targeted UI test surface deterministic enough to use as the validation gate for the rest of the plan.
 - **Scope Boundary:** In scope: `vitest.config.ts`, UI test setup/helpers, targeted UI test fixes that are strictly about harness stability, and the existing in-scope UI lint issue. Out of scope: user-facing UI hierarchy refactors and product behavior changes beyond what is needed to make the test harness truthful.
 - **Read First:**
@@ -313,8 +330,8 @@ Important interfaces and seams that should still exist after this plan:
 - **Deliverables:** Stable targeted UI test environment, clear UI validation commands, and cleanup of the known in-scope UI lint blocker.
 - **Commit Expectation:** `Stabilize UI test harness baseline`
 - **Known Constraints / Baseline Failures:** Broad repo `npm test`, `npm run lint`, and `npm run typecheck` remain noisy and should not be treated as regressions unless this phase directly changes those failure sites.
-- **Completion Notes:** `vitest.config.ts` now gives `tests/**` a node project and `ui/src/test/**` a jsdom project with a fixed `http://localhost/` origin plus repo-local setup. `ui/src/test/setup.ts` installs deterministic `localStorage` and `sessionStorage`, `render-route.tsx` no longer hides matcher setup as a side effect, `tsconfig.ui.json` now includes `worker-configuration.d.ts`, and the unused `executionAvailable` binding is removed from `ui/src/features/runs/use-run-view-model.ts`.
-- **Next Starter Context:** Phase 2 can treat the targeted UI command family above as the regression gate. Do not reintroduce test-only browser setup into individual helpers; keep browser seams centralized in `ui/src/test/setup.ts`, and preserve the current `npx` command forms unless RTK's `npx` routing behavior is fixed.
+- **Completion Notes:** `vitest.config.ts` now gives `tests/**` a node project and `ui/src/test/**` a jsdom project with a fixed `http://localhost/` origin plus repo-local setup. `ui/src/test/setup.ts` installs deterministic `localStorage` and `sessionStorage`, `render-route.tsx` no longer hides matcher setup as a side effect, `tsconfig.ui.json` now includes `worker-configuration.d.ts`, and the unused `executionAvailable` binding is removed from `ui/src/features/runs/use-run-view-model.ts`. The one allowed fix pass then hardened `ui/src/test/runs-routes.test.tsx` so the materializing-workflow and run-switch assertions await the transitional UI state instead of reading it synchronously.
+- **Next Starter Context:** Phase 2 can treat the targeted UI command family above as the regression gate, but the credible Phase 1 closure is now `29001e6` plus this fix-pass follow-up, not the original commit in isolation. Do not reintroduce test-only browser setup into individual helpers, keep browser seams centralized in `ui/src/test/setup.ts`, preserve the current `npx` command forms unless RTK's `npx` routing behavior is fixed, and keep transition-state route assertions on awaited queries.
 
 ## Phase 2: Navigation And State Bug Fixes
 

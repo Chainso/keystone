@@ -1245,9 +1245,9 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-107/execution");
     });
-    expect(screen.getByText("Execution is materializing")).toBeInTheDocument();
+    expect(await screen.findByText("Execution is materializing")).toBeInTheDocument();
     expect(
-      screen.getByText(
+      await screen.findByText(
         "Compile was accepted for this run. Keystone is still materializing the live execution graph."
       )
     ).toBeInTheDocument();
@@ -1306,7 +1306,7 @@ describe("Run routes", () => {
       expect(router.state.location.pathname).toBe("/runs/run-104/specification");
     });
 
-    expect(screen.getByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Loading run" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "run-101" })).not.toBeInTheDocument();
 
     deferredRun.resolve(runFixtures["run-104"]!.run);
