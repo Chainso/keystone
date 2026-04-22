@@ -1791,6 +1791,32 @@ describe("Destination scaffolds", () => {
     expect(environmentValueFields[0]).toHaveValue("scripted");
   });
 
+  it("runs the new-project secondary action from a shared tab footer by leaving for runs", async () => {
+    const { router } = renderRoute("/projects/new/overview");
+
+    expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
+      target: {
+        value: "Edge Control"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Rules" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/projects/new/rules");
+    });
+    expect(screen.getByRole("heading", { name: "Rules" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs");
+    });
+    expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "New project" })).not.toBeInTheDocument();
+  });
+
   it("shows component validation feedback and keeps the add-component form editable", async () => {
     const { container } = renderRoute("/projects/new/components");
 
@@ -2293,6 +2319,87 @@ describe("Destination scaffolds", () => {
     );
     expect(screen.getByRole("button", { name: "Discard changes" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  });
+
+  it("discards project settings edits from the shared footer and restores the loaded draft", async () => {
+    const initialProjectDetail: ProjectDetailFixture = {
+      projectId: scaffoldProject.projectId,
+      projectKey: scaffoldProject.projectKey,
+      displayName: scaffoldProject.displayName,
+      description: "Internal operator workspace for runs, documentation, and workstreams.",
+      ruleSet: {
+        reviewInstructions: ["Keep route ownership explicit."],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository",
+          config: {
+            localPath: "./services/api",
+            ref: "main"
+          },
+          ruleOverride: {
+            reviewInstructions: ["Focus on API changes"],
+            testInstructions: ["Run targeted API tests"]
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        }
+      ]
+    };
+
+    const { postedBodies } = stubProjectSettingsFlowFetch({
+      project: initialProjectDetail,
+      detailResponses: [() => createJsonResponse(buildProjectDetailResponse(initialProjectDetail))]
+    });
+
+    const { router } = renderRoute("/settings/overview", { useBrowserProjectApi: true });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
+      "Keystone Cloudflare"
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
+      target: {
+        value: "Keystone Edge Control"
+      }
+    });
+
+    expect(screen.getByRole("button", { name: "Discard changes" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("link", { name: "Components" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/settings/components");
+    });
+    expect(screen.getByRole("heading", { name: "Components" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard changes" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Discard changes" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Overview" }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/settings/overview");
+    });
+
+    expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
+      "Keystone Cloudflare"
+    );
+    expect(postedBodies).toEqual([]);
   });
 
   it("saves live project settings, shows save progress, and refreshes the shell summary", async () => {
