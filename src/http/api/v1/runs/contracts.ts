@@ -36,11 +36,13 @@ export const runResourceSchema = buildResourceSchema("run", {
 export const taskResourceSchema = buildResourceSchema("task", {
   runId: resourceIdSchema,
   taskId: resourceIdSchema,
+  logicalTaskId: resourceIdSchema,
   name: z.string().trim().min(1),
   description: z.string().trim().min(1),
   status: z.string().trim().min(1),
   dependsOn: z.array(resourceIdSchema).default([]),
   conversation: conversationLocatorSchema.nullable(),
+  updatedAt: isoTimestampSchema,
   startedAt: isoTimestampSchema.nullable(),
   endedAt: isoTimestampSchema.nullable()
 });

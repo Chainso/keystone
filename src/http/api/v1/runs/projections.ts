@@ -3,7 +3,7 @@ import { runPlanArtifactKey } from "../../../../lib/artifacts/keys";
 import { getArtifactText } from "../../../../lib/artifacts/r2";
 import { resolveRunExecutionEngine } from "../../../../lib/runs/options";
 import type { ArtifactRefRow, RunRow, RunTaskDependencyRow, RunTaskRow } from "../../../../lib/db/schema";
-import { compiledRunPlanSchema } from "../../../../keystone/compile/contracts";
+import { compiledRunPlanSchema, type CompiledRunPlan } from "../../../../keystone/compile/contracts";
 import type { ArtifactResource } from "../artifacts/contracts";
 import { artifactResourceSchema } from "../artifacts/contracts";
 import type {
@@ -37,6 +37,34 @@ function buildDependsOnIndex(dependencies: RunTaskDependencyRow[]) {
   return dependsOnByTaskId;
 }
 
+export function buildLogicalTaskIdIndex(plan: CompiledRunPlan | null) {
+  const logicalTaskIdByRunTaskId = new Map<string, string>();
+
+  for (const task of plan?.tasks ?? []) {
+    if (!task.runTaskId) {
+      continue;
+    }
+
+    logicalTaskIdByRunTaskId.set(task.runTaskId, task.taskId);
+  }
+
+  return logicalTaskIdByRunTaskId;
+}
+
+export async function loadLogicalTaskIdIndex(
+  env: Pick<WorkerBindings, "ARTIFACTS_BUCKET">,
+  tenantId: string,
+  runId: string
+) {
+  try {
+    return buildLogicalTaskIdIndex(await loadCompiledRunPlan(env, tenantId, runId));
+  } catch {
+    // Logical task ids are a projection enhancement. Task routes must still serve
+    // authoritative DB-backed rows when the optional run-plan artifact is missing
+    // or unreadable.
+    return new Map<string, string>();
+  }
+}
 
 export async function loadCompiledRunPlan(
   env: Pick<WorkerBindings, "ARTIFACTS_BUCKET">,
@@ -86,10 +114,9 @@ export function projectRunResource(input: { run: RunRow }): RunResource {
 }
 
 export function projectTaskResources(input: {
-  tenantId?: string;
-  runId: string;
   runTasks: RunTaskRow[];
   dependencies: RunTaskDependencyRow[];
+  logicalTaskIdByRunTaskId?: ReadonlyMap<string, string>;
 }): TaskResource[] {
   const dependsOnByTaskId = buildDependsOnIndex(input.dependencies);
 
@@ -102,8 +129,9 @@ export function projectTaskResources(input: {
         implementation: "reused",
         note: null
       },
-      runId: input.runId,
+      runId: task.runId,
       taskId: task.runTaskId,
+      logicalTaskId: input.logicalTaskIdByRunTaskId?.get(task.runTaskId) ?? task.runTaskId,
       name: task.name,
       description: task.description,
       status: task.status,
@@ -115,6 +143,7 @@ export function projectTaskResources(input: {
               agentName: task.conversationAgentName
             }
           : null,
+      updatedAt: toIso(task.updatedAt),
       startedAt: toIso(task.startedAt),
       endedAt: toIso(task.endedAt)
     });

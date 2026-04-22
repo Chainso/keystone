@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { z } from "zod";
 
 import type { AppEnv } from "../../../../env";
 import { createWorkerDatabaseClient } from "../../../../lib/db/client";
@@ -9,17 +10,23 @@ import {
   listProjects,
   updateProject
 } from "../../../../lib/db/projects";
-import { listProjectRuns } from "../../../../lib/db/runs";
+import { listProjectRuns, listProjectTasks } from "../../../../lib/db/runs";
 import { jsonErrorResponse, throwJsonHttpError } from "../../../../lib/http/errors";
 import { parseProjectListQuery, parseProjectWriteInput } from "../../../contracts/project-input";
 import {
   projectCollectionEnvelopeSchema,
   projectDetailEnvelopeSchema,
+  projectTaskCollectionEnvelopeSchema,
+  projectTaskListQuerySchema,
   serializeProjectListItem,
   serializeProjectResource
 } from "./contracts";
 import { runCollectionEnvelopeSchema } from "../runs/contracts";
-import { projectRunResource } from "../runs/projections";
+import {
+  loadLogicalTaskIdIndex,
+  projectRunResource,
+  projectTaskResources
+} from "../runs/projections";
 
 function isUniqueViolation(error: unknown) {
   return (
@@ -28,6 +35,31 @@ function isUniqueViolation(error: unknown) {
     "code" in error &&
     error.code === "23505"
   );
+}
+
+function buildValidationDetails(error: z.ZodError) {
+  return {
+    issues: error.issues.map((issue) => ({
+      path: issue.path,
+      message: issue.message,
+      code: issue.code
+    }))
+  };
+}
+
+function parseProjectTaskListQuery(value: unknown) {
+  const result = projectTaskListQuerySchema.safeParse(value);
+
+  if (!result.success) {
+    throwJsonHttpError(
+      400,
+      "invalid_request",
+      "Project task query validation failed.",
+      buildValidationDetails(result.error)
+    );
+  }
+
+  return result.data;
 }
 
 async function requireProject(
@@ -46,6 +78,26 @@ async function requireProject(
   }
 
   return project;
+}
+
+async function loadLogicalTaskIdIndexForRuns(
+  context: Context<AppEnv>,
+  tenantId: string,
+  runIds: string[]
+) {
+  const uniqueRunIds = [...new Set(runIds)];
+  const indexes = await Promise.all(
+    uniqueRunIds.map((runId) => loadLogicalTaskIdIndex(context.env, tenantId, runId))
+  );
+  const logicalTaskIdByRunTaskId = new Map<string, string>();
+
+  for (const index of indexes) {
+    for (const [runTaskId, logicalTaskId] of index.entries()) {
+      logicalTaskIdByRunTaskId.set(runTaskId, logicalTaskId);
+    }
+  }
+
+  return logicalTaskIdByRunTaskId;
 }
 
 export async function listProjectsHandler(context: Context<AppEnv>) {
@@ -249,6 +301,69 @@ export async function listProjectRunsHandler(context: Context<AppEnv>) {
           apiVersion: "v1",
           envelope: "collection",
           resourceType: "run"
+        }
+      })
+    );
+  } finally {
+    await client.close();
+  }
+}
+
+export async function listProjectTasksHandler(context: Context<AppEnv>) {
+  const auth = context.get("auth");
+  const projectId = context.req.param("projectId");
+
+  if (!projectId) {
+    throwJsonHttpError(400, "invalid_path", "Project ID is required.");
+  }
+
+  const query = parseProjectTaskListQuery(context.req.query());
+  const client = createWorkerDatabaseClient(context.env);
+
+  try {
+    const project = await requireProject(context, client, projectId);
+
+    if (!project) {
+      return jsonErrorResponse(
+        "project_not_found",
+        `Project ${projectId} was not found.`,
+        404
+      );
+    }
+
+    const page = await listProjectTasks(client, {
+      tenantId: auth.tenantId,
+      projectId,
+      filter: query.filter,
+      page: query.page,
+      pageSize: query.pageSize
+    });
+    const logicalTaskIdByRunTaskId = await loadLogicalTaskIdIndexForRuns(
+      context,
+      auth.tenantId,
+      page.items.map((task) => task.runId)
+    );
+    const items = projectTaskResources({
+      runTasks: page.items,
+      dependencies: page.dependencies,
+      logicalTaskIdByRunTaskId
+    });
+    const pageCount = Math.max(1, Math.ceil(page.total / page.pageSize));
+
+    return context.json(
+      projectTaskCollectionEnvelopeSchema.parse({
+        data: {
+          items,
+          total: page.total,
+          page: page.page,
+          pageSize: page.pageSize,
+          pageCount,
+          filter: query.filter
+        },
+        meta: {
+          apiVersion: "v1",
+          envelope: "collection",
+          resourceType: "task"
         }
       })
     );

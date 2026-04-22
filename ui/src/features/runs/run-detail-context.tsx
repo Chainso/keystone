@@ -623,6 +623,7 @@ export function RunDetailProvider({
 
       const revision = await api.createRunDocumentRevision(runId, planningDocument.documentId, {
         body: input.body,
+        contentType: "text/markdown; charset=utf-8",
         title: input.title
       });
 

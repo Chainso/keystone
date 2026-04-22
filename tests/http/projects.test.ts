@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { DatabaseClient } from "../../src/lib/db/client";
 import { createDocumentRepositoryClient } from "./document-db-fixture";
 
 const projectDocumentFixture = {
@@ -38,19 +39,399 @@ const projectDocumentRepositoryFixture = {
   documentRevisions: [projectDocumentRevisionFixture]
 };
 
+const RUN_TASK_PREPARE_ID = "11111111-1111-4111-8111-111111111111";
+const RUN_TASK_IMPLEMENTATION_ID = "22222222-2222-4222-8222-222222222222";
+const RUN_TASK_REVIEW_ID = "33333333-3333-4333-8333-333333333333";
+const RUN_TASK_ARCHIVE_ID = "44444444-4444-4444-8444-444444444444";
+const RUN_TASK_PENDING_ID = "55555555-5555-4555-8555-555555555555";
+
 const projectRunTaskFixture = {
-  runTaskId: "run-task-implementation",
+  runTaskId: RUN_TASK_IMPLEMENTATION_ID,
   runId: "run-123",
   name: "Implement execution plan",
   description: "Apply the approved change in a reviewable way.",
   status: "active",
   conversationAgentClass: "KeystoneThinkAgent",
-  conversationAgentName: "tenant:tenant-read:run:run-123:task:run-task-implementation",
+  conversationAgentName: `tenant:tenant-read:run:run-123:task:${RUN_TASK_IMPLEMENTATION_ID}`,
   startedAt: new Date("2026-04-17T10:45:00.000Z"),
   endedAt: null,
   createdAt: new Date("2026-04-17T10:40:00.000Z"),
   updatedAt: new Date("2026-04-17T10:45:00.000Z")
 };
+
+const projectQueuedTaskFixture = {
+  runTaskId: RUN_TASK_PREPARE_ID,
+  runId: "run-123",
+  name: "Prepare implementation context",
+  description: "Review the planning inputs before starting implementation.",
+  status: "ready",
+  conversationAgentClass: null,
+  conversationAgentName: null,
+  startedAt: null,
+  endedAt: null,
+  createdAt: new Date("2026-04-17T10:35:00.000Z"),
+  updatedAt: new Date("2026-04-17T10:36:00.000Z")
+};
+
+const projectBlockedTaskFixture = {
+  runTaskId: RUN_TASK_REVIEW_ID,
+  runId: "run-456",
+  name: "Blocked task visibility",
+  description: "Confirm blocked work remains visible in the project list.",
+  status: "blocked",
+  conversationAgentClass: null,
+  conversationAgentName: null,
+  startedAt: null,
+  endedAt: null,
+  createdAt: new Date("2026-04-17T11:30:00.000Z"),
+  updatedAt: new Date("2026-04-17T12:05:00.000Z")
+};
+
+const projectCompletedTaskFixture = {
+  runTaskId: RUN_TASK_ARCHIVE_ID,
+  runId: "run-456",
+  name: "Archive completed summary",
+  description: "Finalize the already completed run summary artifact.",
+  status: "completed",
+  conversationAgentClass: null,
+  conversationAgentName: null,
+  startedAt: new Date("2026-04-17T11:40:00.000Z"),
+  endedAt: new Date("2026-04-17T11:50:00.000Z"),
+  createdAt: new Date("2026-04-17T11:35:00.000Z"),
+  updatedAt: new Date("2026-04-17T11:50:00.000Z")
+};
+
+const projectTaskFixtures = [
+  projectQueuedTaskFixture,
+  projectRunTaskFixture,
+  projectBlockedTaskFixture,
+  projectCompletedTaskFixture
+];
+
+const projectTaskDependencyFixtures = [
+  {
+    runTaskDependencyId: "run-task-dependency-prepare",
+    runId: "run-123",
+    parentRunTaskId: RUN_TASK_PREPARE_ID,
+    childRunTaskId: RUN_TASK_IMPLEMENTATION_ID,
+    createdAt: new Date("2026-04-17T10:37:00.000Z")
+  },
+  {
+    runTaskDependencyId: "run-task-dependency-archive",
+    runId: "run-456",
+    parentRunTaskId: RUN_TASK_ARCHIVE_ID,
+    childRunTaskId: RUN_TASK_REVIEW_ID,
+    createdAt: new Date("2026-04-17T11:45:00.000Z")
+  }
+];
+
+const compiledRunPlansByRunId = {
+  "run-123": {
+    summary: "Fixture compiled plan for run 123.",
+    sourceRevisionIds: {
+      specification: "revision-project-spec-v1",
+      architecture: "revision-project-arch-v1",
+      executionPlan: "revision-project-plan-v1"
+    },
+    tasks: [
+      {
+        taskId: "TASK-001",
+        runTaskId: RUN_TASK_PREPARE_ID,
+        title: "Prepare implementation context",
+        summary: "Review planning inputs before execution.",
+        instructions: ["Read the planning documents."],
+        acceptanceCriteria: ["Context is ready for implementation."],
+        dependsOn: []
+      },
+      {
+        taskId: "TASK-002",
+        runTaskId: RUN_TASK_IMPLEMENTATION_ID,
+        title: "Implement execution plan",
+        summary: "Apply the approved change in a reviewable way.",
+        instructions: ["Implement the requested change."],
+        acceptanceCriteria: ["The requested change is implemented."],
+        dependsOn: ["TASK-001"]
+      }
+    ]
+  },
+  "run-456": {
+    summary: "Fixture compiled plan for run 456.",
+    sourceRevisionIds: {
+      specification: "revision-project-spec-v2",
+      architecture: "revision-project-arch-v2",
+      executionPlan: "revision-project-plan-v2"
+    },
+    tasks: [
+      {
+        taskId: "TASK-019",
+        runTaskId: RUN_TASK_REVIEW_ID,
+        title: "Blocked task visibility",
+        summary: "Confirm blocked work remains visible in Workstreams.",
+        instructions: ["Inspect the blocked task state."],
+        acceptanceCriteria: ["Blocked work is visible."],
+        dependsOn: ["TASK-021"]
+      },
+      {
+        taskId: "TASK-021",
+        runTaskId: RUN_TASK_ARCHIVE_ID,
+        title: "Archive completed summary",
+        summary: "Finalize the completed run summary.",
+        instructions: ["Archive the final summary."],
+        acceptanceCriteria: ["The run summary is archived."],
+        dependsOn: []
+      }
+    ]
+  }
+} as const;
+
+type RepositoryFixtureRow = Record<string, unknown>;
+
+interface ProjectTaskRepositoryFixture {
+  projects: RepositoryFixtureRow[];
+  runs: RepositoryFixtureRow[];
+  runTasks: RepositoryFixtureRow[];
+  runTaskDependencies: RepositoryFixtureRow[];
+}
+
+function columnNameToPropertyName(columnName: string) {
+  return columnName.replace(/_([a-z])/g, (_match, character: string) => character.toUpperCase());
+}
+
+function extractWhereFilters(
+  expression: unknown,
+  filters = {
+    equals: new Map<string, unknown>(),
+    includes: new Map<string, unknown[]>()
+  }
+) {
+  if (!expression || typeof expression !== "object") {
+    return filters;
+  }
+
+  if (!("queryChunks" in expression) || !Array.isArray(expression.queryChunks)) {
+    return filters;
+  }
+
+  const queryChunks = expression.queryChunks as unknown[];
+
+  for (let index = 0; index < queryChunks.length - 2; index += 1) {
+    const column = queryChunks[index];
+    const operator = queryChunks[index + 1];
+    const param = queryChunks[index + 2];
+
+    if (
+      column &&
+      typeof column === "object" &&
+      "name" in column &&
+      typeof column.name === "string" &&
+      operator &&
+      typeof operator === "object" &&
+      "value" in operator &&
+      Array.isArray(operator.value)
+    ) {
+      if (
+        operator.value[0] === " = " &&
+        param &&
+        typeof param === "object" &&
+        "value" in param
+      ) {
+        filters.equals.set(column.name, param.value);
+      }
+
+      if (operator.value[0] === " in " && Array.isArray(param)) {
+        filters.includes.set(
+          column.name,
+          param
+            .filter(
+              (entry): entry is {
+                value: unknown;
+              } => typeof entry === "object" && entry !== null && "value" in entry
+            )
+            .map((entry) => entry.value)
+        );
+      }
+    }
+  }
+
+  for (const chunk of queryChunks) {
+    extractWhereFilters(chunk, filters);
+  }
+
+  return filters;
+}
+
+function matchesWhere(row: RepositoryFixtureRow, where: unknown) {
+  const filters = extractWhereFilters(where);
+
+  for (const [columnName, expectedValue] of filters.equals) {
+    const propertyName = columnNameToPropertyName(columnName);
+
+    if (row[propertyName] !== expectedValue) {
+      return false;
+    }
+  }
+
+  for (const [columnName, expectedValues] of filters.includes) {
+    const propertyName = columnNameToPropertyName(columnName);
+
+    if (!expectedValues.includes(row[propertyName])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function extractOrderColumns(orderBy: unknown[] = []) {
+  return orderBy.flatMap((expression) => {
+    if (!expression || typeof expression !== "object") {
+      return [];
+    }
+
+    if (!("queryChunks" in expression) || !Array.isArray(expression.queryChunks)) {
+      return [];
+    }
+
+    return expression.queryChunks.flatMap((chunk) => {
+      if (chunk && typeof chunk === "object" && "name" in chunk && typeof chunk.name === "string") {
+        return [columnNameToPropertyName(chunk.name)];
+      }
+
+      return [];
+    });
+  });
+}
+
+function compareSortValues(left: unknown, right: unknown) {
+  const leftValue = left instanceof Date ? left.getTime() : left;
+  const rightValue = right instanceof Date ? right.getTime() : right;
+  const comparableLeft =
+    typeof leftValue === "number" || typeof leftValue === "string"
+      ? leftValue
+      : typeof leftValue === "boolean"
+        ? Number(leftValue)
+        : String(leftValue);
+  const comparableRight =
+    typeof rightValue === "number" || typeof rightValue === "string"
+      ? rightValue
+      : typeof rightValue === "boolean"
+        ? Number(rightValue)
+        : String(rightValue);
+
+  if (comparableLeft === comparableRight) {
+    return 0;
+  }
+
+  return comparableLeft < comparableRight ? -1 : 1;
+}
+
+function sortRows(rows: RepositoryFixtureRow[], orderBy: unknown[] = []) {
+  const orderColumns = extractOrderColumns(orderBy);
+
+  return [...rows].sort((left, right) => {
+    for (const column of orderColumns) {
+      const comparison = compareSortValues(left[column], right[column]);
+
+      if (comparison !== 0) {
+        return comparison;
+      }
+    }
+
+    return 0;
+  });
+}
+
+function createProjectTaskRepositoryClient(
+  fixture: ProjectTaskRepositoryFixture
+): DatabaseClient {
+  const buildJoinedTaskRows = () =>
+    fixture.runTasks.flatMap((task) => {
+      const run = fixture.runs.find((candidate) => candidate.runId === task.runId);
+
+      return run ? [{ ...run, ...task }] : [];
+    });
+
+  return {
+    connectionString: "postgres://test",
+    sql: {} as DatabaseClient["sql"],
+    db: ({
+      query: {
+        projects: {
+          findFirst: async ({ where }: { where?: unknown } = {}) =>
+            fixture.projects.find((row) => matchesWhere(row, where))
+        },
+        runTaskDependencies: {
+          findMany: async ({
+            where,
+            orderBy
+          }: {
+            where?: unknown;
+            orderBy?: unknown[];
+          } = {}) =>
+            sortRows(
+              fixture.runTaskDependencies.filter((row) => matchesWhere(row, where)),
+              orderBy
+            )
+        }
+      },
+      select: (selection: Record<string, unknown>) => ({
+        from: () => ({
+          innerJoin: () => {
+            const joinedTaskRows = buildJoinedTaskRows();
+
+            if ("total" in selection) {
+              return {
+                where: async (where: unknown) => [
+                  {
+                    total: joinedTaskRows.filter((row) => matchesWhere(row, where)).length
+                  }
+                ]
+              };
+            }
+
+            const state: {
+              where?: unknown;
+              orderBy: unknown[];
+              limit?: number;
+            } = {
+              orderBy: []
+            };
+
+            const builder = {
+              where(where: unknown) {
+                state.where = where;
+                return builder;
+              },
+              orderBy(...orderBy: unknown[]) {
+                state.orderBy = orderBy;
+                return builder;
+              },
+              limit(limit: number) {
+                state.limit = limit;
+                return builder;
+              },
+              async offset(offset: number) {
+                let rows = joinedTaskRows.filter((row) => matchesWhere(row, state.where));
+
+                rows = sortRows(rows, state.orderBy);
+                rows = rows.slice(offset);
+
+                if (state.limit !== undefined) {
+                  rows = rows.slice(0, state.limit);
+                }
+
+                return rows.map((task) => ({ task }));
+              }
+            };
+
+            return builder;
+          }
+        })
+      })
+    }) as unknown as DatabaseClient["db"],
+    close: async () => undefined
+  };
+}
 
 const projectRunArtifactFixture = {
   tenantId: "tenant-read",
@@ -85,7 +466,7 @@ const mocked = vi.hoisted(() => {
       createDocumentRepositoryClient(projectDocumentRepositoryFixture, close)
     ),
     deleteArtifactRef: vi.fn(async () => null),
-    getArtifactText: vi.fn(async (): Promise<string | null> => null),
+    getArtifactText: vi.fn(async (_bucket: R2Bucket, _key: string): Promise<string | null> => null),
     createArtifactRef: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       artifactRefId: "artifact-project-spec-v2",
@@ -221,6 +602,40 @@ const mocked = vi.hoisted(() => {
         updatedAt: new Date("2026-04-17T11:30:00.000Z")
       }
     ]),
+    listProjectTasks: vi.fn(async (_client, input) => {
+      const filteredTasks = projectTaskFixtures.filter((task) => {
+        switch (input.filter) {
+          case "active":
+            return (
+              task.status === "active" ||
+              task.status === "ready" ||
+              task.status === "pending" ||
+              task.status === "blocked"
+            );
+          case "running":
+            return task.status === "active";
+          case "queued":
+            return task.status === "ready" || task.status === "pending";
+          case "blocked":
+            return task.status === "blocked";
+          case "all":
+          default:
+            return true;
+        }
+      });
+      const start = (input.page - 1) * input.pageSize;
+      const items = filteredTasks.slice(start, start + input.pageSize);
+
+      return {
+        items,
+        dependencies: projectTaskDependencyFixtures.filter((dependency) =>
+          items.some((task) => task.runTaskId === dependency.childRunTaskId)
+        ),
+        total: filteredTasks.length,
+        page: input.page,
+        pageSize: input.pageSize
+      };
+    }),
     listRunTasks: vi.fn(async () => [projectRunTaskFixture]),
     listRunTaskDependencies: vi.fn(async () => []),
     listRunArtifacts: vi.fn(async () => []),
@@ -293,6 +708,7 @@ vi.mock("../../src/lib/db/projects", () => ({
 vi.mock("../../src/lib/db/runs", () => ({
   getRunRecord: mocked.getRunRecord,
   listProjectRuns: mocked.listProjectRuns,
+  listProjectTasks: mocked.listProjectTasks,
   listRunTaskDependencies: mocked.listRunTaskDependencies,
   listRunTasks: mocked.listRunTasks
 }));
@@ -355,6 +771,9 @@ vi.mock("../../src/http/handlers/dev-think", () => ({
 }));
 
 const documentsDb = await import("../../src/lib/db/documents");
+const actualRunRepositories = await vi.importActual<typeof import("../../src/lib/db/runs")>(
+  "../../src/lib/db/runs"
+);
 const { app } = await import("../../src/http/app");
 
 const env = {
@@ -422,6 +841,11 @@ describe("project API", () => {
     mocked.createWorkerDatabaseClient.mockImplementation(() =>
       createDocumentRepositoryClient(projectDocumentRepositoryFixture, mocked.close)
     );
+    mocked.getArtifactText.mockImplementation(async (_bucket: R2Bucket, key: string) => {
+      const runId = Object.keys(compiledRunPlansByRunId).find((candidate) => key.includes(candidate));
+
+      return runId ? JSON.stringify(compiledRunPlansByRunId[runId as keyof typeof compiledRunPlansByRunId]) : null;
+    });
     mocked.listRunTasks.mockResolvedValue([projectRunTaskFixture] as never);
     mocked.listRunTaskDependencies.mockResolvedValue([] as never);
     mocked.listRunArtifacts.mockResolvedValue([] as never);
@@ -1125,5 +1549,307 @@ describe("project API", () => {
       })
     );
     expect(mocked.listRunTasks).not.toHaveBeenCalled();
+  });
+
+  it("lists project tasks with default pagination and enriched task resources", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/tasks",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: {
+        filter: string;
+        items: Array<Record<string, unknown>>;
+        page: number;
+        pageCount: number;
+        pageSize: number;
+        total: number;
+      };
+      meta: {
+        apiVersion: string;
+        envelope: string;
+        resourceType: string;
+      };
+    };
+
+    expect(payload).toMatchObject({
+      meta: {
+        apiVersion: "v1",
+        envelope: "collection",
+        resourceType: "task"
+      }
+    });
+    expect(payload.data).toMatchObject({
+      total: 4,
+      page: 1,
+      pageSize: 25,
+      pageCount: 1,
+      filter: "all"
+    });
+    expect(payload.data.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run-123",
+          taskId: RUN_TASK_PREPARE_ID,
+          logicalTaskId: "TASK-001",
+          name: "Prepare implementation context",
+          updatedAt: "2026-04-17T10:36:00.000Z"
+        }),
+        expect.objectContaining({
+          runId: "run-123",
+          taskId: RUN_TASK_IMPLEMENTATION_ID,
+          logicalTaskId: "TASK-002",
+          dependsOn: [RUN_TASK_PREPARE_ID],
+          updatedAt: "2026-04-17T10:45:00.000Z"
+        })
+      ])
+    );
+    expect(payload.data.items).toHaveLength(4);
+    expect(mocked.listProjectTasks).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        projectId: "project-123",
+        filter: "all",
+        page: 1,
+        pageSize: 25
+      })
+    );
+  });
+
+  it("fails open when one project run plan payload is malformed", async () => {
+    mocked.getArtifactText.mockImplementation(async (_bucket: R2Bucket, key: string) => {
+      if (key.includes("run-123")) {
+        return "{not-valid-json";
+      }
+
+      const runId = Object.keys(compiledRunPlansByRunId).find((candidate) => key.includes(candidate));
+
+      return runId ? JSON.stringify(compiledRunPlansByRunId[runId as keyof typeof compiledRunPlansByRunId]) : null;
+    });
+
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/tasks",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: {
+        items: Array<Record<string, unknown>>;
+      };
+    };
+
+    expect(payload.data.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "run-123",
+          taskId: RUN_TASK_PREPARE_ID,
+          logicalTaskId: RUN_TASK_PREPARE_ID
+        }),
+        expect.objectContaining({
+          runId: "run-456",
+          taskId: RUN_TASK_REVIEW_ID,
+          logicalTaskId: "TASK-019"
+        })
+      ])
+    );
+  });
+
+  it("applies server-side project task filters and pagination params", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-123/tasks?filter=active&page=2&pageSize=2",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-read"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: {
+        filter: string;
+        items: Array<Record<string, unknown>>;
+        page: number;
+        pageCount: number;
+        pageSize: number;
+        total: number;
+      };
+    };
+
+    expect(payload).toMatchObject({
+      data: {
+        total: 3,
+        page: 2,
+        pageSize: 2,
+        pageCount: 2,
+        filter: "active",
+        items: [
+          {
+            runId: "run-456",
+            taskId: RUN_TASK_REVIEW_ID,
+            logicalTaskId: "TASK-019",
+            status: "blocked",
+            dependsOn: [RUN_TASK_ARCHIVE_ID]
+          }
+        ]
+      }
+    });
+    expect(payload.data.items).toHaveLength(1);
+    expect(mocked.listProjectTasks).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-read",
+        projectId: "project-123",
+        filter: "active",
+        page: 2,
+        pageSize: 2
+      })
+    );
+  });
+});
+
+describe("listProjectTasks repository logic", () => {
+  it("filters operator buckets and paginates deterministically", async () => {
+    const client = createProjectTaskRepositoryClient({
+      projects: [
+        {
+          tenantId: "tenant-repo",
+          projectId: "project-repo"
+        }
+      ],
+      runs: [
+        {
+          tenantId: "tenant-repo",
+          projectId: "project-repo",
+          runId: "run-a",
+          createdAt: new Date("2026-04-17T10:00:00.000Z")
+        },
+        {
+          tenantId: "tenant-repo",
+          projectId: "project-repo",
+          runId: "run-b",
+          createdAt: new Date("2026-04-17T11:00:00.000Z")
+        },
+        {
+          tenantId: "tenant-other",
+          projectId: "project-other",
+          runId: "run-other",
+          createdAt: new Date("2026-04-17T12:00:00.000Z")
+        }
+      ],
+      runTasks: [
+        {
+          runTaskId: RUN_TASK_IMPLEMENTATION_ID,
+          runId: "run-a",
+          status: "active",
+          createdAt: new Date("2026-04-17T10:05:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_PREPARE_ID,
+          runId: "run-a",
+          status: "ready",
+          createdAt: new Date("2026-04-17T10:05:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_PENDING_ID,
+          runId: "run-a",
+          status: "pending",
+          createdAt: new Date("2026-04-17T10:06:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_REVIEW_ID,
+          runId: "run-b",
+          status: "blocked",
+          createdAt: new Date("2026-04-17T10:07:00.000Z")
+        },
+        {
+          runTaskId: RUN_TASK_ARCHIVE_ID,
+          runId: "run-b",
+          status: "completed",
+          createdAt: new Date("2026-04-17T10:08:00.000Z")
+        },
+        {
+          runTaskId: "66666666-6666-4666-8666-666666666666",
+          runId: "run-other",
+          status: "active",
+          createdAt: new Date("2026-04-17T10:09:00.000Z")
+        }
+      ],
+      runTaskDependencies: []
+    });
+
+    const firstPage = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "all",
+      page: 1,
+      pageSize: 2
+    });
+    const secondPage = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "all",
+      page: 2,
+      pageSize: 2
+    });
+    const running = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "running",
+      page: 1,
+      pageSize: 25
+    });
+    const queued = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "queued",
+      page: 1,
+      pageSize: 25
+    });
+    const blocked = await actualRunRepositories.listProjectTasks(client, {
+      tenantId: "tenant-repo",
+      projectId: "project-repo",
+      filter: "blocked",
+      page: 1,
+      pageSize: 25
+    });
+
+    expect(firstPage.total).toBe(5);
+    expect(firstPage.items.map((task) => task.runTaskId)).toEqual([
+      RUN_TASK_PREPARE_ID,
+      RUN_TASK_IMPLEMENTATION_ID
+    ]);
+    expect(secondPage.total).toBe(5);
+    expect(secondPage.items.map((task) => task.runTaskId)).toEqual([
+      RUN_TASK_PENDING_ID,
+      RUN_TASK_REVIEW_ID
+    ]);
+    expect(running.total).toBe(1);
+    expect(running.items.map((task) => task.runTaskId)).toEqual([RUN_TASK_IMPLEMENTATION_ID]);
+    expect(queued.total).toBe(2);
+    expect(queued.items.map((task) => task.runTaskId)).toEqual([
+      RUN_TASK_PREPARE_ID,
+      RUN_TASK_PENDING_ID
+    ]);
+    expect(blocked.total).toBe(1);
+    expect(blocked.items.map((task) => task.runTaskId)).toEqual([RUN_TASK_REVIEW_ID]);
   });
 });

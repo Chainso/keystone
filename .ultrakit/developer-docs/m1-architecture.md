@@ -22,6 +22,8 @@ The current UI is no longer scaffold-only for project management:
 - `New project` creates real projects through `POST /v1/projects`
 - `Project settings` loads and saves through `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`
 - the `Runs` index follows the selected project through `GET /v1/projects/:projectId/runs`
+- `Workstreams` now follows the selected project through `GET /v1/projects/:projectId/tasks`, including server-backed filter and pagination state
+- browser-backed `Workstreams` fetch readiness is keyed off `useProjectManagement().state.currentProject`; `useCurrentProject()` remains a scaffold-compatibility fallback and is not sufficient as a live readiness signal
 - `+ New run` now creates real run records through `POST /v1/projects/:projectId/runs` and routes directly into the new run's live `Specification` page without seeding planning documents
 - live run detail under `/runs/:runId/**` now reads real run, planning-document, workflow, task, and task-artifact data through feature-owned UI providers
 - `Specification`, `Architecture`, and `Execution Plan` can create missing run-scoped documents and save new current revisions in place through `POST /v1/runs/:runId/documents` and `POST /v1/runs/:runId/documents/:documentId/revisions`
@@ -31,7 +33,7 @@ The current UI is no longer scaffold-only for project management:
 
 The current live/scaffold split is still intentional:
 
-- `Documentation` and `Workstreams` remain scaffold-backed and show explicit compatibility states for non-scaffold live projects
+- `Documentation` remains scaffold-backed and shows an explicit compatibility state for non-scaffold live projects
 - project documents, release/evidence/integration content, and broader destination live-data cutovers are still out of scope for the current UI slice
 
 ## Authoritative Persistence
@@ -94,6 +96,7 @@ The current operator-facing backend surface is:
 - `GET /v1/projects/:projectId/documents`
 - `POST /v1/projects/:projectId/documents`
 - `GET /v1/projects/:projectId/runs`
+- `GET /v1/projects/:projectId/tasks`
 - `POST /v1/projects/:projectId/runs`
 - `GET /v1/runs/:runId`
 - `POST /v1/runs/:runId/compile`
@@ -104,8 +107,11 @@ The current operator-facing backend surface is:
 - `GET /v1/runs/:runId/tasks`
 - `GET /v1/runs/:runId/tasks/:taskId/artifacts`
 - `GET /v1/runs/:runId/tasks/:taskId`
+- `GET /v1/runs/:runId/tasks/:taskId/artifacts`
 - `GET /v1/artifacts/:artifactId`
 - `GET /v1/artifacts/:artifactId/content`
+
+Task resources now expose both the authoritative `taskId` (`runTaskId`) and the compiled-plan `logicalTaskId`, plus `updatedAt`, so project-scoped task listings and run-scoped task drill-in stay aligned on one contract.
 
 Removed from the backend surface:
 

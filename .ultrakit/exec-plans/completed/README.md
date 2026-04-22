@@ -6,6 +6,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 
 | Plan | Completed | Summary |
 |------|-----------|---------|
+| [keystone-ui-workstreams-live-cutover](./keystone-ui-workstreams-live-cutover.md) | 2026-04-21 | Documented the live Workstreams and run-execution cutover, classified the broad validation baseline, and archived the completed plan. |
 | [keystone-ui-runs-pages-live-cutover](./keystone-ui-runs-pages-live-cutover.md) | 2026-04-21 | Delivered the live Runs workspace end to end: real run creation, planning authoring, explicit compile, execution/task review, truthful docs, broad validation recording, and final archive closure. |
 | [keystone-ui-project-management-live-wiring](./keystone-ui-project-management-live-wiring.md) | 2026-04-20 | Delivered the live UI project-management loop, documented the final live/scaffold split and local dev auth headers, reran broad validation, and archived the completed plan. |
 | [keystone-target-model-migration](./keystone-target-model-migration.md) | 2026-04-20 | Archived the backend target-model migration after reconciling the stale active plan with the completed document-first run/task model and recording the missing handoff-doc reference as follow-up debt. |

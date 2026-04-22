@@ -30,6 +30,7 @@ import {
   workflowGraphDetailEnvelopeSchema
 } from "./contracts";
 import {
+  loadLogicalTaskIdIndex,
   projectArtifactResource,
   projectRunResource,
   projectTaskResources,
@@ -101,6 +102,7 @@ async function loadRunState(context: Context<AppEnv>, runId: string) {
     let cachedTasks: Awaited<ReturnType<typeof listRunTasks>> | null = null;
     let cachedDependencies: Awaited<ReturnType<typeof listRunTaskDependencies>> | null = null;
     let cachedArtifacts: Awaited<ReturnType<typeof listRunArtifacts>> | null = null;
+    let cachedLogicalTaskIdByRunTaskId: Map<string, string> | null = null;
 
     return {
       auth,
@@ -132,6 +134,17 @@ async function loadRunState(context: Context<AppEnv>, runId: string) {
         }
 
         return cachedArtifacts;
+      },
+      async loadLogicalTaskIds() {
+        if (cachedLogicalTaskIdByRunTaskId === null) {
+          cachedLogicalTaskIdByRunTaskId = await loadLogicalTaskIdIndex(
+            context.env,
+            auth.tenantId,
+            runId
+          );
+        }
+
+        return cachedLogicalTaskIdByRunTaskId;
       }
     };
   } catch (error) {
@@ -367,10 +380,9 @@ export async function getRunWorkflowGraphHandler(context: Context<AppEnv>) {
 
   try {
     const tasks = projectTaskResources({
-      tenantId: state.auth.tenantId,
-      runId,
       runTasks: await state.loadTasks(),
-      dependencies: await state.loadDependencies()
+      dependencies: await state.loadDependencies(),
+      logicalTaskIdByRunTaskId: await state.loadLogicalTaskIds()
     });
     const graph = projectWorkflowGraphResource({
       tenantId: state.auth.tenantId,
@@ -403,10 +415,9 @@ export async function listRunTasksHandler(context: Context<AppEnv>) {
 
   try {
     const tasks = projectTaskResources({
-      tenantId: state.auth.tenantId,
-      runId,
       runTasks: await state.loadTasks(),
-      dependencies: await state.loadDependencies()
+      dependencies: await state.loadDependencies(),
+      logicalTaskIdByRunTaskId: await state.loadLogicalTaskIds()
     });
 
     return context.json(
@@ -438,10 +449,9 @@ export async function getTaskHandler(context: Context<AppEnv>) {
 
   try {
     const task = projectTaskResources({
-      tenantId: state.auth.tenantId,
-      runId,
       runTasks: await state.loadTasks(),
-      dependencies: await state.loadDependencies()
+      dependencies: await state.loadDependencies(),
+      logicalTaskIdByRunTaskId: await state.loadLogicalTaskIds()
     }).find((candidate) => candidate.taskId === taskId);
 
     if (!task) {
@@ -532,10 +542,9 @@ export async function listTaskArtifactsHandler(context: Context<AppEnv>) {
 
   try {
     const task = projectTaskResources({
-      tenantId: state.auth.tenantId,
-      runId,
       runTasks: await state.loadTasks(),
-      dependencies: await state.loadDependencies()
+      dependencies: await state.loadDependencies(),
+      logicalTaskIdByRunTaskId: await state.loadLogicalTaskIds()
     }).find((candidate) => candidate.taskId === taskId);
 
     if (!task) {

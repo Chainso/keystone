@@ -31,7 +31,7 @@ export function RunDetailScaffold({
 
         <div className="filter-chip-row">
           <StatusPill label={status} />
-          <p className="document-name">Updated {updatedLabel}</p>
+          <p className="document-name">{updatedLabel}</p>
         </div>
       </header>
 

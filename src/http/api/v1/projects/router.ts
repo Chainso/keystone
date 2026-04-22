@@ -11,6 +11,7 @@ import {
   createProjectHandler,
   getProjectHandler,
   listProjectRunsHandler,
+  listProjectTasksHandler,
   listProjectsHandler,
   updateProjectHandler
 } from "./handlers";
@@ -109,6 +110,16 @@ export const projectRouteMatrix = [
     responseKind: "detail",
     implementation: "reused",
     availability: "implemented"
+  },
+  {
+    method: "GET",
+    path: "/v1/projects/:projectId/tasks",
+    family: "projects",
+    resourceType: "task",
+    responseKind: "collection",
+    implementation: "projected",
+    availability: "implemented",
+    note: "Project-scoped task collection backed by authoritative run-task rows with server-side filtering and pagination."
   }
 ] as const satisfies ApiRouteDefinition[];
 
@@ -130,5 +141,6 @@ export function registerProjectRoutes(router: Hono<AppEnv>) {
     createProjectDocumentRevisionHandler
   );
   router.get("/v1/projects/:projectId/runs", requireDevAuth, listProjectRunsHandler);
+  router.get("/v1/projects/:projectId/tasks", requireDevAuth, listProjectTasksHandler);
   router.post("/v1/projects/:projectId/runs", requireDevAuth, createProjectRunHandler);
 }

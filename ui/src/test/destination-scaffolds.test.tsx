@@ -4,13 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
+import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
 import {
   createStaticRunManagementApi,
   type StaticRunDetailRecord
 } from "../features/runs/run-management-api";
 import { WorkstreamsBoard } from "../features/workstreams/components/workstreams-board";
+import {
+  buildEmptyState,
+  resolveTaskDisplayId
+} from "../features/workstreams/use-workstreams-view-model";
 import { renderRoute } from "./render-route";
 import {
+  type ProjectTaskFilter,
   serializeProjectListItem,
   serializeProjectResource
 } from "../../../src/http/api/v1/projects/contracts";
@@ -49,11 +55,13 @@ const workstreamRunFixtures: StaticRunDetailRecord[] = [
         dependsOn: [],
         description: "Preserve canonical task links from Workstreams into Runs.",
         endedAt: null,
+        logicalTaskId: "TASK-019",
         name: "Blocked task visibility",
         runId: "run-101",
         startedAt: "2026-04-20T12:01:00.000Z",
         status: "blocked",
-        taskId: "task-019"
+        taskId: "task-019",
+        updatedAt: "2026-04-20T12:01:00.000Z"
       }
     ],
     workflow: {
@@ -224,6 +232,16 @@ function buildProjectDetailResponse(project: {
 
 type ProjectDetailFixture = Parameters<typeof buildProjectDetailResponse>[0];
 
+interface LiveProjectTaskFixture {
+  description: string;
+  logicalTaskId: string;
+  name: string;
+  runId: string;
+  status: string;
+  taskId: string;
+  updatedAt: string;
+}
+
 function createJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -258,6 +276,150 @@ function stubProjectListFetch(projects: CurrentProject[]) {
   });
 
   vi.stubGlobal("fetch", fetchMock);
+}
+
+function createLiveProjectTaskFixture(overrides: Partial<LiveProjectTaskFixture> = {}): LiveProjectTaskFixture {
+  return {
+    description: "Live project task row for Workstreams tests.",
+    logicalTaskId: "TASK-LIVE-001",
+    name: "Compile execution context",
+    runId: "run-live-201",
+    status: "running",
+    taskId: "task-live-001",
+    updatedAt: "2026-04-20T12:00:00.000Z",
+    ...overrides
+  };
+}
+
+function buildProjectTaskResource(task: LiveProjectTaskFixture) {
+  return {
+    resourceType: "task" as const,
+    scaffold: {
+      implementation: "reused" as const,
+      note: null
+    },
+    runId: task.runId,
+    taskId: task.taskId,
+    logicalTaskId: task.logicalTaskId,
+    name: task.name,
+    description: task.description,
+    status: task.status,
+    dependsOn: [],
+    conversation: null,
+    updatedAt: task.updatedAt,
+    startedAt: null,
+    endedAt: null
+  };
+}
+
+function buildProjectTasksResponse(input: {
+  filter: ProjectTaskFilter;
+  items: LiveProjectTaskFixture[];
+  page?: number;
+  pageCount?: number;
+  pageSize?: number;
+  total?: number;
+}) {
+  const page = input.page ?? 1;
+  const pageSize = input.pageSize ?? 25;
+  const total = input.total ?? input.items.length;
+
+  return {
+    data: {
+      items: input.items.map(buildProjectTaskResource),
+      total,
+      page,
+      pageSize,
+      pageCount: input.pageCount ?? Math.max(1, Math.ceil(total / pageSize)),
+      filter: input.filter
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "task" as const
+    }
+  };
+}
+
+function createProjectTaskQueryKey(
+  projectId: string,
+  filter: ProjectTaskFilter,
+  page: number,
+  pageSize = 25
+) {
+  return `${projectId}|${filter}|${page}|${pageSize}`;
+}
+
+function createDeferredJsonResponse(payload: unknown, status = 200) {
+  let resolveResponse: ((response: Response) => void) | null = null;
+  const promise = new Promise<Response>((resolve) => {
+    resolveResponse = resolve;
+  });
+
+  return {
+    promise,
+    resolve() {
+      resolveResponse?.(createJsonResponse(payload, status));
+    }
+  };
+}
+
+function stubLiveWorkstreamsFetch(input: {
+  projects?: CurrentProject[];
+  projectResponses?: ResponseFactory[];
+  taskResponsesByKey: Record<string, ResponseFactory[]>;
+}) {
+  const projects = input.projects ?? [scaffoldProject];
+  const projectResponses = input.projectResponses ?? [
+    () => createJsonResponse(buildProjectsResponse(projects))
+  ];
+  let projectCallIndex = 0;
+  const taskCallIndexes = new Map<string, number>();
+
+  const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof request === "string" ? request : request.toString();
+    const method = request instanceof Request ? request.method : init?.method ?? "GET";
+
+    expectDevAuthHeaders(request, init);
+
+    if (url === "/v1/projects" && method === "GET") {
+      const responseFactory =
+        projectResponses[Math.min(projectCallIndex, projectResponses.length - 1)];
+      projectCallIndex += 1;
+
+      return await responseFactory!();
+    }
+
+    const parsedUrl = new URL(url, "http://localhost");
+    const projectTaskMatch = parsedUrl.pathname.match(/^\/v1\/projects\/([^/]+)\/tasks$/);
+
+    if (projectTaskMatch && method === "GET") {
+      const projectId = decodeURIComponent(projectTaskMatch[1]!);
+      const filter = (parsedUrl.searchParams.get("filter") ?? "active") as ProjectTaskFilter;
+      const page = Number(parsedUrl.searchParams.get("page") ?? "1");
+      const pageSize = Number(parsedUrl.searchParams.get("pageSize") ?? "25");
+      const key = createProjectTaskQueryKey(projectId, filter, page, pageSize);
+      const responseFactories = input.taskResponsesByKey[key];
+
+      if (!responseFactories) {
+        throw new Error(`Unexpected fetch request: ${method} ${url}`);
+      }
+
+      const callIndex = taskCallIndexes.get(key) ?? 0;
+      const responseFactory =
+        responseFactories[Math.min(callIndex, responseFactories.length - 1)];
+
+      taskCallIndexes.set(key, callIndex + 1);
+
+      return await responseFactory!();
+    }
+
+    throw new Error(`Unexpected fetch request: ${method} ${url}`);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return fetchMock;
 }
 
 function stubProjectCreateFlowFetch(input: {
@@ -500,82 +662,202 @@ describe("Destination scaffolds", () => {
     expect(screen.queryByLabelText("Documentation tree")).not.toBeInTheDocument();
   });
 
-  it("renders the canonical workstreams rows and filters them without the removed right rail", async () => {
+  it("renders the canonical workstreams rows with the default Active filter and runId column", async () => {
     renderRoute("/workstreams");
 
     expect(
-      await screen.findByRole("heading", { name: "Active and queued project work" })
+      await screen.findByRole("heading", { name: "Project work across runs" })
     ).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expect(screen.getByText("Filters:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Active" })).toHaveClass("is-active");
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
     expectWorkstreamRows([
-      ["TASK-032", "Run shell navigation", "Run-104", "Running", "2m ago"],
-      ["TASK-033", "Task detail routing", "Run-104", "Queued", "4m ago"],
-      ["TASK-021", "Documentation curation", "Run-103", "Running", "9m ago"],
-      ["TASK-019", "Blocked task visibility", "Run-101", "Blocked", "1h ago"]
+      ["TASK-032", "Run shell navigation", "run-104", "Running", "2m ago"],
+      ["TASK-033", "Task detail routing", "run-104", "Queued", "4m ago"],
+      ["TASK-034", "Documentation grouping", "run-104", "Queued", "8m ago"],
+      ["TASK-021", "Documentation curation", "run-103", "Running", "9m ago"],
+      ["TASK-019", "Blocked task visibility", "run-101", "Blocked", "1h ago"]
     ]);
     expectWorkstreamLink("TASK-032", "/runs/run-104/execution/tasks/task-032");
     expectWorkstreamLink("TASK-033", "/runs/run-104/execution/tasks/task-033");
+    expectWorkstreamLink("TASK-034", "/runs/run-104/execution/tasks/task-034");
     expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
     expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
-      "Showing 1-4 of 4 tasks · Page 1 of 1"
+      "Showing 1-5 of 5 tasks · Page 1 of 1"
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Running" }));
+    expect(await screen.findByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expectWorkstreamRows([
-      ["TASK-032", "Run shell navigation", "Run-104", "Running", "2m ago"],
-      ["TASK-021", "Documentation curation", "Run-103", "Running", "9m ago"]
+      ["TASK-032", "Run shell navigation", "run-104", "Running", "2m ago"],
+      ["TASK-021", "Documentation curation", "run-103", "Running", "9m ago"]
     ]);
     expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
 
     fireEvent.click(screen.getByRole("button", { name: "Queued" }));
-    expectWorkstreamRows([["TASK-033", "Task detail routing", "Run-104", "Queued", "4m ago"]]);
+    expect(await screen.findByRole("link", { name: "TASK-033" })).toBeInTheDocument();
+    expectWorkstreamRows([
+      ["TASK-033", "Task detail routing", "run-104", "Queued", "4m ago"],
+      ["TASK-034", "Documentation grouping", "run-104", "Queued", "8m ago"]
+    ]);
 
     fireEvent.click(screen.getByRole("button", { name: "Blocked" }));
-    expectWorkstreamRows([["TASK-019", "Blocked task visibility", "Run-101", "Blocked", "1h ago"]]);
+    expect(await screen.findByRole("link", { name: "TASK-019" })).toBeInTheDocument();
+    expectWorkstreamRows([["TASK-019", "Blocked task visibility", "run-101", "Blocked", "1h ago"]]);
     expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(await screen.findByRole("link", { name: "TASK-029" })).toBeInTheDocument();
     expectWorkstreamRows([
-      ["TASK-032", "Run shell navigation", "Run-104", "Running", "2m ago"],
-      ["TASK-033", "Task detail routing", "Run-104", "Queued", "4m ago"],
-      ["TASK-021", "Documentation curation", "Run-103", "Running", "9m ago"],
-      ["TASK-019", "Blocked task visibility", "Run-101", "Blocked", "1h ago"]
+      ["TASK-029", "Specification outline", "run-104", "Complete", "16m ago"],
+      ["TASK-030", "Architecture decisions", "run-104", "Complete", "14m ago"],
+      ["TASK-031", "Execution plan", "run-104", "Complete", "12m ago"],
+      ["TASK-032", "Run shell navigation", "run-104", "Running", "2m ago"],
+      ["TASK-033", "Task detail routing", "run-104", "Queued", "4m ago"],
+      ["TASK-034", "Documentation grouping", "run-104", "Queued", "8m ago"],
+      ["TASK-021", "Documentation curation", "run-103", "Running", "9m ago"],
+      ["TASK-019", "Blocked task visibility", "run-101", "Blocked", "1h ago"]
     ]);
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-8 of 8 tasks · Page 1 of 1"
+    );
   });
 
-  it("renders a compatibility state for workstreams on a non-scaffold live project", async () => {
-    const projects: CurrentProject[] = [
-      {
-        projectId: "project-keystone-cloudflare",
-        projectKey: "keystone-cloudflare",
-        displayName: "Keystone Cloudflare",
-        description: "Internal operator workspace for the Keystone Cloudflare project."
-      },
-      {
-        projectId: "project-alt",
-        projectKey: "alt-project",
-        displayName: "Alt Project",
-        description: "Alternate operator workspace."
-      }
+  it("renders live workstreams from the project task collection and expands from Active to All", async () => {
+    const activeTasks = [
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-LIVE-001",
+        name: "Compile execution context",
+        runId: "run-live-201",
+        status: "running",
+        taskId: "task-live-001",
+        updatedAt: "2026-04-20T12:00:00.000Z"
+      }),
+      createLiveProjectTaskFixture({
+        logicalTaskId: "task-live-002",
+        name: "Blocked task visibility",
+        runId: "run-live-202",
+        status: "blocked",
+        taskId: "task-live-002",
+        updatedAt: "2026-04-20T12:05:00.000Z"
+      }),
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-LIVE-004",
+        name: "Queue follow-on work",
+        runId: "run-live-204",
+        status: "ready",
+        taskId: "task-live-004",
+        updatedAt: "2026-04-20T12:08:00.000Z"
+      })
+    ];
+    const allTasks = [
+      ...activeTasks,
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-LIVE-003",
+        name: "Documentation curation",
+        runId: "run-live-203",
+        status: "completed",
+        taskId: "task-live-003",
+        updatedAt: "2026-04-20T12:06:00.000Z"
+      })
     ];
 
-    window.localStorage.setItem(currentProjectStorageKey, "project-alt");
-    stubProjectListFetch(projects);
+    stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () => createJsonResponse(buildProjectTasksResponse({ filter: "active", items: activeTasks }))
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "all", 1)]: [
+          () => createJsonResponse(buildProjectTasksResponse({ filter: "all", items: allTasks }))
+        ]
+      }
+    });
 
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
     expect(
-      await screen.findByRole("heading", { name: "Active and queued project work" })
+      await screen.findByRole("heading", { name: "Project work across runs" })
     ).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Active" })).toHaveClass("is-active");
+    expectWorkstreamRows([
+      ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
+      ["task-live-002", "Blocked task visibility", "run-live-202", "Blocked", "2026-04-20 12:05 UTC"],
+      ["TASK-LIVE-004", "Queue follow-on work", "run-live-204", "Queued", "2026-04-20 12:08 UTC"]
+    ]);
+    expectWorkstreamLink("task-live-002", "/runs/run-live-202/execution/tasks/task-live-002");
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-3 of 3 tasks · Page 1 of 1"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-003" })).toBeInTheDocument();
+
+    expectWorkstreamRows([
+      ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
+      ["task-live-002", "Blocked task visibility", "run-live-202", "Blocked", "2026-04-20 12:05 UTC"],
+      ["TASK-LIVE-004", "Queue follow-on work", "run-live-204", "Queued", "2026-04-20 12:08 UTC"],
+      ["TASK-LIVE-003", "Documentation curation", "run-live-203", "Complete", "2026-04-20 12:06 UTC"]
+    ]);
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-4 of 4 tasks · Page 1 of 1"
+    );
+  });
+
+  it("waits for the resolved live project before requesting workstreams", async () => {
+    const alternateProject: CurrentProject = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Alternate operator workspace."
+    };
+    const deferredProjects = createDeferredJsonResponse(
+      buildProjectsResponse([scaffoldProject, alternateProject])
+    );
+    const fetchMock = stubLiveWorkstreamsFetch({
+      projects: [scaffoldProject, alternateProject],
+      projectResponses: [() => deferredProjects.promise],
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(alternateProject.projectId, "active", 1)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: [
+                  createLiveProjectTaskFixture({
+                    logicalTaskId: "TASK-ALT-001",
+                    name: "Alt project workstream",
+                    runId: "run-alt-201",
+                    taskId: "task-alt-001"
+                  })
+                ]
+              })
+            )
+        ]
+      }
+    });
+
+    window.localStorage.setItem(currentProjectStorageKey, alternateProject.projectId);
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Loading projects" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Workstreams are not available for this project yet" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Project workstreams still depend on scaffold-backed task data\./i)
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      fetchMock.mock.calls.some(([request]) => {
+        const url = typeof request === "string" ? request : request.toString();
+
+        return url.includes("/v1/projects/") && url.includes("/tasks");
+      })
+    ).toBe(false);
+
+    deferredProjects.resolve();
+
+    expect(await screen.findByRole("link", { name: "TASK-ALT-001" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/projects/project-alt/tasks?filter=active&page=1&pageSize=25"),
+      expect.anything()
+    );
   });
 
   it("keeps workstream filters visible when the active filter yields zero rows", () => {
@@ -584,11 +866,16 @@ describe("Destination scaffolds", () => {
     render(
       <WorkstreamsBoard
         model={{
-          title: "Active and queued project work",
+          title: "Project work across runs",
           filters: [
             {
               filterId: "all",
               label: "All",
+              isActive: false
+            },
+            {
+              filterId: "active",
+              label: "Active",
               isActive: false
             },
             {
@@ -607,12 +894,22 @@ describe("Destination scaffolds", () => {
               isActive: false
             }
           ],
+          contentState: {
+            heading: "No workstreams match this filter",
+            kind: "empty",
+            message: "No workstreams match the queued filter right now."
+          },
+          goToNextPage() {},
+          goToPreviousPage() {},
           rows: [],
           pagination: {
             currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
             pageCount: 1,
             rangeLabel: "Showing 0 of 0 tasks"
           },
+          retry() {},
           setActiveFilter
         }}
       />
@@ -631,12 +928,539 @@ describe("Destination scaffolds", () => {
     expect(setActiveFilter).toHaveBeenCalledWith("all");
   });
 
+  it("renders a live workstreams loading state before the task collection resolves", async () => {
+    const deferredTasks = createDeferredJsonResponse(
+      buildProjectTasksResponse({
+        filter: "active",
+        items: [
+          createLiveProjectTaskFixture({
+            logicalTaskId: "TASK-LIVE-001",
+            name: "Compile execution context",
+            runId: "run-live-201",
+            taskId: "task-live-001"
+          })
+        ]
+      })
+    );
+
+    stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () => deferredTasks.promise
+        ]
+      }
+    });
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project work across runs" })
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Loading workstreams" })).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    deferredTasks.resolve();
+
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+  });
+
+  it("renders a live workstreams empty state when the selected filter has no tasks", async () => {
+    stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: [],
+                total: 0
+              })
+            )
+        ]
+      }
+    });
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project work across runs" })
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "No active workstreams" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Keystone Cloudflare does not have any running, queued, or blocked tasks right now.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 0 of 0 tasks · Page 1 of 1"
+    );
+  });
+
+  it("renders a live workstreams error state and recovers after retry", async () => {
+    const fetchMock = stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          async () => {
+            throw new Error("Workstreams failed.");
+          },
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: [
+                  createLiveProjectTaskFixture({
+                    logicalTaskId: "TASK-LIVE-001",
+                    name: "Compile execution context",
+                    runId: "run-live-201",
+                    taskId: "task-live-001"
+                  })
+                ]
+              })
+            )
+        ]
+      }
+    });
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project work across runs" })
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Unable to load workstreams" })).toBeInTheDocument();
+    expect(screen.getByText("Workstreams failed.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders live workstreams pagination controls and switches pages", async () => {
+    const firstPageTasks = Array.from({ length: 25 }, (_, index) =>
+      createLiveProjectTaskFixture({
+        logicalTaskId: `TASK-LIVE-${String(index + 1).padStart(3, "0")}`,
+        name: `Active task ${index + 1}`,
+        runId: `run-live-${String(index + 1).padStart(3, "0")}`,
+        taskId: `task-live-${String(index + 1).padStart(3, "0")}`,
+        updatedAt: `2026-04-20T12:${String(index).padStart(2, "0")}:00.000Z`
+      })
+    );
+    const secondPageTask = createLiveProjectTaskFixture({
+      logicalTaskId: "TASK-LIVE-026",
+      name: "Active task 26",
+      runId: "run-live-026",
+      taskId: "task-live-026",
+      updatedAt: "2026-04-20T12:26:00.000Z"
+    });
+
+    stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: firstPageTasks,
+                page: 1,
+                pageCount: 2,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 2)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: [secondPageTask],
+                page: 2,
+                pageCount: 2,
+                total: 26
+              })
+            )
+        ]
+      }
+    });
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-25 of 26 tasks · Page 1 of 2"
+    );
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-026" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 26-26 of 26 tasks · Page 2 of 2"
+    );
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+  });
+
+  it("resets to the last valid page when a paged live workstreams response shrinks out of range", async () => {
+    const firstPageTasks = Array.from({ length: 25 }, (_, index) =>
+      createLiveProjectTaskFixture({
+        logicalTaskId: `TASK-LIVE-${String(index + 1).padStart(3, "0")}`,
+        name: `Active task ${index + 1}`,
+        runId: `run-live-${String(index + 1).padStart(3, "0")}`,
+        taskId: `task-live-${String(index + 1).padStart(3, "0")}`,
+        updatedAt: `2026-04-20T12:${String(index).padStart(2, "0")}:00.000Z`
+      })
+    );
+    const resetPageTasks = Array.from({ length: 4 }, (_, index) =>
+      createLiveProjectTaskFixture({
+        logicalTaskId: `TASK-LIVE-RESET-${String(index + 1).padStart(3, "0")}`,
+        name: `Reset task ${index + 1}`,
+        runId: `run-live-reset-${String(index + 1).padStart(3, "0")}`,
+        taskId: `task-live-reset-${String(index + 1).padStart(3, "0")}`,
+        updatedAt: `2026-04-20T13:${String(index).padStart(2, "0")}:00.000Z`
+      })
+    );
+    const fetchMock = stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: firstPageTasks,
+                page: 1,
+                pageCount: 2,
+                total: 26
+              })
+            ),
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: resetPageTasks,
+                page: 1,
+                pageCount: 1,
+                total: 4
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 2)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: [],
+                page: 2,
+                pageCount: 1,
+                total: 4
+              })
+            )
+        ]
+      }
+    });
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(
+      await screen.findByRole("link", { name: "TASK-LIVE-RESET-001" })
+    ).toBeInTheDocument();
+    expectWorkstreamRows([
+      [
+        "TASK-LIVE-RESET-001",
+        "Reset task 1",
+        "run-live-reset-001",
+        "Running",
+        "2026-04-20 13:00 UTC"
+      ],
+      [
+        "TASK-LIVE-RESET-002",
+        "Reset task 2",
+        "run-live-reset-002",
+        "Running",
+        "2026-04-20 13:01 UTC"
+      ],
+      [
+        "TASK-LIVE-RESET-003",
+        "Reset task 3",
+        "run-live-reset-003",
+        "Running",
+        "2026-04-20 13:02 UTC"
+      ],
+      [
+        "TASK-LIVE-RESET-004",
+        "Reset task 4",
+        "run-live-reset-004",
+        "Running",
+        "2026-04-20 13:03 UTC"
+      ]
+    ]);
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-4 of 4 tasks · Page 1 of 1"
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/projects/project-keystone-cloudflare/tasks?filter=active&page=2&pageSize=25"),
+      expect.anything()
+    );
+    expect(
+      fetchMock.mock.calls.filter(([request]) => {
+        const url = typeof request === "string" ? request : request.toString();
+
+        return url.includes(
+          "/v1/projects/project-keystone-cloudflare/tasks?filter=active&page=1&pageSize=25"
+        );
+      })
+    ).toHaveLength(2);
+  });
+
+  it("resets to page 1 when the filter changes after paging", async () => {
+    const activePageOne = Array.from({ length: 25 }, (_, index) =>
+      createLiveProjectTaskFixture({
+        logicalTaskId: `TASK-ACTIVE-${String(index + 1).padStart(3, "0")}`,
+        name: `Active task ${index + 1}`,
+        runId: `run-active-${String(index + 1).padStart(3, "0")}`,
+        taskId: `task-active-${String(index + 1).padStart(3, "0")}`,
+        updatedAt: `2026-04-20T12:${String(index).padStart(2, "0")}:00.000Z`
+      })
+    );
+    const activePageTwo = [
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-ACTIVE-026",
+        name: "Active task 26",
+        runId: "run-active-026",
+        taskId: "task-active-026",
+        updatedAt: "2026-04-20T12:26:00.000Z"
+      })
+    ];
+    const allTasks = [
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-ALL-001",
+        name: "Completed planning notes",
+        runId: "run-all-001",
+        status: "completed",
+        taskId: "task-all-001"
+      }),
+      createLiveProjectTaskFixture({
+        logicalTaskId: "task-all-002",
+        name: "Fallback display id",
+        runId: "run-all-002",
+        status: "queued",
+        taskId: "task-all-002"
+      }),
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-ALL-003",
+        name: "Live running task",
+        runId: "run-all-003",
+        status: "running",
+        taskId: "task-all-003"
+      })
+    ];
+    const fetchMock = stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: activePageOne,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 2)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: activePageTwo,
+                page: 2,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "all", 1)]: [
+          () => createJsonResponse(buildProjectTasksResponse({ filter: "all", items: allTasks }))
+        ]
+      }
+    });
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("link", { name: "TASK-ACTIVE-001" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(await screen.findByRole("link", { name: "TASK-ACTIVE-026" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 26-26 of 26 tasks · Page 2 of 2"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+    expect(await screen.findByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "task-all-002" })).toHaveAttribute(
+      "href",
+      "/runs/run-all-002/execution/tasks/task-all-002"
+    );
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-3 of 3 tasks · Page 1 of 1"
+    );
+    expect(
+      fetchMock.mock.calls.some(([request]) => {
+        const url = typeof request === "string" ? request : request.toString();
+
+        return url.includes("/v1/projects/project-keystone-cloudflare/tasks?filter=all&page=2");
+      })
+    ).toBe(false);
+  });
+
+  it("resets to page 1 when the selected project changes after paging", async () => {
+    const alternateProject: CurrentProject = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Alternate operator workspace."
+    };
+    const primaryPageOne = Array.from({ length: 25 }, (_, index) =>
+      createLiveProjectTaskFixture({
+        logicalTaskId: `TASK-PRIMARY-${String(index + 1).padStart(3, "0")}`,
+        name: `Primary task ${index + 1}`,
+        runId: `run-primary-${String(index + 1).padStart(3, "0")}`,
+        taskId: `task-primary-${String(index + 1).padStart(3, "0")}`,
+        updatedAt: `2026-04-20T12:${String(index).padStart(2, "0")}:00.000Z`
+      })
+    );
+    const primaryPageTwo = [
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-PRIMARY-026",
+        name: "Primary task 26",
+        runId: "run-primary-026",
+        taskId: "task-primary-026",
+        updatedAt: "2026-04-20T12:26:00.000Z"
+      })
+    ];
+    const alternateTasks = [
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-ALT-001",
+        name: "Alternate project task",
+        runId: "run-alt-001",
+        taskId: "task-alt-001"
+      })
+    ];
+    const fetchMock = stubLiveWorkstreamsFetch({
+      projects: [scaffoldProject, alternateProject],
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: primaryPageOne,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 2)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: primaryPageTwo,
+                page: 2,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(alternateProject.projectId, "active", 1)]: [
+          () => createJsonResponse(buildProjectTasksResponse({ filter: "active", items: alternateTasks }))
+        ]
+      }
+    });
+
+    renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("link", { name: "TASK-PRIMARY-001" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(await screen.findByRole("link", { name: "TASK-PRIMARY-026" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
+    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+
+    expect(await screen.findByRole("link", { name: "TASK-ALT-001" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 1-1 of 1 tasks · Page 1 of 1"
+    );
+    expect(
+      fetchMock.mock.calls.some(([request]) => {
+        const url = typeof request === "string" ? request : request.toString();
+
+        return url.includes("/v1/projects/project-alt/tasks?filter=active&page=2");
+      })
+    ).toBe(false);
+  });
+
+  it("keeps scaffold compatibility pagination truthful when slicing static workstreams", async () => {
+    const api = createStaticProjectManagementApi([scaffoldProject]);
+
+    const firstPage = await api.listProjectTasks(scaffoldProject.projectId, {
+      filter: "all",
+      page: 1,
+      pageSize: 3
+    });
+    const secondPage = await api.listProjectTasks(scaffoldProject.projectId, {
+      filter: "all",
+      page: 2,
+      pageSize: 3
+    });
+
+    expect(firstPage.total).toBe(8);
+    expect(firstPage.pageCount).toBe(3);
+    expect(firstPage.items).toHaveLength(3);
+    expect(firstPage.items.map((task) => task.logicalTaskId)).toEqual([
+      "TASK-029",
+      "TASK-030",
+      "TASK-031"
+    ]);
+    expect(secondPage.items).toHaveLength(3);
+    expect(secondPage.items.map((task) => task.logicalTaskId)).toEqual([
+      "TASK-032",
+      "TASK-033",
+      "TASK-034"
+    ]);
+  });
+
+  it("covers the workstreams fallback and empty-state helpers", () => {
+    expect(resolveTaskDisplayId("   ", "task-live-002")).toBe("task-live-002");
+    expect(resolveTaskDisplayId("TASK-LIVE-002", "task-live-002")).toBe("TASK-LIVE-002");
+    expect(buildEmptyState("all", "Keystone Cloudflare")).toMatchObject({
+      heading: "No workstreams yet",
+      kind: "empty",
+      message: "Keystone Cloudflare does not have any recorded tasks yet."
+    });
+    expect(buildEmptyState("active", "Keystone Cloudflare")).toMatchObject({
+      heading: "No active workstreams",
+      kind: "empty",
+      message:
+        "Keystone Cloudflare does not have any running, queued, or blocked tasks right now."
+    });
+    expect(buildEmptyState("blocked", "Keystone Cloudflare")).toMatchObject({
+      heading: "No workstreams match this filter",
+      kind: "empty",
+      message: "No workstreams match the blocked filter right now."
+    });
+  });
+
   it("opens a workstream task when the user clicks the row body", async () => {
     const { router } = renderRoute("/workstreams", { runApi: workstreamRunApi });
 
     expect(
-      await screen.findByRole("heading", { name: "Active and queued project work" })
+      await screen.findByRole("heading", { name: "Project work across runs" })
     ).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "TASK-019" })).toBeInTheDocument();
 
     const blockedRow = screen.getByRole("link", { name: "TASK-019" }).closest("tr");
 

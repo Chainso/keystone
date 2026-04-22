@@ -276,22 +276,26 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
           dependsOn: [],
           description: "Draft the run specification.",
           endedAt: "2026-04-20T12:35:00.000Z",
+          logicalTaskId: "TASK-030",
           name: "Specification outline",
           runId: "run-104",
           startedAt: "2026-04-20T12:31:00.000Z",
           status: "completed",
-          taskId: "task-030"
+          taskId: "task-030",
+          updatedAt: "2026-04-20T12:35:00.000Z"
         },
         {
           conversation: null,
           dependsOn: ["task-030"],
           description: "Translate the specification into architecture decisions.",
           endedAt: "2026-04-20T12:42:00.000Z",
+          logicalTaskId: "TASK-031",
           name: "Architecture decisions",
           runId: "run-104",
           startedAt: "2026-04-20T12:36:00.000Z",
           status: "completed",
-          taskId: "task-031"
+          taskId: "task-031",
+          updatedAt: "2026-04-20T12:42:00.000Z"
         },
         {
           conversation: {
@@ -301,11 +305,13 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
           dependsOn: ["task-031"],
           description: "Implement the live run-detail provider.",
           endedAt: null,
+          logicalTaskId: "TASK-032",
           name: "Live run provider cutover",
           runId: "run-104",
           startedAt: "2026-04-20T12:43:00.000Z",
           status: "active",
-          taskId: "task-032"
+          taskId: "task-032",
+          updatedAt: "2026-04-20T12:43:00.000Z"
         }
       ],
       workflow: {
@@ -426,22 +432,26 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
           dependsOn: [],
           description: "Compile the run plan into executable tasks.",
           endedAt: "2026-04-20T13:05:00.000Z",
+          logicalTaskId: "TASK-080",
           name: "Compile run plan",
           runId: "run-108",
           startedAt: "2026-04-20T13:01:00.000Z",
           status: "completed",
-          taskId: "task-080"
+          taskId: "task-080",
+          updatedAt: "2026-04-20T13:05:00.000Z"
         },
         {
           conversation: null,
           dependsOn: ["task-080"],
           description: "Prepare the execution graph for review.",
           endedAt: "2026-04-20T13:07:00.000Z",
+          logicalTaskId: "TASK-081",
           name: "Prepare execution graph",
           runId: "run-108",
           startedAt: "2026-04-20T13:05:00.000Z",
           status: "completed",
-          taskId: "task-081"
+          taskId: "task-081",
+          updatedAt: "2026-04-20T13:07:00.000Z"
         },
         {
           conversation: {
@@ -451,11 +461,13 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
           dependsOn: ["task-081"],
           description: "Review the compiled execution DAG.",
           endedAt: null,
+          logicalTaskId: "TASK-082",
           name: "Review execution DAG",
           runId: "run-108",
           startedAt: "2026-04-20T13:08:00.000Z",
           status: "ready",
-          taskId: "task-082"
+          taskId: "task-082",
+          updatedAt: "2026-04-20T13:08:00.000Z"
         }
       ],
       workflow: {
@@ -598,11 +610,13 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
           dependsOn: [],
           description: "Inspect the currently compiled workflow.",
           endedAt: null,
+          logicalTaskId: "TASK-090",
           name: "Inspect current execution graph",
           runId: "run-109",
           startedAt: "2026-04-20T13:18:30.000Z",
           status: "ready",
-          taskId: "task-090"
+          taskId: "task-090",
+          updatedAt: "2026-04-20T13:18:30.000Z"
         }
       ],
       workflow: {
@@ -915,9 +929,7 @@ function createBrowserRunFetch(
 
       if (method === "POST") {
         const input = (await parseRequestJson(request, init)) as {
-          conversation?: StaticRunDetailRecord["documents"] extends Array<infer T>
-            ? T["conversation"]
-            : never;
+          conversation?: NonNullable<StaticRunDetailRecord["documents"]>[number]["conversation"];
           kind: NonNullable<StaticRunDetailRecord["documents"]>[number]["kind"];
           path: string;
         };

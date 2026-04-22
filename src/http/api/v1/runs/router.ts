@@ -143,4 +143,5 @@ export function registerRunRoutes(router: Hono<AppEnv>) {
   router.get("/v1/runs/:runId/tasks", requireDevAuth, listRunTasksHandler);
   router.get("/v1/runs/:runId/tasks/:taskId/artifacts", requireDevAuth, listTaskArtifactsHandler);
   router.get("/v1/runs/:runId/tasks/:taskId", requireDevAuth, getTaskHandler);
+  router.get("/v1/runs/:runId/tasks/:taskId/artifacts", requireDevAuth, listTaskArtifactsHandler);
 }

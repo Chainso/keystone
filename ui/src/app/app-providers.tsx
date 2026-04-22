@@ -17,22 +17,25 @@ interface AppProvidersProps {
   runApi?: RunManagementApi;
 }
 
-export function AppProviders({ children, project, projectApi, runApi }: AppProvidersProps) {
+export function AppProviders({
+  children,
+  project,
+  projectApi,
+  runApi
+}: AppProvidersProps) {
   const providerProps = projectApi ? { api: projectApi } : {};
-
-  if (project === undefined) {
-    return (
-      <RunManagementApiProvider {...(runApi ? { api: runApi } : {})}>
-        <CurrentProjectProvider {...providerProps}>{children}</CurrentProjectProvider>
-      </RunManagementApiProvider>
-    );
-  }
-
-  return (
-    <RunManagementApiProvider {...(runApi ? { api: runApi } : {})}>
+  const currentProjectProvider =
+    project === undefined ? (
+      <CurrentProjectProvider {...providerProps}>{children}</CurrentProjectProvider>
+    ) : (
       <CurrentProjectProvider {...providerProps} project={project}>
         {children}
       </CurrentProjectProvider>
+    );
+
+  return (
+    <RunManagementApiProvider {...(runApi ? { api: runApi } : {})}>
+      {currentProjectProvider}
     </RunManagementApiProvider>
   );
 }
