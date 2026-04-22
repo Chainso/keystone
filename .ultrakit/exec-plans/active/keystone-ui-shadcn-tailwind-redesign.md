@@ -240,6 +240,11 @@ Baseline compatibility facts already captured:
   **Decision:** Ran the one allowed targeted fix pass to move the first-paint theme bootstrap into `ui/index.html`, harden `localStorage` access at the browser boundary, and extend coverage through the real head bootstrap plus a seeded shadcn token consumer.
   **Rationale:** Phase 2 review found that `main.tsx` still applied theme too late for a cold dark-pref load, `window.localStorage` access could still throw before the existing `try` blocks ran, and the tests did not yet exercise the real pre-paint/bootstrap or shadcn-consumer paths.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 2 closeout exception pass
+  **Decision:** The user explicitly authorized an exception pass after read-only verification reported `ui/src/test/runs-routes.test.tsx:1652` failing to find the `Document title` textbox in the "Write first revision" flow, so the exact targeted validation command was rerun on HEAD `8b48028` and the reported route test was rerun in isolation multiple times.
+  **Rationale:** Phase 2 could only be closed truthfully after distinguishing a checked-in regression from transient verification drift.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -252,6 +257,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-21 Phase 1 targeted fix pass completed: Tailwind/shadcn bootstrap made real, and the review findings were cleared.
 - [x] 2026-04-22 Phase 2 completed: centralized theme tokens, repo-owned theme provider, and direct Radix bootstrap exit.
 - [x] 2026-04-22 Phase 2 targeted fix pass completed: first-paint theming moved into `ui/index.html`, storage access was hardened, and bootstrap/token-consumer coverage now reflects the real Phase 2 contract.
+- [x] 2026-04-22 Phase 2 closeout exception pass completed: the exact targeted route-test validation reran green on HEAD `8b48028`, the reported `runs-routes` failure was not reproducible in isolated reruns, and no further Phase 2 code change was required.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [ ] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -283,6 +289,7 @@ Baseline compatibility facts already captured:
 - On this host, `npm run build` still needs a host shell because Wrangler and Docker hit sandbox write constraints after `vite build` succeeds.
 - The current shell sidebar still has no footer-owned theme-control slot, so Phase 2 should land the provider/storage seam and token system first, then let Phase 4 mount the visible toggle in the persistent left sidebar without inventing a second theme owner.
 - Phase 2's first-paint contract needs a dedicated `ui/index.html` head seam; a `main.tsx` bootstrap still starts after the app module begins evaluating and can flash the light theme on a cold load before the stored dark preference is applied.
+- A later read-only verification report claimed the "Write first revision" route flow could not find the `Document title` textbox in `ui/src/test/runs-routes.test.tsx`, but rerunning the exact Phase 2 target command plus five isolated reruns of that specific test on HEAD `8b48028` all passed, so the reported failure is currently classified as non-reproducible validation drift rather than a checked-in Phase 2 regression.
 
 ## Outcomes & Retrospective
 
@@ -310,6 +317,7 @@ Phase 2 outcome on 2026-04-22:
 - the targeted fix pass also hardened `localStorage` access so storage-denied browsers fall back cleanly instead of throwing during boot
 - targeted theme tests now cover the real head bootstrap, storage-denied fallback, provider-driven persistence/reset behavior, and a seeded shadcn `Button` consumer that still resolves through semantic theme tokens
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` pass; `rtk npm run typecheck` still fails at the known baseline in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`, while `rtk npx tsc --noEmit -p tsconfig.ui.json` still shows only the pre-existing `runs-routes` artifact-kind fixture drift plus the same implementer typing drift
+- the user-authorized closeout exception pass reran the exact Phase 2 targeted route-test validation on HEAD `8b48028` and reran the reported `runs-routes` editor test in isolation five times; all of those checks passed, so no additional product or test change was required to close Phase 2 truthfully
 - the visible sidebar theme toggle is intentionally deferred to Phase 4 shell work, where it can mount at the bottom of the persistent left sidebar on top of the Phase 2 provider seam instead of introducing out-of-scope shell churn here
 
 ## Context and Orientation
@@ -552,7 +560,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22.
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22; closeout exception pass verified on 2026-04-22.
 - **Goal:** Move the UI onto the centralized token system, add the persisted theme preference model, and remove Radix Themes bootstrap ownership.
 - **Scope Boundary:** In scope are `ui/src/app/styles.css`, root theme provider/storage wiring, semantic token definition, and removal of `@radix-ui/themes/styles.css` from bootstrap. Out of scope are destination rewrites and live conversation work.
 - **Read First:** `design/design-guidelines.md`, `ui/index.html`, `ui/src/main.tsx`, `ui/src/app/theme.ts`, `ui/src/app/styles.css`, `ui/src/app/app-providers.tsx`, `components.json`.
@@ -562,8 +570,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** one centralized token system exists, both themes resolve through it, system-default first load works, explicit user preference persists, and Radix Themes CSS is no longer the main UI bootstrap.
 - **Commit Expectation:** `centralize theme tokens and remove radix bootstrap`
 - **Known Constraints / Baseline Failures:** the current stylesheet is large; focus on ownership and token structure first, not full screen polish.
-- **Completion Notes:** Replaced the temporary light-only semantic bridge in `ui/src/app/styles.css` with centralized light/dark theme tokens that drive both the existing workspace classes and the shadcn/Tailwind variable surface. Added repo-owned browser theme utilities plus `ThemeProvider` wiring under `ui/src/app/`, wrapped the app root with that provider, and moved the pre-paint theme bootstrap into `ui/index.html` so the stored or system-resolved theme is applied in the document head before the app bundle runs. The targeted fix pass also hardened `readStoredThemePreference()` and `writeStoredThemePreference()` so `window.localStorage` access failures fall back cleanly instead of throwing during boot, and it extended `ui/src/test/app-shell.test.tsx` to execute the real inline bootstrap plus a seeded shadcn `Button` consumer. `ui/src/main.tsx` no longer imports `@radix-ui/themes/styles.css`, `vitest.config.ts` now makes the `@/* -> ui/src/*` alias explicit for the jsdom UI test project, `rtk npm run build:ui` and the targeted route tests pass, and `rtk npm run typecheck` still fails only on the known baseline issues in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. An extra `rtk npx tsc --noEmit -p tsconfig.ui.json` rerun from the base implementation had already been classified as the unrelated `ui/src/test/runs-routes.test.tsx` artifact-kind fixture drift plus the same implementer typing drift, so Phase 2 still does not add new TypeScript failures. The visible theme toggle button is intentionally deferred to Phase 4 shell work; the provider/storage seam needed for that control now exists.
-- **Next Starter Context:** Phase 3 should consume the new semantic tokens instead of inventing surface colors, and Phase 4 shell work should mount the visible theme toggle at the bottom of the persistent left sidebar by reusing the Phase 2 `ThemeProvider` seam and the new `ui/index.html` head bootstrap rather than introducing new theme state.
+- **Completion Notes:** Replaced the temporary light-only semantic bridge in `ui/src/app/styles.css` with centralized light/dark theme tokens that drive both the existing workspace classes and the shadcn/Tailwind variable surface. Added repo-owned browser theme utilities plus `ThemeProvider` wiring under `ui/src/app/`, wrapped the app root with that provider, and moved the pre-paint theme bootstrap into `ui/index.html` so the stored or system-resolved theme is applied in the document head before the app bundle runs. The targeted fix pass also hardened `readStoredThemePreference()` and `writeStoredThemePreference()` so `window.localStorage` access failures fall back cleanly instead of throwing during boot, and it extended `ui/src/test/app-shell.test.tsx` to execute the real inline bootstrap plus a seeded shadcn `Button` consumer. `ui/src/main.tsx` no longer imports `@radix-ui/themes/styles.css`, `vitest.config.ts` now makes the `@/* -> ui/src/*` alias explicit for the jsdom UI test project, `rtk npm run build:ui` passes, and `rtk npm run typecheck` still fails only on the known baseline issues in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. An extra `rtk npx tsc --noEmit -p tsconfig.ui.json` rerun from the base implementation had already been classified as the unrelated `ui/src/test/runs-routes.test.tsx` artifact-kind fixture drift plus the same implementer typing drift, so Phase 2 still does not add new TypeScript failures. During the user-authorized closeout exception pass, `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` reran green on HEAD `8b48028`, and the reported `runs-routes` "Write first revision" test reran green in isolation five times, so no additional code change was required to close Phase 2 truthfully. The visible theme toggle button is intentionally deferred to Phase 4 shell work; the provider/storage seam needed for that control now exists.
+- **Next Starter Context:** Phase 3 can start directly from the checked-in Phase 2 theme foundation without further stabilization work; it should consume the new semantic tokens instead of inventing surface colors, and Phase 4 shell work should mount the visible theme toggle at the bottom of the persistent left sidebar by reusing the Phase 2 `ThemeProvider` seam and the new `ui/index.html` head bootstrap rather than introducing new theme state.
 
 ### Phase 3: Keystone Wrapper Layer And Workspace Primitives
 
