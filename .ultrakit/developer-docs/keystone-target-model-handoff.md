@@ -9,6 +9,9 @@ This repository is now project/document/run/task/artifact-first. It is no longer
 Authoritative product state lives in:
 
 - `projects`
+- `project_rule_sets`
+- `project_components`
+- `project_env_vars`
 - `documents`
 - `document_revisions`
 - `runs`
@@ -18,6 +21,7 @@ Authoritative product state lives in:
 
 That means Keystone should be understood as:
 
+- project-scoped settings and compile-target inventory persisted alongside the project row
 - project-scoped run intake through `POST /v1/projects/:projectId/runs`
 - run-scoped planning documents and immutable revisions
 - explicit compile that writes a persisted DAG plus task handoffs
