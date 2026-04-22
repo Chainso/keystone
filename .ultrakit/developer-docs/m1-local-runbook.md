@@ -41,6 +41,8 @@ If you need the manual path instead, use:
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
+Run Wrangler from a normal host shell on this machine. Inside the Codex sandbox it still fails before listening with `uv_interface_addresses returned Unknown system error 1`.
+
 If Wrangler binds a non-default port, export it before running helper scripts:
 
 ```bash
@@ -95,7 +97,15 @@ Expected proof:
 - run status reaches `archived`
 - compile provenance is present
 - at least one task exists
+- public `scripted` and `think_live` proofs expose a well-formed workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
+- the scheduler fans out the union of `active` and `ready` tasks without collapsing the DAG back to a serialized single-root launch
 - Think runs expose task conversation locators
+
+The helper/runtime split matters here:
+
+- `npm run demo:run` with no explicit engine stays on `scripted`
+- omitting `executionEngine` on project-backed run creation still defaults the runtime to `think_live`
+- `think_mock` remains the deterministic fixture-scoped Think path
 
 If you need the fixture project without starting a run, use:
 
@@ -132,6 +142,8 @@ npm run demo:run:think-live
 KEYSTONE_EXECUTION_ENGINE=think_live npm run sandbox:shell
 ```
 
+The latest host-local live proof evidence on 2026-04-21 is mixed: a healthy `/v1/health` response was followed by `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run` failing with `Expected archived run, received failed.`, and a later recheck on `127.0.0.1:8787` could not connect at all. Treat the explicit live helper as the truthful contract surface, but do not assume this machine will always produce a fresh archived live proof without additional environment repair.
+
 ## Manual API Flow
 
 The current HTTP contract is document-first and project-scoped:
@@ -149,14 +161,18 @@ Minimal run-create payload:
 
 ```json
 {
-  "executionEngine": "scripted"
+  "executionEngine": "think_live"
 }
 ```
+
+Omit `executionEngine` to use the same `think_live` default.
 
 ## Failure Patterns
 
 - `Run detail did not return a valid executionEngine.`: the backend stopped returning authoritative execution-engine state on run detail
 - `Expected the run to record compile provenance.`: the run archived without pinned document-revision provenance
+- `Expected archived run, received failed.` during an explicit `think_live` demo run: inspect the latest run detail plus run list for missing compile provenance or downstream runtime failure
 - `uv_interface_addresses returned Unknown system error 1`: `wrangler dev` was started inside the restricted sandbox boundary on this host
+- `curl: (7) Failed to connect to 127.0.0.1 port 8787`: the local Worker is not listening on the assumed port; use Wrangler's actual `Ready on ...` URL
 - empty or stalled compile output: confirm the backend is reachable at `http://localhost:10531/v1/chat/completions`
 - `EROFS` under `~/.config/.wrangler` or `~/.docker/buildx/activity` during `npm run build`: rerun the dry-run deploy from a host shell outside the Codex sandbox

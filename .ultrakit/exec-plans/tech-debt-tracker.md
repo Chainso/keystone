@@ -23,12 +23,12 @@ New entries should follow this format:
 1. **ID:** `TD-2026-04-17-001`
 2. **Date Added:** `2026-04-17`
 3. **Area:** `Think live full-workflow validator`
-4. **Description:** The shipped live Think proof still only accepts the approved fixture decision package on a single independent compiled task. Compiled plans with multiple tasks or non-empty `dependsOn` remain intentionally out of scope after this plan.
-5. **Impact:** The live demo proves the full workflow only for the narrow fixture happy path; it cannot yet validate broader compiled Think task graphs.
-6. **Owner:** `keystone-think-live-full-workflow`
-7. **Proposed Fix:** Replace the fixture-scoped single-task validator with a broader compiled-plan contract that can persist, fan out, and validate dependent Think task graphs without reintroducing hidden fixture seams.
-8. **Target Window:** `next workflow-generalization cycle`
-9. **Status:** `open`
+4. **Description:** Historical note: the shipped live Think proof used to accept only the approved fixture path on a single independent compiled task before DAG generalization landed on 2026-04-21.
+5. **Impact:** Contributors previously could not validate broader project-backed Think DAGs, dependency edges, or prompt fanout through the durable demo contract.
+6. **Owner:** `keystone-think-live-dag-generalization`
+7. **Proposed Fix:** Completed in the DAG-generalization plan: `think_live` now accepts single-target compiled handoffs, `RunWorkflow` fans out `active + ready` work safely, and the public `scripted` / `think_live` demo validator now requires a well-formed non-trivial DAG while `think_mock` stays deterministic and fixture-scoped.
+8. **Target Window:** `completed 2026-04-21`
+9. **Status:** `closed (2026-04-21)`
 
 1. **ID:** `TD-2026-04-17-002`
 2. **Date Added:** `2026-04-17`
