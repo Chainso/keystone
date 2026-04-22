@@ -32,6 +32,10 @@ const runDocumentSeeds = [
 
 type ExecutionEngine = "scripted" | "think_mock" | "think_live";
 
+// Keep the zero-argument demo helper on the archived scripted proof until the
+// host-local live proof archives reliably again. The API/runtime default stays think_live.
+const DEFAULT_DEMO_EXECUTION_ENGINE: ExecutionEngine = "scripted";
+
 export type DemoContract = {
   contractId: string;
   proofScope: string;
@@ -87,7 +91,10 @@ export function resolveBaseUrl() {
 }
 
 export function resolveExecutionEngine(): ExecutionEngine {
-  const value = getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "think_live";
+  const value =
+    getArg("execution-engine") ??
+    process.env.KEYSTONE_EXECUTION_ENGINE ??
+    DEFAULT_DEMO_EXECUTION_ENGINE;
 
   if (value === "scripted" || value === "think_mock" || value === "think_live") {
     return value;
