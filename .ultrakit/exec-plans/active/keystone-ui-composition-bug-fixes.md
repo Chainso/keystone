@@ -104,6 +104,11 @@ Allowed internal change:
   **Rationale:** `use-run-view-model.ts` was mixing route layout, planning editor state, compile gating, and display formatting in one seam, while execution components and status pills were still interpreting run state locally. Extracting those concerns into smaller feature-owned modules keeps routes thin, removes no-op wrappers, and makes status/date ownership explicit without changing the route tree or stepper model.
 
 - **Date:** 2026-04-21  
+  **Phase:** Phase 4 fix pass  
+  **Decision:** Keep Phase 4 closed only after single-sourcing the planning order/default-phase seam and extending route coverage across blocked compile refresh, terminal compile messaging, and planning-save recovery.  
+  **Rationale:** The initial refactor left `run-planning-config.ts` as a partial source of truth: the provider still hardcoded planning load order, the default route still hardcoded the fallback phase, and the new blocked/error branches in the extracted run hooks had not been executed end to end in tests.
+
+- **Date:** 2026-04-21  
   **Phase:** Phase 3  
   **Decision:** Keep explicit `New project` and `Project settings` provider variants, but make them both implement one shared `ProjectConfigurationContext` contract so routes, view models, and tab components no longer branch on mode.  
   **Rationale:** The mode behavior still matters for labels, submit semantics, and settings loading state, but the surrounding shell and tab composition were duplicating nearly identical trees. A provider-injected `state/actions/meta` contract preserved the explicit modes without keeping parallel UI hierarchies.
@@ -149,8 +154,8 @@ Allowed internal change:
 - [x] 2026-04-21 Ran the one allowed Phase 3 fix pass, added direct route-level coverage for `Cancel` in `New project` mode and `Discard changes` in `Project settings`, and revalidated the exact Phase 3 gate.
 - [x] Phase 3 complete: unify the project-configuration component hierarchy and provider contract, with fix-pass revalidation of the shared footer actions.
 - [x] 2026-04-21 Completed the Phase 4 composition pass by turning `ui/src/features/runs/use-run-view-model.ts` into a thin barrel over dedicated layout, planning, and compile hooks, centralizing run/task status and activity helpers, and routing `Specification` / `Architecture` directly through the shared planning workspace frame.
-- [x] 2026-04-21 Revalidated the Phase 4 gate with `rtk proxy npx vitest run ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`, `rtk proxy npx eslint ui/src vitest.config.ts`, and `rtk proxy npx tsc --noEmit -p tsconfig.ui.json`.
-- [x] Phase 4 complete: simplify the runs/planning component hierarchy and supporting utilities.
+- [x] 2026-04-21 Ran the one allowed Phase 4 fix pass, made `run-planning-config.ts` the shared order/default seam for the live run loader and default redirect, added `Refresh run`, terminal compile-message, and planning-save failure recovery coverage in `ui/src/test/runs-routes.test.tsx`, and revalidated the exact Phase 4 gate.
+- [x] Phase 4 complete: simplify the runs/planning component hierarchy and supporting utilities, with fix-pass revalidation.
 - [ ] Phase 5 complete: update durable docs/notes, rerun final validation, and prepare the plan for archival.
 
 ## Surprises & Discoveries
@@ -176,6 +181,7 @@ Allowed internal change:
 - `rtk proxy npx ...` works as a truthful way to honor the repo's RTK wrapper guidance while still running raw `npx vitest`, `npx eslint`, and `npx tsc` commands. The earlier failure is specific to `rtk npx ...`, not the proxy path.
 - For Phase 4, the lowest-risk extraction path was to keep `ui/src/features/runs/use-run-view-model.ts` as a compatibility barrel and move the real logic into new concern-specific modules. The existing routes and components already depended on stable hook/type names, so the split did not require a route-tree rewrite.
 - The only Phase 4 regression surfaced immediately in the targeted gate: the first helper version returned generic `label` / `tone` fields while the surrounding run and execution view models still expected `statusLabel` / `statusTone`. Aligning the helper contract and letting `StatusPill` accept an explicit tone resolved the failure without widening the phase.
+- `runPlanningPhaseOrder` on its own was not enough to keep the live run seams aligned. The loader order and default-phase fallback were still duplicated until `run-planning-config.ts` also owned the reusable default-phase helper and record builder.
 
 ## Outcomes & Retrospective
 
@@ -215,6 +221,8 @@ Phase 4 outcome on 2026-04-21:
 - Run-related display interpretation is now centralized in `ui/src/features/runs/run-status.ts` plus explicit `statusTone` props on `StatusPill`, which lets the run detail header, runs index, execution DAG, and task detail all share one tone/label policy instead of reinterpreting status strings independently.
 - `ui/src/features/runs/use-ready-run-detail.ts` and `ui/src/features/runs/run-execution-state.ts` now hold the common ready-provider and compile-availability logic that had been duplicated across run and execution hooks.
 - The `Specification` and `Architecture` routes now render the shared planning workspace frame directly, so the deleted workspace wrappers no longer sit between thin routes and the real feature composition.
+- The fix pass now keeps planning phase order, initial planning-document records, and the default incomplete-phase redirect on one shared `run-planning-config.ts` seam, so the provider load order and `/runs/:runId` fallback can no longer drift independently.
+- `ui/src/test/runs-routes.test.tsx` now exercises the blocked `Refresh run` recovery path, terminal compile messaging, and planning-save failure rollback/retry, which closes the credibility gap around the new extracted run modules' recovery behavior.
 
 ## Context and Orientation
 
@@ -502,7 +510,7 @@ Important interfaces and seams that should still exist after this plan:
 
 ### Phase Handoff
 
-- **Status:** Complete (implemented and revalidated on 2026-04-21)
+- **Status:** Complete (implemented on 2026-04-21; fix pass revalidated on 2026-04-21)
 - **Goal:** Simplify the run-planning and execution composition so ownership is clearer and the main view-model logic is split by concern.
 - **Scope Boundary:** In scope: run detail layout/view-model files, planning workspace wrappers, shared run utilities, and status/date interpretation for run-related UI. Out of scope: backend run APIs, compile behavior changes, or execution graph product redesign.
 - **Read First:**
@@ -527,8 +535,8 @@ Important interfaces and seams that should still exist after this plan:
 - **Deliverables:** Smaller run-planning hook/modules, fewer trivial wrappers, and centralized run-related formatting/status behavior.
 - **Commit Expectation:** `Simplify run planning composition`
 - **Known Constraints / Baseline Failures:** Keep the existing run route tree and stepper semantics intact; do not collapse product-defined phases into generic labels.
-- **Completion Notes:** `ui/src/features/runs/use-run-view-model.ts` now serves only as a stable export barrel while the real Phase 4 logic lives in dedicated layout, planning, and compile hooks plus shared run helpers for ready-provider state, compile availability, and status/activity presentation. `ui/src/features/execution/use-execution-view-model.ts` now consumes those shared helpers so execution rows and task detail stop inferring their own run status tone, and `ui/src/shared/layout/status-pill.tsx` now supports explicit tone input from feature view models. The `Specification` and `Architecture` routes render `PlanningWorkspaceFrame` directly, so the no-op workspace wrappers were removed without changing the route tree or the run stepper labels. The Phase 4 gate then passed with `rtk proxy npx vitest run ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`, `rtk proxy npx eslint ui/src vitest.config.ts`, and `rtk proxy npx tsc --noEmit -p tsconfig.ui.json`.
-- **Next Starter Context:** Phase 5 should treat the split run view-model boundary as settled: keep the routes thin, keep status/activity presentation flowing from `ui/src/features/runs/run-status.ts` and view-model outputs, and do not reintroduce specification/architecture wrapper components or label-based status inference back into execution components. Final validation should include the full UI suite plus `rtk npm run build`, and the docs pass should only update durable notes that are directly contradicted by reproduced validation evidence.
+- **Completion Notes:** `ui/src/features/runs/use-run-view-model.ts` now serves only as a stable export barrel while the real Phase 4 logic lives in dedicated layout, planning, and compile hooks plus shared run helpers for ready-provider state, compile availability, and status/activity presentation. `ui/src/features/execution/use-execution-view-model.ts` now consumes those shared helpers so execution rows and task detail stop inferring their own run status tone, and the `Specification` / `Architecture` routes render `PlanningWorkspaceFrame` directly so the no-op workspace wrappers are gone without changing the route tree. The one allowed fix pass then moved the live planning order/default fallback onto shared helpers in `ui/src/features/runs/run-planning-config.ts` and added `ui/src/test/runs-routes.test.tsx` coverage that clicks `Refresh run`, proves terminal compile messaging, and exercises planning-save failure rollback plus retry. The Phase 4 gate re-passed with `rtk proxy npx vitest run ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`, `rtk proxy npx eslint ui/src vitest.config.ts`, and `rtk proxy npx tsc --noEmit -p tsconfig.ui.json`.
+- **Next Starter Context:** Phase 5 should treat the split run view-model boundary as settled and `ui/src/features/runs/run-planning-config.ts` as the single source of truth for planning order plus the default incomplete-phase fallback. Keep status/activity presentation flowing from `ui/src/features/runs/run-status.ts` and view-model outputs, do not reintroduce specification/architecture wrapper components or label-based status inference back into execution components, and preserve the new route coverage for blocked refresh plus planning-save recovery while running final validation and docs updates.
 
 ## Phase 5: Docs And Final Validation
 

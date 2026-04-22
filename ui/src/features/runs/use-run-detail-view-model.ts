@@ -4,7 +4,7 @@ import {
 } from "../../shared/navigation/run-phases";
 import { useRunDetail } from "./run-detail-context";
 import { hasCompileProvenance } from "./run-execution-state";
-import { runPlanningPhaseOrder } from "./run-planning-config";
+import { getDefaultRunPlanningPhaseId } from "./run-planning-config";
 import { buildRunActivityLabel, formatMachineLabel, getRunStatusPresentation } from "./run-status";
 import { useReadyRunDetail } from "./use-ready-run-detail";
 import type {
@@ -94,10 +94,9 @@ export function useRunDefaultPhasePath() {
     return buildRunPhasePath(run.runId, "execution");
   }
 
-  const firstIncompletePhase =
-    runPlanningPhaseOrder.find(
-      (phaseId) => !state.planningDocuments[phaseId].document?.currentRevisionId
-    ) ?? "execution-plan";
+  const firstIncompletePhase = getDefaultRunPlanningPhaseId(
+    (phaseId) => !!state.planningDocuments[phaseId].document?.currentRevisionId
+  );
 
   return buildRunPhasePath(run.runId, firstIncompletePhase);
 }

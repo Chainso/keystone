@@ -23,7 +23,11 @@ import {
   type RunManagementApi
 } from "./run-management-api";
 import { hasCompiledWorkflowData } from "./run-execution-state";
-import { canonicalDocumentPathByPhase } from "./run-planning-config";
+import {
+  buildRunPlanningPhaseRecord,
+  canonicalDocumentPathByPhase,
+  runPlanningPhaseOrder
+} from "./run-planning-config";
 import type { RunPlanningPhaseId } from "./run-types";
 
 interface RunPlanningDocumentBaseState {
@@ -124,11 +128,9 @@ function buildEmptyPlanningDocumentState(
 
 function buildEmptyRunDetailState(): RunDetailState {
   return {
-    planningDocuments: {
-      specification: buildEmptyPlanningDocumentState("specification"),
-      architecture: buildEmptyPlanningDocumentState("architecture"),
-      "execution-plan": buildEmptyPlanningDocumentState("execution-plan")
-    },
+    planningDocuments: buildRunPlanningPhaseRecord((phaseId) =>
+      buildEmptyPlanningDocumentState(phaseId)
+    ),
     run: null,
     taskArtifacts: {},
     tasks: [],
@@ -233,9 +235,8 @@ async function loadPlanningDocumentStates(
   runId: string,
   documents: DocumentResource[]
 ) {
-  const phases: RunPlanningPhaseId[] = ["specification", "architecture", "execution-plan"];
   const states = await Promise.all(
-    phases.map(async (phaseId) => [
+    runPlanningPhaseOrder.map(async (phaseId) => [
       phaseId,
       await loadPlanningDocumentState(api, runId, phaseId, documents)
     ] as const)

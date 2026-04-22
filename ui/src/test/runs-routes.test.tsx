@@ -18,12 +18,17 @@ afterEach(() => {
 
 function createDeferred<T>() {
   let resolvePromise: ((value: T) => void) | null = null;
-  const promise = new Promise<T>((resolve) => {
+  let rejectPromise: ((reason?: unknown) => void) | null = null;
+  const promise = new Promise<T>((resolve, reject) => {
     resolvePromise = resolve;
+    rejectPromise = reject;
   });
 
   return {
     promise,
+    reject(reason?: unknown) {
+      rejectPromise?.(reason);
+    },
     resolve(value: T) {
       resolvePromise?.(value);
     }
@@ -1393,6 +1398,69 @@ describe("Run routes", () => {
     );
   });
 
+  it("keeps planning edits in place and allows retry after a revision save fails", async () => {
+    const failedSave = createDeferred<
+      Awaited<ReturnType<RunManagementApi["createRunDocumentRevision"]>>
+    >();
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    let shouldReject = true;
+    const createRunDocumentRevision = vi.fn(
+      async (...args: Parameters<RunManagementApi["createRunDocumentRevision"]>) => {
+        if (shouldReject) {
+          shouldReject = false;
+          return await failedSave.promise;
+        }
+
+        return baseRunApi.createRunDocumentRevision(...args);
+      }
+    );
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      createRunDocumentRevision
+    };
+    const { router } = renderRunRoute("/runs/run-104/specification", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+      target: {
+        value: "Run Specification v2"
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Specification\n- Retry the save after a transient failure.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
+
+    failedSave.reject(new Error("Unable to save specification changes."));
+
+    expect(await screen.findByText("Unable to save specification changes.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue(
+      "Run Specification v2"
+    );
+    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+      "# Specification\n- Retry the save after a transient failure.\n"
+    );
+    expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Specification v2" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Retry the save after a transient failure.")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to save specification changes.")).not.toBeInTheDocument();
+    expect(createRunDocumentRevision).toHaveBeenCalledTimes(2);
+  });
+
   it("deduplicates rapid create and save activations for a planning document", async () => {
     const { fetchMock } = createBrowserRunFetch();
 
@@ -1815,6 +1883,145 @@ describe("Run routes", () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
+  });
+
+  it("refreshes a blocked compile state until execution becomes available", async () => {
+    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    };
+    const materializedWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [
+        {
+          dependsOn: [],
+          name: "Inspect materialized execution",
+          status: "ready",
+          taskId: "task-107-refresh"
+        }
+      ],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 1,
+        totalTasks: 1
+      }
+    };
+    const materializedTasks: NonNullable<StaticRunDetailRecord["tasks"]> = [
+      {
+        conversation: null,
+        dependsOn: [],
+        description: "Inspect the materialized execution graph.",
+        endedAt: null,
+        logicalTaskId: "TASK-107",
+        name: "Inspect materialized execution",
+        runId: "run-107",
+        startedAt: null,
+        status: "ready",
+        taskId: "task-107-refresh",
+        updatedAt: "2026-04-20T13:00:00.000Z"
+      }
+    ];
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    let workflowCallCount = 0;
+    const getRunWorkflow = vi.fn(async () => {
+      workflowCallCount += 1;
+      return workflowCallCount === 1 ? emptyWorkflow : materializedWorkflow;
+    });
+    const listRunTasks = vi.fn(async () =>
+      workflowCallCount === 1 ? [] : materializedTasks
+    );
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getRunWorkflow,
+      listRunTasks
+    };
+
+    renderRunRoute("/runs/run-107/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh run" }));
+
+    await waitFor(() => {
+      expect(getRunWorkflow).toHaveBeenCalledTimes(2);
+    });
+    expect(listRunTasks).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("link", { name: "Open execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-107/execution"
+    );
+    expect(
+      screen.getByText(
+        "Execution is enabled for this run. Open the DAG to inspect live task state."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("keeps terminal run compile messaging aligned with the current run status", async () => {
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    const getRun = vi.fn(async (runId: string) => {
+      const run = await baseRunApi.getRun(runId);
+
+      if (runId === "run-108") {
+        return {
+          ...run,
+          endedAt: "2026-04-20T13:30:00.000Z",
+          startedAt: "2026-04-20T13:00:00.000Z",
+          status: "cancelled"
+        };
+      }
+
+      if (runId === "run-109") {
+        return {
+          ...run,
+          endedAt: "2026-04-20T13:30:00.000Z",
+          status: "failed"
+        };
+      }
+
+      return run;
+    });
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getRun
+    };
+
+    renderRunRoute("/runs/run-108/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Run status is Cancelled. This run cannot be compiled again.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compile run" })).not.toBeInTheDocument();
+
+    cleanup();
+
+    renderRunRoute("/runs/run-109/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-109" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Run status is Failed. Execution still reflects older planning revisions and cannot be refreshed here."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open current execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-109/execution"
+    );
   });
 
   it("compiles a ready run, refreshes live state, and routes into execution", async () => {
