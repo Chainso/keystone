@@ -27,26 +27,32 @@ const filterSearchParamKey = "filter";
 const workstreamsTitle = "Project work across runs";
 
 const filterDefinitions: Array<{
+  description: string;
   filterId: WorkstreamFilterId;
   label: string;
 }> = [
   {
+    description: "Include completed and terminal work alongside active execution tasks across every run.",
     filterId: "all",
     label: "All"
   },
   {
+    description: "Focus on running, queued, and blocked work that still needs operator attention.",
     filterId: "active",
     label: "Active"
   },
   {
+    description: "Show only work that is currently executing inside the run workflow.",
     filterId: "running",
     label: "Running"
   },
   {
+    description: "Show work that is ready or pending while it waits to enter execution.",
     filterId: "queued",
     label: "Queued"
   },
   {
+    description: "Show only work that is waiting on unresolved blockers or prerequisites.",
     filterId: "blocked",
     label: "Blocked"
   }
@@ -88,18 +94,25 @@ export interface WorkstreamsPaginationViewModel {
   hasNextPage: boolean;
   hasPreviousPage: boolean;
   pageCount: number;
+  pageSize: number;
   rangeLabel: string;
 }
 
 export interface WorkstreamsViewModel {
+  activeFilterDescription: string;
+  currentProjectLabel: string;
   contentState?: WorkstreamsContentState;
   filters: WorkstreamFilterViewModel[];
   goToNextPage: () => void;
   goToPreviousPage: () => void;
   pagination: WorkstreamsPaginationViewModel;
+  pageSizeLabel: string;
+  recordSummaryLabel: string;
   retry: () => void;
+  routeGuidance: string;
   rows: WorkstreamRowViewModel[];
   setActiveFilter: (filterId: WorkstreamFilterId) => void;
+  summary: string;
   title: string;
 }
 
@@ -175,6 +188,51 @@ function buildRangeLabel(page: ProjectTaskCollectionRecord | null) {
 
 function isOutOfRangePage(page: ProjectTaskCollectionRecord) {
   return page.total > 0 && page.items.length === 0 && page.page > page.pageCount;
+}
+
+function buildWorkstreamsSummary(
+  filterId: WorkstreamFilterId,
+  projectName: string | null
+) {
+  if (!projectName) {
+    return "Choose a project to inspect task execution across runs.";
+  }
+
+  switch (filterId) {
+    case "all":
+      return `Review every recorded task across every run in ${projectName}.`;
+    case "running":
+      return `Monitor work that is currently executing across every run in ${projectName}.`;
+    case "queued":
+      return `Inspect ready and pending work that is waiting to enter execution in ${projectName}.`;
+    case "blocked":
+      return `Surface blocked work that needs intervention across every run in ${projectName}.`;
+    case "active":
+    default:
+      return `Track running, queued, and blocked work across every run in ${projectName}.`;
+  }
+}
+
+function buildRecordSummaryLabel(
+  page: ProjectTaskCollectionRecord | null,
+  status: "loading" | "ready" | "empty" | "error",
+  currentProjectName: string | null
+) {
+  if (!currentProjectName) {
+    return "Project selection required";
+  }
+
+  if (status === "loading") {
+    return "Loading tasks";
+  }
+
+  if (status === "error") {
+    return "Task list unavailable";
+  }
+
+  const total = page?.total ?? 0;
+
+  return `${total} matching ${total === 1 ? "task" : "tasks"}`;
 }
 
 export function buildEmptyState(
@@ -392,8 +450,14 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
                 message: "Create a project to start tracking workstreams."
               } satisfies WorkstreamsContentState)
           : undefined;
+  const activeFilterDefinition =
+    filterDefinitions.find((filter) => filter.filterId === activeFilterId) ?? filterDefinitions[1]!;
+  const currentProjectName = currentProject?.displayName ?? null;
+  const resolvedPageSize = visiblePage?.pageSize ?? pageSize;
 
   return {
+    activeFilterDescription: activeFilterDefinition.description,
+    currentProjectLabel: currentProject?.displayName ?? "No project selected",
     ...(contentState ? { contentState } : {}),
     filters: filterDefinitions.map((filter) => ({
       filterId: filter.filterId,
@@ -422,9 +486,16 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       currentPage,
       hasNextPage: visiblePage ? currentPage < visiblePage.pageCount : false,
       hasPreviousPage: currentPage > 1,
+      pageSize: resolvedPageSize,
       pageCount: visiblePage?.pageCount ?? 1,
       rangeLabel: buildRangeLabel(visiblePage)
     },
+    pageSizeLabel: `${resolvedPageSize} per page`,
+    recordSummaryLabel: buildRecordSummaryLabel(
+      visiblePage,
+      visibleStatus,
+      currentProjectName
+    ),
     retry() {
       if (currentProject) {
         loadWorkstreams(currentProject.projectId, {
@@ -436,12 +507,15 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
 
       void projectManagement.actions.reloadProjects();
     },
+    routeGuidance:
+      "Rows open the matching task inside Runs > Execution without leaving the selected project.",
     rows,
     setActiveFilter(filterId) {
       startTransition(() => {
         setWorkstreamsSearchState(filterId, 1);
       });
     },
+    summary: buildWorkstreamsSummary(activeFilterId, currentProjectName),
     title: workstreamsTitle
   };
 }

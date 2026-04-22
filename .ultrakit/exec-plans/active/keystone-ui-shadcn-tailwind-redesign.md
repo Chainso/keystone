@@ -310,6 +310,16 @@ Baseline compatibility facts already captured:
   **Decision:** Replaced the fake `git_diff` / `screenshot` review classifier with a truthful text-artifact seam: the task sidebar now treats `run_note` and `staged_output` text artifacts as review candidates, derives changed-file groups only from payloads that parse as unified diff, keeps the remaining task artifacts as metadata-only support records, and invalidates in-flight diff loads when the task or artifact set changes.
   **Rationale:** Review found that the first Phase 8 cut depended on artifact kinds the backend never emits, could leave stale diff state visible across task switches, and did not yet prove the real text-artifact fallback/retry behavior in the route suite.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 9
+  **Decision:** Rebuilt `Workstreams` as a one-panel operational surface with a workspace header, shadcn `ToggleGroup` filters, status-pill rows, and explicit pagination plus route-handoff framing while leaving the existing project-task query seam untouched.
+  **Rationale:** Phase 9 needed denser operator scanning and clearer `Runs > Execution` language without reopening backend pagination or the stable Phase 8 task-detail workspace.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 9
+  **Decision:** Updated the focused destination tests to assert the shadcn filter control's radio semantics and the current task-workspace conversation copy before rerunning the locked Phase 9 validation commands.
+  **Rationale:** The filter surface moved from custom buttons to shadcn `ToggleGroup`, and the row-handoff assertion needed to match the real Phase 8 task-detail copy rather than stale expectations.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -335,6 +345,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 7 targeted fix pass completed: execution handoff copy is now task-detail scoped, workflow-only nodes no longer over-promise task detail before task rows materialize, DAG cards are height-clamped to the fixed canvas math, and the targeted route suite now covers lagging plus branching workflows.
 - [x] 2026-04-22 Phase 8 completed: task detail now uses a real conversation/review split with changed-file groups, unified diffs, and supporting-artifact metadata over the current run API seam.
 - [x] 2026-04-22 Phase 8 targeted fix pass completed: review diffs now infer from real text artifact kinds, the sidebar invalidates stale loads across task switches and empty-review states, and the route suite now covers fallback, partial fetch failure, retry, and truthful task-to-task navigation.
+- [x] 2026-04-22 Phase 9 completed: `Workstreams` now uses the workspace-system header, shadcn single-select filters, status-pill rows, and explicit pagination/handoff framing while preserving server-driven filter/page state and direct task-detail routing.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -343,7 +354,7 @@ Baseline compatibility facts already captured:
 - [x] Phase 6: planning workspace and Plate planning documents.
 - [x] Phase 7: execution DAG workspace.
 - [x] Phase 8: task detail review workspace.
-- [ ] Phase 9: workstreams surface.
+- [x] Phase 9: workstreams surface.
 - [ ] Phase 10: project configuration surfaces.
 - [ ] Phase 11: documentation surfaces via Plate.
 - [ ] Phase 12: planning locator completion and Cloudflare conversation binding.
@@ -375,6 +386,7 @@ Baseline compatibility facts already captured:
 - The live run-detail refresh can surface a non-empty workflow graph before the task collection catches up. Phase 7 therefore has to project the DAG from workflow nodes first and enrich it with task-row metadata opportunistically instead of treating an empty task list as proof that execution is still unavailable.
 - The workflow-first lag window also needs an explicit task-record-readiness seam on both the DAG inspector and the task route. A workflow node is not yet an honest task-detail target until the corresponding `run_tasks` row has materialized.
 - Task artifact metadata alone is not enough to build the review sidebar: changed-file grouping and diff type have to be derived by loading reviewable text artifact `contentUrl` values and parsing whichever payloads contain unified diff text, because the list endpoint exposes only artifact-level metadata.
+- shadcn single-select `ToggleGroup` controls expose filter items as `radio` elements, not button-role toggles. Future route tests and accessibility assertions need to query the workstream filters through radio semantics once a destination adopts that primitive.
 
 ## Outcomes & Retrospective
 
@@ -456,6 +468,13 @@ Phase 8 outcome on 2026-04-22:
 - task artifacts that do not parse as diffs remain visible as supporting records in the review sidebar, which keeps metadata for notes, images, and other outputs available without pretending dedicated viewers landed in this phase
 - the targeted fix pass then hardened the route: stale diff loads are invalidated across task switches and empty-review states, and targeted route coverage now proves the changed-file groups, real-artifact fallback, partial fetch failure, retry, and updated task-review error state, matching the final Phase 8 task-detail contract
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 8 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 9 outcome on 2026-04-22:
+
+- `Workstreams` now shares the same workspace header language as `Runs` and `Execution` while staying list-first: the page exposes project context, matching-task count, and the locked 25-row page size without adding a new dashboard frame
+- the filter strip now uses shadcn `ToggleGroup` semantics over the existing server-driven `filter` plus `page` URL state, so the operator can move between `All`, `Active`, `Running`, `Queued`, and `Blocked` without losing the current project or the existing backend contract
+- the table still routes directly into `/runs/:runId/execution/tasks/:taskId`, but rows now scan more cleanly through status pills and the destination now makes the `Runs > Execution` handoff explicit in both the operator summary and pagination framing
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 9 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
 
@@ -816,7 +835,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Pending approval.
+- **Status:** Complete on 2026-04-22.
 - **Goal:** Rebuild `Workstreams` as a dense operational list that shares the same workspace language as `Runs` and `Execution`.
 - **Scope Boundary:** In scope are server-driven filters, table rendering, pagination framing, row interaction, and route handoff into task detail. Out of scope are backend pagination changes and AI conversation UI.
 - **Read First:** `design/workspace-spec.md`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/features/workstreams/use-workstreams-view-model.ts`.
@@ -826,7 +845,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** `Workstreams` is a coherent list-first operational surface using the locked filters and a Keystone `EntityTable` built from the shadcn data-table pattern over TanStack.
 - **Commit Expectation:** `redesign workstreams surface`
 - **Known Constraints / Baseline Failures:** no virtualization or heavier grid dependency is needed for the current product contract.
-- **Next Starter Context:** keep `Workstreams` list-first and operator-focused.
+- **Completion Notes:** Rebuilt `ui/src/features/workstreams/components/workstreams-board.tsx` around the workspace-system header and a denser operator surface: the page now exposes project context, matching-task count, locked page-size framing, shadcn `ToggleGroup` filters, status-pill rows, and explicit `Runs > Execution` handoff copy while keeping the board list-first. `ui/src/features/workstreams/use-workstreams-view-model.ts` now projects the active filter description, summary copy, pagination facts, and project/task counts that the board needs without changing the existing `/v1/projects/:projectId/tasks` filter or pagination contract. `ui/src/app/styles.css` now styles the new header, filter band, mono task/run identifiers, and pagination framing. `ui/src/test/destination-scaffolds.test.tsx` now asserts the real shadcn radio semantics for filters plus the updated task-detail handoff copy, and validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 10 should treat the Phase 9 `Workstreams` surface as stable. Keep the server-driven filter/page URL state, shadcn filter-radio semantics, status-pill table contract, and direct task-detail handoff into `Runs > Execution` intact; focus on rebuilding the project configuration tabs and forms without pulling `Workstreams` or live task-conversation runtime back into scope.
 
 ### Phase 10: Project Configuration Surfaces
 

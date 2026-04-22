@@ -212,6 +212,10 @@ function expectWorkstreamLink(taskDisplayId: string, href: string) {
   expect(screen.getByRole("link", { name: taskDisplayId })).toHaveAttribute("href", href);
 }
 
+function expectActiveWorkstreamFilter(label: string) {
+  expect(screen.getByRole("radio", { name: label })).toHaveAttribute("data-state", "on");
+}
+
 function getProjectSelector() {
   return screen.getByRole("combobox", { name: "Project" });
 }
@@ -816,8 +820,14 @@ describe("Destination scaffolds", () => {
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-032" });
     expect(screen.getByRole("link", { name: "TASK-032" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Track running, queued, and blocked work across every run in Keystone Cloudflare.")
+    ).toBeInTheDocument();
     expect(screen.getByText("Filters:")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Active" })).toHaveClass("is-active");
+    expectActiveWorkstreamFilter("Active");
+    expect(screen.getByRole("region", { name: "Task detail handoff" })).toHaveTextContent(
+      "Rows open the matching task inside Runs > Execution without leaving the selected project."
+    );
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
     expectWorkstreamRows([
       ["TASK-032", "Run shell navigation", "run-104", "Running", "2m ago"],
@@ -835,7 +845,7 @@ describe("Destination scaffolds", () => {
       "Showing 1-5 of 5 tasks · Page 1 of 1"
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Running" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Running" }));
     await screen.findByRole("link", { name: "TASK-032" });
     expect(screen.getByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expectWorkstreamRows([
@@ -844,7 +854,7 @@ describe("Destination scaffolds", () => {
     ]);
     expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
 
-    fireEvent.click(screen.getByRole("button", { name: "Queued" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Queued" }));
     await screen.findByRole("link", { name: "TASK-033" });
     expect(screen.getByRole("link", { name: "TASK-033" })).toBeInTheDocument();
     expectWorkstreamRows([
@@ -852,13 +862,13 @@ describe("Destination scaffolds", () => {
       ["TASK-034", "Documentation grouping", "run-104", "Queued", "8m ago"]
     ]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Blocked" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Blocked" }));
     await screen.findByRole("link", { name: "TASK-019" });
     expect(screen.getByRole("link", { name: "TASK-019" })).toBeInTheDocument();
     expectWorkstreamRows([["TASK-019", "Blocked task visibility", "run-101", "Blocked", "1h ago"]]);
     expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
     await screen.findByRole("link", { name: "TASK-029" });
     expect(screen.getByRole("link", { name: "TASK-029" })).toBeInTheDocument();
     expectWorkstreamRows([
@@ -933,7 +943,7 @@ describe("Destination scaffolds", () => {
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-LIVE-001" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Active" })).toHaveClass("is-active");
+    expectActiveWorkstreamFilter("Active");
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
       ["task-live-002", "Blocked task visibility", "run-live-202", "Blocked", "2026-04-20 12:05 UTC"],
@@ -944,7 +954,7 @@ describe("Destination scaffolds", () => {
       "Showing 1-3 of 3 tasks · Page 1 of 1"
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
     await screen.findByRole("link", { name: "TASK-LIVE-003" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-003" })).toBeInTheDocument();
 
@@ -1036,7 +1046,7 @@ describe("Destination scaffolds", () => {
     expect(screen.getByRole("link", { name: "TASK-HISTORY-026" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("?page=2");
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
 
     await screen.findByRole("link", { name: "TASK-ALL-001" });
     expect(screen.getByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
@@ -1120,7 +1130,11 @@ describe("Destination scaffolds", () => {
     render(
       <WorkstreamsBoard
         model={{
+          activeFilterDescription:
+            "Show work that is ready or pending while it waits to enter execution.",
+          currentProjectLabel: "Keystone Cloudflare",
           title: "Project work across runs",
+          summary: "Inspect ready and pending work that is waiting to enter execution in Keystone Cloudflare.",
           filters: [
             {
               filterId: "all",
@@ -1161,23 +1175,31 @@ describe("Destination scaffolds", () => {
             hasNextPage: false,
             hasPreviousPage: false,
             pageCount: 1,
+            pageSize: 25,
             rangeLabel: "Showing 0 of 0 tasks"
           },
+          pageSizeLabel: "25 per page",
+          recordSummaryLabel: "0 matching tasks",
           retry() {},
+          routeGuidance:
+            "Rows open the matching task inside Runs > Execution without leaving the selected project.",
           setActiveFilter
         }}
       />
     );
 
     expect(screen.getByText("Filters:")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Queued" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Show work that is ready or pending while it waits to enter execution.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Queued" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No workstreams match this filter" })).toBeInTheDocument();
     expect(screen.getByText("No workstreams match the queued filter right now.")).toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
       "Showing 0 of 0 tasks · Page 1 of 1"
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
 
     expect(setActiveFilter).toHaveBeenCalledWith("all");
   });
@@ -1517,7 +1539,7 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Project work across runs" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "All" })).toHaveClass("is-active");
+    expectActiveWorkstreamFilter("All");
     expect(
       fetchMock.mock.calls.some(([request]) => {
         const url = typeof request === "string" ? request : request.toString();
@@ -1628,7 +1650,7 @@ describe("Destination scaffolds", () => {
       "Showing 26-26 of 26 tasks · Page 2 of 2"
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
 
     await screen.findByRole("link", { name: "TASK-ALL-001" });
     expect(screen.getByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
@@ -1811,9 +1833,12 @@ describe("Destination scaffolds", () => {
       expect(router.state.location.pathname).toBe("/runs/run-101/execution/tasks/task-019");
     });
     expect(await screen.findByRole("heading", { name: "run-101 / task-019" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this task."
-    );
+    expect(screen.getByText("Conversation status")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "A live conversation is attached to this task. Messages will render here when task chat is wired."
+      )
+    ).toBeInTheDocument();
     expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
   });
 
