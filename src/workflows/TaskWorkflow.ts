@@ -12,6 +12,12 @@ import { readSandboxAgentFile } from "../keystone/agents/tools/filesystem";
 import type { AgentRuntimeArtifact } from "../maestro/agent-runtime";
 import type { TaskSessionState } from "../durable-objects/TaskSessionDO";
 import {
+  isAgentRuntimeArtifactKind,
+  parseAgentRuntimeArtifactKind,
+  type AgentRuntimeArtifactKind,
+  type ArtifactKind
+} from "../lib/artifacts/model";
+import {
   getArtifactBytes,
   putArtifactBytes,
   decodeArtifactBody
@@ -75,7 +81,7 @@ interface ThinkTurnSnapshot {
 interface SerializableThinkTurnResult extends ThinkTurnSnapshot {
   stagedArtifacts: Array<{
     path: string;
-    kind: string;
+    kind: AgentRuntimeArtifactKind;
     contentType?: string | undefined;
     metadata?: Record<string, JsonValue> | undefined;
   }>;
@@ -168,7 +174,7 @@ function parseStagedArtifactPayload(payload: Record<string, unknown> | null) {
   const artifactPath = asString(payload?.path);
   const artifactKind = asString(payload?.kind);
 
-  if (!artifactPath || !artifactKind) {
+  if (!artifactPath || !artifactKind || !isAgentRuntimeArtifactKind(artifactKind)) {
     return null;
   }
 
@@ -213,7 +219,7 @@ interface SerializableAgentBridge {
   };
   projectedArtifacts: Array<{
     artifactRefId: string;
-    kind: string;
+    kind: ArtifactKind;
     contentType: string;
     storageUri: string;
     projectedPath: string;
@@ -1037,6 +1043,7 @@ async function promoteStagedArtifacts(
   let sandboxSession: Awaited<ReturnType<typeof ensureSandboxSession>>["session"] | null = null;
 
   for (const stagedArtifact of input.stagedArtifacts) {
+    const artifactKind = parseAgentRuntimeArtifactKind(stagedArtifact.kind);
     const artifactKey = buildPromotedArtifactKey(
       input.tenantId,
       input.runId,
@@ -1050,7 +1057,7 @@ async function promoteStagedArtifacts(
       objectKey: artifactKey,
       runId: input.runId,
       runTaskId: input.runTaskId,
-      artifactKind: stagedArtifact.kind
+      artifactKind
     });
 
     if (existingArtifactRef) {
@@ -1106,7 +1113,7 @@ async function promoteStagedArtifacts(
       projectId: input.projectId,
       runId: input.runId,
       runTaskId: input.runTaskId,
-      artifactKind: stagedArtifact.kind,
+      artifactKind,
       storageBackend: artifact.storageBackend,
       bucket: "keystone-artifacts-dev",
       objectKey: artifact.key,

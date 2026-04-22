@@ -433,24 +433,6 @@ function createProjectTaskRepositoryClient(
   };
 }
 
-const projectRunArtifactFixture = {
-  tenantId: "tenant-read",
-  artifactRefId: "artifact-run-summary",
-  projectId: "project-123",
-  runId: "run-123",
-  runTaskId: null,
-  artifactKind: "run_summary",
-  storageBackend: "r2",
-  bucket: "keystone-artifacts-dev",
-  objectKey: "tenants/tenant-read/runs/run-123/release/run-summary.json",
-  objectVersion: null,
-  etag: "etag-run-summary",
-  contentType: "application/json; charset=utf-8",
-  sha256: null,
-  sizeBytes: 128,
-  createdAt: new Date("2026-04-17T11:30:00.000Z")
-};
-
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
 
@@ -1506,9 +1488,7 @@ describe("project API", () => {
     expect(mocked.createDocument).not.toHaveBeenCalled();
   });
 
-  it("lists project runs from authoritative run, task, and artifact rows", async () => {
-    mocked.listRunArtifacts.mockResolvedValueOnce([projectRunArtifactFixture] as never);
-
+  it("lists project runs from authoritative run rows only", async () => {
     const response = await app.request(
       "http://example.com/v1/projects/project-123/runs",
       {
@@ -1544,6 +1524,7 @@ describe("project API", () => {
         projectId: "project-123"
       })
     );
+    expect(mocked.listRunArtifacts).not.toHaveBeenCalled();
     expect(mocked.listRunTasks).not.toHaveBeenCalled();
   });
 

@@ -277,6 +277,15 @@ describe("plan-run compile metadata", () => {
       "run_plan",
       "task_handoff"
     ]);
+    expect(mocked.state.artifactRefInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactKind: "task_handoff",
+          runTaskId: RUN_TASK_ID_1,
+          objectKey: taskHandoffArtifactKey("tenant-fixture", "run-123", RUN_TASK_ID_1)
+        })
+      ])
+    );
     expect(mocked.state.jsonWrites).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

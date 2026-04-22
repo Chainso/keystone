@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import type { WorkerBindings } from "../env";
+import type { ArtifactKind } from "../lib/artifacts/model";
 import {
   getArtifactBytes,
   isTextArtifactContentType
@@ -105,7 +106,7 @@ function arrayBufferToBase64(value: ArrayBuffer) {
 function deriveProjectedArtifactFileName(
   artifact: {
     contentType: string;
-    artifactKind: string;
+    artifactKind: ArtifactKind;
     objectKey: string;
   }
 ) {

@@ -1,6 +1,7 @@
 import type { DatabaseClient } from "../../lib/db/client";
 import { createArtifactRef, deleteArtifactRef, findArtifactRefByObjectKey } from "../../lib/db/artifacts";
 import { persistCompiledRunGraph, updateRunRecord } from "../../lib/db/runs";
+import type { ArtifactKind } from "../../lib/artifacts/model";
 import {
   runPlanArtifactKey,
   taskHandoffArtifactKey
@@ -53,7 +54,7 @@ const compiledRunPlanResponseSchema = compiledRunPlanSchema.omit({
   sourceRevisionIds: true
 });
 
-function requireArtifactRef<T>(artifactRef: T | undefined, kind: string): T {
+function requireArtifactRef<T>(artifactRef: T | undefined, kind: ArtifactKind): T {
   if (!artifactRef) {
     throw new Error(`Artifact ref creation returned no row for ${kind}.`);
   }
@@ -211,7 +212,7 @@ async function writeJsonArtifact(
     runId: string;
     runTaskId?: string | null | undefined;
     key: string;
-    kind: string;
+    kind: ArtifactKind;
     value: Record<string, unknown>;
   }
 ) {
@@ -257,7 +258,10 @@ async function rollbackCompiledPlanPersistence(input: {
   runId: string;
   plan: CompiledRunPlan;
 }) {
-  const artifactKeys = [
+  const artifactKeys: Array<{
+    artifactKind: ArtifactKind;
+    objectKey: string;
+  }> = [
     {
       artifactKind: "run_plan",
       objectKey: runPlanArtifactKey(input.tenantId, input.runId)

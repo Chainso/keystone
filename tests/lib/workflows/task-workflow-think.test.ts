@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AgentRuntimeArtifactKind } from "../../../src/lib/artifacts/model";
+
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
   const runTasks: Array<Record<string, unknown>> = [];
@@ -219,7 +221,7 @@ const mocked = vi.hoisted(() => {
       outcome: "completed" | "failed" | "cancelled";
       stagedArtifacts: Array<{
         path: string;
-        kind: string;
+        kind: AgentRuntimeArtifactKind;
         contentType: string;
         metadata?: Record<string, string>;
       }>;
@@ -486,6 +488,42 @@ describe("TaskWorkflow Think runtime", () => {
       exitCode: 0,
       workflowStatus: "complete"
     });
+  });
+
+  it("rejects unsupported staged artifact kinds from Think before promotion", async () => {
+    mocked.runImplementerTurn.mockResolvedValueOnce({
+      outcome: "completed",
+      stagedArtifacts: [
+        {
+          path: "/artifacts/out/run-summary.json",
+          kind: "run_summary" as never,
+          contentType: "application/json; charset=utf-8",
+          metadata: {
+            fileName: "run-summary.json"
+          }
+        }
+      ],
+      events: [],
+      summary: "Tried to stage an invalid task artifact.",
+      metadata: {}
+    });
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+
+    await expect(
+      workflow.run(createWorkflowEvent("think_live") as never, step as never)
+    ).rejects.toThrow(/agent runtime artifact kind run_summary/i);
+
+    expect(mocked.createArtifactRef).not.toHaveBeenCalled();
+    expect(mocked.runTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: "run-task-123",
+        status: "failed",
+        startedAt: expect.any(Date),
+        endedAt: expect.any(Date)
+      })
+    ]);
   });
 
   it("keeps think/mock deterministic for the fixture-scoped path", async () => {

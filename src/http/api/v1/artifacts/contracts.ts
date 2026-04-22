@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { artifactKindSchema } from "../../../../lib/artifacts/model";
 import {
   buildCollectionEnvelopeSchema,
   buildDetailEnvelopeSchema,
@@ -9,7 +10,7 @@ import {
 
 export const artifactResourceSchema = buildResourceSchema("artifact", {
   artifactId: resourceIdSchema,
-  kind: z.string().trim().min(1),
+  kind: artifactKindSchema,
   contentType: z.string().trim().min(1),
   sizeBytes: z.number().int().nonnegative().nullable(),
   sha256: z.string().trim().min(1).nullable(),

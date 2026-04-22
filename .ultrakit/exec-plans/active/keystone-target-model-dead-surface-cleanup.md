@@ -110,6 +110,21 @@ Compatibility that **is** required:
   **Decision:** Delete `src/maestro/session.ts`, narrow `src/maestro/contracts.ts` to the three still-live contract families, remove write-only `parentSessionId` state from `TaskSessionDO`, and drop the stale session-status mocks from `tests/lib/agents/keystone-think-agent.test.ts`.  
   **Rationale:** Repo search confirmed the deleted Maestro session surface had no consumers, while the surviving imports still map exactly to the live Think/task-workspace runtime slice and the focused validation suite stayed green after the narrowing.
 
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 2 review closeout  
+  **Decision:** Accept Phase 2 without a fix pass after the review round returned no critical or important findings.  
+  **Rationale:** The only review note was a minor observation that `src/maestro/contracts.ts` still carries a few unconsumed literals in the surviving value arrays; the live runtime seam, tests, and scoped cleanup itself all reviewed cleanly.
+
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 3 kickoff  
+  **Decision:** Treat Phase 3 as a three-seam cleanup: delete dead artifact helpers, narrow artifact-kind admission at the persistence/runtime/public-contract boundaries, and keep the live `run_summary` storage key stable even though it still sits under the historical `release/` prefix.  
+  **Rationale:** Read-only exploration showed the live artifact family set is already small, but the DB, workflow, and HTTP seams still admit arbitrary strings and the helper/test surface still preserves dead evidence/integration/release-pack families.
+
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 3 complete  
+  **Decision:** Introduce one shared live artifact-kind model, delete the dead evidence/integration/release-pack key helpers, narrow task-stage promotion to `run_note` / `staged_output`, and make the focused tests assert both the surviving family set and the stable `runTaskId` / `run_summary` contracts.  
+  **Rationale:** This closes the real stale-model leak at the DB/runtime/public seams instead of only deleting helper exports, while preserving the live `release/run-summary.json` object key and the authoritative `runTaskId` storage path.
+
 ## Progress
 
 - [x] 2026-04-21 Reviewed the current target-model record in the archived migration plan plus the current M1 and Think runtime developer docs.
@@ -121,7 +136,9 @@ Compatibility that **is** required:
 - [x] 2026-04-21 Phase 1 review passed across spec compliance, test quality, code quality, regression safety, and integration coherence; no fix pass was required.
 - [x] 2026-04-21 Phase 2 execution context re-gathered: only `WorkspaceStrategy`, `AgentRuntimeKind`, and `ArtifactStorageBackend` are live Maestro exports; `src/maestro/session.ts` is dead; `parentSessionId` is write-only; `sessionId`/`taskSessionId` remain live and out of scope for renaming.
 - [x] 2026-04-21 Phase 2 complete: deleted the dead `src/maestro/session.ts` module, narrowed `src/maestro/contracts.ts` to `WorkspaceStrategy` / `AgentRuntimeKind` / `ArtifactStorageBackend`, removed `parentSessionId` from `TaskSessionDO`, and cleaned stale `getSessionRecord` / `updateSessionStatus` mocks from `tests/lib/agents/keystone-think-agent.test.ts`.
-- [ ] Phase 3 complete: narrow admitted artifact kinds to the current model and remove dead artifact helper families.
+- [x] 2026-04-21 Phase 2 review passed across spec compliance, test quality, code quality, regression safety, and integration coherence; no fix pass was required.
+- [x] 2026-04-21 Phase 3 execution context re-gathered: live artifact kinds are `document_revision`, `run_plan`, `task_handoff`, `task_log`, `run_note`, `run_summary`, and `staged_output`; dead helper families remain in `src/lib/artifacts/keys.ts`; DB/workflow/HTTP seams still admit free-form artifact kinds; `run_summary` must keep its current deterministic storage key.
+- [x] 2026-04-21 Phase 3 complete: added `src/lib/artifacts/model.ts` as the shared live-family source of truth, removed the dead key helpers, narrowed DB/API/task-runtime artifact-kind admission to the surviving families, kept `run_summary` at `release/run-summary.json`, and updated the focused tests to assert the remaining contracts explicitly.
 - [ ] Phase 4 complete: restore contributor-facing target-model docs and clean the remaining README/notes source-of-truth drift after the code cleanup lands.
 
 ## Surprises & Discoveries
@@ -137,10 +154,13 @@ Compatibility that **is** required:
 - The old websocket path is not currently asserted explicitly in `tests/http/app.test.ts`; removed-surface coverage is implicit via the app-level `404` fallback unless Phase 1 adds a direct `/v1/runs/:runId/ws` negative assertion.
 - After Phase 1 cleanup, the only remaining websocket-path reference in code/tests is the explicit `/v1/runs/:runId/ws` negative assertion in `tests/http/app.test.ts`; no live imports or route registrations surfaced.
 - Phase 2 reachability checks were cleaner than expected: repo search found no imports of `src/maestro/session.ts` or its status helpers anywhere, so the runtime narrowing did not require follow-on production rewiring beyond the planned `parentSessionId` and stale-test cleanup.
+- Phase 2 review found one minor leftover in `src/maestro/contracts.ts`: the surviving value arrays still include unconsumed literals such as `clone_fetch`, `scripted`, and `external`. That did not block the phase because no live runtime consumer depends on those values today.
+- Phase 3 re-verification showed the code already emits only `document_revision`, `run_plan`, `task_handoff`, `task_log`, `run_note`, `run_summary`, and `staged_output`, but the persistence/runtime/public seams still admit arbitrary artifact-kind strings and would echo unexpected values into storage paths and API responses.
+- Phase 3 implementation exposed one extra runtime nuance: `run_summary` is still a live artifact family overall, but task-stage promotion must reject it because Think/scripted task turns are only allowed to mint `run_note` and `staged_output`.
 
 ## Outcomes & Retrospective
 
-Phases 1 and 2 landed as planned: the backend tree no longer carries the dead websocket handler, stale Maestro session/approval contracts, or adjacent write-only `parentSessionId` baggage that implied a broader runtime model than the current Think-backed slice actually uses. The operator-facing route set is unchanged, the active `sessionId` / `taskSessionId` bridge stayed intact, and the focused runtime suite passed after the contract narrowing.
+Phases 1 through 3 landed as planned: the backend tree no longer carries the dead websocket handler, stale Maestro session/approval contracts, adjacent write-only `parentSessionId` baggage, or dead evidence/integration/release-pack artifact helpers. Artifact kinds now share one narrowed source of truth across DB inserts, task-stage promotion, sandbox projection metadata, and the public artifact resource schema, while the live `run_summary` key remains at `release/run-summary.json` and the authoritative `runTaskId` storage/API contract stays intact. The focused route/runtime/artifact suite passed after each narrowing pass.
 
 If later phases uncover a live dependency on one of the remaining suspected dead seams, update this section and the relevant phase handoff before continuing.
 
@@ -285,6 +305,7 @@ Planning baseline evidence:
 - Phase 1 validation: `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts` -> passes after deleting `src/http/handlers/ws.ts`, removing the stale websocket mock from `tests/http/projects.test.ts`, and adding a direct `/v1/runs/run-123/ws` `404` assertion in `tests/http/app.test.ts`.
 - Phase 2 reachability check: `rtk rg -n "SessionType|SessionStatus|WorkspaceStrategy|AgentRuntimeKind|ArtifactStorageBackend|SessionEvent|Approval|Lease|canTransitionSessionStatus|buildConfiguredSession|deriveSessionStatusForAgentTurnOutcome|parentSessionId" src tests` -> only `WorkspaceStrategy`, `AgentRuntimeKind`, and `ArtifactStorageBackend` are live imports; `src/maestro/session.ts` is self-contained dead code; `parentSessionId` is write-only in `src/durable-objects/TaskSessionDO.ts`.
 - Phase 2 validation: `rtk npm run test -- tests/lib/agents/runtime-contract.test.ts tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/task-session-do.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts` -> passes (6 files, 23 tests) after deleting `src/maestro/session.ts`, narrowing `src/maestro/contracts.ts`, removing `parentSessionId`, and cleaning the stale Think-agent test mocks.
+- Phase 3 validation: `rtk npm run test -- tests/lib/artifact-keys.test.ts tests/lib/compile-plan-run.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts tests/lib/agents/implementer-agent.test.ts tests/http/projects.test.ts` -> passes (8 files, 56 tests) after adding `src/lib/artifacts/model.ts`, deleting the dead key helpers, narrowing `artifactKind` / staged-artifact typing to the live families, and updating the focused tests to reject stale/public/runtime kinds while keeping `run_summary` and `runTaskId` assertions explicit.
 
 Primary file inventory for execution:
 
@@ -296,6 +317,7 @@ Primary file inventory for execution:
 - `src/maestro/agent-runtime.ts`
 - `src/keystone/agents/base/KeystoneThinkAgent.ts`
 - `src/lib/artifacts/keys.ts`
+- `src/lib/artifacts/model.ts`
 - `src/lib/db/artifacts.ts`
 - `src/http/api/v1/artifacts/contracts.ts`
 - `src/keystone/integration/finalize-run.ts`
@@ -432,7 +454,7 @@ Delete artifact helper families and validation seams that still model removed ev
 
 ### Phase Handoff
 
-**Status:** Pending
+**Status:** Complete
 
 **Goal**  
 Align the artifact helper surface with the current backend by removing dead evidence/integration/release-pack helpers, narrowing admitted artifact kinds to the current runtime family set, and updating focused tests accordingly.
@@ -443,26 +465,34 @@ Out of scope: redesigning the entire artifact model, changing `run_summary` beha
 
 **Read First**  
 `src/lib/artifacts/keys.ts`  
+`src/lib/artifacts/model.ts`  
 `src/lib/db/artifacts.ts`  
+`src/lib/db/schema.ts`  
 `src/http/api/v1/artifacts/contracts.ts`  
+`src/http/api/v1/runs/projections.ts`  
+`src/maestro/agent-runtime.ts`  
+`src/keystone/agents/implementer/ImplementerAgent.ts`  
 `src/keystone/integration/finalize-run.ts`  
 `src/workflows/TaskWorkflow.ts`  
 `src/durable-objects/TaskSessionDO.ts`  
 `src/http/api/v1/runs/handlers.ts`  
 `tests/lib/artifact-keys.test.ts`  
+`tests/lib/compile-plan-run.test.ts`  
 `tests/lib/finalize-run.test.ts`  
 `tests/lib/workflows/run-workflow-compile.test.ts`  
 `.ultrakit/developer-docs/m1-architecture.md`
 
 **Files Expected To Change**  
 `src/lib/artifacts/keys.ts`  
+`src/lib/artifacts/model.ts`  
 `src/lib/db/artifacts.ts`  
+`src/lib/db/schema.ts`  
 `src/http/api/v1/artifacts/contracts.ts`  
 `tests/lib/artifact-keys.test.ts`  
-Potentially `src/keystone/integration/finalize-run.ts`, `src/workflows/TaskWorkflow.ts`, `src/durable-objects/TaskSessionDO.ts`, `src/http/api/v1/runs/handlers.ts`, and the focused workflow/finalization tests if the active helper surface needs a small adjustment to stay coherent.
+Potentially `src/http/api/v1/runs/projections.ts`, `src/maestro/agent-runtime.ts`, `src/keystone/agents/implementer/ImplementerAgent.ts`, `src/keystone/integration/finalize-run.ts`, `src/workflows/TaskWorkflow.ts`, `src/durable-objects/TaskSessionDO.ts`, `src/http/api/v1/runs/handlers.ts`, `tests/lib/compile-plan-run.test.ts`, and the focused workflow/finalization tests if the active helper surface needs a small adjustment to stay coherent.
 
 **Validation**  
-Run `rtk npm run test -- tests/lib/artifact-keys.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts tests/lib/agents/implementer-agent.test.ts tests/http/projects.test.ts`.  
+Run `rtk npm run test -- tests/lib/artifact-keys.test.ts tests/lib/compile-plan-run.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts tests/lib/agents/implementer-agent.test.ts tests/http/projects.test.ts`.  
 Success means the active `run_summary` finalization path still passes, task artifact promotion still works, and stale artifact kinds are no longer admitted by the cleaned seams.
 
 **Plan / Docs To Update**  
@@ -477,6 +507,12 @@ A focused artifact helper and validation surface that matches the current backen
 
 **Known Constraints / Baseline Failures**  
 The broad repo lint/typecheck/test failures are unrelated to this phase; use the focused artifact/finalization suite as the gate.
+
+**Completion Notes**  
+Added `src/lib/artifacts/model.ts` as the shared live artifact-kind source of truth, removed the dead `taskEvidenceIndexArtifactKey` / `integrationMergeReportArtifactKey` / `releasePackArtifactKey` exports, narrowed `artifact_refs.artifactKind`, `createArtifactRef`, the public artifact schema, agent-runtime staged artifacts, task-stage promotion, and sandbox projection metadata to the surviving family set, and strengthened the focused tests to reject stale kinds while keeping the stable `run_summary` key and `runTaskId`-based handoff storage contract explicit. Focused validation passed with `rtk npm run test -- tests/lib/artifact-keys.test.ts tests/lib/compile-plan-run.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts tests/lib/agents/implementer-agent.test.ts tests/http/projects.test.ts`.
+
+**Next Starter Context**  
+Phase 3 is complete and should be committed without the unrelated `package-lock.json` churn. Phase 4 can now focus on contributor-facing doc cleanup only: restore the durable target-model handoff document, repoint README/developer-doc references, and remove the remaining stale notes language now that the backend code and focused tests are honest about the target-model artifact/runtime surface.
 
 ## Phase 4 - Restore the Contributor-Facing Target-Model Handoff
 

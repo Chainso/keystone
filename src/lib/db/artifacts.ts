@@ -1,5 +1,9 @@
 import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 
+import {
+  parseArtifactKind,
+  type ArtifactKind
+} from "../artifacts/model";
 import type { ArtifactStorageBackend } from "../../maestro/contracts";
 import { toR2Uri } from "../artifacts/r2";
 import type { DatabaseClient } from "./client";
@@ -106,7 +110,7 @@ export interface CreateArtifactRefInput {
   projectId: string;
   runId?: string | null | undefined;
   runTaskId?: string | null | undefined;
-  artifactKind: string;
+  artifactKind: ArtifactKind;
   storageBackend: ArtifactStorageBackend;
   bucket: string;
   objectKey: string;
@@ -133,32 +137,37 @@ export async function createArtifactRef(
   client: DatabaseClient,
   input: CreateArtifactRefInput
 ) {
-  await assertArtifactRefTargets(client, input);
+  const normalizedInput = {
+    ...input,
+    artifactKind: parseArtifactKind(input.artifactKind)
+  } satisfies CreateArtifactRefInput;
+
+  await assertArtifactRefTargets(client, normalizedInput);
 
   try {
     const [inserted] = await client.db
       .insert(artifactRefs)
       .values({
-        tenantId: input.tenantId,
+        tenantId: normalizedInput.tenantId,
         artifactRefId: crypto.randomUUID(),
-        projectId: input.projectId,
-        runId: input.runId ?? null,
-        runTaskId: input.runTaskId ?? null,
-        artifactKind: input.artifactKind,
-        storageBackend: input.storageBackend,
-        bucket: input.bucket,
-        objectKey: input.objectKey,
-        objectVersion: input.objectVersion ?? null,
-        etag: input.etag ?? null,
-        contentType: input.contentType,
-        sha256: input.sha256 ?? null,
-        sizeBytes: input.sizeBytes ?? null
+        projectId: normalizedInput.projectId,
+        runId: normalizedInput.runId ?? null,
+        runTaskId: normalizedInput.runTaskId ?? null,
+        artifactKind: normalizedInput.artifactKind,
+        storageBackend: normalizedInput.storageBackend,
+        bucket: normalizedInput.bucket,
+        objectKey: normalizedInput.objectKey,
+        objectVersion: normalizedInput.objectVersion ?? null,
+        etag: normalizedInput.etag ?? null,
+        contentType: normalizedInput.contentType,
+        sha256: normalizedInput.sha256 ?? null,
+        sizeBytes: normalizedInput.sizeBytes ?? null
       })
       .returning();
 
     return requireInsertedRow(
       inserted,
-      `Artifact ref insert returned no row for ${input.artifactKind}.`
+      `Artifact ref insert returned no row for ${normalizedInput.artifactKind}.`
     );
   } catch (error) {
     if (!isUniqueViolation(error)) {
@@ -166,13 +175,13 @@ export async function createArtifactRef(
     }
 
     const existing = await findArtifactRefByObjectKey(client, {
-      tenantId: input.tenantId,
-      bucket: input.bucket,
-      objectKey: input.objectKey
+      tenantId: normalizedInput.tenantId,
+      bucket: normalizedInput.bucket,
+      objectKey: normalizedInput.objectKey
     });
 
     if (existing) {
-      assertArtifactRefOwnership(existing, input);
+      assertArtifactRefOwnership(existing, normalizedInput);
       return existing;
     }
 
@@ -221,7 +230,7 @@ export async function findArtifactRefByObjectKey(
     objectKey: string;
     runId?: string | null | undefined;
     runTaskId?: string | null | undefined;
-    artifactKind?: string | undefined;
+    artifactKind?: ArtifactKind | undefined;
   }
 ) {
   return client.db.query.artifactRefs.findFirst({
