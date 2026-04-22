@@ -57,9 +57,11 @@ Current UI scope:
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
 - explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail artifact review with supported text preview plus compatibility messaging for unsupported content
+- live `Workstreams` loading through the project tasks API, with server-backed filter and pagination URL state
 - live `Workstreams` loading through `GET /v1/projects/:projectId/tasks` with server-side filtering, pagination, and direct links back into `Runs > Execution`
 - board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
-- explicit compatibility states for `Documentation` when the selected live project is not present in the scaffold dataset
+- an explicit compatibility state for `Documentation` when the selected live project is not present in the scaffold dataset
+- an explicit compatibility state for `Documentation` when the selected live project is not present in the scaffold dataset
 
 Current UI non-goals:
 
@@ -68,6 +70,7 @@ Current UI non-goals:
 - persisted documentation or workstream editing
 - final visual polish
 - auth-specific UI flows or tenant-selection controls
+- destination-specific behavior beyond the current live project-management, workstreams, and runs surfaces
 - destination-specific behavior beyond the current live project-management, runs, and Workstreams surfaces
 
 ## UI Architecture
@@ -87,8 +90,9 @@ Current UI boundary:
 - the scaffold is served from the same Worker deployable as the `v1` API
 - the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, the full `Runs` destination, and `Workstreams`
 - `Runs` is now truthful end to end for project-scoped index, run creation, planning authoring, explicit compile, execution DAG, and task artifact review
-- `Documentation` still relies on scaffold-backed selectors and renders explicit compatibility states for non-scaffold live projects
-- documentation destination content, evidence, integration, and release flows remain unwired behind the stable route tree
+- `Workstreams` now follows the selected project through the real project-tasks API with server-backed filter and pagination state
+- `Documentation` still relies on scaffold-backed selectors and renders an explicit compatibility state for non-scaffold live projects
+- documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend
 

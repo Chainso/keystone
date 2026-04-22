@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   getProject,
@@ -6,6 +7,7 @@ import {
 } from "../resource-model/selectors";
 import { useResourceModel } from "../resource-model/context";
 import { useCurrentProject } from "../projects/project-context";
+import { updateSearchParams } from "../../shared/navigation/search-param-state";
 
 export interface DocumentationTreeDocument {
   documentId: string;
@@ -43,8 +45,34 @@ export interface DocumentationViewModel {
 export function useDocumentationViewModel(): DocumentationViewModel {
   const { state } = useResourceModel();
   const project = useCurrentProject();
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDocumentId = searchParams.get("document");
   const scaffoldProject = getProject(project.projectId, state.dataset);
+  const selection = scaffoldProject
+    ? getProjectDocumentationSelection(
+        project.projectId,
+        requestedDocumentId,
+        state.dataset
+      )
+    : null;
+  const selectedDocumentId = selection?.selectedDocument.documentId ?? null;
+
+  useEffect(() => {
+    if (
+      !requestedDocumentId ||
+      !selectedDocumentId ||
+      requestedDocumentId === selectedDocumentId
+    ) {
+      return;
+    }
+
+    setSearchParams(
+      updateSearchParams(searchParams, {
+        document: selectedDocumentId
+      }),
+      { replace: true }
+    );
+  }, [requestedDocumentId, searchParams, selectedDocumentId, setSearchParams]);
 
   if (!scaffoldProject) {
     return {
@@ -59,12 +87,6 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       selectDocument() {}
     };
   }
-
-  const selection = getProjectDocumentationSelection(
-    project.projectId,
-    selectedDocumentId,
-    state.dataset
-  );
 
   if (!selection) {
     return {
@@ -100,7 +122,11 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       contentLines: selection.selectedDocument.contentLines
     },
     selectDocument(documentId: string) {
-      setSelectedDocumentId(documentId);
+      setSearchParams(
+        updateSearchParams(searchParams, {
+          document: documentId
+        })
+      );
     }
   };
 }

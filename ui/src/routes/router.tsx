@@ -95,7 +95,7 @@ export const appRoutes: RouteObject[] = [
               },
               ...projectConfigurationTabs.map((tab) => ({
                 path: tab.tabId,
-                element: <ProjectConfigurationTabRoute mode="new" tabId={tab.tabId} />
+                element: <ProjectConfigurationTabRoute tabId={tab.tabId} />
               }))
             ]
           }
@@ -111,7 +111,7 @@ export const appRoutes: RouteObject[] = [
           },
           ...projectConfigurationTabs.map((tab) => ({
             path: tab.tabId,
-            element: <ProjectConfigurationTabRoute mode="settings" tabId={tab.tabId} />
+            element: <ProjectConfigurationTabRoute tabId={tab.tabId} />
           }))
         ]
       }

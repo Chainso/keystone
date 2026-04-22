@@ -61,6 +61,7 @@ export function WorkstreamsBoard({ model }: WorkstreamsBoardProps) {
               <button
                 key={filter.filterId}
                 type="button"
+                aria-pressed={filter.isActive}
                 className={filter.isActive ? "filter-chip is-active" : "filter-chip"}
                 onClick={() => model.setActiveFilter(filter.filterId)}
               >

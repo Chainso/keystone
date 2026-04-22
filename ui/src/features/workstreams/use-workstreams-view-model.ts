@@ -1,7 +1,14 @@
 import { startTransition, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import type { ProjectTaskFilter } from "../../../../src/http/api/v1/projects/contracts";
+import { formatUtcTimestamp } from "../../shared/formatting/date";
 import { buildRunTaskPath } from "../../shared/navigation/run-phases";
+import {
+  parsePositiveIntegerSearchParam,
+  parseSearchParamEnum,
+  updateSearchParams
+} from "../../shared/navigation/search-param-state";
 import {
   useProjectManagement,
   useProjectManagementApi
@@ -15,6 +22,8 @@ export type WorkstreamFilterId = ProjectTaskFilter;
 
 const defaultFilterId: WorkstreamFilterId = "active";
 const pageSize = 25;
+const pageSearchParamKey = "page";
+const filterSearchParamKey = "filter";
 const workstreamsTitle = "Project work across runs";
 
 const filterDefinitions: Array<{
@@ -42,6 +51,7 @@ const filterDefinitions: Array<{
     label: "Blocked"
   }
 ];
+const filterIds = filterDefinitions.map((filter) => filter.filterId);
 
 interface WorkstreamsSnapshot {
   errorMessage: string | null;
@@ -101,16 +111,6 @@ function getErrorMessage(error: unknown) {
   return "Unable to load workstreams.";
 }
 
-function formatUtcTimestamp(value: string) {
-  const timestamp = new Date(value);
-
-  if (Number.isNaN(timestamp.valueOf())) {
-    return value;
-  }
-
-  return `${timestamp.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
-
 function titleCaseToken(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -142,18 +142,7 @@ function formatTaskStatusLabel(value: string) {
   }
 }
 
-function buildWorkstreamSelectionKey(
-  projectId: string | null,
-  filterId: WorkstreamFilterId
-) {
-  return projectId ? `${projectId}:${filterId}` : null;
-}
-
-function buildWorkstreamRequestKey(
-  projectId: string,
-  filterId: WorkstreamFilterId,
-  page: number
-) {
+function buildWorkstreamRequestKey(projectId: string, filterId: WorkstreamFilterId, page: number) {
   return `${projectId}:${filterId}:${page}`;
 }
 
@@ -222,22 +211,31 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
   const projectManagement = useProjectManagement();
   const currentProject = projectManagement.state.currentProject;
   const requestIdRef = useRef(0);
-  const [activeFilterId, setActiveFilterId] = useState<WorkstreamFilterId>(defaultFilterId);
-  const [paginationState, setPaginationState] = useState<{
-    page: number;
-    selectionKey: string | null;
-  }>({
-    page: 1,
-    selectionKey: null
-  });
+  const previousProjectIdRef = useRef<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedFilterId = searchParams.get(filterSearchParamKey);
+  const activeFilterId = parseSearchParamEnum(
+    requestedFilterId,
+    filterIds,
+    defaultFilterId
+  );
+  const requestedPage = parsePositiveIntegerSearchParam(
+    searchParams.get(pageSearchParamKey),
+    1
+  );
+  const currentProjectId = currentProject?.projectId ?? null;
+  const projectChanged =
+    previousProjectIdRef.current !== null &&
+    currentProjectId !== null &&
+    previousProjectIdRef.current !== currentProjectId;
+  const shouldResetPageForProjectChange = projectChanged && requestedPage !== 1;
+  const currentPage = projectChanged ? 1 : requestedPage;
   const [snapshot, setSnapshot] = useState<WorkstreamsSnapshot>({
     errorMessage: null,
     page: null,
     requestKey: null,
     status: "loading"
   });
-  const selectionKey = buildWorkstreamSelectionKey(currentProject?.projectId ?? null, activeFilterId);
-  const currentPage = paginationState.selectionKey === selectionKey ? paginationState.page : 1;
   const currentRequestKey = currentProject
     ? buildWorkstreamRequestKey(currentProject.projectId, activeFilterId, currentPage)
     : null;
@@ -254,10 +252,30 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         ? snapshot.status
         : "loading";
 
-  function loadWorkstreams(projectId: string, page = currentPage, filter = activeFilterId) {
+  function setWorkstreamsSearchState(
+    filterId: WorkstreamFilterId,
+    page: number,
+    options?: { replace?: boolean }
+  ) {
+    setSearchParams(
+      updateSearchParams(searchParams, {
+        [filterSearchParamKey]: filterId === defaultFilterId ? null : filterId,
+        [pageSearchParamKey]: page > 1 ? page : null
+      }),
+      options
+    );
+  }
+
+  function loadWorkstreams(
+    projectId: string,
+    options: {
+      filter: WorkstreamFilterId;
+      page: number;
+    }
+  ) {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
-    const requestKey = buildWorkstreamRequestKey(projectId, filter, page);
+    const requestKey = buildWorkstreamRequestKey(projectId, options.filter, options.page);
 
     setSnapshot({
       errorMessage: null,
@@ -268,8 +286,8 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
 
     void api
       .listProjectTasks(projectId, {
-        filter,
-        page,
+        filter: options.filter,
+        page: options.page,
         pageSize
       })
       .then((nextPage) => {
@@ -280,18 +298,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         if (isOutOfRangePage(nextPage)) {
           const resetPage = nextPage.pageCount;
 
-          setSnapshot({
-            errorMessage: null,
-            page: null,
-            requestKey: buildWorkstreamRequestKey(projectId, filter, resetPage),
-            status: "loading"
-          });
-          startTransition(() => {
-            setPaginationState({
-              page: resetPage,
-              selectionKey: buildWorkstreamSelectionKey(projectId, filter)
-            });
-          });
+          setWorkstreamsSearchState(options.filter, resetPage, { replace: true });
           return;
         }
 
@@ -317,12 +324,36 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
   }
 
   useEffect(() => {
-    if (!currentProject) {
+    previousProjectIdRef.current = currentProjectId;
+  }, [currentProjectId]);
+
+  useEffect(() => {
+    if (shouldResetPageForProjectChange) {
+      setWorkstreamsSearchState(activeFilterId, 1, { replace: true });
+    }
+  }, [
+    activeFilterId,
+    searchParams,
+    setSearchParams,
+    shouldResetPageForProjectChange
+  ]);
+
+  useEffect(() => {
+    if (!currentProject || shouldResetPageForProjectChange) {
       return;
     }
 
-    loadWorkstreams(currentProject.projectId, currentPage, activeFilterId);
-  }, [api, currentProject?.projectId, activeFilterId, currentPage]);
+    loadWorkstreams(currentProject.projectId, {
+      filter: activeFilterId,
+      page: currentPage
+    });
+  }, [
+    api,
+    currentProject?.projectId,
+    activeFilterId,
+    currentPage,
+    shouldResetPageForProjectChange
+  ]);
 
   const rows = (visiblePage?.items ?? []).map((task) => ({
     detailPath: buildRunTaskPath(task.runId, task.taskId),
@@ -375,10 +406,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       }
 
       startTransition(() => {
-        setPaginationState({
-          page: currentPage + 1,
-          selectionKey
-        });
+        setWorkstreamsSearchState(activeFilterId, currentPage + 1);
       });
     },
     goToPreviousPage() {
@@ -387,10 +415,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       }
 
       startTransition(() => {
-        setPaginationState({
-          page: currentPage - 1,
-          selectionKey
-        });
+        setWorkstreamsSearchState(activeFilterId, currentPage - 1);
       });
     },
     pagination: {
@@ -402,7 +427,10 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
     },
     retry() {
       if (currentProject) {
-        loadWorkstreams(currentProject.projectId, currentPage, activeFilterId);
+        loadWorkstreams(currentProject.projectId, {
+          filter: activeFilterId,
+          page: currentPage
+        });
         return;
       }
 
@@ -411,11 +439,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
     rows,
     setActiveFilter(filterId) {
       startTransition(() => {
-        setActiveFilterId(filterId);
-        setPaginationState({
-          page: 1,
-          selectionKey: buildWorkstreamSelectionKey(currentProject?.projectId ?? null, filterId)
-        });
+        setWorkstreamsSearchState(filterId, 1);
       });
     },
     title: workstreamsTitle

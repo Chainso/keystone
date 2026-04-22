@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
+import { resolveRunsSnapshotForProject } from "../features/runs/use-runs-index-view-model";
 import { renderRoute } from "./render-route";
 import {
   serializeProjectListItem,
@@ -41,6 +42,10 @@ beforeEach(() => {
 
 function expectShellLinkTarget(name: string, href: string) {
   expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
+}
+
+function getProjectSelector() {
+  return screen.getByRole("combobox", { name: "Project" });
 }
 
 function buildProjectsResponse(projects: CurrentProject[]) {
@@ -486,6 +491,32 @@ function createLiveRunFixture(
 }
 
 describe("App shell", () => {
+  it("resolves a stale runs snapshot into a loading placeholder for the newly selected project", () => {
+    const staleSnapshot = {
+      errorMessage: null,
+      presentation: "live" as const,
+      projectId: "project-keystone-cloudflare",
+      runs: [
+        {
+          source: "api" as const,
+          ...createLiveRunFixture("project-keystone-cloudflare", {
+            runId: "run-104",
+            workflowInstanceId: "wf-run-104"
+          })
+        }
+      ],
+      status: "ready" as const
+    };
+
+    expect(resolveRunsSnapshotForProject(staleSnapshot, "project-alt")).toEqual({
+      errorMessage: null,
+      presentation: "live",
+      projectId: "project-alt",
+      runs: [],
+      status: "loading"
+    });
+  });
+
   it("redirects the default route to the Runs index inside the global shell", async () => {
     const scaffoldProject: CurrentProject = {
       projectId: "project-keystone-cloudflare",
@@ -510,10 +541,13 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs");
     });
+    expect(await screen.findByRole("link", { name: "run-104" })).toHaveAttribute(
+      "href",
+      "/runs/run-104"
+    );
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "run-104" })).toHaveAttribute("href", "/runs/run-104");
+    expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expect(screen.getByText("wf-run-104")).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
@@ -536,7 +570,8 @@ describe("App shell", () => {
     renderRoute("/documentation", { useBrowserProjectApi: true });
 
     expect(await screen.findByRole("heading", { name: "No projects yet" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /No projects yet/i })).toBeDisabled();
+    expect(getProjectSelector()).toBeDisabled();
+    expect(getProjectSelector()).toHaveDisplayValue("No projects yet");
     expect(
       screen
         .getAllByRole("link", { name: "New project" })
@@ -815,11 +850,14 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
     expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: "project-alt"
+      }
+    });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     });
     expect(await screen.findByText("run-alt-401")).toBeInTheDocument();
 
@@ -828,7 +866,7 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs");
     });
-    expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expect(screen.getByText("run-alt-401")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "run-203" })).not.toBeInTheDocument();
   });
@@ -932,7 +970,7 @@ describe("App shell", () => {
     renderRoute("/runs", { useBrowserProjectApi: true });
 
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expect(screen.getByText("Alt Project does not have any recorded runs yet.")).toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
@@ -946,7 +984,7 @@ describe("App shell", () => {
     expect(screen.queryByRole("heading", { name: "No projects yet" })).not.toBeInTheDocument();
   });
 
-  it("switches the current project from the live sidebar selector and reloads runs", async () => {
+  it("switches the current project from the live sidebar selector without leaving stale rows actionable", async () => {
     const projects: CurrentProject[] = [
       {
         projectId: "project-keystone-cloudflare",
@@ -974,21 +1012,36 @@ describe("App shell", () => {
         workflowInstanceId: "wf-run-alt-301"
       })
     ];
+    const deferredAlternateRunsResponse = createDeferredResponse();
 
-    stubProjectListFetch(projects, {
-      "project-keystone-cloudflare": primaryRuns,
-      "project-alt": alternateRuns
+    stubProjectManagementFetch({
+      projectResponses: [() => createJsonResponse(buildProjectsResponse(projects))],
+      projectRunsByProjectId: {
+        "project-keystone-cloudflare": [
+          () => createJsonResponse(buildRunsResponse(primaryRuns))
+        ],
+        "project-alt": [() => deferredAlternateRunsResponse.promise]
+      }
     });
     renderRoute("/runs", { useBrowserProjectApi: true });
 
     await screen.findByText("run-104");
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: "project-alt"
+      }
     });
+
+    expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    expect(await screen.findByRole("heading", { name: "Loading runs" })).toBeInTheDocument();
+    expect(screen.getByText("Keystone is loading runs for Alt Project.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
+
+    deferredAlternateRunsResponse.resolve(
+      createJsonResponse(buildRunsResponse(alternateRuns))
+    );
+
     expect(await screen.findByText("run-alt-301")).toBeInTheDocument();
     expect(screen.queryByText("run-104")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
@@ -1135,8 +1188,11 @@ describe("App shell", () => {
       "Keystone Cloudflare"
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: "project-alt"
+      }
+    });
 
     expect(
       await screen.findByRole("heading", { name: "Project settings: Alt Project" })
@@ -1216,7 +1272,7 @@ describe("App shell", () => {
     renderRoute(path, { useBrowserProjectApi: true });
 
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");

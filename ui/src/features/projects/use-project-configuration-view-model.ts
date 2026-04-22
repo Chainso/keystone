@@ -1,17 +1,17 @@
 import { useState } from "react";
 
 import {
+  buildProjectConfigurationPath,
   projectComponentTypeOptions,
   projectConfigurationTabs,
-  buildProjectConfigurationPath,
   type ProjectComponentKindId,
-  type ProjectComponentTypeOption,
-  type ProjectConfigurationMode,
-  type ProjectComponentSourceMode
+  type ProjectComponentSourceMode,
+  type ProjectConfigurationMode
 } from "./project-configuration-scaffold";
-import { useCurrentProject } from "./project-context";
-import { useNewProjectConfiguration } from "./new-project-context";
-import { useProjectSettingsConfiguration } from "./project-settings-context";
+import {
+  useProjectConfiguration,
+  type ProjectConfigurationValue
+} from "./project-configuration-context";
 
 export interface ProjectConfigurationActionViewModel {
   disabled?: boolean | undefined;
@@ -57,84 +57,57 @@ export interface EditableProjectComponentViewModel {
   testInstructions: ProjectConfigurationListFieldViewModel;
 }
 
-interface ProjectConfigurationShellViewModel {
+export interface ProjectConfigurationShellViewModel {
   shellState?: {
     actionLabel?: string | undefined;
     heading: string;
     message: string;
     onAction?: (() => void) | undefined;
   } | undefined;
-  title: string;
   tabs: Array<{
     label: string;
     path: string;
     tabId: (typeof projectConfigurationTabs)[number]["tabId"];
   }>;
+  title: string;
 }
 
-interface ProjectOverviewViewModel {
+export interface ProjectOverviewViewModel {
   descriptionField: ProjectConfigurationTextFieldViewModel;
   footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
-  isSubmitting?: boolean | undefined;
+  isSubmitting: boolean;
   keyField: ProjectConfigurationTextFieldViewModel;
   nameField: ProjectConfigurationTextFieldViewModel;
   submitError: string | null;
 }
 
-interface NewProjectComponentsViewModel {
-  components: EditableProjectComponentViewModel[];
-  emptyError?: string | undefined;
-  emptyState: string;
-  footerActions: ProjectConfigurationActionViewModel[];
-  heading: string;
-  pickComponentType: (kindId: ProjectComponentTypeOption["kindId"]) => void;
-  submitError: string | null;
-  toggleTypePicker: () => void;
-  typeOptions: ProjectComponentTypeOption[];
-  typePickerOpen: boolean;
-  typePickerTitle: string;
-}
-
-interface ProjectSettingsComponentsViewModel {
+export interface ProjectConfigurationComponentsViewModel {
   components: EditableProjectComponentViewModel[];
   emptyError?: string | undefined;
   emptyState: string;
   footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
   isSubmitting: boolean;
-  pickComponentType: (kindId: ProjectComponentTypeOption["kindId"]) => void;
+  pickComponentType: (kindId: (typeof projectComponentTypeOptions)[number]["kindId"]) => void;
   submitError: string | null;
   toggleTypePicker: () => void;
-  typeOptions: ProjectComponentTypeOption[];
+  typeOptions: typeof projectComponentTypeOptions;
   typePickerOpen: boolean;
   typePickerTitle: string;
 }
 
-interface ProjectRulesViewModel {
-  footerActions?: ProjectConfigurationActionViewModel[] | undefined;
+export interface ProjectRulesViewModel {
+  footerActions: ProjectConfigurationActionViewModel[];
   heading: string;
-  isSubmitting?: boolean | undefined;
+  isSubmitting: boolean;
   reviewInstructions: ProjectConfigurationListFieldViewModel;
-  submitError?: string | null | undefined;
+  submitError: string | null;
   testInstructions: ProjectConfigurationListFieldViewModel;
 }
 
-interface NewProjectEnvironmentViewModel {
-  emptyMessage: string;
-  envVars: Array<{
-    entryId: string;
-    nameField: ProjectConfigurationTextFieldViewModel;
-    onRemove: () => void;
-    valueField: ProjectConfigurationTextFieldViewModel;
-  }>;
-  footerActions: ProjectConfigurationActionViewModel[];
-  heading: string;
-  submitError: string | null;
+export interface ProjectConfigurationEnvironmentViewModel {
   addEnvVar: () => void;
-}
-
-interface ProjectSettingsEnvironmentViewModel {
   emptyMessage: string;
   envVars: Array<{
     entryId: string;
@@ -146,7 +119,12 @@ interface ProjectSettingsEnvironmentViewModel {
   heading: string;
   isSubmitting: boolean;
   submitError: string | null;
-  addEnvVar: () => void;
+}
+
+interface ReadyProjectConfigurationValue extends ProjectConfigurationValue {
+  state: ProjectConfigurationValue["state"] & {
+    draft: NonNullable<ProjectConfigurationValue["state"]["draft"]>;
+  };
 }
 
 function buildProjectConfigurationTabs(mode: ProjectConfigurationMode) {
@@ -157,64 +135,14 @@ function buildProjectConfigurationTabs(mode: ProjectConfigurationMode) {
   }));
 }
 
-function useNewProjectFooterActions(): ProjectConfigurationActionViewModel[] {
-  const { actions, meta } = useNewProjectConfiguration();
-
-  return [
-    {
-      disabled: meta.isSubmitting,
-      label: "Cancel",
-      onPress: actions.cancel
-    },
-    {
-      disabled: meta.isSubmitting,
-      label: meta.isSubmitting ? "Creating project..." : "Create project",
-      onPress() {
-        void actions.submit();
-      }
-    }
-  ];
-}
-
-function useReadyProjectSettings() {
-  const projectSettings = useProjectSettingsConfiguration();
-  const draft = projectSettings.state.draft;
-
-  if (projectSettings.meta.status !== "ready" || !draft) {
+function getReadyProjectConfiguration(
+  configuration: ProjectConfigurationValue
+): ReadyProjectConfigurationValue | null {
+  if (configuration.meta.status !== "ready" || !configuration.state.draft) {
     return null;
   }
 
-  return {
-    ...projectSettings,
-    meta: {
-      ...projectSettings.meta,
-      status: "ready" as const
-    },
-    state: {
-      ...projectSettings.state,
-      draft
-    }
-  };
-}
-
-function useProjectSettingsFooterActions(): ProjectConfigurationActionViewModel[] {
-  const { actions, meta } = useProjectSettingsConfiguration();
-  const disabled = meta.status !== "ready" || !meta.hasUnsavedChanges || meta.isSubmitting;
-
-  return [
-    {
-      disabled,
-      label: "Discard changes",
-      onPress: actions.discardChanges
-    },
-    {
-      disabled,
-      label: meta.isSubmitting ? "Saving changes..." : "Save changes",
-      onPress() {
-        void actions.submit();
-      }
-    }
-  ];
+  return configuration as ReadyProjectConfigurationValue;
 }
 
 function getListItemErrors(
@@ -238,339 +166,148 @@ function getListItemErrors(
   }, {});
 }
 
-function useProjectSettingsComponentsModel(): ProjectSettingsComponentsViewModel {
-  const footerActions = useProjectSettingsFooterActions();
-  const [typePickerOpen, setTypePickerOpen] = useState(false);
-  const projectSettings = useReadyProjectSettings();
+function useProjectConfigurationFooterActions(): ProjectConfigurationActionViewModel[] {
+  const { actions, meta } = useProjectConfiguration();
+  const requiresReadyDraft = meta.mode.id === "settings";
+  const disabled =
+    meta.isSubmitting || (requiresReadyDraft && (meta.status !== "ready" || !meta.hasUnsavedChanges));
 
-  if (!projectSettings) {
-    return {
-      components: [],
-      emptyState: "Keystone is loading the selected project's components.",
-      footerActions,
-      heading: "Components",
-      isSubmitting: false,
-      pickComponentType() {},
-      submitError: null,
-      toggleTypePicker() {},
-      typeOptions: projectComponentTypeOptions,
-      typePickerOpen: false,
-      typePickerTitle: "Add component menu"
-    };
-  }
-
-  const { actions, meta, state } = projectSettings;
-  const components = state.draft.components;
-
-  return {
-    components: components.map((component, index) => ({
-      componentId: component.componentId,
-      componentKeyField: {
-        errorMessage: state.fieldErrors[`components.${index}.componentKey`],
-        label: "Key",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "componentKey", value);
-        },
-        value: component.componentKey
-      },
-      defaultRefField: {
-        errorMessage: state.fieldErrors[`components.${index}.defaultRef`],
-        label: "Default ref",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "defaultRef", value);
-        },
-        value: component.defaultRef
-      },
-      displayNameField: {
-        errorMessage: state.fieldErrors[`components.${index}.displayName`],
-        label: "Name",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "displayName", value);
-        },
-        value: component.displayName
-      },
-      gitUrlField: {
-        disabled: component.sourceMode !== "gitUrl",
-        errorMessage: state.fieldErrors[`components.${index}.gitUrl`],
-        label: "Git URL",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "gitUrl", value);
-        },
-        value: component.gitUrl
-      },
-      heading: `Component ${index + 1}`,
-      kind: component.kind,
-      localPathField: {
-        disabled: component.sourceMode !== "localPath",
-        errorMessage: state.fieldErrors[`components.${index}.localPath`],
-        label: "Local path",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "localPath", value);
-        },
-        value: component.localPath
-      },
-      onRemove() {
-        actions.removeComponent(component.componentId);
-      },
-      reviewInstructions: {
-        addLabel: "Add review instruction",
-        items: component.reviewInstructions,
-        label: "Review",
-        onAdd() {
-          actions.addComponentRuleInstruction(component.componentId, "reviewInstructions");
-        },
-        onChange(itemIndex, value) {
-          actions.updateComponentRuleInstruction(
-            component.componentId,
-            "reviewInstructions",
-            itemIndex,
-            value
-          );
-        },
-        onRemove(itemIndex) {
-          actions.removeComponentRuleInstruction(
-            component.componentId,
-            "reviewInstructions",
-            itemIndex
-          );
-        },
-        rowErrors: getListItemErrors(
-          state.fieldErrors,
-          `components.${index}.reviewInstructions`
-        )
-      },
-      setSourceMode(sourceMode) {
-        actions.setComponentSourceMode(component.componentId, sourceMode);
-      },
-      sourceMode: component.sourceMode,
-      testInstructions: {
-        addLabel: "Add test instruction",
-        items: component.testInstructions,
-        label: "Test",
-        onAdd() {
-          actions.addComponentRuleInstruction(component.componentId, "testInstructions");
-        },
-        onChange(itemIndex, value) {
-          actions.updateComponentRuleInstruction(
-            component.componentId,
-            "testInstructions",
-            itemIndex,
-            value
-          );
-        },
-        onRemove(itemIndex) {
-          actions.removeComponentRuleInstruction(
-            component.componentId,
-            "testInstructions",
-            itemIndex
-          );
-        },
-        rowErrors: getListItemErrors(state.fieldErrors, `components.${index}.testInstructions`)
+  return [
+    {
+      disabled,
+      label: meta.mode.secondaryActionLabel,
+      onPress: actions.runSecondaryAction
+    },
+    {
+      disabled,
+      label: meta.isSubmitting
+        ? meta.mode.primaryPendingActionLabel
+        : meta.mode.primaryActionLabel,
+      onPress() {
+        void actions.submit();
       }
-    })),
-    emptyError: state.fieldErrors.components,
-    emptyState: "No project components configured yet.",
-    footerActions,
-    heading: "Components",
-    isSubmitting: meta.isSubmitting,
-    pickComponentType(kindId) {
-      actions.addComponent(kindId);
-      setTypePickerOpen(false);
-    },
-    submitError: meta.submitError,
-    toggleTypePicker() {
-      setTypePickerOpen((currentValue) => !currentValue);
-    },
-    typeOptions: projectComponentTypeOptions,
-    typePickerOpen,
-    typePickerTitle: "Add component menu"
-  };
+    }
+  ];
 }
 
-function useProjectSettingsOverviewModel(): ProjectOverviewViewModel {
-  const footerActions = useProjectSettingsFooterActions();
-  const projectSettings = useReadyProjectSettings();
+function buildProjectComponentViewModels(
+  configuration: ReadyProjectConfigurationValue
+): EditableProjectComponentViewModel[] {
+  const { actions, state } = configuration;
 
-  if (!projectSettings) {
-    return {
-      descriptionField: {
-        label: "Description",
-        value: ""
-      },
-      footerActions,
-      heading: "Overview",
-      isSubmitting: false,
-      keyField: {
-        label: "Project key",
-        value: ""
-      },
-      nameField: {
-        label: "Project name",
-        value: ""
-      },
-      submitError: null
-    };
-  }
-
-  const { actions, meta, state } = projectSettings;
-
-  return {
-    descriptionField: {
-      errorMessage: state.fieldErrors["overview.description"],
-      label: "Description",
+  return state.draft.components.map((component, index) => ({
+    componentId: component.componentId,
+    componentKeyField: {
+      errorMessage: state.fieldErrors[`components.${index}.componentKey`],
+      label: "Key",
       onChange(value) {
-        actions.updateOverviewField("description", value);
+        actions.updateComponentField(component.componentId, "componentKey", value);
       },
-      value: state.draft.overview.description
+      value: component.componentKey
     },
-    footerActions,
-    heading: "Overview",
-    isSubmitting: meta.isSubmitting,
-    keyField: {
-      errorMessage: state.fieldErrors["overview.projectKey"],
-      label: "Project key",
+    defaultRefField: {
+      errorMessage: state.fieldErrors[`components.${index}.defaultRef`],
+      label: "Default ref",
       onChange(value) {
-        actions.updateOverviewField("projectKey", value);
+        actions.updateComponentField(component.componentId, "defaultRef", value);
       },
-      value: state.draft.overview.projectKey
+      value: component.defaultRef
     },
-    nameField: {
-      errorMessage: state.fieldErrors["overview.displayName"],
-      label: "Project name",
+    displayNameField: {
+      errorMessage: state.fieldErrors[`components.${index}.displayName`],
+      label: "Name",
       onChange(value) {
-        actions.updateOverviewField("displayName", value);
+        actions.updateComponentField(component.componentId, "displayName", value);
       },
-      value: state.draft.overview.displayName
+      value: component.displayName
     },
-    submitError: meta.submitError
-  };
-}
-
-function useProjectSettingsRulesModel(): ProjectRulesViewModel {
-  const footerActions = useProjectSettingsFooterActions();
-  const projectSettings = useReadyProjectSettings();
-
-  if (!projectSettings) {
-    return {
-      footerActions,
-      heading: "Rules",
-      isSubmitting: false,
-      reviewInstructions: {
-        items: [],
-        label: "Project review instructions"
+    gitUrlField: {
+      disabled: component.sourceMode !== "gitUrl",
+      errorMessage: state.fieldErrors[`components.${index}.gitUrl`],
+      label: "Git URL",
+      onChange(value) {
+        actions.updateComponentField(component.componentId, "gitUrl", value);
       },
-      submitError: null,
-      testInstructions: {
-        items: [],
-        label: "Project test instructions"
-      }
-    };
-  }
-
-  const { actions, meta, state } = projectSettings;
-
-  return {
-    footerActions,
-    heading: "Rules",
-    isSubmitting: meta.isSubmitting,
+      value: component.gitUrl
+    },
+    heading: `Component ${index + 1}`,
+    kind: component.kind,
+    localPathField: {
+      disabled: component.sourceMode !== "localPath",
+      errorMessage: state.fieldErrors[`components.${index}.localPath`],
+      label: "Local path",
+      onChange(value) {
+        actions.updateComponentField(component.componentId, "localPath", value);
+      },
+      value: component.localPath
+    },
+    onRemove() {
+      actions.removeComponent(component.componentId);
+    },
     reviewInstructions: {
       addLabel: "Add review instruction",
-      items: state.draft.ruleSet.reviewInstructions,
-      label: "Project review instructions",
+      items: component.reviewInstructions,
+      label: "Review",
       onAdd() {
-        actions.addProjectRuleInstruction("reviewInstructions");
+        actions.addComponentRuleInstruction(component.componentId, "reviewInstructions");
       },
-      onChange(index, value) {
-        actions.updateProjectRuleInstruction("reviewInstructions", index, value);
+      onChange(itemIndex, value) {
+        actions.updateComponentRuleInstruction(
+          component.componentId,
+          "reviewInstructions",
+          itemIndex,
+          value
+        );
       },
-      onRemove(index) {
-        actions.removeProjectRuleInstruction("reviewInstructions", index);
+      onRemove(itemIndex) {
+        actions.removeComponentRuleInstruction(
+          component.componentId,
+          "reviewInstructions",
+          itemIndex
+        );
       },
-      rowErrors: getListItemErrors(state.fieldErrors, "rules.reviewInstructions")
+      rowErrors: getListItemErrors(
+        state.fieldErrors,
+        `components.${index}.reviewInstructions`
+      )
     },
-    submitError: meta.submitError,
+    setSourceMode(sourceMode) {
+      actions.setComponentSourceMode(component.componentId, sourceMode);
+    },
+    sourceMode: component.sourceMode,
     testInstructions: {
       addLabel: "Add test instruction",
-      items: state.draft.ruleSet.testInstructions,
-      label: "Project test instructions",
+      items: component.testInstructions,
+      label: "Test",
       onAdd() {
-        actions.addProjectRuleInstruction("testInstructions");
+        actions.addComponentRuleInstruction(component.componentId, "testInstructions");
       },
-      onChange(index, value) {
-        actions.updateProjectRuleInstruction("testInstructions", index, value);
+      onChange(itemIndex, value) {
+        actions.updateComponentRuleInstruction(
+          component.componentId,
+          "testInstructions",
+          itemIndex,
+          value
+        );
       },
-      onRemove(index) {
-        actions.removeProjectRuleInstruction("testInstructions", index);
+      onRemove(itemIndex) {
+        actions.removeComponentRuleInstruction(
+          component.componentId,
+          "testInstructions",
+          itemIndex
+        );
       },
-      rowErrors: getListItemErrors(state.fieldErrors, "rules.testInstructions")
+      rowErrors: getListItemErrors(state.fieldErrors, `components.${index}.testInstructions`)
     }
-  };
+  }));
 }
 
-function useProjectSettingsEnvironmentModel(): ProjectSettingsEnvironmentViewModel {
-  const footerActions = useProjectSettingsFooterActions();
-  const projectSettings = useReadyProjectSettings();
-
-  if (!projectSettings) {
-    return {
-      addEnvVar() {},
-      emptyMessage: "No environment variables added yet.",
-      envVars: [],
-      footerActions,
-      heading: "Environment",
-      isSubmitting: false,
-      submitError: null
-    };
-  }
-
-  const { actions, meta, state } = projectSettings;
+export function useProjectConfigurationShellViewModel(): ProjectConfigurationShellViewModel {
+  const { actions, meta } = useProjectConfiguration();
 
   return {
-    addEnvVar: actions.addEnvVar,
-    emptyMessage: "No environment variables added yet.",
-    envVars: state.draft.envVars.map((envVar, index) => ({
-      entryId: envVar.entryId,
-      nameField: {
-        errorMessage: state.fieldErrors[`environment.${index}.name`],
-        label: "Name",
-        onChange(value) {
-          actions.updateEnvVar(envVar.entryId, "name", value);
-        },
-        value: envVar.name
-      },
-      onRemove() {
-        actions.removeEnvVar(envVar.entryId);
-      },
-      valueField: {
-        errorMessage: state.fieldErrors[`environment.${index}.value`],
-        label: "Value",
-        onChange(value) {
-          actions.updateEnvVar(envVar.entryId, "value", value);
-        },
-        value: envVar.value
-      }
-    })),
-    footerActions,
-    heading: "Environment",
-    isSubmitting: meta.isSubmitting,
-    submitError: meta.submitError
-  };
-}
-
-export function useNewProjectConfigurationShellViewModel(): ProjectConfigurationShellViewModel {
-  return {
-    title: "New project",
-    tabs: buildProjectConfigurationTabs("new")
-  };
-}
-
-export function useProjectSettingsConfigurationShellViewModel(): ProjectConfigurationShellViewModel {
-  const { actions, meta } = useProjectSettingsConfiguration();
-  const project = useCurrentProject();
-
-  return {
-    title: `Project settings: ${project.displayName}`,
-    tabs: meta.status === "ready" ? buildProjectConfigurationTabs("settings") : [],
+    title: meta.mode.title,
+    tabs: meta.status === "ready" ? buildProjectConfigurationTabs(meta.mode.id) : [],
     ...(meta.status === "loading"
       ? {
           shellState: {
@@ -591,8 +328,33 @@ export function useProjectSettingsConfigurationShellViewModel(): ProjectConfigur
   };
 }
 
-export function useNewProjectOverviewViewModel(): ProjectOverviewViewModel {
-  const { actions, meta, state } = useNewProjectConfiguration();
+export function useProjectConfigurationOverviewViewModel(): ProjectOverviewViewModel {
+  const configuration = useProjectConfiguration();
+  const footerActions = useProjectConfigurationFooterActions();
+  const readyConfiguration = getReadyProjectConfiguration(configuration);
+
+  if (!readyConfiguration) {
+    return {
+      descriptionField: {
+        label: "Description",
+        value: ""
+      },
+      footerActions,
+      heading: "Overview",
+      isSubmitting: configuration.meta.isSubmitting,
+      keyField: {
+        label: "Project key",
+        value: ""
+      },
+      nameField: {
+        label: "Project name",
+        value: ""
+      },
+      submitError: configuration.meta.submitError
+    };
+  }
+
+  const { actions, meta, state } = readyConfiguration;
 
   return {
     descriptionField: {
@@ -603,8 +365,9 @@ export function useNewProjectOverviewViewModel(): ProjectOverviewViewModel {
       },
       value: state.draft.overview.description
     },
-    footerActions: useNewProjectFooterActions(),
+    footerActions,
     heading: "Overview",
+    isSubmitting: meta.isSubmitting,
     keyField: {
       errorMessage: state.fieldErrors["overview.projectKey"],
       label: "Project key",
@@ -625,124 +388,40 @@ export function useNewProjectOverviewViewModel(): ProjectOverviewViewModel {
   };
 }
 
-export function useProjectSettingsOverviewViewModel() {
-  return useProjectSettingsOverviewModel();
-}
-
-export function useNewProjectComponentsViewModel(): NewProjectComponentsViewModel {
-  const { actions, meta, state } = useNewProjectConfiguration();
+export function useProjectConfigurationComponentsViewModel(): ProjectConfigurationComponentsViewModel {
+  const configuration = useProjectConfiguration();
+  const footerActions = useProjectConfigurationFooterActions();
   const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const readyConfiguration = getReadyProjectConfiguration(configuration);
+
+  if (!readyConfiguration) {
+    return {
+      components: [],
+      emptyState:
+        configuration.meta.mode.id === "settings"
+          ? "Keystone is loading the selected project's components."
+          : configuration.meta.mode.componentEmptyState,
+      footerActions,
+      heading: "Components",
+      isSubmitting: configuration.meta.isSubmitting,
+      pickComponentType() {},
+      submitError: configuration.meta.submitError,
+      toggleTypePicker() {},
+      typeOptions: projectComponentTypeOptions,
+      typePickerOpen: false,
+      typePickerTitle: "Add component menu"
+    };
+  }
+
+  const { actions, meta, state } = readyConfiguration;
 
   return {
-    components: state.draft.components.map((component, index) => ({
-      componentId: component.componentId,
-      componentKeyField: {
-        errorMessage: state.fieldErrors[`components.${index}.componentKey`],
-        label: "Key",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "componentKey", value);
-        },
-        value: component.componentKey
-      },
-      defaultRefField: {
-        errorMessage: state.fieldErrors[`components.${index}.defaultRef`],
-        label: "Default ref",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "defaultRef", value);
-        },
-        value: component.defaultRef
-      },
-      displayNameField: {
-        errorMessage: state.fieldErrors[`components.${index}.displayName`],
-        label: "Name",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "displayName", value);
-        },
-        value: component.displayName
-      },
-      gitUrlField: {
-        disabled: component.sourceMode !== "gitUrl",
-        errorMessage: state.fieldErrors[`components.${index}.gitUrl`],
-        label: "Git URL",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "gitUrl", value);
-        },
-        value: component.gitUrl
-      },
-      heading: `Component ${index + 1}`,
-      kind: component.kind,
-      localPathField: {
-        disabled: component.sourceMode !== "localPath",
-        errorMessage: state.fieldErrors[`components.${index}.localPath`],
-        label: "Local path",
-        onChange(value) {
-          actions.updateComponentField(component.componentId, "localPath", value);
-        },
-        value: component.localPath
-      },
-      onRemove() {
-        actions.removeComponent(component.componentId);
-      },
-      reviewInstructions: {
-        addLabel: "Add review instruction",
-        items: component.reviewInstructions,
-        label: "Review",
-        onAdd() {
-          actions.addComponentRuleInstruction(component.componentId, "reviewInstructions");
-        },
-        onChange(itemIndex, value) {
-          actions.updateComponentRuleInstruction(
-            component.componentId,
-            "reviewInstructions",
-            itemIndex,
-            value
-          );
-        },
-        onRemove(itemIndex) {
-          actions.removeComponentRuleInstruction(
-            component.componentId,
-            "reviewInstructions",
-            itemIndex
-          );
-        },
-        rowErrors: getListItemErrors(
-          state.fieldErrors,
-          `components.${index}.reviewInstructions`
-        )
-      },
-      setSourceMode(sourceMode) {
-        actions.setComponentSourceMode(component.componentId, sourceMode);
-      },
-      sourceMode: component.sourceMode,
-      testInstructions: {
-        addLabel: "Add test instruction",
-        items: component.testInstructions,
-        label: "Test",
-        onAdd() {
-          actions.addComponentRuleInstruction(component.componentId, "testInstructions");
-        },
-        onChange(itemIndex, value) {
-          actions.updateComponentRuleInstruction(
-            component.componentId,
-            "testInstructions",
-            itemIndex,
-            value
-          );
-        },
-        onRemove(itemIndex) {
-          actions.removeComponentRuleInstruction(
-            component.componentId,
-            "testInstructions",
-            itemIndex
-          );
-        },
-        rowErrors: getListItemErrors(state.fieldErrors, `components.${index}.testInstructions`)
-      }
-    })),
+    components: buildProjectComponentViewModels(readyConfiguration),
     emptyError: state.fieldErrors.components,
-    emptyState: "Add repository components before creating the project.",
-    footerActions: useNewProjectFooterActions(),
+    emptyState: meta.mode.componentEmptyState,
+    footerActions,
     heading: "Components",
+    isSubmitting: meta.isSubmitting,
     pickComponentType(kindId) {
       actions.addComponent(kindId);
       setTypePickerOpen(false);
@@ -757,16 +436,34 @@ export function useNewProjectComponentsViewModel(): NewProjectComponentsViewMode
   };
 }
 
-export function useProjectSettingsComponentsViewModel() {
-  return useProjectSettingsComponentsModel();
-}
+export function useProjectConfigurationRulesViewModel(): ProjectRulesViewModel {
+  const configuration = useProjectConfiguration();
+  const footerActions = useProjectConfigurationFooterActions();
+  const readyConfiguration = getReadyProjectConfiguration(configuration);
 
-export function useNewProjectRulesViewModel(): ProjectRulesViewModel {
-  const { actions, meta, state } = useNewProjectConfiguration();
+  if (!readyConfiguration) {
+    return {
+      footerActions,
+      heading: "Rules",
+      isSubmitting: configuration.meta.isSubmitting,
+      reviewInstructions: {
+        items: [],
+        label: "Project review instructions"
+      },
+      submitError: configuration.meta.submitError,
+      testInstructions: {
+        items: [],
+        label: "Project test instructions"
+      }
+    };
+  }
+
+  const { actions, meta, state } = readyConfiguration;
 
   return {
-    footerActions: useNewProjectFooterActions(),
+    footerActions,
     heading: "Rules",
+    isSubmitting: meta.isSubmitting,
     reviewInstructions: {
       addLabel: "Add review instruction",
       items: state.draft.ruleSet.reviewInstructions,
@@ -801,12 +498,24 @@ export function useNewProjectRulesViewModel(): ProjectRulesViewModel {
   };
 }
 
-export function useProjectSettingsRulesViewModel() {
-  return useProjectSettingsRulesModel();
-}
+export function useProjectConfigurationEnvironmentViewModel(): ProjectConfigurationEnvironmentViewModel {
+  const configuration = useProjectConfiguration();
+  const footerActions = useProjectConfigurationFooterActions();
+  const readyConfiguration = getReadyProjectConfiguration(configuration);
 
-export function useNewProjectEnvironmentViewModel(): NewProjectEnvironmentViewModel {
-  const { actions, meta, state } = useNewProjectConfiguration();
+  if (!readyConfiguration) {
+    return {
+      addEnvVar() {},
+      emptyMessage: "No environment variables added yet.",
+      envVars: [],
+      footerActions,
+      heading: "Environment",
+      isSubmitting: configuration.meta.isSubmitting,
+      submitError: configuration.meta.submitError
+    };
+  }
+
+  const { actions, meta, state } = readyConfiguration;
 
   return {
     addEnvVar: actions.addEnvVar,
@@ -833,12 +542,49 @@ export function useNewProjectEnvironmentViewModel(): NewProjectEnvironmentViewMo
         value: envVar.value
       }
     })),
-    footerActions: useNewProjectFooterActions(),
+    footerActions,
     heading: "Environment",
+    isSubmitting: meta.isSubmitting,
     submitError: meta.submitError
   };
 }
 
+export function useNewProjectConfigurationShellViewModel() {
+  return useProjectConfigurationShellViewModel();
+}
+
+export function useProjectSettingsConfigurationShellViewModel() {
+  return useProjectConfigurationShellViewModel();
+}
+
+export function useNewProjectOverviewViewModel() {
+  return useProjectConfigurationOverviewViewModel();
+}
+
+export function useProjectSettingsOverviewViewModel() {
+  return useProjectConfigurationOverviewViewModel();
+}
+
+export function useNewProjectComponentsViewModel() {
+  return useProjectConfigurationComponentsViewModel();
+}
+
+export function useProjectSettingsComponentsViewModel() {
+  return useProjectConfigurationComponentsViewModel();
+}
+
+export function useNewProjectRulesViewModel() {
+  return useProjectConfigurationRulesViewModel();
+}
+
+export function useProjectSettingsRulesViewModel() {
+  return useProjectConfigurationRulesViewModel();
+}
+
+export function useNewProjectEnvironmentViewModel() {
+  return useProjectConfigurationEnvironmentViewModel();
+}
+
 export function useProjectSettingsEnvironmentViewModel() {
-  return useProjectSettingsEnvironmentModel();
+  return useProjectConfigurationEnvironmentViewModel();
 }

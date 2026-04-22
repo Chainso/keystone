@@ -1,16 +1,16 @@
-import type { ProjectComponentTypeOption } from "../../features/projects/project-configuration-scaffold";
+import type { ProjectComponentTypeOption } from "../project-configuration-scaffold";
 
-interface ComponentTypePickerProps {
-  options: ProjectComponentTypeOption[];
+interface ProjectComponentTypePickerProps {
   onSelect: (kindId: ProjectComponentTypeOption["kindId"]) => void;
+  options: ProjectComponentTypeOption[];
   title: string;
 }
 
-export function ComponentTypePicker({
-  options,
+export function ProjectComponentTypePicker({
   onSelect,
+  options,
   title
-}: ComponentTypePickerProps) {
+}: ProjectComponentTypePickerProps) {
   return (
     <section className="type-picker-panel" aria-label={title}>
       <h3 className="page-section-title">{title}</h3>

@@ -15,7 +15,7 @@ import {
 import { buildProjectConfigurationComponentDraft } from "../features/projects/project-configuration-scaffold";
 import { ProjectSettingsConfigurationProvider } from "../features/projects/project-settings-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
-import { useProjectSettingsComponentsViewModel } from "../features/projects/use-project-configuration-view-model";
+import { useProjectConfigurationComponentsViewModel } from "../features/projects/use-project-configuration-view-model";
 import {
   ResourceModelProvider,
   useResourceModel
@@ -106,9 +106,9 @@ function ResourceModelProbe() {
   );
 }
 
-function ProjectSettingsComponentsProbe() {
+function ProjectConfigurationComponentsProbe() {
   const { actions } = useProjectManagement();
-  const viewModel = useProjectSettingsComponentsViewModel();
+  const viewModel = useProjectConfigurationComponentsViewModel();
 
   return (
     <>
@@ -155,11 +155,11 @@ function renderProjectSettingsComponents(dataset: ResourceModelDataset) {
   const projectApi = createStaticProjectManagementApi(projects, dataset);
 
   return render(
-    <CurrentProjectProvider api={projectApi}>
-      <ProjectSettingsConfigurationProvider>
-        <ProjectSettingsComponentsProbe />
-      </ProjectSettingsConfigurationProvider>
-    </CurrentProjectProvider>
+      <CurrentProjectProvider api={projectApi}>
+        <ProjectSettingsConfigurationProvider>
+          <ProjectConfigurationComponentsProbe />
+        </ProjectSettingsConfigurationProvider>
+      </CurrentProjectProvider>
   );
 }
 
@@ -726,7 +726,7 @@ describe("resource-model selectors", () => {
     const { rerender } = render(
       <CurrentProjectProvider api={createStaticProjectManagementApi(projects, initialDataset)}>
         <ProjectSettingsConfigurationProvider>
-          <ProjectSettingsComponentsProbe />
+          <ProjectConfigurationComponentsProbe />
         </ProjectSettingsConfigurationProvider>
       </CurrentProjectProvider>
     );
@@ -738,7 +738,7 @@ describe("resource-model selectors", () => {
     rerender(
       <CurrentProjectProvider api={createStaticProjectManagementApi(projects, updatedDataset)}>
         <ProjectSettingsConfigurationProvider>
-          <ProjectSettingsComponentsProbe />
+          <ProjectConfigurationComponentsProbe />
         </ProjectSettingsConfigurationProvider>
       </CurrentProjectProvider>
     );

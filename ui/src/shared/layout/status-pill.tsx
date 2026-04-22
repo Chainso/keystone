@@ -1,4 +1,6 @@
-function getStatusTone(label: string) {
+export type StatusTone = "active" | "blocked" | "complete" | "neutral" | "queued";
+
+export function inferStatusTone(label: string): StatusTone {
   const normalized = label.toLowerCase();
 
   if (normalized.includes("block")) {
@@ -26,10 +28,11 @@ function getStatusTone(label: string) {
 
 interface StatusPillProps {
   label: string;
+  tone?: StatusTone | undefined;
 }
 
-export function StatusPill({ label }: StatusPillProps) {
-  const tone = getStatusTone(label);
+export function StatusPill({ label, tone }: StatusPillProps) {
+  const resolvedTone = tone ?? inferStatusTone(label);
 
-  return <span className={`status-pill status-pill-${tone}`}>{label}</span>;
+  return <span className={`status-pill status-pill-${resolvedTone}`}>{label}</span>;
 }

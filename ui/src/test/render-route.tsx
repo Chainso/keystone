@@ -1,5 +1,3 @@
-import "@testing-library/jest-dom/vitest";
-
 import { render } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 

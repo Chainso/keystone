@@ -18,12 +18,17 @@ afterEach(() => {
 
 function createDeferred<T>() {
   let resolvePromise: ((value: T) => void) | null = null;
-  const promise = new Promise<T>((resolve) => {
+  let rejectPromise: ((reason?: unknown) => void) | null = null;
+  const promise = new Promise<T>((resolve, reject) => {
     resolvePromise = resolve;
+    rejectPromise = reject;
   });
 
   return {
     promise,
+    reject(reason?: unknown) {
+      rejectPromise?.(reason);
+    },
     resolve(value: T) {
       resolvePromise?.(value);
     }
@@ -1245,9 +1250,9 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-107/execution");
     });
-    expect(screen.getByText("Execution is materializing")).toBeInTheDocument();
+    expect(await screen.findByText("Execution is materializing")).toBeInTheDocument();
     expect(
-      screen.getByText(
+      await screen.findByText(
         "Compile was accepted for this run. Keystone is still materializing the live execution graph."
       )
     ).toBeInTheDocument();
@@ -1306,7 +1311,7 @@ describe("Run routes", () => {
       expect(router.state.location.pathname).toBe("/runs/run-104/specification");
     });
 
-    expect(screen.getByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Loading run" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "run-101" })).not.toBeInTheDocument();
 
     deferredRun.resolve(runFixtures["run-104"]!.run);
@@ -1391,6 +1396,69 @@ describe("Run routes", () => {
         })
       ])
     );
+  });
+
+  it("keeps planning edits in place and allows retry after a revision save fails", async () => {
+    const failedSave = createDeferred<
+      Awaited<ReturnType<RunManagementApi["createRunDocumentRevision"]>>
+    >();
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    let shouldReject = true;
+    const createRunDocumentRevision = vi.fn(
+      async (...args: Parameters<RunManagementApi["createRunDocumentRevision"]>) => {
+        if (shouldReject) {
+          shouldReject = false;
+          return await failedSave.promise;
+        }
+
+        return baseRunApi.createRunDocumentRevision(...args);
+      }
+    );
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      createRunDocumentRevision
+    };
+    const { router } = renderRunRoute("/runs/run-104/specification", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+      target: {
+        value: "Run Specification v2"
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Specification\n- Retry the save after a transient failure.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
+
+    failedSave.reject(new Error("Unable to save specification changes."));
+
+    expect(await screen.findByText("Unable to save specification changes.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue(
+      "Run Specification v2"
+    );
+    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+      "# Specification\n- Retry the save after a transient failure.\n"
+    );
+    expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Specification v2" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Retry the save after a transient failure.")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to save specification changes.")).not.toBeInTheDocument();
+    expect(createRunDocumentRevision).toHaveBeenCalledTimes(2);
   });
 
   it("deduplicates rapid create and save activations for a planning document", async () => {
@@ -1612,6 +1680,148 @@ describe("Run routes", () => {
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
   });
 
+  it("blocks route changes away from dirty planning edits until the user confirms", async () => {
+    const confirmMock = vi.fn(() => false);
+
+    vi.stubGlobal("confirm", confirmMock);
+
+    const { router } = renderRunRoute(
+      "/runs/run-105/architecture",
+      createStaticRunManagementApi(cloneRunFixtures())
+    );
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Guard this draft.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith(
+        "You have unsaved changes in Architecture. Leave this document without saving?"
+      );
+    });
+    expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
+    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+      "# Architecture\n- Guard this draft.\n"
+    );
+
+    confirmMock.mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/documentation");
+    });
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+  });
+
+  it("registers a beforeunload warning while a planning draft has unsaved changes", async () => {
+    renderRunRoute("/runs/run-105/architecture", createStaticRunManagementApi(cloneRunFixtures()));
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Warn before unload.\n"
+      }
+    });
+
+    const beforeUnloadEvent = new Event("beforeunload", {
+      cancelable: true
+    }) as unknown as BeforeUnloadEvent;
+
+    Object.defineProperty(beforeUnloadEvent, "returnValue", {
+      configurable: true,
+      value: "",
+      writable: true
+    });
+
+    window.dispatchEvent(beforeUnloadEvent);
+
+    expect(beforeUnloadEvent.defaultPrevented).toBe(true);
+    expect(beforeUnloadEvent.returnValue).toBe(
+      "You have unsaved changes in Architecture. Leave this document without saving?"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+    const cleanBeforeUnloadEvent = new Event("beforeunload", {
+      cancelable: true
+    }) as unknown as BeforeUnloadEvent;
+
+    Object.defineProperty(cleanBeforeUnloadEvent, "returnValue", {
+      configurable: true,
+      value: "",
+      writable: true
+    });
+
+    window.dispatchEvent(cleanBeforeUnloadEvent);
+
+    expect(cleanBeforeUnloadEvent.defaultPrevented).toBe(false);
+    expect(cleanBeforeUnloadEvent.returnValue).toBe("");
+  });
+
+  it("keeps the navigation guard active while a planning save is still pending", async () => {
+    const confirmMock = vi.fn(() => false);
+    const pendingSave = createDeferred<void>();
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    const createRunDocumentRevision = vi.fn(
+      async (...args: Parameters<RunManagementApi["createRunDocumentRevision"]>) => {
+        await pendingSave.promise;
+        return baseRunApi.createRunDocumentRevision(...args);
+      }
+    );
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      createRunDocumentRevision
+    };
+
+    vi.stubGlobal("confirm", confirmMock);
+
+    const { router } = renderRunRoute("/runs/run-105/architecture", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Save is still pending.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
+    expect(createRunDocumentRevision).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith(
+        "You have unsaved changes in Architecture. Leave this document without saving?"
+      );
+    });
+    expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
+    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+      "# Architecture\n- Save is still pending.\n"
+    );
+
+    pendingSave.resolve(undefined);
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Save is still pending.")).toBeInTheDocument();
+  });
+
   it("only exposes Compile run when the live planning documents are ready for compilation", async () => {
     renderRunRoute("/runs/run-108/execution-plan");
 
@@ -1673,6 +1883,194 @@ describe("Run routes", () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
+  });
+
+  it("refreshes a blocked compile state until execution becomes available", async () => {
+    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    };
+    const materializedWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [
+        {
+          dependsOn: [],
+          name: "Inspect materialized execution",
+          status: "ready",
+          taskId: "task-107-refresh"
+        }
+      ],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 1,
+        totalTasks: 1
+      }
+    };
+    const materializedTasks: NonNullable<StaticRunDetailRecord["tasks"]> = [
+      {
+        conversation: null,
+        dependsOn: [],
+        description: "Inspect the materialized execution graph.",
+        endedAt: null,
+        logicalTaskId: "TASK-107",
+        name: "Inspect materialized execution",
+        runId: "run-107",
+        startedAt: null,
+        status: "ready",
+        taskId: "task-107-refresh",
+        updatedAt: "2026-04-20T13:00:00.000Z"
+      }
+    ];
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    let workflowCallCount = 0;
+    const getRunWorkflow = vi.fn(async () => {
+      workflowCallCount += 1;
+      return workflowCallCount === 1 ? emptyWorkflow : materializedWorkflow;
+    });
+    const listRunTasks = vi.fn(async () =>
+      workflowCallCount === 1 ? [] : materializedTasks
+    );
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getRunWorkflow,
+      listRunTasks
+    };
+
+    renderRunRoute("/runs/run-107/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh run" }));
+
+    await waitFor(() => {
+      expect(getRunWorkflow).toHaveBeenCalledTimes(2);
+    });
+    expect(listRunTasks).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("link", { name: "Open execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-107/execution"
+    );
+    expect(
+      screen.getByText(
+        "Execution is enabled for this run. Open the DAG to inspect live task state."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("replaces stale ready detail with the shared error state when a refresh retry fails", async () => {
+    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    };
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    let workflowCallCount = 0;
+    const getRunWorkflow = vi.fn(async () => {
+      workflowCallCount += 1;
+
+      if (workflowCallCount === 1) {
+        return emptyWorkflow;
+      }
+
+      throw new Error("Run detail refresh failed.");
+    });
+    const listRunTasks = vi.fn(async () => []);
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getRunWorkflow,
+      listRunTasks
+    };
+
+    renderRunRoute("/runs/run-107/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh run" }));
+
+    expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expect(screen.getByText("Run detail refresh failed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Refresh run" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Compile was accepted for this run. Keystone is waiting for the live execution graph to become available."
+      )
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps terminal run compile messaging aligned with the current run status", async () => {
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    const getRun = vi.fn(async (runId: string) => {
+      const run = await baseRunApi.getRun(runId);
+
+      if (runId === "run-108") {
+        return {
+          ...run,
+          endedAt: "2026-04-20T13:30:00.000Z",
+          startedAt: "2026-04-20T13:00:00.000Z",
+          status: "cancelled"
+        };
+      }
+
+      if (runId === "run-109") {
+        return {
+          ...run,
+          endedAt: "2026-04-20T13:30:00.000Z",
+          status: "failed"
+        };
+      }
+
+      return run;
+    });
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getRun
+    };
+
+    renderRunRoute("/runs/run-108/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Run status is Cancelled. This run cannot be compiled again.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compile run" })).not.toBeInTheDocument();
+
+    cleanup();
+
+    renderRunRoute("/runs/run-109/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-109" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Run status is Failed. Execution still reflects older planning revisions and cannot be refreshed here."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open current execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-109/execution"
+    );
   });
 
   it("compiles a ready run, refreshes live state, and routes into execution", async () => {

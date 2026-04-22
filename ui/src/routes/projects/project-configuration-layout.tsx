@@ -1,45 +1,20 @@
 import { Outlet } from "react-router-dom";
 
-import {
-  type ProjectConfigurationMode
-} from "../../features/projects/project-configuration-scaffold";
+import type { ProjectConfigurationMode } from "../../features/projects/project-configuration-scaffold";
 import { NewProjectConfigurationProvider } from "../../features/projects/new-project-context";
 import { ProjectSettingsConfigurationProvider } from "../../features/projects/project-settings-context";
-import {
-  useNewProjectConfigurationShellViewModel,
-  useProjectSettingsConfigurationShellViewModel
-} from "../../features/projects/use-project-configuration-view-model";
-import { ProjectConfigurationScaffold } from "../../shared/layout/project-configuration-scaffold";
+import { ProjectConfigurationShell } from "../../features/projects/components/project-configuration-shell";
+import { useProjectConfigurationShellViewModel } from "../../features/projects/use-project-configuration-view-model";
 
 interface ProjectConfigurationLayoutProps {
   mode: ProjectConfigurationMode;
 }
 
-function NewProjectConfigurationLayout() {
-  const model = useNewProjectConfigurationShellViewModel();
+function ProjectConfigurationRouteShell() {
+  const model = useProjectConfigurationShellViewModel();
 
   return (
-    <NewProjectConfigurationProvider>
-      <ProjectConfigurationScaffold title={model.title} tabs={model.tabs}>
-        <Outlet />
-      </ProjectConfigurationScaffold>
-    </NewProjectConfigurationProvider>
-  );
-}
-
-function ProjectSettingsConfigurationLayout() {
-  return (
-    <ProjectSettingsConfigurationProvider>
-      <ProjectSettingsConfigurationShell />
-    </ProjectSettingsConfigurationProvider>
-  );
-}
-
-function ProjectSettingsConfigurationShell() {
-  const model = useProjectSettingsConfigurationShellViewModel();
-
-  return (
-    <ProjectConfigurationScaffold title={model.title} tabs={model.tabs}>
+    <ProjectConfigurationShell title={model.title} tabs={model.tabs}>
       {model.shellState ? (
         <section className="empty-state-card">
           <h2 className="document-card-title">{model.shellState.heading}</h2>
@@ -57,10 +32,19 @@ function ProjectSettingsConfigurationShell() {
       ) : (
         <Outlet />
       )}
-    </ProjectConfigurationScaffold>
+    </ProjectConfigurationShell>
   );
 }
 
 export function ProjectConfigurationLayout({ mode }: ProjectConfigurationLayoutProps) {
-  return mode === "new" ? <NewProjectConfigurationLayout /> : <ProjectSettingsConfigurationLayout />;
+  const Provider =
+    mode === "new"
+      ? NewProjectConfigurationProvider
+      : ProjectSettingsConfigurationProvider;
+
+  return (
+    <Provider>
+      <ProjectConfigurationRouteShell />
+    </Provider>
+  );
 }

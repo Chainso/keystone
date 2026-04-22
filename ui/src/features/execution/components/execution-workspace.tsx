@@ -6,28 +6,6 @@ interface ExecutionWorkspaceProps {
   model: RunExecutionViewModel;
 }
 
-function getExecutionNodeTone(status: string) {
-  const normalized = status.toLowerCase();
-
-  if (normalized.includes("fail") || normalized.includes("cancel")) {
-    return "blocked";
-  }
-
-  if (normalized.includes("active") || normalized.includes("running")) {
-    return "active";
-  }
-
-  if (normalized.includes("complete")) {
-    return "complete";
-  }
-
-  if (normalized.includes("ready") || normalized.includes("pending")) {
-    return "queued";
-  }
-
-  return "neutral";
-}
-
 export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
   return (
     <section className="workspace-panel execution-panel">
@@ -75,11 +53,11 @@ export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
                 <Link
                   key={task.taskId}
                   to={task.detailPath}
-                  className={`execution-node execution-node-${getExecutionNodeTone(task.status)}`}
+                  className={`execution-node execution-node-${task.statusTone}`}
                 >
                   <span className="execution-node-label">{task.taskId}</span>
                   <span className="execution-node-title">{task.title}</span>
-                  <span className="document-name">{task.status}</span>
+                  <span className="document-name">{task.statusLabel}</span>
                   {task.dependencyCount > 0 ? (
                     <span className="document-card-summary">
                       Depends on {task.dependencyCount} prior {task.dependencyCount === 1 ? "task" : "tasks"}

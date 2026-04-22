@@ -145,7 +145,7 @@ export function RunsIndexRoute() {
                       <td>{run.workflowInstanceId}</td>
                       <td>{run.executionEngine}</td>
                       <td>
-                        <StatusPill label={run.status} />
+                        <StatusPill label={run.statusLabel} tone={run.statusTone} />
                       </td>
                       <td>{run.latestActivityLabel}</td>
                     </tr>
