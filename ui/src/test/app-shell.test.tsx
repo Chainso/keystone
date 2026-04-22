@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { AppProviders } from "../app/app-providers";
 import { useTheme } from "../app/theme-provider";
@@ -292,6 +292,13 @@ describe("theme provider", () => {
 
 function expectShellLinkTarget(name: string, href: string) {
   expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
+}
+
+function expectWorkspaceLocation(projectName: string, destinationName: string) {
+  const location = screen.getByLabelText("Workspace location");
+
+  expect(location).toHaveTextContent(projectName);
+  expect(location).toHaveTextContent(destinationName);
 }
 
 function getProjectSelector() {
@@ -798,6 +805,7 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
+    expectWorkspaceLocation("Keystone Cloudflare", "Runs");
     expect(screen.getByText("wf-run-104")).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
@@ -1221,6 +1229,7 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    expectWorkspaceLocation("Alt Project", "Runs");
     expect(screen.getByText("Alt Project does not have any recorded runs yet.")).toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
@@ -1284,6 +1293,7 @@ describe("App shell", () => {
     });
 
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    expectWorkspaceLocation("Alt Project", "Runs");
     expect(await screen.findByRole("heading", { name: "Loading runs" })).toBeInTheDocument();
     expect(screen.getByText("Keystone is loading runs for Alt Project.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
@@ -1296,6 +1306,29 @@ describe("App shell", () => {
     expect(screen.getByRole("link", { name: "run-alt-301" })).toBeInTheDocument();
     expect(screen.queryByText("run-104")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
+  });
+
+  it("keeps the theme preference toggle in the sidebar and applies the selected theme", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+
+    stubProjectListFetch([scaffoldProject]);
+
+    renderRoute("/documentation", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expectWorkspaceLocation("Keystone Cloudflare", "Documentation");
+
+    const themePreference = screen.getByRole("group", { name: "Theme preference" });
+
+    fireEvent.click(within(themePreference).getByRole("radio", { name: "Dark" }));
+
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBe("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 
   it("renders the settings load error state and recovers after retry", async () => {
@@ -1457,22 +1490,26 @@ describe("App shell", () => {
 
   it.each([
     {
+      destination: "Documentation",
       path: "/documentation",
       heading: "Project documentation"
     },
     {
+      destination: "Workstreams",
       path: "/workstreams",
       heading: "Project work across runs"
     },
     {
+      destination: "New project",
       path: "/projects/new",
       heading: "New project"
     },
     {
+      destination: "Project settings",
       path: "/settings",
       heading: "Project settings: Keystone Cloudflare"
     }
-  ])("mounts the $heading scaffold route inside the shared shell", async ({ path, heading }) => {
+  ])("mounts the $heading scaffold route inside the shared shell", async ({ path, heading, destination }) => {
     const scaffoldProject: CurrentProject = {
       projectId: "project-keystone-cloudflare",
       projectKey: "keystone-cloudflare",
@@ -1525,6 +1562,7 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
+    expectWorkspaceLocation("Keystone Cloudflare", destination);
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
     expectShellLinkTarget("Workstreams", "/workstreams");

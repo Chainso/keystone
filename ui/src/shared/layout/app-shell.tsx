@@ -6,6 +6,7 @@ import {
   WorkspacePageSection
 } from "../../components/workspace/workspace-page";
 import { useProjectManagement } from "../../features/projects/project-context";
+import { resolveShellLocation } from "../navigation/destinations";
 import { ShellSidebar } from "./shell-sidebar";
 
 interface AppShellProps {
@@ -69,18 +70,47 @@ function ProjectShellState() {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { meta } = useProjectManagement();
+  const { meta, state } = useProjectManagement();
   const location = useLocation();
+  const shellLocation = resolveShellLocation(location.pathname);
   const allowProjectRecoveryRoute =
     meta.status === "empty" && location.pathname.startsWith("/projects/new");
   const shouldRenderChildren = meta.status === "ready" || allowProjectRecoveryRoute;
+  const currentProjectLabel =
+    state.currentProject?.displayName ??
+    (meta.status === "empty"
+      ? "No project selected"
+      : meta.status === "loading"
+        ? "Loading project context"
+        : "Project context unavailable");
 
   return (
     <div className="workspace-shell">
       <ShellSidebar />
-      <main className="workspace-stage">
-        {shouldRenderChildren ? children : <ProjectShellState />}
-      </main>
+      <div className="workspace-shell-main">
+        <main className="workspace-stage">
+          {shouldRenderChildren ? (
+            <>
+              <header className="shell-stage-chrome" aria-label="Workspace location">
+                <div className="shell-stage-heading">
+                  <p className="page-eyebrow">Project workspace</p>
+                  <div className="shell-stage-title-row">
+                    <span className="shell-stage-project">{currentProjectLabel}</span>
+                    <span className="shell-stage-separator" aria-hidden="true">
+                      /
+                    </span>
+                    <span className="shell-stage-destination">{shellLocation.label}</span>
+                  </div>
+                </div>
+                <p className="shell-stage-summary">{shellLocation.summary}</p>
+              </header>
+              <div className="shell-stage-body">{children}</div>
+            </>
+          ) : (
+            <ProjectShellState />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
