@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   getProject,
@@ -6,6 +7,7 @@ import {
 } from "../resource-model/selectors";
 import { useResourceModel } from "../resource-model/context";
 import { useCurrentProject } from "../projects/project-context";
+import { updateSearchParams } from "../../shared/navigation/search-param-state";
 
 export interface DocumentationTreeDocument {
   documentId: string;
@@ -43,7 +45,8 @@ export interface DocumentationViewModel {
 export function useDocumentationViewModel(): DocumentationViewModel {
   const { state } = useResourceModel();
   const project = useCurrentProject();
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDocumentId = searchParams.get("document");
   const scaffoldProject = getProject(project.projectId, state.dataset);
 
   if (!scaffoldProject) {
@@ -62,7 +65,7 @@ export function useDocumentationViewModel(): DocumentationViewModel {
 
   const selection = getProjectDocumentationSelection(
     project.projectId,
-    selectedDocumentId,
+    requestedDocumentId,
     state.dataset
   );
 
@@ -78,6 +81,24 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       selectDocument() {}
     };
   }
+
+  useEffect(() => {
+    if (!requestedDocumentId || requestedDocumentId === selection.selectedDocument.documentId) {
+      return;
+    }
+
+    setSearchParams(
+      updateSearchParams(searchParams, {
+        document: selection.selectedDocument.documentId
+      }),
+      { replace: true }
+    );
+  }, [
+    requestedDocumentId,
+    searchParams,
+    selection.selectedDocument.documentId,
+    setSearchParams
+  ]);
 
   return {
     title: "Project documentation",
@@ -100,7 +121,11 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       contentLines: selection.selectedDocument.contentLines
     },
     selectDocument(documentId: string) {
-      setSelectedDocumentId(documentId);
+      setSearchParams(
+        updateSearchParams(searchParams, {
+          document: documentId
+        })
+      );
     }
   };
 }

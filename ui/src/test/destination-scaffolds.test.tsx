@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
@@ -152,6 +152,10 @@ function expectWorkstreamRows(expectedRows: string[][]) {
 
 function expectWorkstreamLink(taskDisplayId: string, href: string) {
   expect(screen.getByRole("link", { name: taskDisplayId })).toHaveAttribute("href", href);
+}
+
+function getProjectSelector() {
+  return screen.getByRole("combobox", { name: "Project" });
 }
 
 function buildProjectsResponse(projects: CurrentProject[]) {
@@ -555,7 +559,7 @@ function stubProjectSettingsFlowFetch(input: {
 
 describe("Destination scaffolds", () => {
   it("renders derived documentation groups and switches selection structurally", async () => {
-    renderRoute("/documentation");
+    const { router } = renderRoute("/documentation");
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
     expect(
@@ -603,6 +607,9 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "current living architecture + decisions" })
     ).toBeInTheDocument();
+    const architectureDocumentId = new URLSearchParams(router.state.location.search).get("document");
+
+    expect(architectureDocumentId).toBeTruthy();
     expect(
       within(documentViewer as HTMLElement).getByText("docs/architecture/current.md")
     ).toBeInTheDocument();
@@ -618,6 +625,10 @@ describe("Destination scaffolds", () => {
     fireEvent.click(openQuestionsButton);
 
     expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
+    const openQuestionsDocumentId = new URLSearchParams(router.state.location.search).get("document");
+
+    expect(openQuestionsDocumentId).toBeTruthy();
+    expect(openQuestionsDocumentId).not.toBe(architectureDocumentId);
     expect(
       within(documentViewer as HTMLElement).getByText("docs/notes/open-questions.md")
     ).toBeInTheDocument();
@@ -629,6 +640,23 @@ describe("Destination scaffolds", () => {
         .getAllByRole("button")
         .filter((button) => button.getAttribute("aria-pressed") === "true")
     ).toHaveLength(1);
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "current living architecture + decisions" })
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "current living product specification" })
+    ).toBeInTheDocument();
+    expect(router.state.location.search).toBe("");
   });
 
   it("renders a compatibility state for documentation on a non-scaffold live project", async () => {
@@ -804,6 +832,101 @@ describe("Destination scaffolds", () => {
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
       "Showing 1-4 of 4 tasks · Page 1 of 1"
     );
+  });
+
+  it("restores workstream filter and page state from the URL history", async () => {
+    const activePageOne = Array.from({ length: 25 }, (_, index) =>
+      createLiveProjectTaskFixture({
+        logicalTaskId: `TASK-HISTORY-${String(index + 1).padStart(3, "0")}`,
+        name: `History task ${index + 1}`,
+        runId: `run-history-${String(index + 1).padStart(3, "0")}`,
+        taskId: `task-history-${String(index + 1).padStart(3, "0")}`,
+        updatedAt: `2026-04-20T12:${String(index).padStart(2, "0")}:00.000Z`
+      })
+    );
+    const activePageTwo = [
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-HISTORY-026",
+        name: "History task 26",
+        runId: "run-history-026",
+        taskId: "task-history-026",
+        updatedAt: "2026-04-20T12:26:00.000Z"
+      })
+    ];
+    const allTasks = [
+      createLiveProjectTaskFixture({
+        logicalTaskId: "TASK-ALL-001",
+        name: "Completed planning notes",
+        runId: "run-all-001",
+        status: "completed",
+        taskId: "task-all-001"
+      }),
+      createLiveProjectTaskFixture({
+        logicalTaskId: "task-all-002",
+        name: "Fallback display id",
+        runId: "run-all-002",
+        status: "queued",
+        taskId: "task-all-002"
+      })
+    ];
+
+    stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 1)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: activePageOne,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "active", 2)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "active",
+                items: activePageTwo,
+                page: 2,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "all", 1)]: [
+          () => createJsonResponse(buildProjectTasksResponse({ filter: "all", items: allTasks }))
+        ]
+      }
+    });
+
+    const { router } = renderRoute("/workstreams", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("link", { name: "TASK-HISTORY-001" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(await screen.findByRole("link", { name: "TASK-HISTORY-026" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe("?page=2");
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+    expect(await screen.findByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe("?filter=all");
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    expect(await screen.findByRole("link", { name: "TASK-HISTORY-026" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe("?page=2");
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    expect(await screen.findByRole("link", { name: "TASK-HISTORY-001" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe("");
   });
 
   it("waits for the resolved live project before requesting workstreams", async () => {
@@ -1387,8 +1510,11 @@ describe("Destination scaffolds", () => {
 
     expect(await screen.findByRole("link", { name: "TASK-PRIMARY-026" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: alternateProject.projectId
+      }
+    });
 
     expect(await screen.findByRole("link", { name: "TASK-ALT-001" })).toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
@@ -1831,7 +1957,7 @@ describe("Destination scaffolds", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs");
     });
-    expect(screen.getByRole("button", { name: /Operator Hub/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Operator Hub");
     expect(postedBodies).toEqual([
       {
         projectKey: createdProject.projectKey,
@@ -1943,7 +2069,7 @@ describe("Destination scaffolds", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs");
     });
-    expect(screen.getByRole("button", { name: /Operator Console/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Operator Console");
     expect(screen.queryByRole("heading", { name: "Unable to load projects" })).not.toBeInTheDocument();
     expect(postedBodies).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -2190,7 +2316,7 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Project settings: Keystone Edge Control" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Keystone Edge Control/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Keystone Edge Control");
     expect(
       screen
         .getAllByRole("textbox", { name: "Name" })
@@ -2378,8 +2504,11 @@ describe("Destination scaffolds", () => {
     expect(screen.getByRole("textbox", { name: "Project key" })).toBeDisabled();
     expect(screen.getByRole("textbox", { name: "Description" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: alternateProject.projectId
+      }
+    });
 
     expect(
       await screen.findByRole("heading", { name: "Project settings: Alt Project" })
@@ -2399,20 +2528,19 @@ describe("Destination scaffolds", () => {
     resolvePatchResponse!(createJsonResponse(buildProjectDetailResponse(savedProjectDetail)));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     });
     expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Alt Project");
 
-    fireEvent.click(screen.getByRole("button", { name: /Alt Project/i }));
+    const updatedPrimaryOption = screen.getByRole("option", {
+      name: /Keystone Edge Control/i
+    }) as HTMLOptionElement;
 
-    const updatedPrimaryOption = screen.getByRole("option", { name: /Keystone Edge Control/i });
-
-    expect(updatedPrimaryOption).toHaveAttribute("aria-selected", "false");
-    expect(within(updatedPrimaryOption).getByText("keystone-edge-control")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /Alt Project/i })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(updatedPrimaryOption.selected).toBe(false);
+    expect(updatedPrimaryOption).toHaveTextContent("Keystone Edge Control");
+    expect(
+      (screen.getByRole("option", { name: /Alt Project/i }) as HTMLOptionElement).selected
+    ).toBe(true);
     expect(postedBodies).toEqual([
       {
         projectKey: "keystone-edge-control",

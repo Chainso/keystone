@@ -43,6 +43,10 @@ function expectShellLinkTarget(name: string, href: string) {
   expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
 }
 
+function getProjectSelector() {
+  return screen.getByRole("combobox", { name: "Project" });
+}
+
 function buildProjectsResponse(projects: CurrentProject[]) {
   return {
     data: {
@@ -512,7 +516,7 @@ describe("App shell", () => {
     });
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expect(screen.getByRole("link", { name: "run-104" })).toHaveAttribute("href", "/runs/run-104");
     expect(screen.getByText("wf-run-104")).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
@@ -536,7 +540,8 @@ describe("App shell", () => {
     renderRoute("/documentation", { useBrowserProjectApi: true });
 
     expect(await screen.findByRole("heading", { name: "No projects yet" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /No projects yet/i })).toBeDisabled();
+    expect(getProjectSelector()).toBeDisabled();
+    expect(getProjectSelector()).toHaveDisplayValue("No projects yet");
     expect(
       screen
         .getAllByRole("link", { name: "New project" })
@@ -815,11 +820,14 @@ describe("App shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
     expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: "project-alt"
+      }
+    });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     });
     expect(await screen.findByText("run-alt-401")).toBeInTheDocument();
 
@@ -828,7 +836,7 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs");
     });
-    expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expect(screen.getByText("run-alt-401")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "run-203" })).not.toBeInTheDocument();
   });
@@ -932,7 +940,7 @@ describe("App shell", () => {
     renderRoute("/runs", { useBrowserProjectApi: true });
 
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expect(screen.getByText("Alt Project does not have any recorded runs yet.")).toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
@@ -983,11 +991,14 @@ describe("App shell", () => {
 
     await screen.findByText("run-104");
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: "project-alt"
+      }
+    });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     });
     expect(await screen.findByText("run-alt-301")).toBeInTheDocument();
     expect(screen.queryByText("run-104")).not.toBeInTheDocument();
@@ -1135,8 +1146,11 @@ describe("App shell", () => {
       "Keystone Cloudflare"
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
-    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: "project-alt"
+      }
+    });
 
     expect(
       await screen.findByRole("heading", { name: "Project settings: Alt Project" })
@@ -1216,7 +1230,7 @@ describe("App shell", () => {
     renderRoute(path, { useBrowserProjectApi: true });
 
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
+    expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");

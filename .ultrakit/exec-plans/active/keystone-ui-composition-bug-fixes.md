@@ -84,6 +84,11 @@ Allowed internal change:
   **Rationale:** The active plan now has user approval, and the current UI validation instability is the first blocker for the rest of the refactor work.
 
 - **Date:** 2026-04-21  
+  **Phase:** Phase 2 Start  
+  **Decision:** Advance to the navigation-and-state bug pass after closing Phase 1 with one targeted fix pass for brittle route-transition assertions.  
+  **Rationale:** The UI harness gate is now credible enough to support user-facing bug work without carrying unresolved validation ambiguity forward.
+
+- **Date:** 2026-04-21  
   **Phase:** Phase 1  
   **Decision:** Split Vitest into explicit node and UI projects, add a repo-local browser storage setup file for UI suites, and include `worker-configuration.d.ts` in `tsconfig.ui.json` so the UI typecheck inherits the same generated Cloudflare types as the main workspace.  
   **Rationale:** The UI tests were failing before any assertions because the mixed environment setup did not provide a reliable `localStorage`, and the nominal UI typecheck was pulling root contract files without the generated Cloudflare declarations they already rely on in the main typecheck path.
@@ -92,6 +97,11 @@ Allowed internal change:
   **Phase:** Phase 1 fix pass  
   **Decision:** Keep Phase 1 closed only with a follow-up hardening pass that converts the remaining `runs-routes` transition assertions to awaited queries and re-runs the exact `npx` gate.  
   **Rationale:** The exact Phase 1 Vitest gate re-ran green in this worktree, but conflicting review evidence showed the recorded closeout was not yet credible. `ui/src/test/runs-routes.test.tsx` still had synchronous assertions against asynchronous route transitions at the previously cited failure points, so the plan needed both truthful rerun evidence and a durability fix.
+
+- **Date:** 2026-04-21  
+  **Phase:** Phase 2  
+  **Decision:** Replace the custom project-switcher popup with a native project `<select>`, move documentation/workstreams state into search params, and add one shared unsaved-changes guard plus one shared UTC formatter instead of re-solving those behaviors per destination.  
+  **Rationale:** The shell control was behaving like an incomplete custom widget, while documentation/workstreams state and run-planning protection were all variants of navigation and formatting problems. A small set of truthful shared seams fixed the shipped bugs without widening Phase 2 into a broader composition refactor.
 
 ## Progress
 
@@ -102,7 +112,8 @@ Allowed internal change:
 - [x] 2026-04-21 Received explicit approval to execute the plan.
 - [x] 2026-04-21 Ran the one allowed Phase 1 fix pass, hardened the remaining `runs-routes` transition assertions, and revalidated the exact `npx` gate plus the standalone route suite.
 - [x] Phase 1 complete: stabilize the UI test harness and targeted validation path, with fix-pass revalidation.
-- [ ] Phase 2 complete: ship the user-facing bug-fix pass for navigation state, accessibility, and data formatting.
+- [x] 2026-04-21 Completed the Phase 2 bug-fix pass with a native shell project selector, guarded run-planning edits, URL-backed documentation/workstreams state, duplicate-key cleanup, and shared UTC formatting.
+- [x] Phase 2 complete: ship the user-facing bug-fix pass for navigation state, accessibility, and data formatting.
 - [ ] Phase 3 complete: unify the project-configuration component hierarchy and provider contract.
 - [ ] Phase 4 complete: simplify the runs/planning component hierarchy and supporting utilities.
 - [ ] Phase 5 complete: update durable docs/notes, rerun final validation, and prepare the plan for archival.
@@ -123,6 +134,7 @@ Allowed internal change:
 - The remaining credibility gap was still real: `ui/src/test/runs-routes.test.tsx` kept synchronous transition assertions at the previously cited materializing-workflow and run-switch points. Even with a green rerun, the Phase 1 closeout was still too timing-dependent to trust until those checks awaited the rendered state.
 - `tsconfig.ui.json` was not actually UI-only in practice because the UI imports shared root contract modules. Without `worker-configuration.d.ts`, the command surfaced 82 root-file errors that do not appear in the main workspace typecheck because the generated Cloudflare declarations were missing from that config.
 - In this repo, `rtk npx vitest ...` is not a truthful validation shorthand because RTK routes it through npm-script lookup and reports `Missing script: "vitest"`. Use direct `npx ...` commands or the RTK-native `rtk vitest` / `rtk lint` / `rtk tsc` wrappers instead.
+- During Phase 2, deriving `page = 1` for a project switch was not enough on its own for `Workstreams`; the new project could still issue one stale page fetch before the URL reset landed. The final fix had to suppress task loading until the page-reset search-param update committed.
 
 ## Outcomes & Retrospective
 
@@ -141,6 +153,12 @@ Planning outcome on 2026-04-21:
   - UI test harness repair.
 
 The main remaining open item before execution is user approval of the phase sequence and scope boundary.
+
+Phase 2 outcome on 2026-04-21:
+
+- The shell now uses a truthful native project selector instead of an incomplete custom popup, while preserving the existing project persistence key and destination paths.
+- Documentation and workstreams now treat selection/filter/pagination as URL state, with targeted tests proving browser-history restoration.
+- Run-planning edits now warn on both in-app navigation and browser unload while dirty, and the touched run/workstream surfaces share one UTC formatter instead of repeating ad hoc timestamp logic.
 
 ## Context and Orientation
 
@@ -337,7 +355,7 @@ Important interfaces and seams that should still exist after this plan:
 
 ### Phase Handoff
 
-- **Status:** Pending
+- **Status:** Completed on 2026-04-21
 - **Goal:** Ship the highest-value current UI bug fixes for shell interaction, unsaved planning edits, and destination URL state.
 - **Scope Boundary:** In scope: project-switcher behavior, planning unsaved-change guard, documentation selection URL state, workstreams filter/page URL state, duplicate key cleanup, and date-format cleanup for touched destinations. Out of scope: project-configuration hierarchy refactors and major run-planning structure changes.
 - **Read First:**
@@ -368,6 +386,8 @@ Important interfaces and seams that should still exist after this plan:
 - **Deliverables:** Accessible shell interaction improvements, URL-backed destination state, unsaved-change protection, and low-level rendering/data-format fixes.
 - **Commit Expectation:** `Fix UI navigation and state bugs`
 - **Known Constraints / Baseline Failures:** Preserve the current route tree and destination labels; do not redesign the shell or change top-level navigation semantics.
+- **Completion Notes:** `ui/src/shared/layout/shell-sidebar.tsx` now uses a native `<select>` for project switching, so the shell keeps the same product posture without depending on a half-finished custom listbox. `ui/src/shared/navigation/use-unsaved-changes-guard.ts` protects dirty planning edits on route changes and `beforeunload`, `ui/src/features/documentation/use-documentation-view-model.ts` and `ui/src/features/workstreams/use-workstreams-view-model.ts` now back user-facing selection state with search params, `ui/src/shared/formatting/date.ts` centralizes the touched UTC formatting, and `ui/src/features/documentation/components/documentation-workspace.tsx` now keys document lines safely by index. The Phase 2 gate passed with `npx vitest run ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx`, `npx eslint ui/src vitest.config.ts`, and `npx tsc --noEmit -p tsconfig.ui.json`.
+- **Next Starter Context:** Phase 3 should treat the native shell project selector as the new truthful contract and keep downstream tests on combobox semantics rather than reviving button/listbox assumptions. Preserve the new search-param contracts for `Documentation` and `Workstreams`, keep the shared unsaved-change/date utilities reusable instead of duplicating them inside project-configuration code, and do not fold this bug-fix work into broader route or destination redesign.
 
 ## Phase 3: Project Configuration Composition Cleanup
 

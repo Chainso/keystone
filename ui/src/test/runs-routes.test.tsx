@@ -1612,6 +1612,94 @@ describe("Run routes", () => {
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
   });
 
+  it("blocks route changes away from dirty planning edits until the user confirms", async () => {
+    const confirmMock = vi.fn(() => false);
+
+    vi.stubGlobal("confirm", confirmMock);
+
+    const { router } = renderRunRoute(
+      "/runs/run-105/architecture",
+      createStaticRunManagementApi(cloneRunFixtures())
+    );
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Guard this draft.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith(
+        "You have unsaved changes in Architecture. Leave this document without saving?"
+      );
+    });
+    expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
+    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+      "# Architecture\n- Guard this draft.\n"
+    );
+
+    confirmMock.mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/documentation");
+    });
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+  });
+
+  it("registers a beforeunload warning while a planning draft has unsaved changes", async () => {
+    renderRunRoute("/runs/run-105/architecture", createStaticRunManagementApi(cloneRunFixtures()));
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Warn before unload.\n"
+      }
+    });
+
+    const beforeUnloadEvent = new Event("beforeunload", {
+      cancelable: true
+    }) as unknown as BeforeUnloadEvent;
+
+    Object.defineProperty(beforeUnloadEvent, "returnValue", {
+      configurable: true,
+      value: "",
+      writable: true
+    });
+
+    window.dispatchEvent(beforeUnloadEvent);
+
+    expect(beforeUnloadEvent.defaultPrevented).toBe(true);
+    expect(beforeUnloadEvent.returnValue).toBe(
+      "You have unsaved changes in Architecture. Leave this document without saving?"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+    const cleanBeforeUnloadEvent = new Event("beforeunload", {
+      cancelable: true
+    }) as unknown as BeforeUnloadEvent;
+
+    Object.defineProperty(cleanBeforeUnloadEvent, "returnValue", {
+      configurable: true,
+      value: "",
+      writable: true
+    });
+
+    window.dispatchEvent(cleanBeforeUnloadEvent);
+
+    expect(cleanBeforeUnloadEvent.defaultPrevented).toBe(false);
+    expect(cleanBeforeUnloadEvent.returnValue).toBe("");
+  });
+
   it("only exposes Compile run when the live planning documents are ready for compilation", async () => {
     renderRunRoute("/runs/run-108/execution-plan");
 

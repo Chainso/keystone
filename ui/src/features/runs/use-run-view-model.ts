@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { formatUtcTimestamp } from "../../shared/formatting/date";
 import {
   buildRunPhasePath,
   getRunPhaseDefinition,
   runPhaseDefinitions,
   type RunPhaseId
 } from "../../shared/navigation/run-phases";
+import { useUnsavedChangesGuard } from "../../shared/navigation/use-unsaved-changes-guard";
 import {
   useRunDetail,
   type RunPlanningDocumentState
@@ -165,16 +167,6 @@ const defaultRevisionTitleByPhase: Record<RunPlanningPhaseId, string> = {
   "execution-plan": "Execution Plan"
 };
 
-function formatRunTimestamp(value: string) {
-  const timestamp = new Date(value);
-
-  if (Number.isNaN(timestamp.valueOf())) {
-    return value;
-  }
-
-  return `${timestamp.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
-
 function formatStatusLabel(status: string) {
   if (!status.trim()) {
     return status;
@@ -193,15 +185,15 @@ function buildRunActivityLabel(input: {
   startedAt: string | null;
 }) {
   if (input.endedAt) {
-    return `Ended ${formatRunTimestamp(input.endedAt)}`;
+    return `Ended ${formatUtcTimestamp(input.endedAt)}`;
   }
 
   if (input.startedAt) {
-    return `Started ${formatRunTimestamp(input.startedAt)}`;
+    return `Started ${formatUtcTimestamp(input.startedAt)}`;
   }
 
   if (input.compiledAt) {
-    return `Compiled ${formatRunTimestamp(input.compiledAt)}`;
+    return `Compiled ${formatUtcTimestamp(input.compiledAt)}`;
   }
 
   return "No recorded activity yet";
@@ -596,6 +588,12 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     body.trim().length > 0 &&
     hasUnsavedChanges &&
     !isSubmitting;
+  const hasPendingChanges = isEditing && (hasUnsavedChanges || isSubmitting);
+
+  useUnsavedChangesGuard({
+    message: `You have unsaved changes in ${phase.label}. Leave this document without saving?`,
+    when: hasPendingChanges
+  });
 
   async function saveChanges() {
     const trimmedTitle = title.trim();

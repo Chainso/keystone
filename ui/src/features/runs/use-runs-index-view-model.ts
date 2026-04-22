@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { formatUtcTimestamp } from "../../shared/formatting/date";
 import { buildRunPath } from "../../shared/navigation/run-phases";
 import {
   useProjectManagement,
@@ -55,27 +56,17 @@ export interface RunsIndexViewModel {
   title: string;
 }
 
-function formatRunTimestamp(value: string) {
-  const timestamp = new Date(value);
-
-  if (Number.isNaN(timestamp.valueOf())) {
-    return value;
-  }
-
-  return `${timestamp.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
-
 function buildLiveRunActivityLabel(run: ApiProjectRunRecord) {
   if (run.endedAt) {
-    return `Ended ${formatRunTimestamp(run.endedAt)}`;
+    return `Ended ${formatUtcTimestamp(run.endedAt)}`;
   }
 
   if (run.startedAt) {
-    return `Started ${formatRunTimestamp(run.startedAt)}`;
+    return `Started ${formatUtcTimestamp(run.startedAt)}`;
   }
 
   if (run.compiledFrom) {
-    return `Compiled ${formatRunTimestamp(run.compiledFrom.compiledAt)}`;
+    return `Compiled ${formatUtcTimestamp(run.compiledFrom.compiledAt)}`;
   }
 
   return "No recorded activity yet";

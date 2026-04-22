@@ -104,15 +104,16 @@ pre {
 }
 
 .project-switcher {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.75rem;
   width: 100%;
   padding: 0.85rem 0.9rem;
   border: 1px solid var(--border-strong);
   background: var(--surface-panel);
-  text-align: left;
+  color: var(--text-primary);
+}
+
+.project-switcher-field {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .project-switcher:disabled {
@@ -120,21 +121,9 @@ pre {
   opacity: 1;
 }
 
-.project-switcher-details {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.project-switcher-name {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
 .project-switcher-summary,
 .project-switcher-option-meta {
+  margin: 0;
   color: var(--text-muted);
   font-size: 0.8rem;
   line-height: 1.3;

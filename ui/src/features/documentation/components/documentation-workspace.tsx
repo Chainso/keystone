@@ -70,8 +70,11 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
                 <div className="document-rule" aria-hidden="true" />
 
                 <div className="document-copy">
-                  {model.selectedDocument.contentLines.map((line) => (
-                    <p key={line} className="document-line">
+                  {model.selectedDocument.contentLines.map((line, index) => (
+                    <p
+                      key={`${model.selectedDocument?.documentId ?? "document"}:${index}`}
+                      className="document-line"
+                    >
                       {line}
                     </p>
                   ))}
