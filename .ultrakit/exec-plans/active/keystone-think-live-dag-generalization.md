@@ -101,6 +101,11 @@ Constraints to preserve:
   **Decision:** Add explicit task-workflow regression coverage for the intentional `think_live` rejection path when a non-fixture project resolves multiple executable components and therefore has no `compileRepo`.  
   **Rationale:** The Phase 1 review found that existing tests covered non-fixture single-target acceptance and fixture-only `think_mock`, but not the preserved single-target boundary. The fix pass closes that gap without changing runtime behavior.
 
+- **Date:** 2026-04-21
+  **Phase:** Phase 2 - Fan out all ready tasks safely
+  **Decision:** Fan out the full `active + ready` task set on each scheduler poll and guard scheduler-driven `ready` / `cancelled` writes with `ifStatusIn: ["pending"]`.
+  **Rationale:** The shared-sandbox scheduler needs prompt launch behavior for independent roots and newly unblocked work, but it must not regress concurrently updated tasks back to `ready` or `cancelled` when a stale poll snapshot races with live task execution.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed for live DAG generalization, scheduler fanout behavior, and doc/validation scope.
@@ -109,7 +114,7 @@ Constraints to preserve:
 - [x] 2026-04-21 Active plan drafted under `.ultrakit/exec-plans/active/`.
 - [x] 2026-04-21 Phase 1: generalize live Think handoff acceptance for single-target projects.
 - [x] 2026-04-21 Phase 1 targeted fix pass: cover `think_live` rejection when `projectExecution.compileRepo` is absent for a non-fixture multi-target project.
-- [ ] 2026-04-21 Phase 2: fan out all ready tasks safely on the shared run sandbox.
+- [x] 2026-04-21 Phase 2: fan out all ready tasks safely on the shared run sandbox.
 - [ ] 2026-04-21 Phase 3: establish an operator-facing live DAG proof and validator contract.
 - [ ] 2026-04-21 Phase 4: update durable docs, narrow or close deferred debt, and archive the plan.
 
@@ -129,6 +134,8 @@ Constraints to preserve:
   - `npm run build` -> `vite: command not found`
 - After `npm install`, the Phase 1 focused test passed, but repo-wide `npm run typecheck` still fails on unrelated baseline issues in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. Future phases should treat those as existing validation noise unless they explicitly take ownership of those files.
 - The preserved no-`compileRepo` `think_live` rejection runs after workspace materialization because `resolveThinkTurnInput()` is inside the implementer step, so the regression test needs to assert both the explicit boundary error and that the implementer turn never starts.
+- `updateRunTask(..., ifStatusIn)` already behaves like a guarded compare-and-swap by returning the current row on a status mismatch, so Phase 2 only needed scheduler call-site changes plus a repository regression to prove pending-only cancellation behavior.
+- `tests/lib/db-repositories.test.ts` is gated by `KEYSTONE_RUN_DB_TESTS=1` plus either `DATABASE_URL` or `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`; in the current workspace those env vars are unset, so the suite skips during standard Phase 2 validation.
 
 ## Outcomes & Retrospective
 
@@ -144,6 +151,8 @@ Execution update on 2026-04-21:
 - Phase 1 completed with a scoped runtime change: `think_live` now accepts any project path that resolves exactly one compile repo before `TaskWorkflow`, while `think_mock` stays fixture-only and deterministic.
 - The Phase 1 fix pass added the missing multi-target regression: non-fixture `think_live` now has explicit test coverage for the rejection path where `projectExecution.compileRepo` is absent, preserving the single-target boundary without a runtime change.
 - Targeted validation now runs locally after `npm install`: `rtk npm run test -- tests/lib/workflows/task-workflow-think.test.ts` passes, while repo-wide `rtk npm run typecheck` remains blocked by unrelated baseline errors in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`.
+- Phase 2 completed with a scoped scheduler change: `RunWorkflow` now fans out every `active` or `ready` task on each poll, while readiness promotion and dependency-failure cancellation both use pending-only guarded updates.
+- Phase 2 validation now proves prompt fanout in the unit workflow suite: `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts` passes, `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/db-repositories.test.ts` passes with the DB repository suite skipped because its env gate is unset, and `rtk npm run typecheck` still fails only on the unrelated baseline errors in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`.
 
 ## Context and Orientation
 
@@ -227,14 +236,14 @@ This phase changes scheduler behavior so every runnable task launches promptly a
 - **Scope Boundary:** In scope: `RunWorkflow` fanout batching, scheduler helper write guards, and run-workflow tests. Out of scope: `TaskWorkflow` live/mock turn-input logic, demo fixture docs, demo validator changes, compile-target selection, and durable docs.
 - **Read First:** `src/workflows/RunWorkflow.ts`, `src/lib/db/runs.ts`, `tests/lib/workflows/run-workflow-compile.test.ts`, `.ultrakit/developer-docs/think-runtime-architecture.md`.
 - **Files Expected To Change:** `src/workflows/RunWorkflow.ts`, `src/lib/db/runs.ts` if helper APIs need guarded updates, `tests/lib/workflows/run-workflow-compile.test.ts`, and any adjacent repository/workflow tests needed to cover guarded scheduler writes.
-- **Validation:** From repo root after dependencies are installed: `npm run typecheck`; `npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/db-repositories.test.ts`. Success means two independent ready roots launch in the same first batch, newly ready work can launch while unrelated branches stay active, and dependency-failure cancellation still lands only from `pending`.
+- **Validation:** From repo root after dependencies are installed: `rtk npm run typecheck`; `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/db-repositories.test.ts`. Success means two independent ready roots launch in the same first batch, newly ready work can launch while unrelated branches stay active, and dependency-failure cancellation still lands only from `pending`.
 - **Plan / Docs To Update:** Update this plan’s `Progress`, `Execution Log`, `Surprises & Discoveries`, and the Phase 2 handoff `Status` / `Completion Notes` / `Next Starter Context`. Do not update durable docs yet.
 - **Deliverables:** Scheduler batching over `active + ready` tasks; status-guarded scheduler writes; test coverage for parallel root launch and ready-while-active behavior.
 - **Commit Expectation:** `Fan out ready task workflows safely`
 - **Known Constraints / Baseline Failures:** `tests/lib/db-repositories.test.ts` may require the project DB test env to be configured; if so, record the exact gating env vars in the plan rather than silently skipping. Do not introduce a new `blocked` runtime status in this phase.
-- **Status:** Not started.
-- **Completion Notes:** None yet.
-- **Next Starter Context:** The current serialization behavior is locked in by `tests/lib/workflows/run-workflow-compile.test.ts:633`; Phase 2 must intentionally invert that contract.
+- **Status:** Completed on 2026-04-21.
+- **Completion Notes:** `buildTaskWorkflowFanoutBatch()` now schedules the full `active` plus `ready` task union instead of serializing a single ready root, preserving deterministic workflow-instance IDs while allowing new work to launch during unrelated active branches. `promoteNewlyReadyRunTasks()` and `cancelBlockedRunTasks()` now use `updateRunTask(..., ifStatusIn: ["pending"])` and only treat rows as promoted/cancelled when the guarded transition actually lands. Workflow coverage now proves two independent roots launch in the first batch, a newly ready child can launch while another root stays active, and dependency-failure cancellation requests carry the pending-only guard; repository coverage adds a direct regression showing guarded cancellation updates only mutate pending rows. Validation evidence: `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts` ✅, `rtk npm run test -- tests/lib/workflows/run-workflow-compile.test.ts tests/lib/db-repositories.test.ts` ✅ with `tests/lib/db-repositories.test.ts` skipped because `KEYSTONE_RUN_DB_TESTS=1` plus `DATABASE_URL` or `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` were not set, `rtk npm run typecheck` ⚠️ blocked only by the unrelated baseline errors in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`.
+- **Next Starter Context:** Phase 2 removed the ready-root serialization contract and closed the scheduler CAS gap without changing runtime statuses or compile-target selection. Phase 3 should now focus on the operator-facing DAG proof: stronger committed demo documents, `think_live` as the implicit default engine, and validator/API/script tests that assert a non-trivial DAG. The current repo-wide `typecheck` noise is still limited to `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`; DB repository integration coverage still requires `KEYSTONE_RUN_DB_TESTS=1` plus `DATABASE_URL` or `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`.
 
 ### Phase 3: Establish the operator-facing live DAG proof
 

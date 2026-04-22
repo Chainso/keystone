@@ -328,6 +328,10 @@ const mocked = vi.hoisted(() => {
         throw new Error(`Run task ${input.runTaskId} was not found.`);
       }
 
+      if (input.ifStatusIn && input.ifStatusIn.length > 0 && !input.ifStatusIn.includes(String(row.status))) {
+        return row;
+      }
+
       Object.assign(row, {
         status: input.status ?? row.status,
         startedAt: input.startedAt === undefined ? row.startedAt : input.startedAt,
@@ -481,7 +485,10 @@ function createWorkflowEvent() {
   };
 }
 
-function createTaskWorkflowNamespace(outcomes: Record<string, "complete" | "errored"> = {}) {
+type TaskWorkflowOutcome = "complete" | "errored" | "running";
+type TaskWorkflowOutcomeScript = TaskWorkflowOutcome | TaskWorkflowOutcome[];
+
+function createTaskWorkflowNamespace(outcomes: Record<string, TaskWorkflowOutcomeScript> = {}) {
   const entries = new Map<
     string,
     {
@@ -492,9 +499,19 @@ function createTaskWorkflowNamespace(outcomes: Record<string, "complete" | "erro
       };
     }
   >();
+  const statusChecks = new Map<string, number>();
   const createBatch = vi.fn(async (batch: Array<{ id: string; params: { taskId: string; runTaskId: string } }>) => {
     for (const entry of batch) {
       entries.set(entry.id, entry);
+
+      const runTask = mocked.runTasks.find((task) => task.runTaskId === entry.params.runTaskId);
+
+      if (runTask && runTask.status === "ready") {
+        Object.assign(runTask, {
+          status: "active",
+          startedAt: runTask.startedAt ?? new Date("2026-04-19T00:00:00.000Z")
+        });
+      }
     }
   });
 
@@ -509,10 +526,27 @@ function createTaskWorkflowNamespace(outcomes: Record<string, "complete" | "erro
       }
 
       const runTask = mocked.runTasks.find((task) => task.runTaskId === entry.params.runTaskId);
-      const outcome = outcomes[entry.params.runTaskId] ?? "complete";
 
       if (!runTask) {
         throw new Error(`Missing run task ${entry.params.runTaskId}.`);
+      }
+
+      const scriptedOutcome = outcomes[entry.params.runTaskId] ?? "complete";
+      const outcomeSequence = Array.isArray(scriptedOutcome) ? scriptedOutcome : [scriptedOutcome];
+      const statusCheckCount = statusChecks.get(entry.params.runTaskId) ?? 0;
+      const outcome = outcomeSequence[Math.min(statusCheckCount, outcomeSequence.length - 1)] ?? "complete";
+
+      statusChecks.set(entry.params.runTaskId, statusCheckCount + 1);
+
+      if (outcome === "running") {
+        Object.assign(runTask, {
+          status: "active",
+          startedAt: runTask.startedAt ?? new Date("2026-04-19T00:00:00.000Z")
+        });
+
+        return {
+          status: "running"
+        };
       }
 
       if (outcome === "complete") {
@@ -605,6 +639,14 @@ describe("RunWorkflow authoritative DAG scheduling", () => {
         })
       })
     ]);
+    expect(mocked.updateRunTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        runTaskId: "22222222-2222-4222-8222-222222222222",
+        status: "ready",
+        ifStatusIn: ["pending"]
+      })
+    );
     expect(mocked.finalizeRun).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -630,7 +672,7 @@ describe("RunWorkflow authoritative DAG scheduling", () => {
     });
   });
 
-  it("serializes ready root task launches on the shared run sandbox", async () => {
+  it("launches all independent ready roots in the first scheduler batch", async () => {
     mocked.runState.compiledPlan = {
       summary: "Fixture compile emitted two independent roots.",
       sourceRevisionIds: {
@@ -667,23 +709,102 @@ describe("RunWorkflow authoritative DAG scheduling", () => {
 
     await workflow.run(createWorkflowEvent() as never, step as never);
 
-    expect(taskWorkflow.createBatch).toHaveBeenCalledTimes(2);
-    expect(taskWorkflow.createBatch.mock.calls[0]?.[0]).toHaveLength(1);
-    expect(taskWorkflow.createBatch.mock.calls[0]?.[0]?.[0]).toEqual(
+    expect(taskWorkflow.createBatch).toHaveBeenCalledTimes(1);
+    expect(taskWorkflow.createBatch.mock.calls[0]?.[0]).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           taskId: "task-root-a",
           runTaskId: "aaaaaaaa-1111-4111-8111-111111111111"
         })
-      })
-    );
-    expect(taskWorkflow.createBatch.mock.calls[1]?.[0]).toHaveLength(1);
-    expect(taskWorkflow.createBatch.mock.calls[1]?.[0]?.[0]).toEqual(
+      }),
       expect.objectContaining({
         params: expect.objectContaining({
           taskId: "task-root-b",
           runTaskId: "bbbbbbbb-2222-4222-8222-222222222222"
         })
+      })
+    ]);
+  });
+
+  it("launches newly ready work while unrelated tasks remain active", async () => {
+    mocked.runState.compiledPlan = {
+      summary: "Fixture compile emitted active and ready fanout work.",
+      sourceRevisionIds: {
+        specification: "spec-rev-1",
+        architecture: "arch-rev-1",
+        executionPlan: "plan-rev-1"
+      },
+      tasks: [
+        {
+          taskId: "task-root-a",
+          runTaskId: "aaaaaaaa-1111-4111-8111-111111111111",
+          title: "Root task A",
+          summary: "Long-running independent task.",
+          instructions: ["Do task A."],
+          acceptanceCriteria: ["Task A completes."],
+          dependsOn: []
+        },
+        {
+          taskId: "task-root-b",
+          runTaskId: "bbbbbbbb-2222-4222-8222-222222222222",
+          title: "Root task B",
+          summary: "Independent task that unlocks follow-up work.",
+          instructions: ["Do task B."],
+          acceptanceCriteria: ["Task B completes."],
+          dependsOn: []
+        },
+        {
+          taskId: "task-child-c",
+          runTaskId: "cccccccc-3333-4333-8333-333333333333",
+          title: "Child task C",
+          summary: "Runs after task B completes.",
+          instructions: ["Do task C."],
+          acceptanceCriteria: ["Task C completes."],
+          dependsOn: ["task-root-b"]
+        }
+      ]
+    };
+
+    const taskWorkflow = createTaskWorkflowNamespace({
+      "aaaaaaaa-1111-4111-8111-111111111111": ["running", "complete"],
+      "bbbbbbbb-2222-4222-8222-222222222222": "complete",
+      "cccccccc-3333-4333-8333-333333333333": "complete"
+    });
+    const env = createEnv(taskWorkflow) as never;
+    const workflow = new RunWorkflow({} as ExecutionContext, env);
+    const step = createStep();
+
+    await workflow.run(createWorkflowEvent() as never, step as never);
+
+    expect(taskWorkflow.createBatch).toHaveBeenCalledTimes(2);
+    expect(taskWorkflow.createBatch.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: "task-root-a",
+          runTaskId: "aaaaaaaa-1111-4111-8111-111111111111"
+        })
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: "task-root-b",
+          runTaskId: "bbbbbbbb-2222-4222-8222-222222222222"
+        })
+      })
+    ]);
+    expect(taskWorkflow.createBatch.mock.calls[1]?.[0]).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          taskId: "task-child-c",
+          runTaskId: "cccccccc-3333-4333-8333-333333333333"
+        })
+      })
+    ]);
+    expect(mocked.updateRunTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        runTaskId: "cccccccc-3333-4333-8333-333333333333",
+        status: "ready",
+        ifStatusIn: ["pending"]
       })
     );
   });
@@ -708,6 +829,14 @@ describe("RunWorkflow authoritative DAG scheduling", () => {
         status: "cancelled"
       })
     ]);
+    expect(mocked.updateRunTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        runTaskId: "22222222-2222-4222-8222-222222222222",
+        status: "cancelled",
+        ifStatusIn: ["pending"]
+      })
+    );
     expect(mocked.finalizeRun).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),

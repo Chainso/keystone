@@ -1319,6 +1319,80 @@ describeIfDatabase("database repositories", () => {
     expect(persistedDependencies).toEqual([]);
   });
 
+  it("allows dependency-failure cancellation only from pending when guarded by status", async () => {
+    const project = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig(`run-task-guard-${crypto.randomUUID()}`)
+    });
+    const { runId } = await createRunFixture(project.projectId);
+
+    const pendingTask = expectRow(
+      await createRunTask(client, {
+        tenantId,
+        runId,
+        name: "Pending dependent",
+        description: "Should cancel when the dependency guard still sees pending.",
+        status: "pending"
+      }),
+      "Expected pending run task insert to return a row."
+    );
+    const activeTask = expectRow(
+      await createRunTask(client, {
+        tenantId,
+        runId,
+        name: "Already active dependent",
+        description: "Should ignore a pending-only cancellation guard once execution has started.",
+        status: "active",
+        startedAt: new Date("2026-04-19T15:00:00.000Z")
+      }),
+      "Expected active run task insert to return a row."
+    );
+    const cancelledPendingTask = expectRow(
+      await updateRunTask(client, {
+        tenantId,
+        runId,
+        runTaskId: pendingTask.runTaskId,
+        status: "cancelled",
+        ifStatusIn: ["pending"],
+        endedAt: new Date("2026-04-19T15:05:00.000Z")
+      }),
+      "Expected guarded pending cancellation to return a row."
+    );
+    const guardedActiveTask = expectRow(
+      await updateRunTask(client, {
+        tenantId,
+        runId,
+        runTaskId: activeTask.runTaskId,
+        status: "cancelled",
+        ifStatusIn: ["pending"],
+        endedAt: new Date("2026-04-19T15:10:00.000Z")
+      }),
+      "Expected guarded active cancellation attempt to return the current row."
+    );
+    const refreshedTasks = await listRunTasks(client, {
+      tenantId,
+      runId
+    });
+
+    expect(cancelledPendingTask.status).toBe("cancelled");
+    expect(cancelledPendingTask.endedAt?.toISOString()).toBe("2026-04-19T15:05:00.000Z");
+    expect(guardedActiveTask.status).toBe("active");
+    expect(guardedActiveTask.startedAt?.toISOString()).toBe("2026-04-19T15:00:00.000Z");
+    expect(guardedActiveTask.endedAt).toBeNull();
+    expect(refreshedTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: pendingTask.runTaskId,
+        status: "cancelled",
+        endedAt: expect.any(Date)
+      }),
+      expect.objectContaining({
+        runTaskId: activeTask.runTaskId,
+        status: "active",
+        endedAt: null
+      })
+    ]);
+  });
+
   it("enforces canonical document kind and path combinations", async () => {
     const project = await createProject(client, {
       tenantId,

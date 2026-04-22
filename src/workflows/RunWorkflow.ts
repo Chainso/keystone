@@ -265,10 +265,9 @@ function buildTaskWorkflowFanoutBatch(input: {
   runTasks: RunTaskRows;
   planTasksByRunTaskId: Map<string, PersistedCompiledRunPlanTask>;
 }) {
-  const activeTasks = input.runTasks.filter((task) => task.status === "active");
-  const readyTasks = input.runTasks.filter((task) => task.status === "ready");
-  const scheduledTasks =
-    activeTasks.length > 0 ? activeTasks : readyTasks.length > 0 ? [readyTasks[0]!] : [];
+  const scheduledTasks = input.runTasks.filter(
+    (task) => task.status === "active" || task.status === "ready"
+  );
 
   return scheduledTasks
     .map((task) => {
@@ -352,10 +351,14 @@ async function promoteNewlyReadyRunTasks(
         tenantId: input.tenantId,
         runId: input.runId,
         runTaskId: task.runTaskId,
-        status: "ready"
+        status: "ready",
+        ifStatusIn: ["pending"]
       });
       tasksById.set(updated.runTaskId, updated);
-      promoted.push(updated);
+
+      if (updated.status === "ready") {
+        promoted.push(updated);
+      }
     }
 
     return promoted;
@@ -394,10 +397,14 @@ async function cancelBlockedRunTasks(
         runId: input.runId,
         runTaskId: task.runTaskId,
         status: "cancelled",
+        ifStatusIn: ["pending"],
         endedAt: task.endedAt ?? new Date()
       });
       tasksById.set(updated.runTaskId, updated);
-      cancelled.push(updated);
+
+      if (updated.status === "cancelled") {
+        cancelled.push(updated);
+      }
     }
 
     return cancelled;
