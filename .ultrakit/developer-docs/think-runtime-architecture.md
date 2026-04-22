@@ -37,9 +37,22 @@ The only authoritative execution selector is `executionEngine`:
 - `think_mock`
 - `think_live`
 
-`think_mock` is the deterministic Think-backed validation path.
+When project-backed run creation omits `executionEngine`, the API/runtime default resolves to `think_live`.
 
-`think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend.
+`think_mock` is the deterministic fixture-scoped Think-backed validation path.
+
+`think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend. It now accepts any compiled handoff that resolves exactly one compile repo before `TaskWorkflow`.
+
+## Scheduler Contract
+
+`RunWorkflow` remains authoritative for DAG progression after compile.
+
+Current scheduler behavior:
+
+- every scheduler poll promotes newly satisfied dependencies from `pending` to `ready` with guarded `ifStatusIn: ["pending"]` writes
+- dependency-failure cancellation also uses guarded `pending`-only writes
+- each poll fans out the union of currently `active` and currently `ready` tasks
+- newly ready tasks can launch while unrelated branches remain active in the shared run sandbox
 
 ## Filesystem Contract
 
@@ -116,7 +129,8 @@ Git commits made inside the task worktree are useful workspace state, but `TaskW
 
 These are runtime facts, not future design goals:
 
-- `scripted` remains the default execution engine
-- `think_mock` remains the deterministic Think validation path
-- `think_live` remains fixture-scoped in current demo coverage
+- the API/runtime default execution engine is `think_live`
+- the zero-argument `npm run demo:run` helper intentionally remains `scripted` until host-local live proof archives reliably again
+- `think_mock` remains the deterministic fixture-scoped Think validation path
+- `think_live` is broader than the old fixture-only proof, but project-backed compile still requires exactly one executable component
 - compile still expects the three run planning documents to exist before execution

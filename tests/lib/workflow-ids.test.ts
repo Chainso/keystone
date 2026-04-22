@@ -47,10 +47,12 @@ describe("workflow ids", () => {
     expect(parseExecutionEngine("invalid")).toBeNull();
   });
 
-  it("prefers persisted execution engine values and defaults to scripted", () => {
+  it("prefers persisted execution engine values and defaults to think_live", () => {
     expect(resolveRunExecutionEngine("think_live")).toBe("think_live");
+    expect(resolveRunExecutionEngine("scripted")).toBe("scripted");
+    expect(resolveRunExecutionEngine("think_mock")).toBe("think_mock");
     expect(resolveRunExecutionEngine(undefined, "think_mock")).toBe("think_mock");
     expect(resolveRunExecutionEngine("think_live", "scripted")).toBe("scripted");
-    expect(resolveRunExecutionEngine(undefined)).toBe("scripted");
+    expect(resolveRunExecutionEngine(undefined)).toBe("think_live");
   });
 });
