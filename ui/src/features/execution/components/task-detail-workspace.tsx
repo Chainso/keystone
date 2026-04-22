@@ -1,25 +1,18 @@
-import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { DocumentFrameSummary } from "../../../components/workspace/document-frame";
 import {
-  DocumentFrameBody,
-  DocumentFrameSummary
-} from "../../../components/workspace/document-frame";
-import {
-  ReviewFileCard,
-  ReviewFileStack,
-  ReviewFileSummary,
   ReviewSection,
   ReviewSectionLabel
 } from "../../../components/workspace/review-frame";
 import {
   WorkspaceEmptyState,
-  WorkspaceEmptyStateActions,
   WorkspaceEmptyStateDescription,
   WorkspaceEmptyStateTitle
 } from "../../../components/workspace/workspace-empty-state";
 import {
   WorkspacePage,
+  WorkspacePageActions,
   WorkspacePageHeader,
   WorkspacePageHeading
 } from "../../../components/workspace/workspace-page";
@@ -27,6 +20,7 @@ import {
   WorkspacePanel,
   WorkspacePanelHeader,
   WorkspacePanelHeading,
+  WorkspacePanelSummary,
   WorkspacePanelTitle
 } from "../../../components/workspace/workspace-panel";
 import {
@@ -35,57 +29,11 @@ import {
 } from "../../../components/workspace/workspace-split";
 import { StatusPill } from "../../../shared/layout/status-pill";
 import type {
-  TaskArtifactViewModel,
-  TaskDetailViewModel,
-  TaskDependencyViewModel
+  TaskConversationEntryViewModel,
+  TaskDependencyViewModel,
+  TaskDetailViewModel
 } from "../use-execution-view-model";
-import { useRunManagementApi } from "../../runs/run-detail-context";
-
-type ArtifactPreviewState =
-  | { status: "idle" | "loading" }
-  | { content: string; status: "ready" }
-  | { message: string; status: "empty" | "error" | "unsupported" };
-
-function getArtifactPreviewCompatibility(contentType: string) {
-  const normalized = contentType.toLowerCase();
-  const supportedTextIndicators = [
-    "json",
-    "xml",
-    "yaml",
-    "yml",
-    "javascript",
-    "typescript",
-    "sql",
-    "markdown",
-    "csv",
-    "toml",
-    "x-sh"
-  ];
-
-  const previewSupported =
-    normalized.startsWith("text/") ||
-    supportedTextIndicators.some((indicator) => normalized.includes(indicator));
-
-  if (previewSupported) {
-    return {
-      helperMessage: "Text preview is available for this artifact and loads on demand through the run API seam.",
-      previewSupported
-    };
-  }
-
-  return {
-    helperMessage: `Preview unavailable in this view because ${contentType} is not text-compatible.`,
-    previewSupported
-  };
-}
-
-function getArtifactPreviewErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return "Unable to load artifact content.";
-}
+import { TaskReviewSidebar } from "./task-review-sidebar";
 
 function TaskDependencyList({
   label,
@@ -103,8 +51,12 @@ function TaskDependencyList({
         <ul className="message-stack" aria-label={label}>
           {tasks.map((task) => (
             <li key={task.taskId} className="message-card">
-              <p className="message-card-speaker">{task.taskId}</p>
-              <p className="message-card-body">{task.title}</p>
+              <Link to={task.detailPath} className="task-context-link">
+                <p className="message-card-speaker">
+                  {task.taskId} · {task.statusLabel}
+                </p>
+                <p className="message-card-body">{task.title}</p>
+              </Link>
             </li>
           ))}
         </ul>
@@ -113,110 +65,20 @@ function TaskDependencyList({
   );
 }
 
-function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel; open: boolean }) {
-  const api = useRunManagementApi();
-  const previewCompatibility = getArtifactPreviewCompatibility(artifact.contentType);
-  const requestIdRef = useRef(0);
-  const [preview, setPreview] = useState<ArtifactPreviewState>(() =>
-    previewCompatibility.previewSupported
-      ? { status: "idle" }
-      : {
-          message: previewCompatibility.helperMessage,
-          status: "unsupported"
-        }
-  );
-
-  async function loadPreview() {
-    if (!previewCompatibility.previewSupported) {
-      return;
-    }
-
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    setPreview({ status: "loading" });
-
-    try {
-      const content = await api.getArtifactContent(artifact.contentUrl);
-
-      if (requestIdRef.current !== requestId) {
-        return;
-      }
-
-      if (!content.trim()) {
-        setPreview({
-          message: "Artifact content is empty.",
-          status: "empty"
-        });
-
-        return;
-      }
-
-      setPreview({
-        content,
-        status: "ready"
-      });
-    } catch (error) {
-      if (requestIdRef.current !== requestId) {
-        return;
-      }
-
-      setPreview({
-        message: getArtifactPreviewErrorMessage(error),
-        status: "error"
-      });
-    }
-  }
-
+function TaskConversationEntries({
+  entries
+}: {
+  entries: TaskConversationEntryViewModel[];
+}) {
   return (
-    <ReviewFileCard open={open}>
-      <ReviewFileSummary>
-        <span>{artifact.artifactId}</span>
-        <span className="review-file-note">{artifact.kind}</span>
-      </ReviewFileSummary>
-      <DocumentFrameBody>
-        <p className="document-line">Content type: {artifact.contentType}</p>
-        <p className="document-line">Size: {artifact.sizeLabel}</p>
-        {artifact.sha256 ? <p className="document-line">SHA-256: {artifact.sha256}</p> : null}
-        <DocumentFrameSummary>{previewCompatibility.helperMessage}</DocumentFrameSummary>
-        <DocumentFrameSummary>
-          Direct browser links are not available here yet.
-        </DocumentFrameSummary>
-        {preview.status === "unsupported" ? null : preview.status === "ready" ? (
-          <>
-            <DocumentFrameSummary>Loaded through the run API seam.</DocumentFrameSummary>
-            <pre className="document-copy">
-              <code>{preview.content}</code>
-            </pre>
-          </>
-        ) : preview.status === "empty" ? (
-          <DocumentFrameSummary>{preview.message}</DocumentFrameSummary>
-        ) : preview.status === "error" ? (
-          <>
-            <DocumentFrameSummary>{preview.message}</DocumentFrameSummary>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => {
-                void loadPreview();
-              }}
-            >
-              Retry preview
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="ghost-button"
-            disabled={preview.status === "loading"}
-            onClick={() => {
-              void loadPreview();
-            }}
-          >
-            {preview.status === "loading" ? "Loading text preview..." : "Load text preview"}
-          </button>
-        )}
-      </DocumentFrameBody>
-    </ReviewFileCard>
+    <div className="task-conversation-stack" aria-label="Task conversation timeline">
+      {entries.map((entry) => (
+        <article key={entry.speaker} className="message-card">
+          <p className="message-card-speaker">{entry.speaker}</p>
+          <p className="message-card-body">{entry.body}</p>
+        </article>
+      ))}
+    </div>
   );
 }
 
@@ -225,10 +87,21 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
     <WorkspacePage>
       <WorkspacePageHeader className="run-detail-header">
         <WorkspacePageHeading>
-        <h1 className="run-detail-title">
-          {model.runDisplayId} / {model.taskDisplayId}
-        </h1>
+          <p className="page-eyebrow">Task workspace</p>
+          <h1 className="run-detail-title">
+            {model.runDisplayId} / {model.taskDisplayId}
+          </h1>
+          {model.state === "ready" ? <p className="page-summary">{model.title}</p> : null}
         </WorkspacePageHeading>
+
+        <WorkspacePageActions className="task-detail-header-actions">
+          {model.state === "ready" ? (
+            <StatusPill label={model.statusLabel} tone={model.statusTone} />
+          ) : null}
+          <Link to={model.backPath} className="back-link">
+            Back to DAG
+          </Link>
+        </WorkspacePageActions>
       </WorkspacePageHeader>
 
       <WorkspaceSplit className="task-detail-split">
@@ -238,44 +111,40 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
               <WorkspacePanelHeading>
                 <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
               </WorkspacePanelHeading>
-            {model.state === "ready" ? (
-              <StatusPill label={model.statusLabel} tone={model.statusTone} />
-            ) : null}
+              <WorkspacePanelSummary>
+                Task handoff, execution notes, and the current live-chat gap for this task.
+              </WorkspacePanelSummary>
             </WorkspacePanelHeader>
 
-          {model.state === "ready" ? (
-            <>
-              <p className="task-detail-title">{model.title}</p>
+            {model.state === "ready" ? (
+              <div className="task-detail-pane-body">
+                <TaskConversationEntries entries={model.conversationEntries} />
 
-              <ReviewSection aria-label="Conversation status">
-                <ReviewSectionLabel>Conversation status</ReviewSectionLabel>
-                {model.conversationLocator ? (
-                  <>
-                    <p className="message-card-speaker">Conversation attached to this task.</p>
-                    <DocumentFrameSummary>
-                      Task updates will resolve through the attached conversation when chat transport is added.
-                    </DocumentFrameSummary>
-                  </>
-                ) : (
-                  <DocumentFrameSummary>No conversation is attached to this task yet.</DocumentFrameSummary>
-                )}
-              </ReviewSection>
+                <ReviewSection>
+                  <ReviewSectionLabel>Task scope</ReviewSectionLabel>
+                  <p className="task-detail-title">{model.title}</p>
+                  <DocumentFrameSummary>{model.description}</DocumentFrameSummary>
+                  <DocumentFrameSummary>{model.activityLabel}</DocumentFrameSummary>
+                </ReviewSection>
 
-              <TaskDependencyList label="Depends on" tasks={model.dependsOn} />
-              <TaskDependencyList label="Downstream tasks" tasks={model.downstreamTasks} />
-            </>
-          ) : (
-            <WorkspaceEmptyState>
-              <WorkspaceEmptyStateTitle as="h3">
-                {model.state === "not_found" ? "Task not found" : "Execution unavailable"}
-              </WorkspaceEmptyStateTitle>
-              <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
-            </WorkspaceEmptyState>
-          )}
+                <div className="task-context-grid">
+                  <TaskDependencyList label="Depends on" tasks={model.dependsOn} />
+                  <TaskDependencyList label="Downstream tasks" tasks={model.downstreamTasks} />
+                </div>
 
-          <Link to={model.backPath} className="back-link">
-            Back to DAG
-          </Link>
+                <div className="conversation-composer-placeholder">
+                  Live task conversation remains out of scope in this phase. This frame will accept
+                  real messages once the chat runtime is wired.
+                </div>
+              </div>
+            ) : (
+              <WorkspaceEmptyState>
+                <WorkspaceEmptyStateTitle as="h3">
+                  {model.state === "not_found" ? "Task not found" : "Execution unavailable"}
+                </WorkspaceEmptyStateTitle>
+                <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
+              </WorkspaceEmptyState>
+            )}
           </WorkspacePanel>
         </WorkspaceSplitPane>
 
@@ -283,41 +152,22 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
           <WorkspacePanel className="workspace-panel-review">
             <WorkspacePanelHeader>
               <WorkspacePanelHeading>
-                <WorkspacePanelTitle>Artifacts and review</WorkspacePanelTitle>
+                <WorkspacePanelTitle>Code review</WorkspacePanelTitle>
               </WorkspacePanelHeading>
+              {model.state === "ready" ? (
+                <WorkspacePanelSummary>{model.reviewSummary}</WorkspacePanelSummary>
+              ) : (
+                <WorkspacePanelSummary>
+                  Review artifacts appear here once the live task record is ready.
+                </WorkspacePanelSummary>
+              )}
             </WorkspacePanelHeader>
 
-            <ReviewSectionLabel>Artifacts</ReviewSectionLabel>
-
-          {model.state !== "ready" ? (
-            <DocumentFrameSummary>Task artifacts are unavailable for this route.</DocumentFrameSummary>
-          ) : model.artifacts.state === "loading" ? (
-            <DocumentFrameSummary>{model.artifacts.message}</DocumentFrameSummary>
-          ) : model.artifacts.state === "error" ? (
-            <WorkspaceEmptyState>
-              <WorkspaceEmptyStateTitle as="h3">Unable to load task artifacts</WorkspaceEmptyStateTitle>
-              <WorkspaceEmptyStateDescription>{model.artifacts.message}</WorkspaceEmptyStateDescription>
-              <WorkspaceEmptyStateActions>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => {
-                    model.artifacts.retry?.();
-                  }}
-                >
-                  Retry
-                </button>
-              </WorkspaceEmptyStateActions>
-            </WorkspaceEmptyState>
-          ) : model.artifacts.state === "empty" ? (
-            <DocumentFrameSummary>{model.artifacts.message}</DocumentFrameSummary>
-          ) : (
-            <ReviewFileStack>
-              {model.artifacts.items.map((artifact, index) => (
-                <TaskArtifactCard key={artifact.artifactId} artifact={artifact} open={index === 0} />
-              ))}
-            </ReviewFileStack>
-          )}
+            {model.state === "ready" ? (
+              <TaskReviewSidebar artifacts={model.artifacts} />
+            ) : (
+              <DocumentFrameSummary>Task artifacts are unavailable for this route.</DocumentFrameSummary>
+            )}
           </WorkspacePanel>
         </WorkspaceSplitPane>
       </WorkspaceSplit>

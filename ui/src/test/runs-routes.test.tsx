@@ -270,7 +270,7 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
     ...createRunFixture("run-104", {
       artifactContents: {
         "/v1/artifacts/artifact-task-032-diff/content":
-          "--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n+ keep artifact access inside the authenticated run API seam\n"
+          "diff --git a/ui/src/features/execution/components/task-detail-workspace.tsx b/ui/src/features/execution/components/task-detail-workspace.tsx\nindex 1111111..2222222 100644\n--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n@@ -18,3 +18,4 @@ export function TaskDetailWorkspace() {\n-  return <p>Artifacts and review</p>;\n+  return <p>Code review</p>;\n+  // keep artifact access inside the authenticated run API seam\n }\ndiff --git a/ui/src/features/execution/components/task-review-sidebar.tsx b/ui/src/features/execution/components/task-review-sidebar.tsx\nnew file mode 100644\n--- /dev/null\n+++ b/ui/src/features/execution/components/task-review-sidebar.tsx\n@@ -0,0 +1,3 @@\n+export function TaskReviewSidebar() {\n+  return \"render unified diffs from task artifact content\";\n+}\n"
       },
       run: {
         compiledFrom: {
@@ -2824,54 +2824,33 @@ describe("Run routes", () => {
     expect(executionStep).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("renders task artifacts and loads preview content through the authenticated run API seam", async () => {
+  it("renders changed-file groups and unified diffs through the authenticated run API seam", async () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this task."
-    );
-    expect(screen.getByText("Depends on")).toBeInTheDocument();
-    expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
-    expect(await screen.findByText("artifact-task-032-diff")).toBeInTheDocument();
+    expect(screen.getByText("A live conversation is attached to this task. Messages will render here when task chat is wired.")).toBeInTheDocument();
+    expect(screen.getByText("Task scope")).toBeInTheDocument();
+    expect(await screen.findByText("Modified files")).toBeInTheDocument();
+    expect(screen.getByText("Added files")).toBeInTheDocument();
+    expect(screen.getByText("ui/src/features/execution/components/task-detail-workspace.tsx")).toBeInTheDocument();
+    expect(screen.getByText("ui/src/features/execution/components/task-review-sidebar.tsx")).toBeInTheDocument();
+    expect(screen.getByText("Supporting artifacts")).toBeInTheDocument();
     expect(screen.getByText("artifact-task-032-preview")).toBeInTheDocument();
-    expect(screen.getByText("Content type: text/plain; charset=utf-8")).toBeInTheDocument();
-    const textArtifactCard = screen.getByText("artifact-task-032-diff").closest("details");
-    const unsupportedArtifactCard = screen.getByText("artifact-task-032-preview").closest("details");
-
-    expect(textArtifactCard).not.toBeNull();
-    expect(unsupportedArtifactCard).not.toBeNull();
+    expect(screen.getByText("screenshot · image/png · 8.0 KB")).toBeInTheDocument();
     expect(
-      within(textArtifactCard as HTMLElement).getByText(
-        /Text preview is available for this artifact and loads on demand through the run API seam/i
-      )
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open artifact content" })).not.toBeInTheDocument();
-    expect(
-      within(unsupportedArtifactCard as HTMLElement).getByText(
-        "Preview unavailable in this view because image/png is not text-compatible."
-      )
-    ).toBeInTheDocument();
-    expect(
-      within(unsupportedArtifactCard as HTMLElement).queryByRole("button", {
-        name: "Load text preview"
-      })
-    ).not.toBeInTheDocument();
-    expect(
-      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
-    );
-
-    expect(
-      await within(textArtifactCard as HTMLElement).findByText((content) =>
+      await screen.findByText((content) =>
         content.includes("keep artifact access inside the authenticated run API seam")
       )
     ).toBeInTheDocument();
-    expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
-    expect(screen.queryByText("+ keep task detail scoped to the selected run")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText((content) =>
+        content.includes("render unified diffs from task artifact content")
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Depends on")).toBeInTheDocument();
+    expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load text preview" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Artifacts and review")).not.toBeInTheDocument();
   });
 
   it("renders a task-detail error state when artifact metadata fails to load", async () => {
@@ -2888,7 +2867,7 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
-    expect(await screen.findByText("Unable to load task artifacts")).toBeInTheDocument();
+    expect(await screen.findByText("Unable to load task review")).toBeInTheDocument();
     expect(screen.getByText("Artifact load failed.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });

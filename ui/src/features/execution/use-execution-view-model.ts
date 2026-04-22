@@ -188,12 +188,21 @@ export interface TaskArtifactsViewModel {
   state: "loading" | "ready" | "empty" | "error";
 }
 
+export interface TaskConversationEntryViewModel {
+  body: string;
+  speaker: string;
+}
+
 export interface TaskDetailReadyViewModel {
+  activityLabel: string;
   artifacts: TaskArtifactsViewModel;
   backPath: string;
   conversationLocator: ConversationLocator | null;
+  conversationEntries: TaskConversationEntryViewModel[];
   dependsOn: TaskDependencyViewModel[];
+  description: string;
   downstreamTasks: TaskDependencyViewModel[];
+  reviewSummary: string;
   runDisplayId: string;
   state: "ready";
   statusLabel: string;
@@ -360,6 +369,22 @@ function buildExecutionActivityLabel(task: ExecutionTaskRecord) {
   return "Task metadata is still loading from the live task list.";
 }
 
+function buildTaskDetailActivityLabel(task: Pick<ExecutionTaskRecord, "endedAt" | "startedAt" | "updatedAt">) {
+  if (task.endedAt) {
+    return `Completed ${formatUtcTimestamp(task.endedAt)}.`;
+  }
+
+  if (task.startedAt) {
+    return `Started ${formatUtcTimestamp(task.startedAt)}.`;
+  }
+
+  if (task.updatedAt) {
+    return `Updated ${formatUtcTimestamp(task.updatedAt)}.`;
+  }
+
+  return "Execution timing has not been recorded yet.";
+}
+
 function buildExecutionColumnSummary(depth: number, taskCount: number) {
   if (depth === 0) {
     return taskCount === 1 ? "1 starting task" : `${taskCount} starting tasks`;
@@ -407,6 +432,69 @@ function buildExecutionHandoffSummary(task: ExecutionTaskRecord, unresolvedDepen
 
 function buildExecutionSummary(totalTasks: number, columnCount: number) {
   return `${totalTasks} task${totalTasks === 1 ? "" : "s"} across ${columnCount} dependency step${columnCount === 1 ? "" : "s"}`;
+}
+
+function buildTaskReviewSummary(taskArtifacts: TaskArtifactsViewModel) {
+  if (taskArtifacts.state === "loading") {
+    return "Changed files and supporting artifacts are loading from the current task outputs.";
+  }
+
+  if (taskArtifacts.state === "error") {
+    return "Task review could not load its current artifacts.";
+  }
+
+  if (taskArtifacts.state === "empty") {
+    return "No review artifacts are recorded for this task yet.";
+  }
+
+  const diffArtifactCount = taskArtifacts.items.filter(
+    (artifact) => artifact.kind === "git_diff"
+  ).length;
+  const supportingArtifactCount = taskArtifacts.items.length - diffArtifactCount;
+  const summaryParts: string[] = [];
+
+  if (diffArtifactCount > 0) {
+    summaryParts.push(
+      `${diffArtifactCount} diff artifact${diffArtifactCount === 1 ? "" : "s"}`
+    );
+  }
+
+  if (supportingArtifactCount > 0) {
+    summaryParts.push(
+      `${supportingArtifactCount} supporting artifact${supportingArtifactCount === 1 ? "" : "s"}`
+    );
+  }
+
+  if (summaryParts.length === 0) {
+    return "Changed files and supporting artifacts are loading from the current task outputs.";
+  }
+
+  return `${summaryParts.join(" and ")} from the current task outputs.`;
+}
+
+function buildTaskConversationEntries(input: {
+  activityLabel: string;
+  conversationLocator: ConversationLocator | null;
+  description: string;
+  statusLabel: string;
+}): TaskConversationEntryViewModel[] {
+  return [
+    {
+      body: input.description,
+      speaker: "Task handoff"
+    },
+    {
+      body: `${input.statusLabel}. ${input.activityLabel}`,
+      speaker: "Execution state"
+    },
+    {
+      body:
+        input.conversationLocator !== null
+          ? "A live conversation is attached to this task. Messages will render here when task chat is wired."
+          : "No live conversation is attached to this task yet. This pane stays read-only until task chat is wired.",
+      speaker: "Conversation status"
+    }
+  ];
 }
 
 function buildExecutionSummaryGroups(tasks: ExecutionTaskRecord[], runId: string): ExecutionSummaryGroupViewModel[] {
@@ -792,13 +880,24 @@ export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
               message: null,
               state: "ready"
             };
+  const activityLabel = buildTaskDetailActivityLabel(task);
+  const conversationEntries = buildTaskConversationEntries({
+    activityLabel,
+    conversationLocator: task.conversation ?? null,
+    description: task.description,
+    statusLabel: getTaskStatusPresentation(task.status).statusLabel
+  });
 
   return {
+    activityLabel,
     artifacts: artifactsViewModel,
     backPath,
     conversationLocator: task.conversation ?? null,
+    conversationEntries,
     dependsOn,
+    description: task.description,
     downstreamTasks,
+    reviewSummary: buildTaskReviewSummary(artifactsViewModel),
     runDisplayId: run.runId,
     state: "ready",
     ...getTaskStatusPresentation(task.status),

@@ -300,6 +300,11 @@ Baseline compatibility facts already captured:
   **Decision:** Tightened the workflow-first handoff by tracking task-record readiness separately from workflow-node readiness, disabling task-detail entry until the run-task row exists, clamping node cards to the fixed graph geometry, and extending route coverage across lagging and branching DAG states.
   **Rationale:** Review found that the first Phase 7 cut could over-promise task detail during the workflow-before-tasks lag window, leaked Phase 8 review/chat wording into visible execution copy, and allowed graph cards to outgrow the layout math that positions nodes and edges.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 8
+  **Decision:** Rebuilt task detail into a real task workspace: the left pane now reads as a task conversation frame with task-scoped context and an honest live-chat placeholder, while the right pane now loads diff artifact content through the existing run API seam, groups changed files, renders unified diffs via `react-diff-view`, and keeps non-diff artifacts as metadata-only supporting records.
+  **Rationale:** The Phase 8 contract required a true conversation-plus-review task surface without inventing old/new snapshot APIs or backend changes, and the existing artifact metadata does not carry file-grouping detail until the diff text at `contentUrl` is fetched and parsed.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -323,6 +328,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 6 targeted fix pass completed: planning saves now persist the authored markdown source directly, title-only edits compare against the persisted save draft instead of raw editor state, and route coverage now asserts both rendered markdown structure and exact revision-save POST bodies.
 - [x] 2026-04-22 Phase 7 completed: execution now defaults to a graph-first workspace with dependency-step DAG rendering, workflow status groups, selected-task inspection, and an explicit task-detail handoff.
 - [x] 2026-04-22 Phase 7 targeted fix pass completed: execution handoff copy is now task-detail scoped, workflow-only nodes no longer over-promise task detail before task rows materialize, DAG cards are height-clamped to the fixed canvas math, and the targeted route suite now covers lagging plus branching workflows.
+- [x] 2026-04-22 Phase 8 completed: task detail now uses a real conversation/review split with changed-file groups, unified diffs, and supporting-artifact metadata over the current run API seam.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -330,7 +336,7 @@ Baseline compatibility facts already captured:
 - [x] Phase 5: runs index and run-detail structural frame.
 - [x] Phase 6: planning workspace and Plate planning documents.
 - [x] Phase 7: execution DAG workspace.
-- [ ] Phase 8: task detail review workspace.
+- [x] Phase 8: task detail review workspace.
 - [ ] Phase 9: workstreams surface.
 - [ ] Phase 10: project configuration surfaces.
 - [ ] Phase 11: documentation surfaces via Plate.
@@ -362,6 +368,7 @@ Baseline compatibility facts already captured:
 - Plate's current markdown deserialize/serialize path is not safe as a Phase 6 persistence boundary for common authored forms like task lists and strikethrough. For this slice, Plate should render markdown source, but save/export must stay on the authored markdown string path.
 - The live run-detail refresh can surface a non-empty workflow graph before the task collection catches up. Phase 7 therefore has to project the DAG from workflow nodes first and enrich it with task-row metadata opportunistically instead of treating an empty task list as proof that execution is still unavailable.
 - The workflow-first lag window also needs an explicit task-record-readiness seam on both the DAG inspector and the task route. A workflow node is not yet an honest task-detail target until the corresponding `run_tasks` row has materialized.
+- Task artifact metadata alone is not enough to build the review sidebar: changed-file grouping and diff type have to be derived by loading the current diff artifact `contentUrl` and parsing the unified diff text, because the list endpoint exposes only artifact-level metadata.
 
 ## Outcomes & Retrospective
 
@@ -436,6 +443,14 @@ Phase 7 outcome on 2026-04-22:
 - targeted route coverage now asserts the graph summary, workflow status groups, DAG selection changes, ready-task default selection, the workflow-before-tasks lag window, branching DAG navigation, and the delayed-materialization path after compile, matching the final Phase 7 execution-workspace contract
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx` pass on the Phase 7 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
+Phase 8 outcome on 2026-04-22:
+
+- task detail now reads as the intended product split instead of an artifact-preview utility: the left pane is a task conversation frame with task handoff, execution state, dependency/downstream navigation, and an explicit placeholder for the still-missing live chat transport
+- the right pane now behaves like a real review inspector: changed files are grouped by diff type, unified diffs render inline through `react-diff-view`, and file sections stay collapsible without inventing old/new snapshot APIs beyond the current `contentUrl` seam
+- non-diff artifacts remain visible as supporting records in the review sidebar, which keeps screenshot or other evidence metadata available without pretending dedicated viewers landed in this phase
+- targeted route coverage now proves the changed-file groups, parsed multi-file diff rendering, supporting-artifact metadata, and the updated task-review error state, matching the final Phase 8 task-detail contract
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 8 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
 ## Context and Orientation
 
 The current repository has a real backend and a still-partial operator UI.
@@ -452,7 +467,7 @@ Key UI facts:
 - `ui/index.html` now applies the repo-owned resolved theme in the document head before the app bundle runs, and `ui/src/main.tsx` no longer bootstraps Radix Themes CSS.
 - `ui/src/app/styles.css` is the Tailwind token authority for the current UI shell and the generated shadcn variable surface.
 - `ui/src/routes/` is intentionally thin and should remain thin.
-- `ui/src/features/runs/components/planning-workspace.tsx` and `ui/src/features/execution/components/task-detail-workspace.tsx` still render placeholder conversation panes.
+- `ui/src/features/runs/components/planning-workspace.tsx` still renders a placeholder conversation pane, while `ui/src/features/execution/components/task-detail-workspace.tsx` now owns the real task conversation-plus-review split with only the live chat transport still missing.
 - `ui/src/features/runs/run-management-api.ts` is now the real live run data seam. Do not route live run detail back through scaffold-only resource-model code.
 - `ui/src/features/resource-model/` remains the checked-in source of scaffold data for surfaces that are not live yet.
 
@@ -778,7 +793,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Pending approval.
+- **Status:** Complete on 2026-04-22.
 - **Goal:** Rebuild task detail around the left conversation frame and right review inspector.
 - **Scope Boundary:** In scope are the task detail shell, changed-file groups, unified diff rendering, review sidebar behavior, and task-specific states. Out of scope are live chat binding and backend artifact changes.
 - **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/runs/run-management-api.ts`.
@@ -788,7 +803,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** task detail becomes a real review workspace with unified diff rendering through `react-diff-view`.
 - **Commit Expectation:** `redesign task review workspace`
 - **Known Constraints / Baseline Failures:** keep artifact truth tied to the current API seam and `contentUrl`; do not invent old/new snapshot APIs.
-- **Next Starter Context:** after this phase the visible missing piece in task detail should mainly be the live conversation behavior.
+- **Completion Notes:** Replaced the old artifact-preview-first task route with a real task workspace. `ui/src/features/execution/use-execution-view-model.ts` now enriches task detail with task-scope conversation entries, activity copy, and review-summary facts while preserving the existing artifact metadata seam. `ui/src/features/execution/components/task-detail-workspace.tsx` now renders the product-shaped split: a left conversation frame with task handoff, execution status, dependency/downstream navigation, and an honest live-chat placeholder, plus a right code-review pane. The new `ui/src/features/execution/components/task-review-sidebar.tsx` loads diff artifact text through `getArtifactContent(contentUrl)`, parses unified diffs with `react-diff-view`, groups changed files by diff type, renders one-pane diffs inside collapsible file sections, and keeps non-diff artifacts visible as metadata-only supporting records. `ui/src/app/styles.css` now imports the `react-diff-view` stylesheet, maps it onto the shared theme tokens, and adds the task-review layout/diff styling needed for the new inspector. `ui/src/test/runs-routes.test.tsx` now proves the changed-file groups, multi-file diff rendering, supporting-artifact metadata, and the renamed task-review error state. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 9 should treat the Phase 8 task-detail workspace as stable. Keep the graph-to-task handoff, the task conversation/review split, the diff grouping/parsing contract over `contentUrl`, and the metadata-only supporting-artifact lane intact; the main visible gap left in task detail is still live conversation behavior, so Phase 9 should stay focused on the Workstreams surface.
 
 ### Phase 9: Workstreams Surface
 

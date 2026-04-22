@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "react-diff-view/style/index.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -98,6 +99,28 @@
   --danger-surface: hsl(11 43% 90%);
   --danger-border: hsl(9 36% 58%);
   --danger-text: hsl(9 43% 42%);
+  --diff-background-color: transparent;
+  --diff-text-color: var(--text-primary);
+  --diff-font-family: var(--font-mono);
+  --diff-selection-background-color: color-mix(in srgb, var(--accent-fill) 72%, transparent);
+  --diff-selection-text-color: var(--text-primary);
+  --diff-gutter-insert-background-color: color-mix(in srgb, var(--status-complete-surface) 84%, var(--surface-panel));
+  --diff-gutter-insert-text-color: var(--text-primary);
+  --diff-gutter-delete-background-color: color-mix(in srgb, var(--status-blocked-surface) 88%, var(--surface-panel));
+  --diff-gutter-delete-text-color: var(--text-primary);
+  --diff-gutter-selected-background-color: color-mix(in srgb, var(--accent-fill) 82%, var(--surface-panel));
+  --diff-gutter-selected-text-color: var(--text-primary);
+  --diff-code-insert-background-color: color-mix(in srgb, var(--status-complete-surface) 76%, var(--surface-subtle));
+  --diff-code-insert-text-color: var(--text-primary);
+  --diff-code-delete-background-color: color-mix(in srgb, var(--status-blocked-surface) 78%, var(--surface-subtle));
+  --diff-code-delete-text-color: var(--text-primary);
+  --diff-code-insert-edit-background-color: color-mix(in srgb, var(--status-complete-border) 38%, var(--surface-panel));
+  --diff-code-insert-edit-text-color: var(--text-primary);
+  --diff-code-delete-edit-background-color: color-mix(in srgb, var(--status-blocked-border) 44%, var(--surface-panel));
+  --diff-code-delete-edit-text-color: var(--text-primary);
+  --diff-code-selected-background-color: color-mix(in srgb, var(--accent-fill) 68%, var(--surface-panel));
+  --diff-code-selected-text-color: var(--text-primary);
+  --diff-omit-gutter-line-color: var(--accent-line);
 }
 
 :root.dark {
@@ -1311,6 +1334,11 @@ pre {
   overflow: hidden;
 }
 
+.review-file-card[open] > .review-file-summary {
+  border-bottom: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--accent-fill) 28%, transparent);
+}
+
 .review-file-summary {
   display: grid;
   gap: 0.25rem;
@@ -1321,6 +1349,102 @@ pre {
 
 .review-file-summary::-webkit-details-marker {
   display: none;
+}
+
+.task-detail-header-actions {
+  align-items: flex-end;
+}
+
+.task-detail-pane-body,
+.task-conversation-stack,
+.task-review-sidebar,
+.task-review-group-heading,
+.task-supporting-artifact-list,
+.task-supporting-artifact {
+  display: grid;
+  gap: 1rem;
+}
+
+.task-context-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.task-context-link {
+  display: grid;
+  gap: 0.6rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.task-review-group {
+  gap: 0.85rem;
+}
+
+.task-review-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.task-review-diff-shell {
+  overflow: auto;
+  border-top: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--surface-subtle) 86%, transparent);
+}
+
+.task-review-diff-table {
+  min-width: 38rem;
+}
+
+.task-review-diff-shell .diff td {
+  border-top: 1px solid color-mix(in srgb, var(--border-muted) 68%, transparent);
+}
+
+.task-review-diff-shell .diff tr:first-child td {
+  border-top: 0;
+}
+
+.task-review-diff-shell .diff-line,
+.task-review-diff-shell .diff-decoration-content {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.task-review-diff-shell .diff-gutter {
+  padding: 0 0.7rem;
+  color: var(--text-muted);
+}
+
+.task-review-diff-shell .diff-code {
+  padding: 0 0.8rem;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.task-review-diff-shell .diff-decoration {
+  background: color-mix(in srgb, var(--surface-panel) 86%, transparent);
+  color: var(--text-muted);
+}
+
+.task-review-diff-shell .diff-decoration-content {
+  padding: 0.45rem 0.8rem;
+}
+
+.task-supporting-artifact {
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--surface-subtle) 84%, transparent);
+}
+
+.task-supporting-artifact-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .review-file-diff {
@@ -1608,7 +1732,8 @@ pre {
 
   .project-form-grid,
   .component-card-overrides,
-  .project-rule-grid {
+  .project-rule-grid,
+  .task-context-grid {
     grid-template-columns: 1fr;
   }
 
