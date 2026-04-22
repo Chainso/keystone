@@ -63,9 +63,9 @@ New entries should follow this format:
 1. **ID:** `TD-2026-04-20-005`
 2. **Date Added:** `2026-04-20`
 3. **Area:** `Target-model developer docs`
-4. **Description:** `README.md`, `.ultrakit/developer-docs/README.md`, and the archived target-model migration plan still reference `keystone-target-model-handoff.md`, but that file is not checked into the repo.
-5. **Impact:** Contributors hit a broken source-of-truth link when changing persistence, API, run orchestration, or document behavior, which makes the final target-model guidance harder to discover.
+4. **Description:** Historical note: `README.md`, `.ultrakit/developer-docs/README.md`, and the archived target-model migration plan used to reference `keystone-target-model-handoff.md` before the file was restored on 2026-04-21.
+5. **Impact:** Contributors previously hit a broken source-of-truth link when changing persistence, API, run orchestration, or document behavior.
 6. **Owner:** `keystone-target-model-migration`
-7. **Proposed Fix:** Either restore a durable `keystone-target-model-handoff.md` document or replace those references with the current architecture docs and archived migration plan.
+7. **Proposed Fix:** Restored `.ultrakit/developer-docs/keystone-target-model-handoff.md` and kept the current contributor-facing indexes pointed at it.
 8. **Target Window:** `next docs cleanup cycle`
-9. **Status:** `open`
+9. **Status:** `closed (2026-04-21)`

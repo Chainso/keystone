@@ -130,6 +130,16 @@ Compatibility that **is** required:
   **Decision:** Pre-validate every staged task artifact kind before the promotion loop starts, and add one repository rejection test plus one Think-runtime mixed-artifact regression test to lock down the review findings.  
   **Rationale:** The review correctly found that the DB persistence guard was only covered indirectly and that the promotion loop could partially persist an earlier valid artifact before a later invalid kind failed.
 
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 4 kickoff  
+  **Decision:** Treat Phase 4 as a durable source-of-truth pass: restore `keystone-target-model-handoff.md`, update README/developer-docs/notes to the current project-scoped run model, and refresh the architecture/debt docs that now lag the cleaned backend and artifact surface.  
+  **Rationale:** Read-only exploration showed the remaining drift is no longer just a broken link; README still describes Workstreams as scaffold-backed, notes still describe `/v1/runs`, inline decision packages, and `RunCoordinatorDO`, and the architecture docs still omit the now-live `staged_output` artifact family.
+
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 4 complete  
+  **Decision:** Restore `keystone-target-model-handoff.md`, update README/developer-docs/notes to the project/document/run/task/artifact-first contract, refresh the M1 and Think runtime docs for live `Workstreams` plus `staged_output`, and close the missing-handoff debt entry as resolved history.  
+  **Rationale:** Contributor-facing docs now point at a real handoff file, the current UI/backend story matches the cleaned codebase from Phases 1-3, and the final focused backend suite stayed green without widening scope into buildable source.
+
 ## Progress
 
 - [x] 2026-04-21 Reviewed the current target-model record in the archived migration plan plus the current M1 and Think runtime developer docs.
@@ -145,7 +155,8 @@ Compatibility that **is** required:
 - [x] 2026-04-21 Phase 3 execution context re-gathered: live artifact kinds are `document_revision`, `run_plan`, `task_handoff`, `task_log`, `run_note`, `run_summary`, and `staged_output`; dead helper families remain in `src/lib/artifacts/keys.ts`; DB/workflow/HTTP seams still admit free-form artifact kinds; `run_summary` must keep its current deterministic storage key.
 - [x] 2026-04-21 Phase 3 complete: added `src/lib/artifacts/model.ts` as the shared live-family source of truth, removed the dead key helpers, narrowed DB/API/task-runtime artifact-kind admission to the surviving families, kept `run_summary` at `release/run-summary.json`, and updated the focused tests to assert the remaining contracts explicitly.
 - [x] 2026-04-21 Phase 3 fix pass complete: `TaskWorkflow` now validates all staged artifact kinds before any promotion-side reads or writes, `tests/lib/db-repositories.test.ts` now rejects stale `createArtifactRef` kinds directly, and `tests/lib/workflows/task-workflow-think.test.ts` now proves a later invalid kind prevents any earlier artifact from being promoted.
-- [ ] Phase 4 complete: restore contributor-facing target-model docs and clean the remaining README/notes source-of-truth drift after the code cleanup lands.
+- [x] 2026-04-21 Phase 4 execution context re-gathered: README/developer-docs still point at the missing handoff, README still describes Workstreams as scaffold-backed, notes still describe `/v1/runs`, inline decision packages, and `RunCoordinatorDO`, and the architecture docs now lag the Phase 3 artifact cleanup.
+- [x] 2026-04-21 Phase 4 complete: restored `.ultrakit/developer-docs/keystone-target-model-handoff.md`, corrected README/developer-docs/notes/architecture drift to the live project-scoped run and Workstreams model, closed `TD-2026-04-20-005`, and revalidated with the final focused backend suite plus the targeted grep audit.
 
 ## Surprises & Discoveries
 
@@ -164,12 +175,15 @@ Compatibility that **is** required:
 - Phase 3 re-verification showed the code already emits only `document_revision`, `run_plan`, `task_handoff`, `task_log`, `run_note`, `run_summary`, and `staged_output`, but the persistence/runtime/public seams still admit arbitrary artifact-kind strings and would echo unexpected values into storage paths and API responses.
 - Phase 3 implementation exposed one extra runtime nuance: `run_summary` is still a live artifact family overall, but task-stage promotion must reject it because Think/scripted task turns are only allowed to mint `run_note` and `staged_output`.
 - `tests/lib/db-repositories.test.ts` remains environment-gated by `KEYSTONE_RUN_DB_TESTS` plus a DB connection string. In this shell the fix-pass validation command skipped that file, so the new negative repository coverage is checked in but not exercised without DB env.
+- Phase 4 re-verification showed the docs drift is broader than a missing file: README still describes Workstreams as scaffold-backed, notes still describe `/v1/runs`, inline decision packages, and `RunCoordinatorDO`, and the durable architecture docs still lag the cleaned artifact surface because they omit `staged_output`.
 
 ## Outcomes & Retrospective
 
 Phases 1 through 3 landed as planned: the backend tree no longer carries the dead websocket handler, stale Maestro session/approval contracts, adjacent write-only `parentSessionId` baggage, or dead evidence/integration/release-pack artifact helpers. Artifact kinds now share one narrowed source of truth across DB inserts, task-stage promotion, sandbox projection metadata, and the public artifact resource schema, while the live `run_summary` key remains at `release/run-summary.json` and the authoritative `runTaskId` storage/API contract stays intact. The Phase 3 fix pass closed the last review findings by making staged artifact-kind validation all-or-nothing before promotion and by adding direct persistence-guard regression coverage.
 
 The requested fix-pass validation command passed in this shell with 8 files green and `tests/lib/db-repositories.test.ts` skipped because the DB env gate was unset. No new focused-suite regressions surfaced.
+
+Phase 4 closed the remaining contributor-facing drift. The repo now ships a real `keystone-target-model-handoff.md`, README and the developer-docs index point at it truthfully, `.ultrakit/notes.md` no longer advertises `/v1/runs`, inline decision-package payloads, or `RunCoordinatorDO`, and the M1 plus Think runtime docs now describe live `Workstreams`, the narrowed live artifact family set, and the `staged_output` / `run_summary` boundaries accurately. `TD-2026-04-20-005` is now closed as resolved history, and no build rerun was needed because the phase stayed documentation-only.
 
 If later phases uncover a live dependency on one of the remaining suspected dead seams, update this section and the relevant phase handoff before continuing.
 
@@ -316,6 +330,9 @@ Planning baseline evidence:
 - Phase 2 validation: `rtk npm run test -- tests/lib/agents/runtime-contract.test.ts tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/task-session-do.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts` -> passes (6 files, 23 tests) after deleting `src/maestro/session.ts`, narrowing `src/maestro/contracts.ts`, removing `parentSessionId`, and cleaning the stale Think-agent test mocks.
 - Phase 3 validation: `rtk npm run test -- tests/lib/artifact-keys.test.ts tests/lib/compile-plan-run.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts tests/lib/agents/implementer-agent.test.ts tests/http/projects.test.ts` -> passes (8 files, 56 tests) after adding `src/lib/artifacts/model.ts`, deleting the dead key helpers, narrowing `artifactKind` / staged-artifact typing to the live families, and updating the focused tests to reject stale/public/runtime kinds while keeping `run_summary` and `runTaskId` assertions explicit.
 - Phase 3 fix-pass validation: `rtk npm run test -- tests/lib/db-repositories.test.ts tests/lib/artifact-keys.test.ts tests/lib/compile-plan-run.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts tests/lib/agents/implementer-agent.test.ts tests/http/projects.test.ts` -> passes with 8 files green and `tests/lib/db-repositories.test.ts` skipped because `KEYSTONE_RUN_DB_TESTS` plus a DB connection string were unset in this shell, after adding the direct stale-kind repository guard test and making Think staged-artifact promotion validate all kinds before any writes.
+- Phase 4 validation: `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts tests/lib/artifact-keys.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts` -> passes (9 files, 78 tests) after restoring the handoff doc and updating the contributor-facing docs.
+- Phase 4 grep audit: `rtk rg -n "keystone-target-model-handoff|RunCoordinatorDO|/v1/runs\\b|decision-package|Workstreams|staged_output" README.md .ultrakit/developer-docs .ultrakit/notes.md .ultrakit/exec-plans/tech-debt-tracker.md` -> confirms the restored handoff link, live `Workstreams` references, and `staged_output` documentation are present, while `RunCoordinatorDO` no longer appears in current contributor docs and the closed debt entry now records the handoff gap as historical resolution.
+- Phase 4 build evidence: not rerun because this phase stayed documentation-only and did not touch buildable source; the existing host-shell build caveat remains unchanged.
 
 Primary file inventory for execution:
 
@@ -530,7 +547,7 @@ Create a real target-model handoff document and repoint the broader contributor-
 
 ### Phase Handoff
 
-**Status:** Pending
+**Status:** Complete
 
 **Goal**  
 Restore a durable target-model handoff doc and align contributor-facing docs with the cleaned backend state, including the README and notes drift that still describe pre-target-model behavior.
@@ -543,8 +560,11 @@ Out of scope: rewriting archived historical plans except where a current contrib
 `.ultrakit/exec-plans/completed/keystone-target-model-migration.md`  
 `.ultrakit/developer-docs/m1-architecture.md`  
 `.ultrakit/developer-docs/think-runtime-architecture.md`  
+`.ultrakit/developer-docs/m1-local-runbook.md`  
+`.ultrakit/developer-docs/think-runtime-runbook.md`  
 `README.md`  
 `.ultrakit/developer-docs/README.md`  
+`.ultrakit/notes.md`  
 `.ultrakit/exec-plans/tech-debt-tracker.md`
 
 **Files Expected To Change**  
@@ -552,10 +572,10 @@ Out of scope: rewriting archived historical plans except where a current contrib
 `.ultrakit/developer-docs/README.md`  
 `.ultrakit/developer-docs/keystone-target-model-handoff.md`  
 `.ultrakit/notes.md`  
-Potentially `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/exec-plans/tech-debt-tracker.md`, and `.ultrakit/exec-plans/completed/README.md`
+Potentially `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, `.ultrakit/exec-plans/tech-debt-tracker.md`, and `.ultrakit/exec-plans/completed/README.md`
 
 **Validation**  
-Run the final focused backend suite from this plan, use `rtk rg -n "keystone-target-model-handoff|RunCoordinatorDO|/v1/runs\\b|decision-package"` across `README.md`, `.ultrakit/developer-docs`, and `.ultrakit/notes.md`, then run `rtk npm run build` in a host-permitted shell if backend source changed in a way that should still satisfy the existing build baseline.  
+Run the final focused backend suite from this plan, use `rtk rg -n "keystone-target-model-handoff|RunCoordinatorDO|/v1/runs\\b|decision-package|Workstreams|staged_output" README.md .ultrakit/developer-docs .ultrakit/notes.md .ultrakit/exec-plans/tech-debt-tracker.md`, then run `rtk npm run build` in a host-permitted shell if backend source changed in a way that should still satisfy the existing build baseline.  
 Success means the docs point to a real handoff file, current contributor docs no longer advertise superseded contract language, and the focused backend suite remains green.
 
 **Plan / Docs To Update**  
@@ -570,3 +590,9 @@ A real target-model handoff doc, corrected contributor links, cleaned README/not
 
 **Known Constraints / Baseline Failures**  
 `rtk npm run build` still needs a host-permitted run on this machine because Wrangler writes under `~/.config/.wrangler`; record both the sandbox failure and the host rerun result if build evidence is refreshed.
+
+**Completion Notes**  
+Restored `.ultrakit/developer-docs/keystone-target-model-handoff.md`, updated `README.md`, `.ultrakit/developer-docs/README.md`, `.ultrakit/notes.md`, `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, and `.ultrakit/exec-plans/tech-debt-tracker.md` so contributor-facing guidance matches the cleaned project/document/run/task/artifact-first backend. Focused validation passed with `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts tests/lib/artifact-keys.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts`, and the targeted grep audit confirmed the restored handoff plus removal of stale `RunCoordinatorDO` guidance from current docs. `rtk npm run build` was not rerun because Phase 4 changed docs only.
+
+**Next Starter Context**  
+Phase 4 is complete. If a review pass is requested, keep it narrow to contributor-doc accuracy and plan bookkeeping. Otherwise this active plan is ready for the usual review/archive flow, and any later documentation changes should treat `.ultrakit/developer-docs/keystone-target-model-handoff.md` as the current contributor-facing source of truth for the target model.
