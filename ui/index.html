@@ -3,6 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script id="keystone-theme-bootstrap">
+      (() => {
+        const storageKey = "keystone.ui.theme-preference.v1";
+        const mediaQuery = "(prefers-color-scheme: dark)";
+        let preference = "system";
+
+        try {
+          const storedPreference = window.localStorage.getItem(storageKey);
+
+          if (
+            storedPreference === "system" ||
+            storedPreference === "light" ||
+            storedPreference === "dark"
+          ) {
+            preference = storedPreference;
+          }
+        } catch {}
+
+        const systemTheme =
+          typeof window.matchMedia === "function" && window.matchMedia(mediaQuery).matches
+            ? "dark"
+            : "light";
+        const theme = preference === "system" ? systemTheme : preference;
+        const root = document.documentElement;
+
+        root.dataset.theme = theme;
+        root.style.colorScheme = theme;
+        root.classList.toggle("dark", theme === "dark");
+        root.classList.toggle("light", theme === "light");
+      })();
+    </script>
     <title>Keystone Workspace Scaffold</title>
   </head>
   <body>

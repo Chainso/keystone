@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { AppProviders } from "../app/app-providers";
 import { useTheme } from "../app/theme-provider";
 import { themePreferenceStorageKey } from "../app/theme";
+import { Button } from "../components/ui/button";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { selectCurrentProjectSummary } from "../features/resource-model/selectors";
 import { resolveRunsSnapshotForProject } from "../features/runs/use-runs-index-view-model";
@@ -16,6 +20,18 @@ import {
 } from "../../../src/http/api/v1/projects/contracts";
 
 const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
+const themeBootstrapScriptMatch = readFileSync(
+  resolve(process.cwd(), "ui/index.html"),
+  "utf8"
+).match(/<script id="keystone-theme-bootstrap">([\s\S]*?)<\/script>/);
+const windowLocalStorageDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+const globalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+
+if (!themeBootstrapScriptMatch) {
+  throw new Error("Missing the head-level Keystone theme bootstrap script in ui/index.html.");
+}
+
+const themeBootstrapScript = themeBootstrapScriptMatch[1];
 
 interface LiveRunFixture {
   compiledFrom: {
@@ -128,6 +144,35 @@ function renderThemeHarness() {
   );
 }
 
+function runThemeBootstrapScript() {
+  new Function("window", "document", themeBootstrapScript)(window, document);
+}
+
+async function withUnavailableLocalStorage<T>(run: () => T | Promise<T>) {
+  const error = new DOMException("Blocked by the browser.", "SecurityError");
+  const throwingDescriptor = {
+    configurable: true,
+    get() {
+      throw error;
+    }
+  };
+
+  Object.defineProperty(window, "localStorage", throwingDescriptor);
+  Object.defineProperty(globalThis, "localStorage", throwingDescriptor);
+
+  try {
+    return await run();
+  } finally {
+    if (windowLocalStorageDescriptor) {
+      Object.defineProperty(window, "localStorage", windowLocalStorageDescriptor);
+    }
+
+    if (globalLocalStorageDescriptor) {
+      Object.defineProperty(globalThis, "localStorage", globalLocalStorageDescriptor);
+    }
+  }
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -138,6 +183,21 @@ beforeEach(() => {
 });
 
 describe("theme provider", () => {
+  it("runs the real head bootstrap before app mount and honors a stored dark preference", () => {
+    const controller = createMatchMediaController(false);
+
+    window.localStorage.setItem(themePreferenceStorageKey, "dark");
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+
+    runThemeBootstrapScript();
+
+    expect(controller.matchMedia).toHaveBeenCalledWith("(prefers-color-scheme: dark)");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement).not.toHaveClass("light");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+  });
+
   it("defaults to the system theme on first load", () => {
     const controller = createMatchMediaController(true);
 
@@ -165,6 +225,27 @@ describe("theme provider", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
   });
 
+  it("stays usable when browser storage access throws", async () => {
+    const controller = createMatchMediaController(false);
+
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+
+    await withUnavailableLocalStorage(async () => {
+      runThemeBootstrapScript();
+      renderThemeHarness();
+
+      expect(screen.getByTestId("theme-preference")).toHaveTextContent("system");
+      expect(screen.getByTestId("resolved-theme")).toHaveTextContent("light");
+      expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
+      fireEvent.click(screen.getByRole("button", { name: "Dark theme" }));
+
+      expect(screen.getByTestId("theme-preference")).toHaveTextContent("dark");
+      expect(screen.getByTestId("resolved-theme")).toHaveTextContent("dark");
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+  });
+
   it("persists explicit theme changes and can return to system tracking", async () => {
     const controller = createMatchMediaController(false);
 
@@ -188,6 +269,24 @@ describe("theme provider", () => {
       expect(screen.getByTestId("system-theme")).toHaveTextContent("dark");
       expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     });
+  });
+
+  it("keeps seeded shadcn consumers on semantic theme tokens", () => {
+    const controller = createMatchMediaController(true);
+
+    window.localStorage.setItem(themePreferenceStorageKey, "dark");
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    render(
+      <AppProviders project={selectCurrentProjectSummary()}>
+        <Button>Launch run</Button>
+      </AppProviders>
+    );
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(screen.getByRole("button", { name: "Launch run" })).toHaveClass(
+      "bg-primary",
+      "text-primary-foreground"
+    );
   });
 });
 

@@ -17,13 +17,13 @@ function isThemePreference(value: string | null): value is ThemePreference {
 }
 
 export function readStoredThemePreference() {
-  const storage = getStorage();
-
-  if (!storage) {
-    return "system" as const;
-  }
-
   try {
+    const storage = getStorage();
+
+    if (!storage) {
+      return "system" as const;
+    }
+
     const storedPreference = storage.getItem(themePreferenceStorageKey);
 
     return isThemePreference(storedPreference) ? storedPreference : "system";
@@ -33,13 +33,13 @@ export function readStoredThemePreference() {
 }
 
 export function writeStoredThemePreference(preference: ThemePreference) {
-  const storage = getStorage();
-
-  if (!storage) {
-    return;
-  }
-
   try {
+    const storage = getStorage();
+
+    if (!storage) {
+      return;
+    }
+
     if (preference === "system") {
       storage.removeItem(themePreferenceStorageKey);
       return;
