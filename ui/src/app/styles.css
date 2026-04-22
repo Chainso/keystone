@@ -1886,6 +1886,12 @@ pre {
   cursor: pointer;
 }
 
+.source-mode-option:focus-within {
+  border-color: var(--accent-line);
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+}
+
 .source-mode-option input {
   position: absolute;
   opacity: 0;

@@ -25,7 +25,6 @@ import {
 } from "./project-configuration-form";
 import { ProjectManagementApiError } from "./project-management-api";
 import {
-  useCurrentProject,
   useProjectManagement,
   useProjectManagementApi
 } from "./project-context";
@@ -78,8 +77,8 @@ export function ProjectSettingsConfigurationProvider({
   children: ReactNode;
 }) {
   const api = useProjectManagementApi();
-  const project = useCurrentProject();
   const projectManagement = useProjectManagement();
+  const project = projectManagement.state.currentProject;
   const [draft, setDraft] = useState<ProjectConfigurationDraft | null>(null);
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [loadedDraft, setLoadedDraft] = useState<ProjectConfigurationDraft | null>(null);
@@ -94,9 +93,9 @@ export function ProjectSettingsConfigurationProvider({
   const nextEnvVarIndexRef = useRef(0);
   const requestIdRef = useRef(0);
   const submitRequestIdRef = useRef(0);
-  const currentProjectIdRef = useRef(project.projectId);
+  const currentProjectIdRef = useRef<string | null>(project?.projectId ?? null);
 
-  currentProjectIdRef.current = project.projectId;
+  currentProjectIdRef.current = project?.projectId ?? null;
 
   function resetDraft(nextDraft: ProjectConfigurationDraft, projectId: string) {
     nextComponentIndexRef.current = nextDraft.components.length;
@@ -109,17 +108,21 @@ export function ProjectSettingsConfigurationProvider({
     setSubmitError(null);
   }
 
-  async function loadSettings(projectId: string) {
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    setStatus("loading");
-    setLoadError(null);
+  function clearDraftState() {
     setDraft(null);
     setDraftProjectId(null);
     setLoadedDraft(null);
     setLoadedDraftProjectId(null);
     setFieldErrors({});
     setSubmitError(null);
+  }
+
+  async function loadSettings(projectId: string) {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setStatus("loading");
+    setLoadError(null);
+    clearDraftState();
 
     try {
       const detail = await api.getProject(projectId);
@@ -145,20 +148,33 @@ export function ProjectSettingsConfigurationProvider({
         return;
       }
 
-      setDraft(null);
-      setDraftProjectId(null);
-      setLoadedDraft(null);
-      setLoadedDraftProjectId(null);
-      setFieldErrors({});
-      setSubmitError(null);
+      clearDraftState();
       setLoadError(getErrorMessage(error));
       setStatus("error");
     }
   }
 
+  const unresolvedProjectStatus = project ? null : projectManagement.meta.status;
+  const unresolvedProjectError = project ? null : projectManagement.meta.errorMessage;
+
   useEffect(() => {
-    void loadSettings(project.projectId);
-  }, [api, project.projectId]);
+    if (project?.projectId) {
+      void loadSettings(project.projectId);
+      return;
+    }
+
+    requestIdRef.current += 1;
+    clearDraftState();
+
+    if (projectManagement.meta.status === "loading") {
+      setLoadError(null);
+      setStatus("loading");
+      return;
+    }
+
+    setLoadError(projectManagement.meta.errorMessage ?? "Unable to load project settings.");
+    setStatus("error");
+  }, [api, project?.projectId, unresolvedProjectError, unresolvedProjectStatus]);
 
   function updateDraft(
     recipe: (currentDraft: ProjectConfigurationDraft) => ProjectConfigurationDraft
@@ -177,19 +193,22 @@ export function ProjectSettingsConfigurationProvider({
     setSubmitError(null);
   }
 
-  const currentDraft = draftProjectId === project.projectId ? draft : null;
-  const currentLoadedDraft = loadedDraftProjectId === project.projectId ? loadedDraft : null;
+  const currentDraft = project && draftProjectId === project.projectId ? draft : null;
+  const currentLoadedDraft =
+    project && loadedDraftProjectId === project.projectId ? loadedDraft : null;
   const effectiveStatus =
     status === "ready" && !currentDraft ? "loading" : status;
   const effectiveSubmitError =
-    submittingProjectId === null || submittingProjectId === project.projectId ? submitError : null;
-  const effectiveIsSubmitting = isSubmitting && submittingProjectId === project.projectId;
+    submittingProjectId === null || submittingProjectId === project?.projectId ? submitError : null;
+  const effectiveIsSubmitting = Boolean(
+    project && isSubmitting && submittingProjectId === project.projectId
+  );
 
   const value: ProjectConfigurationValue = {
     state: {
       draft: currentDraft,
       fieldErrors,
-      projectId: currentDraft ? project.projectId : null
+      projectId: currentDraft && project ? project.projectId : null
     },
     actions: {
       addComponent(kind) {
@@ -246,7 +265,7 @@ export function ProjectSettingsConfigurationProvider({
         }));
       },
       runSecondaryAction() {
-        if (!currentLoadedDraft || effectiveIsSubmitting) {
+        if (!project || !currentLoadedDraft || effectiveIsSubmitting) {
           return;
         }
 
@@ -289,7 +308,12 @@ export function ProjectSettingsConfigurationProvider({
         }));
       },
       retryLoad() {
-        void loadSettings(project.projectId);
+        if (project) {
+          void loadSettings(project.projectId);
+          return;
+        }
+
+        void projectManagement.actions.reloadProjects();
       },
       setComponentSourceMode(componentId, sourceMode) {
         updateDraft((currentDraft) => ({
@@ -308,7 +332,7 @@ export function ProjectSettingsConfigurationProvider({
         const activeProjectId = currentProjectIdRef.current;
         const draftToSubmit = draftProjectId === activeProjectId ? draft : null;
 
-        if (effectiveIsSubmitting || !draftToSubmit) {
+        if (effectiveIsSubmitting || !activeProjectId || !draftToSubmit) {
           return false;
         }
 
@@ -463,7 +487,7 @@ export function ProjectSettingsConfigurationProvider({
       isSubmitting: effectiveIsSubmitting,
       loadError,
       mode: buildProjectConfigurationModeMeta("settings", {
-        title: `Project settings: ${project.displayName}`
+        title: project ? `Project settings: ${project.displayName}` : "Project settings"
       }),
       status: effectiveStatus,
       submitError: effectiveSubmitError

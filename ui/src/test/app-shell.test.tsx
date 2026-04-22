@@ -309,6 +309,13 @@ function getThemePreferencePanel() {
   return screen.getByRole("group", { name: "Theme preference" }).closest("section");
 }
 
+function expectProjectConfigurationMetadata(modeLabel: string, tabCountLabel = "4 tabs") {
+  const metadata = screen.getByRole("group", { name: "Project configuration metadata" });
+
+  expect(within(metadata).getByText(modeLabel)).toBeInTheDocument();
+  expect(within(metadata).getByText(tabCountLabel)).toBeInTheDocument();
+}
+
 function buildProjectsResponse(projects: CurrentProject[]) {
   return {
     data: {
@@ -1473,6 +1480,7 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
+    expectProjectConfigurationMetadata("Save flow");
     expect(screen.getByText("Project settings failed.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -1480,6 +1488,87 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("waits for the real project selection before loading live project settings", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+    const alternateProjectDetail = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Alternate operator workspace.",
+      ruleSet: {
+        reviewInstructions: ["Review the alternate project carefully."],
+        testInstructions: ["Run the alternate smoke test suite."]
+      },
+      components: [
+        {
+          componentKey: "alt-api",
+          displayName: "Alt API",
+          kind: "git_repository" as const,
+          config: {
+            gitUrl: "https://github.com/keystone/alt-api.git",
+            ref: "main"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "ALT_RUNTIME",
+          value: "workers"
+        }
+      ]
+    };
+    const deferredProjectsResponse = createDeferredResponse();
+    const deferredDetailResponse = createDeferredResponse();
+
+    window.localStorage.setItem(currentProjectStorageKey, "project-alt");
+    const fetchMock = stubProjectManagementFetch({
+      projectResponses: [() => deferredProjectsResponse.promise],
+      projectDetailsByProjectId: {
+        "project-alt": [() => deferredDetailResponse.promise]
+      }
+    });
+
+    renderRoute("/settings", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Loading projects" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Loading project settings" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([request]) =>
+      typeof request === "string" ? request : request.toString()
+    )).toEqual(["/v1/projects"]);
+
+    deferredProjectsResponse.resolve(createJsonResponse(buildProjectsResponse(projects)));
+
+    expect(
+      await screen.findByRole("heading", { name: "Loading project settings" })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
+    ).toBeInTheDocument();
+    expectProjectConfigurationMetadata("Save flow");
+    expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([request]) =>
+      typeof request === "string" ? request : request.toString()
+    )).toEqual(["/v1/projects", "/v1/projects/project-alt"]);
+
+    deferredDetailResponse.resolve(createJsonResponse(buildProjectDetailResponse(alternateProjectDetail)));
+
+    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
   });
 
   it("keeps the settings route safe when a switched project detail is missing", async () => {
@@ -1564,6 +1653,7 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
+    expectProjectConfigurationMetadata("Save flow");
     expect(screen.getByText("Project settings are no longer available.")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
   });

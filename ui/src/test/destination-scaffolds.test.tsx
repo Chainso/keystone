@@ -131,6 +131,24 @@ function expectProjectConfigurationChromeRemoved(container: HTMLElement) {
   expect(pageStage?.querySelectorAll("aside")).toHaveLength(0);
 }
 
+function expectProjectConfigurationMetadata(modeLabel: string, tabCountLabel = "4 tabs") {
+  const metadata = screen.getByRole("group", { name: "Project configuration metadata" });
+
+  expect(within(metadata).getByText(modeLabel)).toBeInTheDocument();
+  expect(within(metadata).getByText(tabCountLabel)).toBeInTheDocument();
+}
+
+function expectDescribedByText(control: HTMLElement, expectedText: string) {
+  const describedByIds = (control.getAttribute("aria-describedby") ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  expect(describedByIds.length).toBeGreaterThan(0);
+  expect(
+    describedByIds.some((id) => document.getElementById(id)?.textContent?.includes(expectedText))
+  ).toBe(true);
+}
+
 function getTableBodyRows() {
   return within(screen.getByRole("table")).getAllByRole("row").slice(1);
 }
@@ -1985,9 +2003,17 @@ describe("Destination scaffolds", () => {
     const projectNameField = await screen.findByRole("textbox", { name: "Project name" });
 
     expect(projectNameField).toHaveValue("Keystone Cloudflare");
+    expectDescribedByText(
+      projectNameField,
+      "Shown in the sidebar, project switcher, and workspace headers."
+    );
     expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("keystone-cloudflare");
-    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
-      "Internal operator workspace for the Keystone Cloudflare project."
+    const descriptionField = screen.getByRole("textbox", { name: "Description" });
+
+    expect(descriptionField).toHaveValue("Internal operator workspace for the Keystone Cloudflare project.");
+    expectDescribedByText(
+      descriptionField,
+      "Short operator-facing context for the selected project."
     );
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
@@ -2004,8 +2030,14 @@ describe("Destination scaffolds", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Rules" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Project review instructions 1" })).toHaveValue(
-      "Keep route ownership explicit."
+    const reviewInstructionField = screen.getByRole("textbox", {
+      name: "Project review instructions 1"
+    });
+
+    expect(reviewInstructionField).toHaveValue("Keep route ownership explicit.");
+    expectDescribedByText(
+      reviewInstructionField,
+      "Instructions Keystone should apply when reviewing changes across the whole project."
     );
 
     fireEvent.click(getLinkByHref(projectTabs, "/projects/new/overview"));
@@ -2516,13 +2548,21 @@ describe("Destination scaffolds", () => {
 
     const projectTabs = screen.getByRole("navigation", { name: "Project configuration tabs" });
     const currentComponentCard = getComponentCard("Component 1");
+    const typeField = currentComponentCard.queries.getByRole("combobox", { name: "Type" });
+    const sourceModeField = currentComponentCard.queries.getByRole("radio", { name: "Local path" });
 
-    expect(currentComponentCard.queries.getByRole("combobox", { name: "Type" })).toHaveValue(
-      "Git repository"
+    expect(typeField).toHaveValue("Git repository");
+    expectDescribedByText(
+      typeField,
+      "Backend support is currently limited to Git repository components."
     );
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue("API");
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue("api");
-    expect(currentComponentCard.queries.getByRole("radio", { name: "Local path" })).toBeChecked();
+    expect(sourceModeField).toBeChecked();
+    expectDescribedByText(
+      sourceModeField,
+      "Choose whether Keystone should use a local repository path or a Git remote for this component."
+    );
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue(
       "./services/api"
     );
@@ -2988,6 +3028,7 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Loading project settings" })
     ).toBeInTheDocument();
+    expectProjectConfigurationMetadata("Save flow");
     expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
 
     expect(resolveAltDetailResponse).not.toBeNull();

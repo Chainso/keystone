@@ -5,10 +5,18 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 
+function buildAriaDescribedBy(...ids: Array<string | undefined>) {
+  const describedBy = ids.filter(Boolean).join(" ");
+
+  return describedBy || undefined;
+}
+
 interface FormFieldFrameProps {
   children: ReactNode;
   className?: string | undefined;
   description?: string | undefined;
+  descriptionId?: string | undefined;
+  errorId?: string | undefined;
   errorMessage?: string | undefined;
   htmlFor: string;
   label: string;
@@ -54,6 +62,8 @@ function FormFieldFrame({
   children,
   className,
   description,
+  descriptionId,
+  errorId,
   errorMessage,
   htmlFor,
   label
@@ -64,10 +74,18 @@ function FormFieldFrame({
         <Label htmlFor={htmlFor} className="form-field-label">
           {label}
         </Label>
-        {description ? <p className="form-field-description">{description}</p> : null}
+        {description ? (
+          <p id={descriptionId} className="form-field-description">
+            {description}
+          </p>
+        ) : null}
       </div>
       {children}
-      {errorMessage ? <p className="form-field-error">{errorMessage}</p> : null}
+      {errorMessage ? (
+        <p id={errorId} className="form-field-error">
+          {errorMessage}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -85,12 +103,17 @@ export function FormTextField({
   value
 }: FormTextFieldProps) {
   const fieldId = useId();
+  const descriptionId = description ? `${fieldId}-description` : undefined;
+  const errorId = errorMessage ? `${fieldId}-message` : undefined;
+  const ariaDescribedBy = buildAriaDescribedBy(descriptionId, errorId);
 
   return (
     <FormFieldFrame
       className={className}
       description={description}
+      descriptionId={descriptionId}
       label={label}
+      errorId={errorId}
       errorMessage={errorMessage}
       htmlFor={fieldId}
     >
@@ -102,6 +125,7 @@ export function FormTextField({
         onChange={onChange}
         readOnly={readOnly}
         disabled={disabled}
+        aria-describedby={ariaDescribedBy}
         aria-invalid={errorMessage ? "true" : undefined}
       />
     </FormFieldFrame>
@@ -119,12 +143,17 @@ export function FormTextAreaField({
   value
 }: FormTextAreaFieldProps) {
   const fieldId = useId();
+  const descriptionId = description ? `${fieldId}-description` : undefined;
+  const errorId = errorMessage ? `${fieldId}-message` : undefined;
+  const ariaDescribedBy = buildAriaDescribedBy(descriptionId, errorId);
 
   return (
     <FormFieldFrame
       className={className}
       description={description}
+      descriptionId={descriptionId}
       label={label}
+      errorId={errorId}
       errorMessage={errorMessage}
       htmlFor={fieldId}
     >
@@ -135,6 +164,7 @@ export function FormTextAreaField({
         onChange={onChange}
         readOnly={readOnly}
         disabled={disabled}
+        aria-describedby={ariaDescribedBy}
         aria-invalid={errorMessage ? "true" : undefined}
       />
     </FormFieldFrame>
@@ -153,12 +183,17 @@ export function FormSelectField({
   value
 }: FormSelectFieldProps) {
   const fieldId = useId();
+  const descriptionId = description ? `${fieldId}-description` : undefined;
+  const errorId = errorMessage ? `${fieldId}-message` : undefined;
+  const ariaDescribedBy = buildAriaDescribedBy(descriptionId, errorId);
 
   return (
     <FormFieldFrame
       className={className}
       description={description}
+      descriptionId={descriptionId}
       label={label}
+      errorId={errorId}
       errorMessage={errorMessage}
       htmlFor={fieldId}
     >
@@ -168,6 +203,7 @@ export function FormSelectField({
         value={value}
         onChange={onChange}
         disabled={disabled}
+        aria-describedby={ariaDescribedBy}
         aria-invalid={errorMessage ? "true" : undefined}
       >
         {options.map((option) => (

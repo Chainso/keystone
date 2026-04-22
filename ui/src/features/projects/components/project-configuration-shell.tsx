@@ -77,7 +77,11 @@ export function ProjectConfigurationShell({
             {shellContent.summary}
           </p>
         </WorkspacePageHeading>
-        <div className="project-config-shell-meta" aria-label="Project configuration metadata">
+        <div
+          className="project-config-shell-meta"
+          role="group"
+          aria-label="Project configuration metadata"
+        >
           <Badge variant="outline">{shellContent.modeLabel}</Badge>
           <Badge variant="outline">{tabs.length || 4} tabs</Badge>
         </div>

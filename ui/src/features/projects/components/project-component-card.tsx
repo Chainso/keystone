@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import {
@@ -21,11 +23,12 @@ function SourceModeField({
   sourceMode: ProjectComponentSourceMode;
 }) {
   const inputName = `${componentId}-source-mode`;
+  const descriptionId = useId();
 
   return (
-    <fieldset className="source-mode-field">
+    <fieldset className="source-mode-field" aria-describedby={descriptionId}>
       <legend className="form-field-label">Source mode</legend>
-      <p className="form-field-description">
+      <p id={descriptionId} className="form-field-description">
         Choose whether Keystone should use a local repository path or a Git remote for this component.
       </p>
 
@@ -40,6 +43,7 @@ function SourceModeField({
             name={inputName}
             checked={sourceMode === "localPath"}
             disabled={readOnly}
+            aria-describedby={descriptionId}
             onChange={() => onChange?.("localPath")}
           />
           <span className="source-mode-option-label">Local path</span>
@@ -58,6 +62,7 @@ function SourceModeField({
             name={inputName}
             checked={sourceMode === "gitUrl"}
             disabled={readOnly}
+            aria-describedby={descriptionId}
             onChange={() => onChange?.("gitUrl")}
           />
           <span className="source-mode-option-label">Git URL</span>
