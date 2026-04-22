@@ -96,6 +96,11 @@ Constraints to preserve:
   **Decision:** Accept `think_live` task turns whenever `buildProjectExecutionSnapshot()` resolves exactly one compile repo, while keeping `think_mock` on the inline fixture path.  
   **Rationale:** `RunWorkflow` already requires a single compile target before `TaskWorkflow` is reached, and `projectExecution.compileRepo` is the narrow existing signal for that scope boundary. This removes the live fixture identity gate without reopening compile-target selection, while tests now prove non-fixture and dependent live handoffs plus non-fixture `think_mock` rejection.
 
+- **Date:** 2026-04-21  
+  **Phase:** Phase 1 - Targeted fix pass  
+  **Decision:** Add explicit task-workflow regression coverage for the intentional `think_live` rejection path when a non-fixture project resolves multiple executable components and therefore has no `compileRepo`.  
+  **Rationale:** The Phase 1 review found that existing tests covered non-fixture single-target acceptance and fixture-only `think_mock`, but not the preserved single-target boundary. The fix pass closes that gap without changing runtime behavior.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed for live DAG generalization, scheduler fanout behavior, and doc/validation scope.
@@ -103,6 +108,7 @@ Constraints to preserve:
 - [x] 2026-04-21 Broad baseline attempted with `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`.
 - [x] 2026-04-21 Active plan drafted under `.ultrakit/exec-plans/active/`.
 - [x] 2026-04-21 Phase 1: generalize live Think handoff acceptance for single-target projects.
+- [x] 2026-04-21 Phase 1 targeted fix pass: cover `think_live` rejection when `projectExecution.compileRepo` is absent for a non-fixture multi-target project.
 - [ ] 2026-04-21 Phase 2: fan out all ready tasks safely on the shared run sandbox.
 - [ ] 2026-04-21 Phase 3: establish an operator-facing live DAG proof and validator contract.
 - [ ] 2026-04-21 Phase 4: update durable docs, narrow or close deferred debt, and archive the plan.
@@ -122,6 +128,7 @@ Constraints to preserve:
   - `npm run test` -> `vitest: command not found`
   - `npm run build` -> `vite: command not found`
 - After `npm install`, the Phase 1 focused test passed, but repo-wide `npm run typecheck` still fails on unrelated baseline issues in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. Future phases should treat those as existing validation noise unless they explicitly take ownership of those files.
+- The preserved no-`compileRepo` `think_live` rejection runs after workspace materialization because `resolveThinkTurnInput()` is inside the implementer step, so the regression test needs to assert both the explicit boundary error and that the implementer turn never starts.
 
 ## Outcomes & Retrospective
 
@@ -135,7 +142,8 @@ Planning outcome on 2026-04-21:
 Execution update on 2026-04-21:
 
 - Phase 1 completed with a scoped runtime change: `think_live` now accepts any project path that resolves exactly one compile repo before `TaskWorkflow`, while `think_mock` stays fixture-only and deterministic.
-- Targeted validation now runs locally after `npm install`: `npm run test -- tests/lib/workflows/task-workflow-think.test.ts` passes, while repo-wide `npm run typecheck` remains blocked by unrelated baseline errors outside the Phase 1 files.
+- The Phase 1 fix pass added the missing multi-target regression: non-fixture `think_live` now has explicit test coverage for the rejection path where `projectExecution.compileRepo` is absent, preserving the single-target boundary without a runtime change.
+- Targeted validation now runs locally after `npm install`: `rtk npm run test -- tests/lib/workflows/task-workflow-think.test.ts` passes, while repo-wide `rtk npm run typecheck` remains blocked by unrelated baseline errors in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`.
 
 ## Context and Orientation
 
@@ -200,14 +208,14 @@ This phase removes the `think_live` fixture gate from `TaskWorkflow` for single-
 - **Scope Boundary:** In scope: `TaskWorkflow` live/mock turn-input gating and task-workflow Think tests. Out of scope: `RunWorkflow` scheduling, demo fixture docs, operator-facing validator changes, compile-target selection, and durable docs.
 - **Read First:** `src/workflows/TaskWorkflow.ts`, `tests/lib/workflows/task-workflow-think.test.ts`, `src/lib/projects/runtime.ts`, `.ultrakit/developer-docs/think-runtime-architecture.md`.
 - **Files Expected To Change:** `src/workflows/TaskWorkflow.ts`, `tests/lib/workflows/task-workflow-think.test.ts`.
-- **Validation:** From repo root after dependencies are installed: `npm run typecheck`; `npm run test -- tests/lib/workflows/task-workflow-think.test.ts`. Success means `think_live` passes for non-fixture and dependent handoff cases, while `think_mock` still fails outside the fixture path.
+- **Validation:** From repo root after dependencies are installed: `rtk npm run typecheck`; `rtk npm run test -- tests/lib/workflows/task-workflow-think.test.ts`. Success means `think_live` passes for non-fixture and dependent handoff cases, while `think_mock` still fails outside the fixture path and `think_live` still rejects non-single-target projects.
 - **Plan / Docs To Update:** Update this plan’s `Progress`, `Execution Log`, `Surprises & Discoveries`, and the Phase 1 handoff `Status` / `Completion Notes` / `Next Starter Context`. Do not update durable docs yet.
 - **Deliverables:** Production removal of the live-only fixture gate; targeted tests that preserve fixture-only `think_mock` behavior and cover broader `think_live` acceptance.
 - **Commit Expectation:** `Generalize think_live handoff acceptance`
-- **Known Constraints / Baseline Failures:** Repo-local dependencies were installed during Phase 1. `npm run typecheck` now reaches source analysis but still fails on unrelated baseline errors in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. Broad host validation is not required in this phase.
+- **Known Constraints / Baseline Failures:** Repo-local dependencies were installed during Phase 1. `rtk npm run typecheck` now reaches source analysis but still fails on unrelated baseline errors in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. Broad host validation is not required in this phase.
 - **Status:** Completed on 2026-04-21.
-- **Completion Notes:** `resolveThinkTurnInput()` now allows `think_live` whenever `projectExecution.compileRepo` is present, while `think_mock` still requires the inline fixture project. Added targeted tests for non-fixture single-target live acceptance, non-fixture `think_mock` rejection, and dependent non-fixture live handoffs. Validation evidence: `npm install` ✅, `npm run test -- tests/lib/workflows/task-workflow-think.test.ts` ✅, `npm run typecheck` ⚠️ blocked only by the unrelated baseline errors noted above.
-- **Next Starter Context:** Phase 1 removed the last live handoff fixture identity gate. Phase 2 should now focus on `RunWorkflow` fanout and guarded scheduler writes; current repo-wide `typecheck` noise is limited to `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`, not the Phase 1 files.
+- **Completion Notes:** `resolveThinkTurnInput()` now allows `think_live` whenever `projectExecution.compileRepo` is present, while `think_mock` still requires the inline fixture project. The targeted fix pass added explicit regression coverage for non-fixture single-target live acceptance, non-fixture `think_mock` rejection, dependent non-fixture live handoffs, and non-fixture `think_live` rejection when a multi-target project produces no `compileRepo`. Validation evidence: `rtk npm run test -- tests/lib/workflows/task-workflow-think.test.ts` ✅, `rtk npm run typecheck` ⚠️ blocked only by the unrelated baseline errors noted above.
+- **Next Starter Context:** Phase 1 removed the last live handoff fixture identity gate and closed the review gap around the preserved single-target boundary. Phase 2 should now focus on `RunWorkflow` fanout and guarded scheduler writes; current repo-wide `typecheck` noise is limited to `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`, not the Phase 1 files.
 
 ### Phase 2: Fan out all ready tasks safely
 

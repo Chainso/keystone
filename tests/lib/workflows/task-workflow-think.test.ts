@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentRuntimeArtifactKind } from "../../../src/lib/artifacts/model";
+import type { StoredProject } from "../../../src/keystone/projects/contracts";
 
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
@@ -116,7 +117,7 @@ const mocked = vi.hoisted(() => {
     getAgentByName: vi.fn(async () => ({
       runImplementerTurn: mocked.runImplementerTurn
     })),
-    getProject: vi.fn(async () => ({
+    getProject: vi.fn(async (): Promise<StoredProject> => ({
       tenantId: "tenant-fixture",
       projectId: "project-fixture",
       projectKey: "fixture-demo-project",
@@ -417,7 +418,7 @@ const fixtureProjectSummary: WorkflowProjectSummary = {
   displayName: "Fixture Demo Project"
 };
 
-function createSingleTargetProjectRecord() {
+function createSingleTargetProjectRecord(): StoredProject {
   return {
     tenantId: "tenant-fixture",
     projectId: "project-live",
@@ -447,6 +448,52 @@ function createSingleTargetProjectRecord() {
       {
         name: "KEYSTONE_PROJECT_MODE",
         value: "live"
+      }
+    ],
+    createdAt: new Date("2026-04-20T00:00:00.000Z"),
+    updatedAt: new Date("2026-04-20T00:00:00.000Z")
+  };
+}
+
+function createMultiTargetProjectRecord(): StoredProject {
+  return {
+    tenantId: "tenant-fixture",
+    projectId: "project-multi-target",
+    projectKey: "acme-multi-target-project",
+    displayName: "Acme Multi-Target Project",
+    description: "Two-target project that requires explicit compile selection.",
+    ruleSet: {
+      reviewInstructions: ["Summarize the implementation outcome."],
+      testInstructions: ["Run the Acme app tests before handoff."]
+    },
+    components: [
+      {
+        componentKey: "web",
+        displayName: "Acme Web",
+        kind: "git_repository",
+        config: {
+          localPath: "./projects/acme-web",
+          ref: "main"
+        },
+        ruleOverride: {
+          reviewInstructions: ["Focus on Acme web changes."],
+          testInstructions: ["Run Acme web checks first."]
+        }
+      },
+      {
+        componentKey: "worker",
+        displayName: "Acme Worker",
+        kind: "git_repository",
+        config: {
+          localPath: "./projects/acme-worker",
+          ref: "main"
+        }
+      }
+    ],
+    envVars: [
+      {
+        name: "KEYSTONE_PROJECT_MODE",
+        value: "multi-target"
       }
     ],
     createdAt: new Date("2026-04-20T00:00:00.000Z"),
@@ -797,6 +844,51 @@ describe("TaskWorkflow Think runtime", () => {
         endedAt: expect.any(Date)
       })
     ]);
+  });
+
+  it("rejects think/live for non-fixture projects without a single compile target", async () => {
+    const project = createMultiTargetProjectRecord();
+    mocked.getProject.mockResolvedValueOnce(project);
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+
+    await expect(
+      workflow.run(
+        createWorkflowEvent("think_live", toProjectSummary(project)) as never,
+        step as never
+      )
+    ).rejects.toThrow(/live Think runtime currently supports only projects that resolve to exactly one compile target/i);
+
+    expect(mocked.taskSession.ensureWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        components: [
+          expect.objectContaining({
+            type: "git",
+            repoUrl: "./projects/acme-web"
+          }),
+          expect.objectContaining({
+            type: "git",
+            repoUrl: "./projects/acme-worker"
+          })
+        ],
+        env: {
+          KEYSTONE_PROJECT_MODE: "multi-target"
+        }
+      })
+    );
+    expect(mocked.runImplementerTurn).not.toHaveBeenCalled();
+    expect(mocked.runTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: "run-task-123",
+        status: "failed",
+        conversationAgentClass: "KeystoneThinkAgent",
+        conversationAgentName: "tenant:tenant-fixture:run:run-123:task:task-session-run-task-123",
+        startedAt: expect.any(Date),
+        endedAt: expect.any(Date)
+      })
+    ]);
+    expect(mocked.taskSession.teardown).toHaveBeenCalledTimes(1);
   });
 
   it("marks the authoritative task failed when Think returns a non-success outcome", async () => {
