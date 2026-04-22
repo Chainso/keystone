@@ -1039,11 +1039,15 @@ async function promoteStagedArtifacts(
     return [];
   }
 
+  const stagedArtifacts = input.stagedArtifacts.map((stagedArtifact) => ({
+    ...stagedArtifact,
+    kind: parseAgentRuntimeArtifactKind(stagedArtifact.kind)
+  }));
   const artifactRefIds: string[] = [];
   let sandboxSession: Awaited<ReturnType<typeof ensureSandboxSession>>["session"] | null = null;
 
-  for (const stagedArtifact of input.stagedArtifacts) {
-    const artifactKind = parseAgentRuntimeArtifactKind(stagedArtifact.kind);
+  for (const stagedArtifact of stagedArtifacts) {
+    const artifactKind = stagedArtifact.kind;
     const artifactKey = buildPromotedArtifactKey(
       input.tenantId,
       input.runId,

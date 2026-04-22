@@ -104,6 +104,7 @@ const mocked = vi.hoisted(() => {
       session: {}
     })),
     findArtifactRefByObjectKey: vi.fn(async () => null),
+    getArtifactBytes: vi.fn(async () => null),
     getAgentByName: vi.fn(async () => ({
       runImplementerTurn: mocked.runImplementerTurn
     })),
@@ -330,7 +331,7 @@ vi.mock("../../../src/lib/sandbox/client", () => ({
 }));
 
 vi.mock("../../../src/lib/artifacts/r2", () => ({
-  getArtifactBytes: vi.fn(async () => null),
+  getArtifactBytes: mocked.getArtifactBytes,
   putArtifactBytes: mocked.putArtifactBytes,
   decodeArtifactBody: mocked.decodeArtifactBody,
   toR2Uri: vi.fn((bucketName: string, key: string) => `r2://${bucketName}/${key}`)
@@ -515,6 +516,53 @@ describe("TaskWorkflow Think runtime", () => {
       workflow.run(createWorkflowEvent("think_live") as never, step as never)
     ).rejects.toThrow(/agent runtime artifact kind run_summary/i);
 
+    expect(mocked.createArtifactRef).not.toHaveBeenCalled();
+    expect(mocked.runTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: "run-task-123",
+        status: "failed",
+        startedAt: expect.any(Date),
+        endedAt: expect.any(Date)
+      })
+    ]);
+  });
+
+  it("validates all staged artifact kinds before writing any promoted artifact", async () => {
+    mocked.runImplementerTurn.mockResolvedValueOnce({
+      outcome: "completed",
+      stagedArtifacts: [
+        {
+          path: "/artifacts/out/compiled-handoff-note.md",
+          kind: "run_note",
+          contentType: "text/markdown; charset=utf-8",
+          metadata: {
+            fileName: "compiled-handoff-note.md"
+          }
+        },
+        {
+          path: "/artifacts/out/run-summary.json",
+          kind: "run_summary" as never,
+          contentType: "application/json; charset=utf-8",
+          metadata: {
+            fileName: "run-summary.json"
+          }
+        }
+      ],
+      events: [],
+      summary: "Mixed valid and invalid task artifacts.",
+      metadata: {}
+    });
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+
+    await expect(
+      workflow.run(createWorkflowEvent("think_live") as never, step as never)
+    ).rejects.toThrow(/agent runtime artifact kind run_summary/i);
+
+    expect(mocked.getArtifactBytes).not.toHaveBeenCalled();
+    expect(mocked.readSandboxAgentFile).not.toHaveBeenCalled();
+    expect(mocked.putArtifactBytes).not.toHaveBeenCalled();
     expect(mocked.createArtifactRef).not.toHaveBeenCalled();
     expect(mocked.runTasks).toEqual([
       expect.objectContaining({
