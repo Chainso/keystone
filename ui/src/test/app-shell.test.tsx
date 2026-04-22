@@ -1292,7 +1292,8 @@ describe("App shell", () => {
       createJsonResponse(buildRunsResponse(alternateRuns))
     );
 
-    expect(await screen.findByText("run-alt-301")).toBeInTheDocument();
+    await screen.findByRole("link", { name: "run-alt-301" });
+    expect(screen.getByRole("link", { name: "run-alt-301" })).toBeInTheDocument();
     expect(screen.queryByText("run-104")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });

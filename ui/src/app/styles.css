@@ -410,6 +410,7 @@ pre {
 .documentation-tree-items,
 .message-stack,
 .review-file-stack,
+.entity-table-shell,
 .runs-index-sidebar,
 .execution-sidebar {
   display: grid;
@@ -439,6 +440,13 @@ pre {
 .shell-state-actions {
   display: flex;
   gap: 0.75rem;
+}
+
+.workspace-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .page-badge,
@@ -614,6 +622,7 @@ pre {
 }
 
 .runs-table-header,
+.workspace-page-header,
 .workspace-panel-header,
 .type-picker-header,
 .component-card-header,
@@ -622,6 +631,13 @@ pre {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.workspace-page-heading,
+.workspace-panel-heading {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
 .table-scroll {
@@ -716,6 +732,10 @@ pre {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   gap: 1rem;
+}
+
+.workspace-split-pane {
+  min-width: 0;
 }
 
 .task-detail-split {
@@ -961,6 +981,11 @@ pre {
   gap: 0.35rem;
 }
 
+.entity-table-footer {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .table-row-note {
   font-size: 0.86rem;
 }
@@ -1141,6 +1166,7 @@ pre {
 
   .workspace-panel-header,
   .runs-table-header,
+  .workspace-page-header,
   .type-picker-header,
   .component-card-header,
   .project-config-section-header,

@@ -1,3 +1,28 @@
+import {
+  DocumentFrame,
+  DocumentFrameBody,
+  DocumentFrameRule,
+  DocumentFrameSummary,
+  DocumentFrameTitle
+} from "../../../components/workspace/document-frame";
+import {
+  WorkspaceEmptyState,
+  WorkspaceEmptyStateDescription,
+  WorkspaceEmptyStateTitle
+} from "../../../components/workspace/workspace-empty-state";
+import {
+  WorkspacePage
+} from "../../../components/workspace/workspace-page";
+import {
+  WorkspacePanel,
+  WorkspacePanelHeader,
+  WorkspacePanelHeading,
+  WorkspacePanelTitle
+} from "../../../components/workspace/workspace-panel";
+import {
+  WorkspaceSplit,
+  WorkspaceSplitPane
+} from "../../../components/workspace/workspace-split";
 import type { DocumentationViewModel } from "../use-documentation-view-model";
 
 interface DocumentationWorkspaceProps {
@@ -6,84 +31,90 @@ interface DocumentationWorkspaceProps {
 
 export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
   return (
-    <div className="page-stage">
-      <section className="workspace-panel">
+    <WorkspacePage>
+      <WorkspacePanel>
         <h1 className="page-title runs-page-title">{model.title}</h1>
 
         {model.compatibilityState || !model.selectedDocument ? (
-          <section className="empty-state-card">
-            <h2 className="document-card-title">
+          <WorkspaceEmptyState>
+            <WorkspaceEmptyStateTitle>
               {model.compatibilityState?.heading ?? "No documentation yet"}
-            </h2>
-            <p className="document-card-summary">
+            </WorkspaceEmptyStateTitle>
+            <WorkspaceEmptyStateDescription>
               {model.compatibilityState?.message ?? "This project does not have any documentation yet."}
-            </p>
-          </section>
+            </WorkspaceEmptyStateDescription>
+          </WorkspaceEmptyState>
         ) : (
-          <div className="workspace-split documentation-grid">
-            <section className="workspace-panel documentation-tree-panel">
-              <header className="workspace-panel-header">
-                <div>
-                  <h2 className="workspace-panel-title">Doc tree</h2>
-                </div>
-              </header>
+          <WorkspaceSplit className="documentation-grid">
+            <WorkspaceSplitPane>
+              <WorkspacePanel className="documentation-tree-panel">
+                <WorkspacePanelHeader>
+                  <WorkspacePanelHeading>
+                    <WorkspacePanelTitle>Doc tree</WorkspacePanelTitle>
+                  </WorkspacePanelHeading>
+                </WorkspacePanelHeader>
 
-              <div className="documentation-tree" aria-label="Documentation tree">
-                {model.groups.map((group) => (
-                  <section key={group.groupId} className="documentation-tree-group">
-                    <h3 className="documentation-tree-group-title">{group.label}</h3>
+                <div className="documentation-tree" aria-label="Documentation tree">
+                  {model.groups.map((group) => (
+                    <section key={group.groupId} className="documentation-tree-group">
+                      <h3 className="documentation-tree-group-title">{group.label}</h3>
 
-                    <div className="documentation-tree-items">
-                      {group.documents.map((document) => (
-                        <button
-                          key={document.documentId}
-                          type="button"
-                          className={
-                            document.isSelected
-                              ? "documentation-tree-item is-active"
-                              : "documentation-tree-item"
-                          }
-                          aria-label={`${document.label} ${document.path}`}
-                          aria-pressed={document.isSelected}
-                          onClick={() => model.selectDocument(document.documentId)}
-                        >
-                          <span className="documentation-tree-item-label">{document.label}</span>
-                          <span className="documentation-tree-item-path">{document.path}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </section>
-
-            <section className="workspace-panel workspace-panel-document">
-              <header className="workspace-panel-header">
-                <div>
-                  <h2 className="workspace-panel-title">Document viewer</h2>
-                </div>
-              </header>
-
-              <div className="document-card">
-                <h3 className="document-viewer-title">{model.selectedDocument.viewerTitle}</h3>
-                <p className="document-viewer-path">{model.selectedDocument.path}</p>
-                <div className="document-rule" aria-hidden="true" />
-
-                <div className="document-copy">
-                  {model.selectedDocument.contentLines.map((line, index) => (
-                    <p
-                      key={`${model.selectedDocument?.documentId ?? "document"}:${index}`}
-                      className="document-line"
-                    >
-                      {line}
-                    </p>
+                      <div className="documentation-tree-items">
+                        {group.documents.map((document) => (
+                          <button
+                            key={document.documentId}
+                            type="button"
+                            className={
+                              document.isSelected
+                                ? "documentation-tree-item is-active"
+                                : "documentation-tree-item"
+                            }
+                            aria-label={`${document.label} ${document.path}`}
+                            aria-pressed={document.isSelected}
+                            onClick={() => model.selectDocument(document.documentId)}
+                          >
+                            <span className="documentation-tree-item-label">{document.label}</span>
+                            <span className="documentation-tree-item-path">{document.path}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
                   ))}
                 </div>
-              </div>
-            </section>
-          </div>
+              </WorkspacePanel>
+            </WorkspaceSplitPane>
+
+            <WorkspaceSplitPane>
+              <WorkspacePanel className="workspace-panel-document">
+                <WorkspacePanelHeader>
+                  <WorkspacePanelHeading>
+                    <WorkspacePanelTitle>Document viewer</WorkspacePanelTitle>
+                  </WorkspacePanelHeading>
+                </WorkspacePanelHeader>
+
+                <DocumentFrame>
+                  <DocumentFrameTitle>{model.selectedDocument.viewerTitle}</DocumentFrameTitle>
+                  <DocumentFrameSummary className="document-viewer-path">
+                    {model.selectedDocument.path}
+                  </DocumentFrameSummary>
+                  <DocumentFrameRule />
+
+                  <DocumentFrameBody>
+                    {model.selectedDocument.contentLines.map((line, index) => (
+                      <p
+                        key={`${model.selectedDocument?.documentId ?? "document"}:${index}`}
+                        className="document-line"
+                      >
+                        {line}
+                      </p>
+                    ))}
+                  </DocumentFrameBody>
+                </DocumentFrame>
+              </WorkspacePanel>
+            </WorkspaceSplitPane>
+          </WorkspaceSplit>
         )}
-      </section>
-    </div>
+      </WorkspacePanel>
+    </WorkspacePage>
   );
 }

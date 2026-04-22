@@ -1,5 +1,15 @@
 import { Link } from "react-router-dom";
 
+import {
+  DocumentFrame,
+  DocumentFrameSummary
+} from "../../../components/workspace/document-frame";
+import {
+  WorkspacePanel,
+  WorkspacePanelHeader,
+  WorkspacePanelHeading,
+  WorkspacePanelTitle
+} from "../../../components/workspace/workspace-panel";
 import type { ExecutionPlanWorkspaceViewModel } from "../use-run-view-model";
 import { PlanningWorkspaceFrame } from "./planning-workspace";
 
@@ -8,15 +18,15 @@ export function ExecutionPlanWorkspace({ model }: { model: ExecutionPlanWorkspac
     <>
       <PlanningWorkspaceFrame {...model.planning} />
 
-      <section className="workspace-panel">
-        <header className="workspace-panel-header">
-          <div>
-            <h2 className="workspace-panel-title">{model.compile.title}</h2>
-          </div>
-        </header>
+      <WorkspacePanel>
+        <WorkspacePanelHeader>
+          <WorkspacePanelHeading>
+            <WorkspacePanelTitle>{model.compile.title}</WorkspacePanelTitle>
+          </WorkspacePanelHeading>
+        </WorkspacePanelHeader>
 
-        <div className="document-card">
-          <p className="document-card-summary">{model.compile.helperMessage}</p>
+        <DocumentFrame>
+          <DocumentFrameSummary>{model.compile.helperMessage}</DocumentFrameSummary>
 
           {model.compile.state === "ready" ? (
             <>
@@ -62,8 +72,8 @@ export function ExecutionPlanWorkspace({ model }: { model: ExecutionPlanWorkspac
               </button>
             </div>
           ) : null}
-        </div>
-      </section>
+        </DocumentFrame>
+      </WorkspacePanel>
     </>
   );
 }

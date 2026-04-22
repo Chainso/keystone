@@ -756,7 +756,8 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Project work across runs" })
     ).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "TASK-032" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-032" });
+    expect(screen.getByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expect(screen.getByText("Filters:")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Active" })).toHaveClass("is-active");
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
@@ -777,7 +778,8 @@ describe("Destination scaffolds", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Running" }));
-    expect(await screen.findByRole("link", { name: "TASK-032" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-032" });
+    expect(screen.getByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expectWorkstreamRows([
       ["TASK-032", "Run shell navigation", "run-104", "Running", "2m ago"],
       ["TASK-021", "Documentation curation", "run-103", "Running", "9m ago"]
@@ -785,19 +787,22 @@ describe("Destination scaffolds", () => {
     expectWorkstreamLink("TASK-021", "/runs/run-103/execution/tasks/task-021");
 
     fireEvent.click(screen.getByRole("button", { name: "Queued" }));
-    expect(await screen.findByRole("link", { name: "TASK-033" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-033" });
+    expect(screen.getByRole("link", { name: "TASK-033" })).toBeInTheDocument();
     expectWorkstreamRows([
       ["TASK-033", "Task detail routing", "run-104", "Queued", "4m ago"],
       ["TASK-034", "Documentation grouping", "run-104", "Queued", "8m ago"]
     ]);
 
     fireEvent.click(screen.getByRole("button", { name: "Blocked" }));
-    expect(await screen.findByRole("link", { name: "TASK-019" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-019" });
+    expect(screen.getByRole("link", { name: "TASK-019" })).toBeInTheDocument();
     expectWorkstreamRows([["TASK-019", "Blocked task visibility", "run-101", "Blocked", "1h ago"]]);
     expectWorkstreamLink("TASK-019", "/runs/run-101/execution/tasks/task-019");
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
-    expect(await screen.findByRole("link", { name: "TASK-029" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-029" });
+    expect(screen.getByRole("link", { name: "TASK-029" })).toBeInTheDocument();
     expectWorkstreamRows([
       ["TASK-029", "Specification outline", "run-104", "Complete", "16m ago"],
       ["TASK-030", "Architecture decisions", "run-104", "Complete", "14m ago"],
@@ -868,7 +873,8 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Project work across runs" })
     ).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-001" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Active" })).toHaveClass("is-active");
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -881,7 +887,8 @@ describe("Destination scaffolds", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-003" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-003" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-003" })).toBeInTheDocument();
 
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -961,31 +968,36 @@ describe("Destination scaffolds", () => {
 
     const { router } = renderRoute("/workstreams", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("link", { name: "TASK-HISTORY-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-HISTORY-001" });
+    expect(screen.getByRole("link", { name: "TASK-HISTORY-001" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("");
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
-    expect(await screen.findByRole("link", { name: "TASK-HISTORY-026" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-HISTORY-026" });
+    expect(screen.getByRole("link", { name: "TASK-HISTORY-026" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("?page=2");
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
 
-    expect(await screen.findByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-ALL-001" });
+    expect(screen.getByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("?filter=all");
 
     await act(async () => {
       await router.navigate(-1);
     });
 
-    expect(await screen.findByRole("link", { name: "TASK-HISTORY-026" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-HISTORY-026" });
+    expect(screen.getByRole("link", { name: "TASK-HISTORY-026" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("?page=2");
 
     await act(async () => {
       await router.navigate(-1);
     });
 
-    expect(await screen.findByRole("link", { name: "TASK-HISTORY-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-HISTORY-001" });
+    expect(screen.getByRole("link", { name: "TASK-HISTORY-001" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("");
   });
 
@@ -1036,7 +1048,8 @@ describe("Destination scaffolds", () => {
 
     deferredProjects.resolve();
 
-    expect(await screen.findByRole("link", { name: "TASK-ALT-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-ALT-001" });
+    expect(screen.getByRole("link", { name: "TASK-ALT-001" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/projects/project-alt/tasks?filter=active&page=1&pageSize=25"),
       expect.anything()
@@ -1144,7 +1157,8 @@ describe("Destination scaffolds", () => {
 
     deferredTasks.resolve();
 
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-001" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
   });
 
   it("renders a live workstreams empty state when the selected filter has no tasks", async () => {
@@ -1213,7 +1227,8 @@ describe("Destination scaffolds", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-001" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -1266,7 +1281,8 @@ describe("Destination scaffolds", () => {
 
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-001" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
       "Showing 1-25 of 26 tasks · Page 1 of 2"
     );
@@ -1275,7 +1291,8 @@ describe("Destination scaffolds", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-026" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-026" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-026" })).toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
       "Showing 26-26 of 26 tasks · Page 2 of 2"
     );
@@ -1343,13 +1360,13 @@ describe("Destination scaffolds", () => {
 
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-001" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
-    expect(
-      await screen.findByRole("link", { name: "TASK-LIVE-RESET-001" })
-    ).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-RESET-001" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-RESET-001" })).toBeInTheDocument();
     expectWorkstreamRows([
       [
         "TASK-LIVE-RESET-001",
@@ -1451,7 +1468,8 @@ describe("Destination scaffolds", () => {
       })
     ).toBe(true);
 
-    expect(await screen.findByRole("link", { name: "TASK-LIVE-026" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-LIVE-026" });
+    expect(screen.getByRole("link", { name: "TASK-LIVE-026" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(router.state.location.search).toBe("?filter=all&page=2");
@@ -1541,18 +1559,21 @@ describe("Destination scaffolds", () => {
 
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("link", { name: "TASK-ACTIVE-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-ACTIVE-001" });
+    expect(screen.getByRole("link", { name: "TASK-ACTIVE-001" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
-    expect(await screen.findByRole("link", { name: "TASK-ACTIVE-026" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-ACTIVE-026" });
+    expect(screen.getByRole("link", { name: "TASK-ACTIVE-026" })).toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
       "Showing 26-26 of 26 tasks · Page 2 of 2"
     );
 
     fireEvent.click(screen.getByRole("button", { name: "All" }));
 
-    expect(await screen.findByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-ALL-001" });
+    expect(screen.getByRole("link", { name: "TASK-ALL-001" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "task-all-002" })).toHaveAttribute(
       "href",
       "/runs/run-all-002/execution/tasks/task-all-002"
@@ -1634,11 +1655,13 @@ describe("Destination scaffolds", () => {
 
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("link", { name: "TASK-PRIMARY-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-PRIMARY-001" });
+    expect(screen.getByRole("link", { name: "TASK-PRIMARY-001" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
-    expect(await screen.findByRole("link", { name: "TASK-PRIMARY-026" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-PRIMARY-026" });
+    expect(screen.getByRole("link", { name: "TASK-PRIMARY-026" })).toBeInTheDocument();
 
     fireEvent.change(getProjectSelector(), {
       target: {
@@ -1646,7 +1669,8 @@ describe("Destination scaffolds", () => {
       }
     });
 
-    expect(await screen.findByRole("link", { name: "TASK-ALT-001" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-ALT-001" });
+    expect(screen.getByRole("link", { name: "TASK-ALT-001" })).toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
       "Showing 1-1 of 1 tasks · Page 1 of 1"
     );
@@ -1716,7 +1740,8 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Project work across runs" })
     ).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "TASK-019" })).toBeInTheDocument();
+    await screen.findByRole("link", { name: "TASK-019" });
+    expect(screen.getByRole("link", { name: "TASK-019" })).toBeInTheDocument();
 
     const blockedRow = screen.getByRole("link", { name: "TASK-019" }).closest("tr");
 

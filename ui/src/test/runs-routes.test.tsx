@@ -1790,7 +1790,8 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+    await screen.findByRole("textbox", { name: "Document title" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
       target: {
         value: "# Architecture\n- Save is still pending.\n"
       }

@@ -1,5 +1,17 @@
 import { Link } from "react-router-dom";
 
+import {
+  WorkspaceEmptyState,
+  WorkspaceEmptyStateActions,
+  WorkspaceEmptyStateDescription,
+  WorkspaceEmptyStateTitle
+} from "../../../components/workspace/workspace-empty-state";
+import {
+  WorkspacePanel,
+  WorkspacePanelHeader,
+  WorkspacePanelHeading,
+  WorkspacePanelTitle
+} from "../../../components/workspace/workspace-panel";
 import type { RunExecutionViewModel } from "../use-execution-view-model";
 
 interface ExecutionWorkspaceProps {
@@ -8,21 +20,21 @@ interface ExecutionWorkspaceProps {
 
 export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
   return (
-    <section className="workspace-panel execution-panel">
-      <header className="workspace-panel-header">
-        <div>
-          <h2 className="workspace-panel-title">Task workflow DAG</h2>
-        </div>
-      </header>
+    <WorkspacePanel className="execution-panel">
+      <WorkspacePanelHeader>
+        <WorkspacePanelHeading>
+          <WorkspacePanelTitle>Task workflow DAG</WorkspacePanelTitle>
+        </WorkspacePanelHeading>
+      </WorkspacePanelHeader>
 
       {model.state === "empty" || model.state === "pending" ? (
-        <section className="empty-state-card">
-          <h3 className="document-card-title">
+        <WorkspaceEmptyState>
+          <WorkspaceEmptyStateTitle as="h3">
             {model.state === "pending" ? "Execution is materializing" : "Execution is read-only"}
-          </h3>
-          <p className="document-card-summary">{model.message}</p>
+          </WorkspaceEmptyStateTitle>
+          <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
           {model.state === "pending" ? (
-            <div className="shell-state-actions">
+            <WorkspaceEmptyStateActions>
               <button
                 type="button"
                 className="ghost-button"
@@ -30,9 +42,9 @@ export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
               >
                 {model.refreshLabel}
               </button>
-            </div>
+            </WorkspaceEmptyStateActions>
           ) : null}
-        </section>
+        </WorkspaceEmptyState>
       ) : (
         <div className="execution-board" aria-label="Execution workflow graph">
           <p className="document-card-summary" aria-label="Execution summary">
@@ -79,6 +91,6 @@ export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
           <p className="execution-board-note">Click a task node to open that task inside Execution.</p>
         </div>
       )}
-    </section>
+    </WorkspacePanel>
   );
 }

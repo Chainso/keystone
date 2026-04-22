@@ -1,3 +1,27 @@
+import {
+  DocumentFrame,
+  DocumentFrameBody,
+  DocumentFramePath,
+  DocumentFrameRule,
+  DocumentFrameSummary
+} from "../../../components/workspace/document-frame";
+import {
+  WorkspaceEmptyState,
+  WorkspaceEmptyStateActions,
+  WorkspaceEmptyStateDescription,
+  WorkspaceEmptyStateTitle
+} from "../../../components/workspace/workspace-empty-state";
+import {
+  WorkspacePanel,
+  WorkspacePanelHeader,
+  WorkspacePanelHeading,
+  WorkspacePanelSummary,
+  WorkspacePanelTitle
+} from "../../../components/workspace/workspace-panel";
+import {
+  WorkspaceSplit,
+  WorkspaceSplitPane
+} from "../../../components/workspace/workspace-split";
 import { FormTextAreaField, FormTextField } from "../../../shared/forms/form-field";
 import type { RunPlanningPhaseViewModel } from "../use-run-view-model";
 
@@ -7,21 +31,21 @@ function PlanningConversationPanel({
   conversationLocator
 }: Pick<RunPlanningPhaseViewModel, "phaseSummary" | "phaseTitle" | "conversationLocator">) {
   return (
-    <section className="workspace-panel">
-      <header className="workspace-panel-header">
-        <div>
-          <h2 className="workspace-panel-title">{phaseTitle}</h2>
-        </div>
-        <p className="workspace-panel-summary">{phaseSummary}</p>
-      </header>
+    <WorkspacePanel>
+      <WorkspacePanelHeader>
+        <WorkspacePanelHeading>
+          <WorkspacePanelTitle>{phaseTitle}</WorkspacePanelTitle>
+        </WorkspacePanelHeading>
+        <WorkspacePanelSummary>{phaseSummary}</WorkspacePanelSummary>
+      </WorkspacePanelHeader>
 
       {conversationLocator ? (
         <article className="message-card" aria-label="Conversation status">
           <p className="message-card-speaker">Conversation status</p>
           <p className="message-card-body">Conversation attached to this document.</p>
-          <p className="document-card-summary">
+          <DocumentFrameSummary>
             Live message history will resolve through the attached conversation when chat transport is added.
-          </p>
+          </DocumentFrameSummary>
         </article>
       ) : (
         <article className="message-card" aria-label="Conversation status">
@@ -29,32 +53,32 @@ function PlanningConversationPanel({
           <p className="message-card-body">No conversation is attached to this document yet.</p>
         </article>
       )}
-    </section>
+    </WorkspacePanel>
   );
 }
 
 function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
   return (
-    <section className="workspace-panel workspace-panel-document">
-      <header className="workspace-panel-header">
-        <div>
-          <h2 className="workspace-panel-title">{props.panelTitle}</h2>
-        </div>
-      </header>
+    <WorkspacePanel className="workspace-panel-document">
+      <WorkspacePanelHeader>
+        <WorkspacePanelHeading>
+          <WorkspacePanelTitle>{props.panelTitle}</WorkspacePanelTitle>
+        </WorkspacePanelHeading>
+      </WorkspacePanelHeader>
 
-      <div className="document-card">
-        <p className="document-name">{props.documentPath}</p>
-        <div className="document-rule" aria-hidden="true" />
+      <DocumentFrame>
+        <DocumentFramePath>{props.documentPath}</DocumentFramePath>
+        <DocumentFrameRule />
 
         {props.state === "ready" ? (
           <>
-            <div className="document-copy">
+            <DocumentFrameBody>
               {props.documentLines.map((line, index) => (
                 <p key={`${index}:${line}`} className="document-line">
                   {line}
                 </p>
               ))}
-            </div>
+            </DocumentFrameBody>
             <div className="shell-state-actions">
               <button
                 type="button"
@@ -69,7 +93,7 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
           </>
         ) : props.state === "editing" ? (
           <>
-            <p className="document-card-summary">{props.helperMessage}</p>
+            <DocumentFrameSummary>{props.helperMessage}</DocumentFrameSummary>
             {props.submitErrorMessage ? (
               <p className="form-field-error">{props.submitErrorMessage}</p>
             ) : null}
@@ -109,13 +133,13 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
             </div>
           </>
         ) : props.state === "empty" ? (
-          <section className="empty-state-card">
-            <h3 className="document-card-title">{props.emptyTitle}</h3>
-            <p className="document-card-summary">{props.emptyMessage}</p>
+          <WorkspaceEmptyState>
+            <WorkspaceEmptyStateTitle as="h3">{props.emptyTitle}</WorkspaceEmptyStateTitle>
+            <WorkspaceEmptyStateDescription>{props.emptyMessage}</WorkspaceEmptyStateDescription>
             {props.actionErrorMessage ? (
               <p className="form-field-error">{props.actionErrorMessage}</p>
             ) : null}
-            <div className="shell-state-actions">
+            <WorkspaceEmptyStateActions>
               <button
                 type="button"
                 className="ghost-button"
@@ -126,13 +150,13 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
               >
                 {props.actionLabel}
               </button>
-            </div>
-          </section>
+            </WorkspaceEmptyStateActions>
+          </WorkspaceEmptyState>
         ) : (
-          <section className="empty-state-card">
-            <h3 className="document-card-title">{props.errorTitle}</h3>
-            <p className="document-card-summary">{props.errorMessage}</p>
-            <div className="shell-state-actions">
+          <WorkspaceEmptyState>
+            <WorkspaceEmptyStateTitle as="h3">{props.errorTitle}</WorkspaceEmptyStateTitle>
+            <WorkspaceEmptyStateDescription>{props.errorMessage}</WorkspaceEmptyStateDescription>
+            <WorkspaceEmptyStateActions>
               <button
                 type="button"
                 className="ghost-button"
@@ -142,24 +166,28 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
               >
                 Retry
               </button>
-            </div>
-          </section>
+            </WorkspaceEmptyStateActions>
+          </WorkspaceEmptyState>
         )}
-      </div>
-    </section>
+      </DocumentFrame>
+    </WorkspacePanel>
   );
 }
 
 export function PlanningWorkspaceFrame(props: RunPlanningPhaseViewModel) {
   return (
-    <div className="workspace-split">
-      <PlanningConversationPanel
-        phaseTitle={props.phaseTitle}
-        phaseSummary={props.phaseSummary}
-        conversationLocator={props.conversationLocator}
-      />
+    <WorkspaceSplit>
+      <WorkspaceSplitPane>
+        <PlanningConversationPanel
+          phaseTitle={props.phaseTitle}
+          phaseSummary={props.phaseSummary}
+          conversationLocator={props.conversationLocator}
+        />
+      </WorkspaceSplitPane>
 
-      <PlanningDocumentPanel {...props} />
-    </div>
+      <WorkspaceSplitPane>
+        <PlanningDocumentPanel {...props} />
+      </WorkspaceSplitPane>
+    </WorkspaceSplit>
   );
 }

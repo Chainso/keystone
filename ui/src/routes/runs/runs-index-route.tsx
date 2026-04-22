@@ -1,6 +1,14 @@
 import type { MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { EntityTable, type EntityTableColumn } from "../../components/workspace/entity-table";
+import {
+  WorkspacePage,
+  WorkspacePageActions,
+  WorkspacePageHeader,
+  WorkspacePageHeading,
+  WorkspacePageSection
+} from "../../components/workspace/workspace-page";
 import { useRunsIndexViewModel } from "../../features/runs/use-runs-index-view-model";
 import { buildRunPhasePath } from "../../shared/navigation/run-phases";
 import { StatusPill } from "../../shared/layout/status-pill";
@@ -9,22 +17,73 @@ export function RunsIndexRoute() {
   const model = useRunsIndexViewModel();
   const navigate = useNavigate();
 
-  function handleRowClick(event: MouseEvent<HTMLTableRowElement>, detailPath: string) {
-    const target = event.target;
-
-    if (
-      event.button !== 0 ||
-      event.defaultPrevented ||
-      event.metaKey ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      (target instanceof Element && target.closest("a, button, input, textarea, select, summary"))
-    ) {
-      return;
+  const scaffoldColumns: EntityTableColumn<(typeof model.scaffoldRuns)[number]>[] = [
+    {
+      cell: (run) => (
+        <Link to={run.detailPath} className="table-primary-link">
+          {run.displayId}
+        </Link>
+      ),
+      header: "Run ID",
+      id: "run-id"
+    },
+    {
+      cell: (run) => run.summary,
+      header: "Summary",
+      id: "summary"
+    },
+    {
+      cell: (run) => run.stageLabel,
+      header: "Stage",
+      id: "stage"
+    },
+    {
+      cell: (run) => <StatusPill label={run.status} />,
+      header: "Status",
+      id: "status"
+    },
+    {
+      cell: (run) => run.updatedLabel,
+      header: "Updated",
+      id: "updated"
     }
+  ];
+  const liveColumns: EntityTableColumn<(typeof model.liveRuns)[number]>[] = [
+    {
+      cell: (run) => (
+        <Link to={run.detailPath} className="table-primary-link">
+          {run.runId}
+        </Link>
+      ),
+      header: "Run ID",
+      id: "run-id"
+    },
+    {
+      cell: (run) => run.workflowInstanceId,
+      header: "Workflow instance",
+      id: "workflow-instance"
+    },
+    {
+      cell: (run) => run.executionEngine,
+      header: "Engine",
+      id: "execution-engine"
+    },
+    {
+      cell: (run) => <StatusPill label={run.statusLabel} tone={run.statusTone} />,
+      header: "Status",
+      id: "status"
+    },
+    {
+      cell: (run) => run.latestActivityLabel,
+      header: "Latest activity",
+      id: "latest-activity"
+    }
+  ];
 
-    navigate(detailPath);
+  function handleRowClick(event: MouseEvent<HTMLTableRowElement>) {
+    const primaryLink = event.currentTarget.querySelector<HTMLAnchorElement>("a[href]");
+
+    primaryLink?.click();
   }
 
   async function handleCreateRun() {
@@ -42,22 +101,26 @@ export function RunsIndexRoute() {
   }
 
   return (
-    <div className="page-stage">
-      <section className="page-section runs-table-panel">
-        <div className="runs-table-header">
-          <h1 className="page-title runs-page-title">{model.title}</h1>
-          <button
-            type="button"
-            className="ghost-button"
-            aria-busy={model.isCreatingRun || undefined}
-            disabled={!model.canCreateRun}
-            onClick={() => {
-              void handleCreateRun();
-            }}
-          >
-            {model.isCreatingRun ? "Creating run..." : "+ New run"}
-          </button>
-        </div>
+    <WorkspacePage>
+      <WorkspacePageSection className="runs-table-panel">
+        <WorkspacePageHeader>
+          <WorkspacePageHeading>
+            <h1 className="page-title runs-page-title">{model.title}</h1>
+          </WorkspacePageHeading>
+          <WorkspacePageActions>
+            <button
+              type="button"
+              className="ghost-button"
+              aria-busy={model.isCreatingRun || undefined}
+              disabled={!model.canCreateRun}
+              onClick={() => {
+                void handleCreateRun();
+              }}
+            >
+              {model.isCreatingRun ? "Creating run..." : "+ New run"}
+            </button>
+          </WorkspacePageActions>
+        </WorkspacePageHeader>
         {model.createRunErrorMessage ? (
           <p className="document-card-summary" role="alert">
             {model.createRunErrorMessage}
@@ -65,98 +128,46 @@ export function RunsIndexRoute() {
         ) : null}
 
         {model.compatibilityState ? (
-          <section className="empty-state-card">
-            <h2 className="document-card-title">{model.compatibilityState.heading}</h2>
-            <p className="document-card-summary">{model.compatibilityState.message}</p>
-            {model.compatibilityState.heading === "Unable to load runs" ? (
-              <div className="shell-state-actions">
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => {
-                    model.retry();
-                  }}
-                >
-                  Retry
-                </button>
-              </div>
-            ) : null}
-          </section>
-        ) : model.scaffoldRuns.length > 0 ? (
-          <div className="table-scroll">
-            <table className="runs-table">
-              <thead>
-                <tr>
-                  <th scope="col">Run ID</th>
-                  <th scope="col">Summary</th>
-                  <th scope="col">Stage</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.scaffoldRuns.map((run) => (
-                  <tr
-                    key={run.runId}
-                    className="table-clickable-row"
-                    onClick={(event) => handleRowClick(event, run.detailPath)}
+          <EntityTable
+            ariaLabel="Runs"
+            columns={scaffoldColumns}
+            emptyState={{
+              action:
+                model.compatibilityState.heading === "Unable to load runs" ? (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => {
+                      model.retry();
+                    }}
                   >
-                    <td>
-                      <Link to={run.detailPath} className="table-primary-link">
-                        {run.displayId}
-                      </Link>
-                    </td>
-                    <td>{run.summary}</td>
-                    <td>{run.stageLabel}</td>
-                    <td>
-                      <StatusPill label={run.status} />
-                    </td>
-                    <td>{run.updatedLabel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    Retry
+                  </button>
+                ) : undefined,
+              description: model.compatibilityState.message,
+              title: model.compatibilityState.heading
+            }}
+            getRowId={(run) => run.runId}
+            rows={[]}
+          />
+        ) : model.scaffoldRuns.length > 0 ? (
+          <EntityTable
+            ariaLabel="Runs"
+            columns={scaffoldColumns}
+            getRowId={(run) => run.runId}
+            onRowClick={handleRowClick}
+            rows={model.scaffoldRuns}
+          />
         ) : (
-          <>
-            <div className="table-scroll">
-              <table className="runs-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Run ID</th>
-                    <th scope="col">Workflow instance</th>
-                    <th scope="col">Engine</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Latest activity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {model.liveRuns.map((run) => (
-                    <tr
-                      key={run.runId}
-                      className="table-clickable-row"
-                      onClick={(event) => handleRowClick(event, run.detailPath)}
-                    >
-                      <td>
-                        <Link to={run.detailPath} className="table-primary-link">
-                          {run.runId}
-                        </Link>
-                      </td>
-                      <td>{run.workflowInstanceId}</td>
-                      <td>{run.executionEngine}</td>
-                      <td>
-                        <StatusPill label={run.statusLabel} tone={run.statusTone} />
-                      </td>
-                      <td>{run.latestActivityLabel}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-          </>
+          <EntityTable
+            ariaLabel="Runs"
+            columns={liveColumns}
+            getRowId={(run) => run.runId}
+            onRowClick={handleRowClick}
+            rows={model.liveRuns}
+          />
         )}
-      </section>
-    </div>
+      </WorkspacePageSection>
+    </WorkspacePage>
   );
 }

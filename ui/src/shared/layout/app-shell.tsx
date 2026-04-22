@@ -1,6 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
+import {
+  WorkspacePage,
+  WorkspacePageSection
+} from "../../components/workspace/workspace-page";
 import { useProjectManagement } from "../../features/projects/project-context";
 import { ShellSidebar } from "./shell-sidebar";
 
@@ -13,20 +17,20 @@ function ProjectShellState() {
 
   if (meta.status === "loading") {
     return (
-      <section className="page-stage shell-state" aria-live="polite">
-        <section className="page-section">
+      <WorkspacePage className="shell-state" aria-live="polite">
+        <WorkspacePageSection>
           <p className="page-eyebrow">Project context</p>
           <h1 className="page-title">Loading projects</h1>
           <p className="page-summary">Keystone is loading the available project list.</p>
-        </section>
-      </section>
+        </WorkspacePageSection>
+      </WorkspacePage>
     );
   }
 
   if (meta.status === "empty") {
     return (
-      <section className="page-stage shell-state">
-        <section className="page-section">
+      <WorkspacePage className="shell-state">
+        <WorkspacePageSection>
           <p className="page-eyebrow">Project context</p>
           <h1 className="page-title">No projects yet</h1>
           <p className="page-summary">
@@ -37,14 +41,14 @@ function ProjectShellState() {
               New project
             </Link>
           </div>
-        </section>
-      </section>
+        </WorkspacePageSection>
+      </WorkspacePage>
     );
   }
 
   return (
-    <section className="page-stage shell-state">
-      <section className="page-section">
+    <WorkspacePage className="shell-state">
+      <WorkspacePageSection>
         <p className="page-eyebrow">Project context</p>
         <h1 className="page-title">Unable to load projects</h1>
         <p className="page-summary">{meta.errorMessage ?? "Keystone could not load the project list."}</p>
@@ -59,8 +63,8 @@ function ProjectShellState() {
             Retry
           </button>
         </div>
-      </section>
-    </section>
+      </WorkspacePageSection>
+    </WorkspacePage>
   );
 }
 

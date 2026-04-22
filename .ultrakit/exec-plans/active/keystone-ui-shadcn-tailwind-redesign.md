@@ -245,6 +245,11 @@ Baseline compatibility facts already captured:
   **Decision:** The user explicitly authorized an exception pass after read-only verification reported `ui/src/test/runs-routes.test.tsx:1652` failing to find the `Document title` textbox in the "Write first revision" flow, so the exact targeted validation command was rerun on HEAD `8b48028` and the reported route test was rerun in isolation multiple times.
   **Rationale:** Phase 2 could only be closed truthfully after distinguishing a checked-in regression from transient verification drift.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 3
+  **Decision:** Added the first Keystone-owned workspace wrapper layer under `ui/src/components/workspace/*`, then moved shared layout states and the current run/workstream/document scaffold surfaces onto those wrappers instead of leaving raw shadcn/TanStack composition in feature code.
+  **Rationale:** Later shell and destination phases need stable product-wide panes, split layouts, document/review frames, and dense table behavior before larger UI rewrites begin.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -258,9 +263,10 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 2 completed: centralized theme tokens, repo-owned theme provider, and direct Radix bootstrap exit.
 - [x] 2026-04-22 Phase 2 targeted fix pass completed: first-paint theming moved into `ui/index.html`, storage access was hardened, and bootstrap/token-consumer coverage now reflects the real Phase 2 contract.
 - [x] 2026-04-22 Phase 2 closeout exception pass completed: the exact targeted route-test validation reran green on HEAD `8b48028`, the reported `runs-routes` failure was not reproducible in isolated reruns, and no further Phase 2 code change was required.
+- [x] 2026-04-22 Phase 3 completed: workspace wrapper inventory, frame primitives, and Keystone-owned `EntityTable` landed and are now consumed by the current shared/layout scaffold surfaces.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
-- [ ] Phase 3: Keystone wrapper inventory and workspace primitives.
+- [x] Phase 3: Keystone wrapper inventory and workspace primitives.
 - [ ] Phase 4: global shell and project-scoped chrome.
 - [ ] Phase 5: runs index and run-detail structural frame.
 - [ ] Phase 6: planning workspace and Plate planning documents.
@@ -290,6 +296,7 @@ Baseline compatibility facts already captured:
 - The current shell sidebar still has no footer-owned theme-control slot, so Phase 2 should land the provider/storage seam and token system first, then let Phase 4 mount the visible toggle in the persistent left sidebar without inventing a second theme owner.
 - Phase 2's first-paint contract needs a dedicated `ui/index.html` head seam; a `main.tsx` bootstrap still starts after the app module begins evaluating and can flash the light theme on a cold load before the stored dark preference is applied.
 - A later read-only verification report claimed the "Write first revision" route flow could not find the `Document title` textbox in `ui/src/test/runs-routes.test.tsx`, but rerunning the exact Phase 2 target command plus five isolated reruns of that specific test on HEAD `8b48028` all passed, so the reported failure is currently classified as non-reproducible validation drift rather than a checked-in Phase 2 regression.
+- The new wrapper layer still swaps between empty-state and table/document bodies in several destinations, so UI tests that hold onto a `findByRole(...)` element handle across filter or editor-state transitions can fail even though the next DOM has rendered correctly. Stable assertions need to re-query after the awaited render point.
 
 ## Outcomes & Retrospective
 
@@ -319,6 +326,15 @@ Phase 2 outcome on 2026-04-22:
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` pass; `rtk npm run typecheck` still fails at the known baseline in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`, while `rtk npx tsc --noEmit -p tsconfig.ui.json` still shows only the pre-existing `runs-routes` artifact-kind fixture drift plus the same implementer typing drift
 - the user-authorized closeout exception pass reran the exact Phase 2 targeted route-test validation on HEAD `8b48028` and reran the reported `runs-routes` editor test in isolation five times; all of those checks passed, so no additional product or test change was required to close Phase 2 truthfully
 - the visible sidebar theme toggle is intentionally deferred to Phase 4 shell work, where it can mount at the bottom of the persistent left sidebar on top of the Phase 2 provider seam instead of introducing out-of-scope shell churn here
+
+Phase 3 outcome on 2026-04-22:
+
+- `ui/src/components/workspace/` now owns reusable `WorkspacePage`, `WorkspacePanel`, `WorkspaceSplit`, `WorkspaceEmptyState`, `DocumentFrame`, `ReviewSection`, and `EntityTable` primitives so later phases can compose product-wide structure without rewriting the same shell logic in feature files
+- `EntityTable` wraps the shadcn `Table` pattern and TanStack row model behind a Keystone API that supports shared empty states, footer/pagination slots, and row-click handling without pushing raw table-state wiring into each destination
+- shared layout states and the current scaffold/live transition surfaces now consume the wrapper layer: app-shell fallback states, runs index tables, workstreams board, run detail scaffolds, planning/execution/documentation workspaces, and task review/document panes all now read through the same workspace vocabulary
+- `StatusPill` now resolves through the shadcn `Badge` primitive while preserving the existing Keystone tone classes, so status treatments participate in the new wrapper/primitives stack instead of staying on legacy markup
+- `ui/src/app/styles.css` now includes the supporting wrapper hooks for page headers, panel headings, split panes, and table shells needed by the new primitives, without starting the larger Phase 4 shell redesign
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 3 implementation; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
 
@@ -577,7 +593,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Pending approval.
+- **Status:** Complete on 2026-04-22.
 - **Goal:** Create the stable wrapper inventory that later destination phases will compose.
 - **Scope Boundary:** In scope are shared workspace panes, split containers, shell-friendly wrappers, status treatments, tables, empty states, and review/document frame wrappers. Out of scope are destination-specific business logic changes.
 - **Read First:** `design/design-guidelines.md`, `ui/AGENTS.md`, `ui/src/components/ui/*`, `ui/src/shared/layout/*`.
@@ -587,7 +603,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** the wrapper inventory exists and is ready for shell and destination phases to consume, including a Keystone `EntityTable` built on the shadcn data-table pattern.
 - **Commit Expectation:** `build keystone workspace wrapper layer`
 - **Known Constraints / Baseline Failures:** wrappers must remain product-wide and must not absorb feature-specific API state.
-- **Next Starter Context:** later phases should prefer wrapper composition over raw primitive composition.
+- **Completion Notes:** Added Keystone-owned workspace primitives under `ui/src/components/workspace/` for page framing, panels, split panes, empty states, document/review wrappers, and a shared `EntityTable`. Updated the current shared/layout and scaffold/live feature surfaces to consume that vocabulary instead of open-coding wrapper logic: app-shell loading/empty/error states now render through `WorkspacePage`, run-detail scaffolds and detail-state fallbacks use the same page wrappers, planning/execution/documentation/task-detail workspaces now use `WorkspacePanel`, `WorkspaceSplit`, `DocumentFrame`, `ReviewSection`, and `WorkspaceEmptyState`, and both runs/workstreams list surfaces now flow through `EntityTable` rather than direct feature-owned table composition. `ui/src/components/ui/table.tsx` gained an optional container class seam to support the wrapper shell, `ui/src/shared/layout/status-pill.tsx` now renders via shadcn `Badge`, and `ui/src/app/styles.css` now contains the wrapper-specific hooks required by these primitives. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- **Next Starter Context:** Phase 4 should rebuild the persistent shell and sidebar by composing the new `WorkspacePage`/`WorkspacePanel` wrappers instead of adding another shell-specific layout layer. Keep the visible theme toggle work inside the Phase 2 provider seam, and continue routing dense list surfaces through `EntityTable` rather than dropping back to raw shadcn/TanStack composition.
 
 ### Phase 4: Global Shell And Project-Scoped Chrome
 

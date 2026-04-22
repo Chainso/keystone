@@ -1,13 +1,20 @@
+import {
+  WorkspaceEmptyState,
+  WorkspaceEmptyStateActions,
+  WorkspaceEmptyStateDescription,
+  WorkspaceEmptyStateTitle
+} from "../../../components/workspace/workspace-empty-state";
+import { WorkspacePage } from "../../../components/workspace/workspace-page";
 import type { RunDetailStateViewModel } from "../use-run-view-model";
 
 export function RunDetailState({ model }: { model: RunDetailStateViewModel }) {
   return (
-    <div className="page-stage">
-      <section className="empty-state-card">
-        <h1 className="document-card-title">{model.heading}</h1>
-        <p className="document-card-summary">{model.message}</p>
+    <WorkspacePage>
+      <WorkspaceEmptyState>
+        <WorkspaceEmptyStateTitle>{model.heading}</WorkspaceEmptyStateTitle>
+        <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
         {model.retry ? (
-          <div className="shell-state-actions">
+          <WorkspaceEmptyStateActions>
             <button
               type="button"
               className="ghost-button"
@@ -17,9 +24,9 @@ export function RunDetailState({ model }: { model: RunDetailStateViewModel }) {
             >
               Retry
             </button>
-          </div>
+          </WorkspaceEmptyStateActions>
         ) : null}
-      </section>
-    </div>
+      </WorkspaceEmptyState>
+    </WorkspacePage>
   );
 }

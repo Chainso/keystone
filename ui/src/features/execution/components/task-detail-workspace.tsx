@@ -1,6 +1,38 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
+import {
+  DocumentFrameBody,
+  DocumentFrameSummary
+} from "../../../components/workspace/document-frame";
+import {
+  ReviewFileCard,
+  ReviewFileStack,
+  ReviewFileSummary,
+  ReviewSection,
+  ReviewSectionLabel
+} from "../../../components/workspace/review-frame";
+import {
+  WorkspaceEmptyState,
+  WorkspaceEmptyStateActions,
+  WorkspaceEmptyStateDescription,
+  WorkspaceEmptyStateTitle
+} from "../../../components/workspace/workspace-empty-state";
+import {
+  WorkspacePage,
+  WorkspacePageHeader,
+  WorkspacePageHeading
+} from "../../../components/workspace/workspace-page";
+import {
+  WorkspacePanel,
+  WorkspacePanelHeader,
+  WorkspacePanelHeading,
+  WorkspacePanelTitle
+} from "../../../components/workspace/workspace-panel";
+import {
+  WorkspaceSplit,
+  WorkspaceSplitPane
+} from "../../../components/workspace/workspace-split";
 import { StatusPill } from "../../../shared/layout/status-pill";
 import type {
   TaskArtifactViewModel,
@@ -63,10 +95,10 @@ function TaskDependencyList({
   tasks: TaskDependencyViewModel[];
 }) {
   return (
-    <section className="document-card">
-      <p className="review-sidebar-label">{label}</p>
+    <ReviewSection>
+      <ReviewSectionLabel>{label}</ReviewSectionLabel>
       {tasks.length === 0 ? (
-        <p className="document-card-summary">None.</p>
+        <DocumentFrameSummary>None.</DocumentFrameSummary>
       ) : (
         <ul className="message-stack" aria-label={label}>
           {tasks.map((task) => (
@@ -77,7 +109,7 @@ function TaskDependencyList({
           ))}
         </ul>
       )}
-    </section>
+    </ReviewSection>
   );
 }
 
@@ -136,31 +168,31 @@ function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel;
   }
 
   return (
-    <details className="review-file-card" open={open}>
-      <summary className="review-file-summary">
+    <ReviewFileCard open={open}>
+      <ReviewFileSummary>
         <span>{artifact.artifactId}</span>
         <span className="review-file-note">{artifact.kind}</span>
-      </summary>
-      <div className="document-copy">
+      </ReviewFileSummary>
+      <DocumentFrameBody>
         <p className="document-line">Content type: {artifact.contentType}</p>
         <p className="document-line">Size: {artifact.sizeLabel}</p>
         {artifact.sha256 ? <p className="document-line">SHA-256: {artifact.sha256}</p> : null}
-        <p className="document-card-summary">{previewCompatibility.helperMessage}</p>
-        <p className="document-card-summary">
+        <DocumentFrameSummary>{previewCompatibility.helperMessage}</DocumentFrameSummary>
+        <DocumentFrameSummary>
           Direct browser links are not available here yet.
-        </p>
+        </DocumentFrameSummary>
         {preview.status === "unsupported" ? null : preview.status === "ready" ? (
           <>
-            <p className="document-card-summary">Loaded through the run API seam.</p>
+            <DocumentFrameSummary>Loaded through the run API seam.</DocumentFrameSummary>
             <pre className="document-copy">
               <code>{preview.content}</code>
             </pre>
           </>
         ) : preview.status === "empty" ? (
-          <p className="document-card-summary">{preview.message}</p>
+          <DocumentFrameSummary>{preview.message}</DocumentFrameSummary>
         ) : preview.status === "error" ? (
           <>
-            <p className="document-card-summary">{preview.message}</p>
+            <DocumentFrameSummary>{preview.message}</DocumentFrameSummary>
             <button
               type="button"
               className="ghost-button"
@@ -183,84 +215,89 @@ function TaskArtifactCard({ artifact, open }: { artifact: TaskArtifactViewModel;
             {preview.status === "loading" ? "Loading text preview..." : "Load text preview"}
           </button>
         )}
-      </div>
-    </details>
+      </DocumentFrameBody>
+    </ReviewFileCard>
   );
 }
 
 export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
   return (
-    <div className="page-stage">
-      <header className="run-detail-header">
+    <WorkspacePage>
+      <WorkspacePageHeader className="run-detail-header">
+        <WorkspacePageHeading>
         <h1 className="run-detail-title">
           {model.runDisplayId} / {model.taskDisplayId}
         </h1>
-      </header>
+        </WorkspacePageHeading>
+      </WorkspacePageHeader>
 
-      <div className="workspace-split task-detail-split">
-        <section className="workspace-panel">
-          <header className="workspace-panel-header">
-            <div>
-              <h2 className="workspace-panel-title">Task conversation</h2>
-            </div>
+      <WorkspaceSplit className="task-detail-split">
+        <WorkspaceSplitPane>
+          <WorkspacePanel>
+            <WorkspacePanelHeader>
+              <WorkspacePanelHeading>
+                <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
+              </WorkspacePanelHeading>
             {model.state === "ready" ? (
               <StatusPill label={model.statusLabel} tone={model.statusTone} />
             ) : null}
-          </header>
+            </WorkspacePanelHeader>
 
           {model.state === "ready" ? (
             <>
               <p className="task-detail-title">{model.title}</p>
 
-              <section className="document-card" aria-label="Conversation status">
-                <p className="review-sidebar-label">Conversation status</p>
+              <ReviewSection aria-label="Conversation status">
+                <ReviewSectionLabel>Conversation status</ReviewSectionLabel>
                 {model.conversationLocator ? (
                   <>
                     <p className="message-card-speaker">Conversation attached to this task.</p>
-                    <p className="document-card-summary">
+                    <DocumentFrameSummary>
                       Task updates will resolve through the attached conversation when chat transport is added.
-                    </p>
+                    </DocumentFrameSummary>
                   </>
                 ) : (
-                  <p className="document-card-summary">No conversation is attached to this task yet.</p>
+                  <DocumentFrameSummary>No conversation is attached to this task yet.</DocumentFrameSummary>
                 )}
-              </section>
+              </ReviewSection>
 
               <TaskDependencyList label="Depends on" tasks={model.dependsOn} />
               <TaskDependencyList label="Downstream tasks" tasks={model.downstreamTasks} />
             </>
           ) : (
-            <section className="empty-state-card">
-              <h3 className="document-card-title">
+            <WorkspaceEmptyState>
+              <WorkspaceEmptyStateTitle as="h3">
                 {model.state === "not_found" ? "Task not found" : "Execution unavailable"}
-              </h3>
-              <p className="document-card-summary">{model.message}</p>
-            </section>
+              </WorkspaceEmptyStateTitle>
+              <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
+            </WorkspaceEmptyState>
           )}
 
           <Link to={model.backPath} className="back-link">
             Back to DAG
           </Link>
-        </section>
+          </WorkspacePanel>
+        </WorkspaceSplitPane>
 
-        <section className="workspace-panel workspace-panel-review">
-          <header className="workspace-panel-header">
-            <div>
-              <h2 className="workspace-panel-title">Artifacts and review</h2>
-            </div>
-          </header>
+        <WorkspaceSplitPane>
+          <WorkspacePanel className="workspace-panel-review">
+            <WorkspacePanelHeader>
+              <WorkspacePanelHeading>
+                <WorkspacePanelTitle>Artifacts and review</WorkspacePanelTitle>
+              </WorkspacePanelHeading>
+            </WorkspacePanelHeader>
 
-          <p className="review-sidebar-label">Artifacts</p>
+            <ReviewSectionLabel>Artifacts</ReviewSectionLabel>
 
           {model.state !== "ready" ? (
-            <p className="document-card-summary">Task artifacts are unavailable for this route.</p>
+            <DocumentFrameSummary>Task artifacts are unavailable for this route.</DocumentFrameSummary>
           ) : model.artifacts.state === "loading" ? (
-            <p className="document-card-summary">{model.artifacts.message}</p>
+            <DocumentFrameSummary>{model.artifacts.message}</DocumentFrameSummary>
           ) : model.artifacts.state === "error" ? (
-            <section className="empty-state-card">
-              <h3 className="document-card-title">Unable to load task artifacts</h3>
-              <p className="document-card-summary">{model.artifacts.message}</p>
-              <div className="shell-state-actions">
+            <WorkspaceEmptyState>
+              <WorkspaceEmptyStateTitle as="h3">Unable to load task artifacts</WorkspaceEmptyStateTitle>
+              <WorkspaceEmptyStateDescription>{model.artifacts.message}</WorkspaceEmptyStateDescription>
+              <WorkspaceEmptyStateActions>
                 <button
                   type="button"
                   className="ghost-button"
@@ -270,19 +307,20 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
                 >
                   Retry
                 </button>
-              </div>
-            </section>
+              </WorkspaceEmptyStateActions>
+            </WorkspaceEmptyState>
           ) : model.artifacts.state === "empty" ? (
-            <p className="document-card-summary">{model.artifacts.message}</p>
+            <DocumentFrameSummary>{model.artifacts.message}</DocumentFrameSummary>
           ) : (
-            <div className="review-file-stack">
+            <ReviewFileStack>
               {model.artifacts.items.map((artifact, index) => (
                 <TaskArtifactCard key={artifact.artifactId} artifact={artifact} open={index === 0} />
               ))}
-            </div>
+            </ReviewFileStack>
           )}
-        </section>
-      </div>
-    </div>
+          </WorkspacePanel>
+        </WorkspaceSplitPane>
+      </WorkspaceSplit>
+    </WorkspacePage>
   );
 }
