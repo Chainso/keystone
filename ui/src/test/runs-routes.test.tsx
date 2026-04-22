@@ -2382,8 +2382,12 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh execution" }));
 
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
+    await waitFor(() => {
+      expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
+    });
+    expect(await screen.findByLabelText("Execution summary")).toHaveTextContent(
+      "3 tasks across 3 dependency steps"
+    );
   });
 
   it("does not navigate back into an older run when compile acceptance resolves after switching routes", async () => {
@@ -2487,20 +2491,62 @@ describe("Run routes", () => {
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
     expect(screen.getByLabelText("Execution summary")).toHaveTextContent(
-      "3 tasks · 0 ready · 0 pending · 1 active · 2 completed"
+      "3 tasks across 3 dependency steps"
     );
-    expect(screen.getByRole("link", { name: /task-030/i })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution/tasks/task-030"
-    );
-    expect(screen.getByRole("link", { name: /task-032/i })).toHaveAttribute(
+    expect(
+      within(screen.getByLabelText("Execution workflow graph")).getByRole("button", {
+        name: /Live run provider cutover/i
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+    const workflowStatusPanel = screen.getByRole("heading", { name: "Workflow status" }).closest("section");
+
+    expect(workflowStatusPanel).toBeTruthy();
+    expect(within(workflowStatusPanel!).getByText("In progress")).toBeInTheDocument();
+    expect(within(workflowStatusPanel!).getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Implement the live run-detail provider.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
       "href",
       "/runs/run-104/execution/tasks/task-032"
     );
-    expect(screen.getByText("Live run provider cutover")).toBeInTheDocument();
     expect(
-      screen.getByText("Workflow rows are grouped by dependency depth in the current workflow graph.")
+      screen.getByText(
+        "Columns track dependency steps, and parallel tasks remain grouped in the same step."
+      )
     ).toBeInTheDocument();
+  });
+
+  it("lets the operator change the selected DAG task before opening task detail", async () => {
+    renderRunRoute("/runs/run-104/execution");
+
+    const graphRegion = await screen.findByLabelText("Execution workflow graph");
+    fireEvent.click(
+      within(graphRegion).getByRole("button", {
+        name: /Architecture decisions/i
+      })
+    );
+
+    expect(screen.getByText("Translate the specification into architecture decisions.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
+      "href",
+      "/runs/run-104/execution/tasks/task-031"
+    );
+    expect(
+      within(graphRegion).getByRole("button", {
+        name: /Architecture decisions/i
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("defaults the execution inspector to the ready task when no work is active", async () => {
+    renderRunRoute("/runs/run-109/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(screen.getByText("Ready next")).toBeInTheDocument();
+    expect(screen.getByText("Inspect the currently compiled workflow.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
+      "href",
+      "/runs/run-109/execution/tasks/task-090"
+    );
   });
 
   it("renders an honest execution empty state when compile has not produced a workflow", async () => {

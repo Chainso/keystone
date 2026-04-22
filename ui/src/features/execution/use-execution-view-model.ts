@@ -1,30 +1,156 @@
 import { useEffect, useState } from "react";
 
+import { formatUtcTimestamp } from "../../shared/formatting/date";
 import { buildRunPhasePath, buildRunTaskPath } from "../../shared/navigation/run-phases";
 import type { StatusTone } from "../../shared/layout/status-pill";
 import { getTaskStatusPresentation } from "../runs/run-status";
 import type { ConversationLocator } from "../runs/run-types";
 import { useReadyRunDetail } from "../runs/use-ready-run-detail";
 
-export interface ExecutionNodeViewModel {
+type ReadyRunTasks = ReturnType<typeof useReadyRunDetail>["state"]["tasks"];
+type WorkflowNodes = NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["workflow"]>["nodes"];
+
+interface ExecutionTaskRecord {
+  conversation: ConversationLocator | null;
+  dependsOn: string[];
+  description: string;
+  endedAt: string | null;
+  logicalTaskId: string;
+  name: string;
+  startedAt: string | null;
+  status: string;
+  taskId: string;
+  updatedAt: string | null;
+}
+
+type ExecutionSummaryGroupId =
+  | "in_progress"
+  | "ready"
+  | "queued"
+  | "blocked"
+  | "completed"
+  | "other";
+
+const executionSummaryGroupDefinitions: Array<{
+  description: string;
+  id: ExecutionSummaryGroupId;
+  label: string;
+  tone: StatusTone;
+}> = [
+  {
+    description: "Live work that is currently running inside this run.",
+    id: "in_progress",
+    label: "In progress",
+    tone: "active"
+  },
+  {
+    description: "Tasks that can open immediately when you need to inspect the next handoff.",
+    id: "ready",
+    label: "Ready next",
+    tone: "queued"
+  },
+  {
+    description: "Tasks that are still waiting on earlier execution steps to clear.",
+    id: "queued",
+    label: "Waiting",
+    tone: "queued"
+  },
+  {
+    description: "Tasks that have failed, been cancelled, or otherwise need operator attention.",
+    id: "blocked",
+    label: "Blocked",
+    tone: "blocked"
+  },
+  {
+    description: "Finished work that can already hand off into task detail for review.",
+    id: "completed",
+    label: "Completed",
+    tone: "complete"
+  },
+  {
+    description: "Tasks whose status does not yet map to a workflow bucket.",
+    id: "other",
+    label: "Other",
+    tone: "neutral"
+  }
+];
+
+const executionSelectionPriority: ExecutionSummaryGroupId[] = [
+  "in_progress",
+  "blocked",
+  "ready",
+  "queued",
+  "completed",
+  "other"
+];
+
+export interface ExecutionSummaryTaskViewModel {
   detailPath: string;
-  dependencyCount: number;
+  logicalTaskId: string;
+  statusLabel: string;
+  taskId: string;
+  title: string;
+}
+
+export interface ExecutionSummaryGroupViewModel {
+  count: number;
+  description: string;
+  id: ExecutionSummaryGroupId;
+  label: string;
+  tasks: ExecutionSummaryTaskViewModel[];
+  tone: StatusTone;
+}
+
+export interface TaskDependencyViewModel {
+  detailPath: string;
   statusLabel: string;
   statusTone: StatusTone;
   taskId: string;
   title: string;
 }
 
-export interface ExecutionRowViewModel {
+export interface ExecutionNodeViewModel {
+  activityLabel: string;
+  conversationAttached: boolean;
+  dependsOn: TaskDependencyViewModel[];
+  dependencyCount: number;
+  description: string;
+  detailPath: string;
+  downstreamTasks: TaskDependencyViewModel[];
+  footnote: string;
+  graphColumn: number;
+  graphRow: number;
+  handoffSummary: string;
+  logicalTaskId: string;
+  statusLabel: string;
+  statusTone: StatusTone;
+  taskId: string;
+  title: string;
+}
+
+export interface ExecutionColumnViewModel {
   depth: number;
-  rowId: string;
-  tasks: ExecutionNodeViewModel[];
+  label: string;
+  summary: string;
+  taskIds: string[];
+}
+
+export interface ExecutionEdgeViewModel {
+  edgeId: string;
+  fromColumn: number;
+  fromRow: number;
+  toColumn: number;
+  toRow: number;
 }
 
 export interface RunExecutionReadyViewModel {
-  rows: ExecutionRowViewModel[];
+  columns: ExecutionColumnViewModel[];
+  defaultSelectedTaskId: string | null;
+  edges: ExecutionEdgeViewModel[];
+  nodes: ExecutionNodeViewModel[];
   state: "ready";
   summary: string;
+  summaryGroups: ExecutionSummaryGroupViewModel[];
 }
 
 export interface RunExecutionEmptyViewModel {
@@ -58,11 +184,6 @@ export interface TaskArtifactsViewModel {
   message: string | null;
   retry?: (() => void) | undefined;
   state: "loading" | "ready" | "empty" | "error";
-}
-
-export interface TaskDependencyViewModel {
-  taskId: string;
-  title: string;
 }
 
 export interface TaskDetailReadyViewModel {
@@ -107,15 +228,57 @@ function formatByteSize(sizeBytes: number | null) {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function groupTasksByDepth(tasks: ReturnType<typeof useReadyRunDetail>["state"]["tasks"]) {
+function normalizeStatus(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function categorizeExecutionTask(status: string): ExecutionSummaryGroupId {
+  const normalized = normalizeStatus(status);
+
+  if (
+    normalized.includes("active") ||
+    normalized.includes("running") ||
+    normalized.includes("review")
+  ) {
+    return "in_progress";
+  }
+
+  if (normalized.includes("ready")) {
+    return "ready";
+  }
+
+  if (normalized.includes("pending") || normalized.includes("queue")) {
+    return "queued";
+  }
+
+  if (
+    normalized.includes("block") ||
+    normalized.includes("fail") ||
+    normalized.includes("cancel")
+  ) {
+    return "blocked";
+  }
+
+  if (
+    normalized.includes("complete") ||
+    normalized.includes("done") ||
+    normalized.includes("passed")
+  ) {
+    return "completed";
+  }
+
+  return "other";
+}
+
+function buildTaskDepthIndex(tasks: ExecutionTaskRecord[]) {
   const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
   const depthByTaskId = new Map<string, number>();
 
   function getTaskDepth(taskId: string): number {
-    const cached = depthByTaskId.get(taskId);
+    const cachedDepth = depthByTaskId.get(taskId);
 
-    if (cached !== undefined) {
-      return cached;
+    if (cachedDepth !== undefined) {
+      return cachedDepth;
     }
 
     const task = tasksById.get(taskId);
@@ -137,7 +300,7 @@ function groupTasksByDepth(tasks: ReturnType<typeof useReadyRunDetail>["state"][
     getTaskDepth(task.taskId);
   });
 
-  return tasks.reduce<Map<number, typeof tasks>>((rows, task) => {
+  const tasksByDepth = tasks.reduce<Map<number, ReadyRunTasks>>((rows, task) => {
     const depth = depthByTaskId.get(task.taskId) ?? 0;
     const existing = rows.get(depth);
 
@@ -149,30 +312,14 @@ function groupTasksByDepth(tasks: ReturnType<typeof useReadyRunDetail>["state"][
     rows.set(depth, [task]);
     return rows;
   }, new Map());
+
+  return {
+    depthByTaskId,
+    tasksByDepth
+  };
 }
 
-function buildExecutionRows(
-  tasks: ReturnType<typeof useReadyRunDetail>["state"]["tasks"],
-  runId: string
-): ExecutionRowViewModel[] {
-  const rowsByDepth = groupTasksByDepth(tasks);
-
-  return [...rowsByDepth.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([depth, rowTasks]) => ({
-      depth,
-      rowId: `execution-row-${depth}`,
-      tasks: rowTasks.map((task) => ({
-        detailPath: buildRunTaskPath(runId, task.taskId),
-        dependencyCount: task.dependsOn.length,
-        ...getTaskStatusPresentation(task.status),
-        taskId: task.taskId,
-        title: task.name
-      }))
-    }));
-}
-
-function buildTaskRelationshipMap(tasks: ReturnType<typeof useReadyRunDetail>["state"]["tasks"]) {
+function buildTaskRelationshipMap(tasks: ExecutionTaskRecord[]) {
   const downstreamByTaskId = new Map<string, string[]>();
 
   for (const task of tasks) {
@@ -186,13 +333,298 @@ function buildTaskRelationshipMap(tasks: ReturnType<typeof useReadyRunDetail>["s
   return downstreamByTaskId;
 }
 
+function buildTaskReference(task: ExecutionTaskRecord, runId: string): TaskDependencyViewModel {
+  return {
+    detailPath: buildRunTaskPath(runId, task.taskId),
+    ...getTaskStatusPresentation(task.status),
+    taskId: task.taskId,
+    title: task.name
+  };
+}
+
+function buildExecutionActivityLabel(task: ExecutionTaskRecord) {
+  if (task.endedAt) {
+    return `Completed ${formatUtcTimestamp(task.endedAt)}`;
+  }
+
+  if (task.startedAt) {
+    return `Started ${formatUtcTimestamp(task.startedAt)}`;
+  }
+
+  if (task.updatedAt) {
+    return `Updated ${formatUtcTimestamp(task.updatedAt)}`;
+  }
+
+  return "Task metadata is still loading from the live task list.";
+}
+
+function buildExecutionColumnSummary(depth: number, taskCount: number) {
+  if (depth === 0) {
+    return taskCount === 1 ? "1 starting task" : `${taskCount} starting tasks`;
+  }
+
+  return taskCount === 1 ? "1 task in this step" : `${taskCount} parallel tasks in this step`;
+}
+
+function buildExecutionNodeFootnote(task: ExecutionTaskRecord, input: {
+  downstreamCount: number;
+  unresolvedDependencyCount: number;
+}) {
+  if (input.unresolvedDependencyCount > 0) {
+    return `Waiting on ${input.unresolvedDependencyCount} prerequisite${input.unresolvedDependencyCount === 1 ? "" : "s"}`;
+  }
+
+  if (task.dependsOn.length === 0) {
+    return input.downstreamCount > 0
+      ? `Starts the workflow and unlocks ${input.downstreamCount} downstream task${input.downstreamCount === 1 ? "" : "s"}`
+      : "Starts the workflow";
+  }
+
+  if (input.downstreamCount > 0) {
+    return `${task.dependsOn.length} cleared prerequisite${task.dependsOn.length === 1 ? "" : "s"} · unlocks ${input.downstreamCount} downstream task${input.downstreamCount === 1 ? "" : "s"}`;
+  }
+
+  return `${task.dependsOn.length} cleared prerequisite${task.dependsOn.length === 1 ? "" : "s"}`;
+}
+
+function buildExecutionHandoffSummary(task: ExecutionTaskRecord, unresolvedDependencyCount: number) {
+  if (unresolvedDependencyCount > 0) {
+    return `This task is still waiting on ${unresolvedDependencyCount} prerequisite${unresolvedDependencyCount === 1 ? "" : "s"}.`;
+  }
+
+  if (task.conversation) {
+    return "Task detail already has a conversation locator and the current review surface.";
+  }
+
+  return "Task detail keeps the current artifact and review surface while the live chat cutover remains out of scope for this phase.";
+}
+
+function buildExecutionSummary(totalTasks: number, columnCount: number) {
+  return `${totalTasks} task${totalTasks === 1 ? "" : "s"} across ${columnCount} dependency step${columnCount === 1 ? "" : "s"}`;
+}
+
+function buildExecutionSummaryGroups(tasks: ExecutionTaskRecord[], runId: string): ExecutionSummaryGroupViewModel[] {
+  const tasksByGroup = new Map<ExecutionSummaryGroupId, ExecutionTaskRecord[]>();
+
+  for (const definition of executionSummaryGroupDefinitions) {
+    tasksByGroup.set(definition.id, []);
+  }
+
+  for (const task of tasks) {
+    tasksByGroup.get(categorizeExecutionTask(task.status))?.push(task);
+  }
+
+  return executionSummaryGroupDefinitions
+    .map((definition) => {
+      const groupTasks = tasksByGroup.get(definition.id) ?? [];
+
+      return {
+        count: groupTasks.length,
+        description: definition.description,
+        id: definition.id,
+        label: definition.label,
+        tasks: groupTasks.map((task) => ({
+          detailPath: buildRunTaskPath(runId, task.taskId),
+          logicalTaskId: task.logicalTaskId,
+          statusLabel: getTaskStatusPresentation(task.status).statusLabel,
+          taskId: task.taskId,
+          title: task.name
+        })),
+        tone: definition.tone
+      };
+    })
+    .filter((group) => group.count > 0);
+}
+
+function pickDefaultExecutionTask(summaryGroups: ExecutionSummaryGroupViewModel[]) {
+  for (const groupId of executionSelectionPriority) {
+    const taskId = summaryGroups.find((group) => group.id === groupId)?.tasks[0]?.taskId;
+
+    if (taskId) {
+      return taskId;
+    }
+  }
+
+  return null;
+}
+
+function buildExecutionTaskRecords(tasks: ReadyRunTasks, workflowNodes: WorkflowNodes): ExecutionTaskRecord[] {
+  const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
+  const records = workflowNodes.map((workflowNode) => {
+    const task = tasksById.get(workflowNode.taskId);
+
+    if (task) {
+      return {
+        conversation: task.conversation ?? null,
+        dependsOn: task.dependsOn,
+        description: task.description,
+        endedAt: task.endedAt,
+        logicalTaskId: task.logicalTaskId,
+        name: task.name,
+        startedAt: task.startedAt,
+        status: task.status,
+        taskId: task.taskId,
+        updatedAt: task.updatedAt
+      };
+    }
+
+    return {
+      conversation: null,
+      dependsOn: workflowNode.dependsOn,
+      description: "Task metadata is still loading from the live task list.",
+      endedAt: null,
+      logicalTaskId: workflowNode.taskId,
+      name: workflowNode.name,
+      startedAt: null,
+      status: workflowNode.status,
+      taskId: workflowNode.taskId,
+      updatedAt: null
+    };
+  });
+
+  for (const task of tasks) {
+    if (workflowNodes.some((workflowNode) => workflowNode.taskId === task.taskId)) {
+      continue;
+    }
+
+    records.push({
+      conversation: task.conversation ?? null,
+      dependsOn: task.dependsOn,
+      description: task.description,
+      endedAt: task.endedAt,
+      logicalTaskId: task.logicalTaskId,
+      name: task.name,
+      startedAt: task.startedAt,
+      status: task.status,
+      taskId: task.taskId,
+      updatedAt: task.updatedAt
+    });
+  }
+
+  return records;
+}
+
+function buildExecutionGraph(tasks: ExecutionTaskRecord[], runId: string) {
+  const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
+  const downstreamByTaskId = buildTaskRelationshipMap(tasks);
+  const { depthByTaskId, tasksByDepth } = buildTaskDepthIndex(tasks);
+  const orderByTaskId = new Map(tasks.map((task, index) => [task.taskId, index]));
+  const rowByTaskId = new Map<string, number>();
+  const columns: ExecutionColumnViewModel[] = [];
+
+  for (const [depth, depthTasks] of [...tasksByDepth.entries()].sort(([left], [right]) => left - right)) {
+    const orderedTasks = [...depthTasks].sort((left, right) => {
+      const leftAverage =
+        left.dependsOn.length === 0
+          ? orderByTaskId.get(left.taskId) ?? 0
+          : left.dependsOn.reduce((total, dependencyId) => total + (rowByTaskId.get(dependencyId) ?? 0), 0) /
+            left.dependsOn.length;
+      const rightAverage =
+        right.dependsOn.length === 0
+          ? orderByTaskId.get(right.taskId) ?? 0
+          : right.dependsOn.reduce((total, dependencyId) => total + (rowByTaskId.get(dependencyId) ?? 0), 0) /
+            right.dependsOn.length;
+
+      if (leftAverage !== rightAverage) {
+        return leftAverage - rightAverage;
+      }
+
+      return (orderByTaskId.get(left.taskId) ?? 0) - (orderByTaskId.get(right.taskId) ?? 0);
+    });
+
+    orderedTasks.forEach((task, rowIndex) => {
+      rowByTaskId.set(task.taskId, rowIndex);
+    });
+
+    columns.push({
+      depth,
+      label: `Step ${depth + 1}`,
+      summary: buildExecutionColumnSummary(depth, orderedTasks.length),
+      taskIds: orderedTasks.map((task) => task.taskId)
+    });
+  }
+
+  const nodes = columns.flatMap((column) =>
+    column.taskIds.flatMap((taskId, rowIndex) => {
+      const task = tasksById.get(taskId);
+
+      if (!task) {
+        return [];
+      }
+
+      const dependsOn = task.dependsOn.flatMap((dependencyId) => {
+        const dependency = tasksById.get(dependencyId);
+
+        return dependency ? [buildTaskReference(dependency, runId)] : [];
+      });
+      const downstreamTasks = (downstreamByTaskId.get(task.taskId) ?? []).flatMap((downstreamTaskId) => {
+        const downstreamTask = tasksById.get(downstreamTaskId);
+
+        return downstreamTask ? [buildTaskReference(downstreamTask, runId)] : [];
+      });
+      const unresolvedDependencyCount = dependsOn.filter((dependency) => dependency.statusTone !== "complete").length;
+
+      return [
+        {
+          activityLabel: buildExecutionActivityLabel(task),
+          conversationAttached: task.conversation !== null,
+          dependsOn,
+          dependencyCount: task.dependsOn.length,
+          description: task.description,
+          detailPath: buildRunTaskPath(runId, task.taskId),
+          downstreamTasks,
+          footnote: buildExecutionNodeFootnote(task, {
+            downstreamCount: downstreamTasks.length,
+            unresolvedDependencyCount
+          }),
+          graphColumn: column.depth,
+          graphRow: rowIndex,
+          handoffSummary: buildExecutionHandoffSummary(task, unresolvedDependencyCount),
+          logicalTaskId: task.logicalTaskId,
+          ...getTaskStatusPresentation(task.status),
+          taskId: task.taskId,
+          title: task.name
+        }
+      ];
+    })
+  );
+
+  const edges = tasks.flatMap((task) => {
+    const toColumn = depthByTaskId.get(task.taskId) ?? 0;
+    const toRow = rowByTaskId.get(task.taskId) ?? 0;
+
+    return task.dependsOn.flatMap((dependencyId) => {
+      const fromColumn = depthByTaskId.get(dependencyId);
+      const fromRow = rowByTaskId.get(dependencyId);
+
+      if (fromColumn === undefined || fromRow === undefined) {
+        return [];
+      }
+
+      return [
+        {
+          edgeId: `${dependencyId}->${task.taskId}`,
+          fromColumn,
+          fromRow,
+          toColumn,
+          toRow
+        }
+      ];
+    });
+  });
+
+  return {
+    columns,
+    edges,
+    nodes
+  };
+}
+
 export function useRunExecutionViewModel(): RunExecutionViewModel {
   const { actions, state } = useReadyRunDetail();
   const run = state.run!;
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const executionPending =
-    run.compiledFrom !== null &&
-    (state.workflow!.summary.totalTasks === 0 || state.tasks.length === 0);
+  const executionPending = run.compiledFrom !== null && state.workflow!.summary.totalTasks === 0;
 
   function refreshExecution() {
     if (isRefreshing) {
@@ -218,7 +650,7 @@ export function useRunExecutionViewModel(): RunExecutionViewModel {
 
     const timeoutId = window.setTimeout(() => {
       refreshExecution();
-    }, 2_000);
+    }, 500);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -241,10 +673,18 @@ export function useRunExecutionViewModel(): RunExecutionViewModel {
     };
   }
 
+  const executionTasks = buildExecutionTaskRecords(state.tasks, state.workflow!.nodes);
+  const graph = buildExecutionGraph(executionTasks, run.runId);
+  const summaryGroups = buildExecutionSummaryGroups(executionTasks, run.runId);
+
   return {
-    rows: buildExecutionRows(state.tasks, run.runId),
+    columns: graph.columns,
+    defaultSelectedTaskId: pickDefaultExecutionTask(summaryGroups),
+    edges: graph.edges,
+    nodes: graph.nodes,
     state: "ready",
-    summary: `${state.workflow!.summary.totalTasks} tasks · ${state.workflow!.summary.readyTasks} ready · ${state.workflow!.summary.pendingTasks} pending · ${state.workflow!.summary.activeTasks} active · ${state.workflow!.summary.completedTasks} completed`
+    summary: buildExecutionSummary(state.workflow!.summary.totalTasks, graph.columns.length),
+    summaryGroups
   };
 }
 
@@ -290,26 +730,12 @@ export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
   const dependsOn = task.dependsOn.flatMap((dependencyId) => {
     const dependency = tasksById.get(dependencyId);
 
-    return dependency
-      ? [
-          {
-            taskId: dependency.taskId,
-            title: dependency.name
-          }
-        ]
-      : [];
+    return dependency ? [buildTaskReference(dependency, run.runId)] : [];
   });
   const downstreamTasks = (downstreamByTaskId.get(task.taskId) ?? []).flatMap((downstreamTaskId) => {
     const downstreamTask = tasksById.get(downstreamTaskId);
 
-    return downstreamTask
-      ? [
-          {
-            taskId: downstreamTask.taskId,
-            title: downstreamTask.name
-          }
-        ]
-      : [];
+    return downstreamTask ? [buildTaskReference(downstreamTask, run.runId)] : [];
   });
   const artifactsViewModel: TaskArtifactsViewModel =
     !taskArtifacts || taskArtifacts.status === "idle" || taskArtifacts.status === "loading"

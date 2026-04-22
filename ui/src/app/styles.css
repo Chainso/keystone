@@ -1038,63 +1038,250 @@ pre {
   border-top: 1px solid var(--border-muted);
 }
 
-.execution-board {
+.execution-graph-stage,
+.execution-summary-grid,
+.execution-summary-task-list,
+.execution-task-reference-list,
+.execution-selection-card,
+.execution-selection-heading {
   display: grid;
-  gap: 1rem;
-  padding: 1rem;
+  gap: 0.85rem;
+}
+
+.execution-graph-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.execution-graph-canvas {
+  position: relative;
+  min-width: fit-content;
+  border: 1px solid var(--border-muted);
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--border-muted) 28%, transparent) 0.8px, transparent 0),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 88%, transparent), transparent 10rem),
+    var(--surface-subtle);
+  background-position: 0 0, 0 0, 0 0;
+  background-size: 1rem 1rem, auto, auto;
+}
+
+.execution-graph-column {
+  position: absolute;
+  top: 0.95rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.execution-graph-column-label {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.execution-graph-column-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.execution-graph-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.execution-graph-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent-line) 54%, transparent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.execution-graph-node {
+  position: absolute;
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  min-height: 8.25rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 72%, transparent), transparent 70%),
+    var(--surface-panel);
+  color: var(--text-primary);
+  text-align: left;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease,
+    background-color 140ms ease;
+}
+
+.execution-graph-node:hover,
+.execution-graph-node:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--accent-line);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-line) 10%, transparent);
+}
+
+.execution-graph-node.is-selected {
+  border-color: var(--accent-line);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-line) 28%, transparent),
+    0 12px 30px color-mix(in srgb, var(--accent-line) 12%, transparent);
+}
+
+.execution-graph-node.is-active {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-fill) 60%, transparent), transparent 68%),
+    var(--surface-panel);
+}
+
+.execution-graph-node.is-blocked {
+  border-color: var(--status-blocked-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--status-blocked-surface) 72%, transparent), transparent 70%),
+    var(--surface-panel);
+}
+
+.execution-graph-node.is-complete {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--status-complete-surface) 68%, transparent), transparent 70%),
+    var(--surface-panel);
+}
+
+.execution-graph-node.is-queued {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--status-queued-surface) 66%, transparent), transparent 68%),
+    var(--surface-panel);
+}
+
+.execution-graph-node-label {
+  margin: 0;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.execution-graph-node-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.execution-graph-node-status {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.execution-summary-group {
+  gap: 0.85rem;
+}
+
+.execution-summary-group.is-active {
+  border-color: color-mix(in srgb, var(--accent-line) 55%, var(--border-strong));
+}
+
+.execution-summary-group.is-blocked {
+  border-color: color-mix(in srgb, var(--status-blocked-border) 72%, var(--border-strong));
+}
+
+.execution-summary-group.is-complete {
+  border-color: color-mix(in srgb, var(--status-complete-border) 68%, var(--border-strong));
+}
+
+.execution-summary-group.is-queued {
+  border-color: color-mix(in srgb, var(--status-queued-border) 65%, var(--border-strong));
+}
+
+.execution-summary-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.execution-summary-group-heading {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.execution-summary-task,
+.execution-task-reference {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid var(--border-muted);
+  background: var(--surface-subtle);
+  text-align: left;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.execution-summary-task:hover,
+.execution-summary-task:focus-visible,
+.execution-task-reference:hover,
+.execution-task-reference:focus-visible {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent-fill) 55%, transparent);
+}
+
+.execution-summary-task.is-selected,
+.execution-task-reference.is-selected {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent-fill) 72%, transparent);
+}
+
+.execution-summary-task-title,
+.execution-task-reference-title,
+.execution-selection-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.execution-selection-card {
+  padding: 0.95rem 1rem;
   border: 1px solid var(--border-muted);
   background: var(--surface-subtle);
 }
 
-.execution-dag-row {
+.execution-selection-header {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.execution-selection-metrics {
+  display: flex;
   flex-wrap: wrap;
+  gap: 0.55rem;
 }
 
-.execution-dag-row-branch {
-  padding-left: clamp(3rem, 18vw, 16rem);
-}
-
-.execution-dag-arrow,
-.execution-dag-branch-arrow {
-  color: var(--text-muted);
-  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-}
-
-.execution-node {
-  display: grid;
-  gap: 0.3rem;
-  min-width: 8rem;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-panel);
-}
-
-.execution-node-label {
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.execution-node-title {
+.execution-selection-metric {
+  margin: 0;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--surface-panel) 82%, transparent);
   color: var(--text-secondary);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-.execution-node-active {
-  border-color: var(--accent-line);
-  background: var(--accent-fill);
-}
-
-.execution-node-blocked {
-  border-color: var(--status-blocked-border);
-  background: var(--status-blocked-surface);
-}
-
-.execution-node-queued {
-  background: var(--surface-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .documentation-tree-group-header {
