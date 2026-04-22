@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { canonicalizeMarkdown } from "../../components/editor/plate-markdown-document";
 import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 import { useUnsavedChangesGuard } from "../../shared/navigation/use-unsaved-changes-guard";
+import { buildMarkdownSourceSaveDraft } from "../../shared/markdown/source-markdown";
 import {
   useReadyRunDetail
 } from "./use-ready-run-detail";
@@ -137,6 +137,11 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   const pendingEditorSourceKeyRef = useRef<string | null>(null);
   const createInFlightRef = useRef(false);
   const saveInFlightRef = useRef(false);
+  const savedSourceDraft = buildMarkdownSourceSaveDraft(sourceDraft);
+  const savedDraft = buildMarkdownSourceSaveDraft({
+    body,
+    title
+  });
 
   useEffect(() => {
     const shouldEnterEditor = pendingEditorSourceKeyRef.current === sourceKey;
@@ -197,10 +202,12 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     setTitle(sourceDraft.title);
   }
 
-  const hasUnsavedChanges = body !== sourceDraft.body || title !== sourceDraft.title;
+  const hasUnsavedChanges =
+    savedDraft.body !== savedSourceDraft.body ||
+    savedDraft.title !== savedSourceDraft.title;
   const canSave =
-    title.trim().length > 0 &&
-    body.trim().length > 0 &&
+    savedDraft.title.length > 0 &&
+    savedDraft.body.trim().length > 0 &&
     hasUnsavedChanges &&
     !isSubmitting;
   const hasPendingChanges = isEditing && (hasUnsavedChanges || isSubmitting);
@@ -211,13 +218,11 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   });
 
   async function saveChanges() {
-    const trimmedTitle = title.trim();
-    const hasBodyChanges = body !== sourceDraft.body;
-    const savedBody = hasBodyChanges ? canonicalizeMarkdown(body) : body;
     const canSaveNow =
-      trimmedTitle.length > 0 &&
-      savedBody.trim().length > 0 &&
-      hasUnsavedChanges;
+      savedDraft.title.length > 0 &&
+      savedDraft.body.trim().length > 0 &&
+      (savedDraft.body !== savedSourceDraft.body ||
+        savedDraft.title !== savedSourceDraft.title);
 
     if (!canSaveNow || saveInFlightRef.current) {
       return;
@@ -229,8 +234,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
 
     try {
       await actions.savePlanningDocument(phaseId, {
-        body: savedBody,
-        title: trimmedTitle
+        body: savedDraft.body,
+        title: savedDraft.title
       });
     } catch (error) {
       setIsSubmitting(false);

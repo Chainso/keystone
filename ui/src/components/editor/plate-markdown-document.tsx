@@ -53,20 +53,6 @@ function createPlateMarkdownEditor(markdown: string) {
   return editor;
 }
 
-export function canonicalizeMarkdown(markdown: string) {
-  if (markdown.trim().length === 0) {
-    return "";
-  }
-
-  const editor = createPlateMarkdownEditor(markdown);
-
-  try {
-    return editor.api.markdown.serialize();
-  } catch {
-    return markdown;
-  }
-}
-
 export function PlateMarkdownDocument({
   className,
   emptyMessage = "This document is empty.",

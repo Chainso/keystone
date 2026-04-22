@@ -285,6 +285,11 @@ Baseline compatibility facts already captured:
   **Decision:** Reworked the planning interiors around a shared split that keeps the left pane explicitly placeholder-framed for chat while the right pane now renders saved planning documents and edit-time previews through repo-owned Plate markdown surfaces, with changed markdown round-tripped back through Plate serialization on save.
   **Rationale:** Phase 6 needed to migrate the document side of `Specification`, `Architecture`, and `Execution Plan` onto Plate-backed surfaces without introducing a new canonical format or pulling live conversation binding into scope.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 6 targeted fix pass
+  **Decision:** Restored source-markdown ownership for planning save payloads, moved save-boundary normalization into a pure utility module, and tightened `ui/src/test/runs-routes.test.tsx` to assert document heading/list structure plus exact revision-save POST bodies.
+  **Rationale:** Review showed that Plate serialization was a lossy save boundary for common markdown forms, the view-model was importing save behavior from a React component module, and the route suite was not proving either the structural render contract or the actual persisted markdown payload.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -305,6 +310,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 5 completed: the `Runs` index now lives in the workspace system, and the run-detail frame now exposes the migrated header, top rail, and state chrome without changing route semantics.
 - [x] 2026-04-22 Phase 5 targeted fix pass completed: non-ready run-detail states now assert the shared fallback chrome, and the exact Phase 5 validation reran green without reproducing the earlier planning-editor drift note.
 - [x] 2026-04-22 Phase 6 completed: planning phases now use the shared split workspace with repo-owned Plate document rendering, canonical markdown source flows, and live preview-backed create/save/discard states.
+- [x] 2026-04-22 Phase 6 targeted fix pass completed: planning saves now persist the authored markdown source directly, title-only edits compare against the persisted save draft instead of raw editor state, and route coverage now asserts both rendered markdown structure and exact revision-save POST bodies.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -341,6 +347,7 @@ Baseline compatibility facts already captured:
 - Phase 3's initial `EntityTable` seam was still too DOM-shaped: reusable row activation needs to be expressed as an explicit row-level callback owned by the wrapper, not by asking feature callers to scrape the first rendered `a[href]` out of table cells.
 - The live `/v1/projects/:projectId/runs` payload still exposes workflow instance, execution engine, status, and timestamps, but not per-run planning-step progress or authored summaries. Phase 5 therefore keeps the live runs index honest with coarse `Planning` vs `Execution` stage framing plus workflow/engine detail, while the sidebar guide carries the stable four-stage product vocabulary.
 - Plate-backed planning documents change both heading and list semantics in the DOM: document markdown headings can legitimately duplicate panel titles, and rendered list text no longer includes literal markdown markers like `- `. Route tests need to assert against the named document regions and rendered sentence content rather than raw markdown text nodes.
+- Plate's current markdown deserialize/serialize path is not safe as a Phase 6 persistence boundary for common authored forms like task lists and strikethrough. For this slice, Plate should render markdown source, but save/export must stay on the authored markdown string path.
 
 ## Outcomes & Retrospective
 
@@ -401,8 +408,9 @@ Phase 6 outcome on 2026-04-22:
 
 - `Specification`, `Architecture`, and `Execution Plan` now share one planning interior contract: a placeholder-framed chat pane on the left and a wider document-focused pane on the right, without reopening the Phase 5 run header or stage rail
 - `ui/src/components/editor/plate-markdown-document.tsx` now owns repo-specific Plate markdown rendering for saved documents and edit-time previews, so planning pages no longer map stored markdown into ad hoc line-by-line paragraphs
-- planning edit/create flows still use the existing live run-detail actions, but the right pane now pairs the canonical markdown source field with a live Plate preview and round-trips changed markdown through Plate serialization on save while leaving title-only saves free to preserve the existing body text verbatim
-- targeted planning-route coverage now asserts against named document regions and the edit-time preview instead of raw paragraph nodes or ambiguous headings, matching the new Plate document surface contract
+- the targeted fix pass restored source-markdown ownership for save/export in Phase 6: planning edit/create flows still use the existing live run-detail actions, but the right pane now pairs the canonical markdown source field with a live Plate preview while revision saves persist the authored markdown string directly through a pure save-boundary helper instead of Plate serialization
+- title-only planning edits now compare against the persisted save draft rather than raw editor state, so trim-only title churn no longer creates redundant no-op revisions and body-noop saves preserve the existing markdown body verbatim
+- targeted planning-route coverage now asserts against named document regions, heading/list structure, the edit-time preview contract, and exact revision-save POST bodies, matching the final Phase 6 document surface and save-boundary contract
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx` pass on the Phase 6 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
@@ -713,7 +721,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
 - **Goal:** Migrate `Specification`, `Architecture`, and `Execution Plan` to the new split workspace with Plate-backed document surfaces.
 - **Scope Boundary:** In scope are the shared planning split layout, Plate document wrappers, markdown import/export, save/discard/create flows, and planning-specific states. Out of scope are live conversation panes and Cloudflare binding.
 - **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `.ultrakit/developer-docs/m1-architecture.md`.
@@ -723,8 +731,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** all three planning phases share one consistent layout and use Plate-backed document surfaces while keeping markdown canonical.
 - **Commit Expectation:** `migrate planning workspace to plate`
 - **Known Constraints / Baseline Failures:** do not introduce a new canonical document format; keep chat as a placeholder frame in this phase.
-- **Completion Notes:** Added `ui/src/components/editor/plate-markdown-document.tsx` as the repo-owned Plate markdown renderer for saved planning documents plus edit-time previews, then rewired `ui/src/features/runs/components/planning-workspace.tsx` to use that surface instead of raw line-by-line paragraph output. The planning document pane now keeps markdown canonical through the existing title/body form state, shows a live Plate preview while editing, round-trips changed markdown through Plate serialization on save, and keeps the left chat pane explicitly placeholder-framed rather than pretending live conversation transport exists. The shared planning split was widened toward the document side through `ui/src/app/styles.css`, and the targeted route suite now asserts the named document regions and preview contract instead of raw markdown text nodes or ambiguous heading labels. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
-- **Next Starter Context:** Phase 7 should treat the Phase 5 shell and the Phase 6 planning document contract as stable. Leave `ui/src/components/editor/plate-markdown-document.tsx`, the named planning document regions, and the placeholder-framed planning chat pane alone; focus on the execution DAG workspace and graph-to-task handoff.
+- **Completion Notes:** Added `ui/src/components/editor/plate-markdown-document.tsx` as the repo-owned Plate markdown renderer for saved planning documents plus edit-time previews, then rewired `ui/src/features/runs/components/planning-workspace.tsx` to use that surface instead of raw line-by-line paragraph output. The right pane now keeps markdown canonical through the existing title/body form state, shows a live Plate preview while editing, and persists revision saves from the authored markdown source string through a pure save-boundary helper instead of Plate serialization, which keeps task lists, strikethrough, title-only saves, and body-noop saves aligned with the document-first backend contract. The left chat pane stays explicitly placeholder-framed rather than pretending live conversation transport exists. The shared planning split was widened toward the document side through `ui/src/app/styles.css`, and the targeted route suite now asserts the named document regions, heading/list structure, preview contract, and exact revision-save POST bodies. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
+- **Next Starter Context:** Phase 7 should treat the Phase 5 shell and the final Phase 6 planning document contract as stable. Leave `ui/src/components/editor/plate-markdown-document.tsx`, the named planning document regions, the source-markdown save boundary in `ui/src/features/runs/use-run-planning-phase-view-model.ts`, and the placeholder-framed planning chat pane alone; focus on the execution DAG workspace and graph-to-task handoff.
 
 ### Phase 7: Execution DAG Workspace
 

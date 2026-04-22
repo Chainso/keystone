@@ -16,6 +16,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+type FetchRequestRecord = {
+  jsonBody?: unknown;
+  method: string;
+  url: string;
+};
+
 function createDeferred<T>() {
   let resolvePromise: ((value: T) => void) | null = null;
   let rejectPromise: ((reason?: unknown) => void) | null = null;
@@ -35,10 +41,30 @@ function createDeferred<T>() {
   };
 }
 
+function getPlanningDocumentRegion(documentLabel: string) {
+  return screen.getByRole("region", { name: documentLabel });
+}
+
+function normalizeRenderedText(text: string | null | undefined) {
+  return text?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function expectPlanningDocumentHeading(documentLabel: string, heading: string) {
+  expect(
+    within(getPlanningDocumentRegion(documentLabel)).getByRole("heading", {
+      level: 1,
+      name: heading
+    })
+  ).toBeInTheDocument();
+}
+
 function expectPlanningDocumentToContain(documentLabel: string, expectedText: string) {
-  expect(screen.getByRole("region", { name: documentLabel })).toHaveTextContent(
-    expectedText.replace(/^[-*]\s*/, "").trim()
-  );
+  const normalizedExpectedText = expectedText.replace(/^[-*]\s*/, "").trim();
+  const matchingListItem = within(getPlanningDocumentRegion(documentLabel))
+    .queryAllByRole("listitem")
+    .find((item) => normalizeRenderedText(item.textContent).includes(normalizedExpectedText));
+
+  expect(matchingListItem).toBeTruthy();
 }
 
 function createRunFixture(
@@ -825,6 +851,74 @@ function getFetchRequests(fetchMock: ReturnType<typeof vi.fn>) {
   }));
 }
 
+async function buildFetchRequestRecord(
+  request: RequestInfo | URL,
+  init?: RequestInit
+): Promise<FetchRequestRecord> {
+  const record: FetchRequestRecord = {
+    method: getRunRequestMethod(request, init),
+    url: getRunRequestUrl(request)
+  };
+
+  if (request instanceof Request) {
+    if (!request.headers.get("content-type")?.includes("application/json")) {
+      return record;
+    }
+
+    try {
+      record.jsonBody = await request.clone().json();
+    } catch {
+      // Ignore non-JSON or unreadable request bodies in the recorder.
+    }
+
+    return record;
+  }
+
+  if (!new Headers(init?.headers).get("content-type")?.includes("application/json")) {
+    return record;
+  }
+
+  if (typeof init?.body !== "string" || init.body.length === 0) {
+    return record;
+  }
+
+  try {
+    record.jsonBody = JSON.parse(init.body);
+  } catch {
+    // Ignore malformed JSON in the recorder so the route handler still surfaces failures.
+  }
+
+  return record;
+}
+
+function findFetchRequestRecord(
+  requestLog: FetchRequestRecord[],
+  input: {
+    method: string;
+    url: string;
+  }
+) {
+  return (
+    requestLog.find(
+      (request) => request.method === input.method && request.url === input.url
+    ) ?? null
+  );
+}
+
+function expectFetchJsonRequest(
+  requestLog: FetchRequestRecord[],
+  input: {
+    jsonBody: unknown;
+    method: string;
+    url: string;
+  }
+) {
+  const request = findFetchRequestRecord(requestLog, input);
+
+  expect(request).not.toBeNull();
+  expect(request?.jsonBody).toEqual(input.jsonBody);
+}
+
 function countFetchRequests(
   fetchMock: ReturnType<typeof vi.fn>,
   input: {
@@ -841,7 +935,10 @@ function createBrowserRunFetch(
   overrides: Record<string, (() => Promise<Response> | Response) | undefined> = {}
 ) {
   const browserRunFixtures = cloneRunFixtures();
+  const requestLog: FetchRequestRecord[] = [];
   const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+    requestLog.push(await buildFetchRequestRecord(request, init));
+
     const url = getRunRequestUrl(request);
     const method = getRunRequestMethod(request, init);
 
@@ -1211,7 +1308,8 @@ function createBrowserRunFetch(
   vi.stubGlobal("fetch", fetchMock);
 
   return {
-    fetchMock
+    fetchMock,
+    requestLog
   };
 }
 
@@ -1347,6 +1445,7 @@ describe("Run routes", () => {
 
   it.each([
     {
+      documentHeading: "Architecture",
       documentPath: "architecture",
       expectedLine: "- Keep route files thin.",
       path: "/runs/run-104/architecture",
@@ -1354,6 +1453,7 @@ describe("Run routes", () => {
       revisionTitle: "Run Architecture"
     },
     {
+      documentHeading: "Execution Plan",
       documentPath: "execution-plan",
       expectedLine: "- Cut over the live provider seam.",
       path: "/runs/run-104/execution-plan",
@@ -1362,7 +1462,14 @@ describe("Run routes", () => {
     }
   ])(
     "loads the current planning revision for $path through the live route seam",
-    async ({ documentPath, expectedLine, path, phaseHeading, revisionTitle }) => {
+    async ({
+      documentHeading,
+      documentPath,
+      expectedLine,
+      path,
+      phaseHeading,
+      revisionTitle
+    }) => {
       createBrowserRunFetch();
 
       renderRoute(path);
@@ -1374,13 +1481,16 @@ describe("Run routes", () => {
       expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
         "Conversation attached to this document."
       );
+      expectPlanningDocumentHeading(`${revisionTitle} document`, documentHeading);
       expectPlanningDocumentToContain(`${revisionTitle} document`, expectedLine);
     }
   );
 
-  it("loads the current specification revision and saves a new revision without route churn", async () => {
-    const { fetchMock } = createBrowserRunFetch();
+  it("loads the current specification revision, preserves source markdown in the save payload, and stays on-route", async () => {
+    const { fetchMock, requestLog } = createBrowserRunFetch();
     const { router } = renderRoute("/runs/run-104/specification");
+    const updatedBody =
+      "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n- [ ] Preserve task lists in saved markdown.\n- ~~Remove the legacy preview path.~~\n";
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
@@ -1389,6 +1499,7 @@ describe("Run routes", () => {
     expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
       "Conversation attached to this document."
     );
+    expectPlanningDocumentHeading("Run Specification document", "Specification");
     expectPlanningDocumentToContain(
       "Run Specification document",
       "- Replace scaffold run detail with live data."
@@ -1403,11 +1514,12 @@ describe("Run routes", () => {
     });
     fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
       target: {
-        value:
-          "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n"
+        value: updatedBody
       }
     });
+    expectPlanningDocumentHeading("Document preview", "Specification");
     expectPlanningDocumentToContain("Document preview", "Save current revisions without route churn.");
+    expectPlanningDocumentToContain("Document preview", "Preserve task lists in saved markdown.");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -1419,7 +1531,20 @@ describe("Run routes", () => {
       "Run Specification v2 document",
       "- Save current revisions without route churn."
     );
+    expectPlanningDocumentToContain(
+      "Run Specification v2 document",
+      "Preserve task lists in saved markdown."
+    );
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+    expectFetchJsonRequest(requestLog, {
+      jsonBody: {
+        body: updatedBody,
+        contentType: "text/markdown; charset=utf-8",
+        title: "Run Specification v2"
+      },
+      method: "POST",
+      url: "/v1/runs/run-104/documents/run-104-specification/revisions"
+    });
 
     expect(getFetchRequests(fetchMock)).toEqual(
       expect.arrayContaining([
@@ -1429,6 +1554,48 @@ describe("Run routes", () => {
         })
       ])
     );
+  });
+
+  it("treats title-only planning saves as body-preserving revisions and ignores trim-only title churn", async () => {
+    const { requestLog } = createBrowserRunFetch();
+    const originalBody = "# Architecture\n- Keep route files thin.\n";
+
+    renderRoute("/runs/run-104/architecture");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+
+    const titleField = screen.getByRole("textbox", { name: "Document title" });
+    fireEvent.change(titleField, {
+      target: {
+        value: "  Run Architecture  "
+      }
+    });
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+    fireEvent.change(titleField, {
+      target: {
+        value: "Run Architecture v2"
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture v2" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expectPlanningDocumentHeading("Run Architecture v2 document", "Architecture");
+    expectPlanningDocumentToContain("Run Architecture v2 document", "- Keep route files thin.");
+    expectFetchJsonRequest(requestLog, {
+      jsonBody: {
+        body: originalBody,
+        contentType: "text/markdown; charset=utf-8",
+        title: "Run Architecture v2"
+      },
+      method: "POST",
+      url: "/v1/runs/run-104/documents/run-104-architecture/revisions"
+    });
   });
 
   it("keeps planning edits in place and allows retry after a revision save fails", async () => {
