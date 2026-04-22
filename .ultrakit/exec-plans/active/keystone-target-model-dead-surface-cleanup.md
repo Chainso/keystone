@@ -95,6 +95,21 @@ Compatibility that **is** required:
   **Decision:** Delete `src/http/handlers/ws.ts`, remove the stale websocket mock from `tests/http/projects.test.ts`, and pin the removed realtime route with an explicit `/v1/runs/:runId/ws` `404` assertion in `tests/http/app.test.ts`.  
   **Rationale:** The live router never mounted the websocket handler, and one direct app-level negative assertion is a clearer contract than retaining dead compatibility code or relying only on generic fallthrough.
 
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 1 review closeout  
+  **Decision:** Accept Phase 1 without a fix pass after the review round returned no critical or important findings.  
+  **Rationale:** The only review note was a minor wording nit in this plan; the code, tests, and route-contract cleanup itself passed all five review dimensions.
+
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 2 kickoff  
+  **Decision:** Narrow Phase 2 to deleting dead Maestro session/approval contracts, preserving only the live `WorkspaceStrategy`, `AgentRuntimeKind`, and `ArtifactStorageBackend` families, and limiting adjacent task-session cleanup to clearly write-only baggage such as `parentSessionId`.  
+  **Rationale:** Read-only exploration confirmed those are the live import seams today, while `src/maestro/session.ts` is unimported dead code and the real integration risk sits with the still-live `sessionId`/`taskSessionId` path rather than with the removed approval vocabulary.
+
+- **Date:** 2026-04-21  
+  **Phase:** Execution - Phase 2 complete  
+  **Decision:** Delete `src/maestro/session.ts`, narrow `src/maestro/contracts.ts` to the three still-live contract families, remove write-only `parentSessionId` state from `TaskSessionDO`, and drop the stale session-status mocks from `tests/lib/agents/keystone-think-agent.test.ts`.  
+  **Rationale:** Repo search confirmed the deleted Maestro session surface had no consumers, while the surviving imports still map exactly to the live Think/task-workspace runtime slice and the focused validation suite stayed green after the narrowing.
+
 ## Progress
 
 - [x] 2026-04-21 Reviewed the current target-model record in the archived migration plan plus the current M1 and Think runtime developer docs.
@@ -103,7 +118,9 @@ Compatibility that **is** required:
 - [x] 2026-04-21 Recorded a focused backend baseline: `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts tests/lib/artifact-keys.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/agents/keystone-think-agent.test.ts` passes, and `rtk npm run test -- tests/lib/agents/implementer-agent.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts` passes.
 - [x] 2026-04-21 User approved execution; active-plan status moved to `In Progress`, and Phase 1 was re-verified against the current route tree before handing off implementation.
 - [x] 2026-04-21 Phase 1 complete: deleted the dead websocket handler, removed the stale projects-test mock, and made removed-surface coverage assert `/v1/runs/:runId/ws` returns `404`.
-- [ ] Phase 2 complete: narrow `src/maestro/` to the current Think-backed runtime slice.
+- [x] 2026-04-21 Phase 1 review passed across spec compliance, test quality, code quality, regression safety, and integration coherence; no fix pass was required.
+- [x] 2026-04-21 Phase 2 execution context re-gathered: only `WorkspaceStrategy`, `AgentRuntimeKind`, and `ArtifactStorageBackend` are live Maestro exports; `src/maestro/session.ts` is dead; `parentSessionId` is write-only; `sessionId`/`taskSessionId` remain live and out of scope for renaming.
+- [x] 2026-04-21 Phase 2 complete: deleted the dead `src/maestro/session.ts` module, narrowed `src/maestro/contracts.ts` to `WorkspaceStrategy` / `AgentRuntimeKind` / `ArtifactStorageBackend`, removed `parentSessionId` from `TaskSessionDO`, and cleaned stale `getSessionRecord` / `updateSessionStatus` mocks from `tests/lib/agents/keystone-think-agent.test.ts`.
 - [ ] Phase 3 complete: narrow admitted artifact kinds to the current model and remove dead artifact helper families.
 - [ ] Phase 4 complete: restore contributor-facing target-model docs and clean the remaining README/notes source-of-truth drift after the code cleanup lands.
 
@@ -118,11 +135,12 @@ Compatibility that **is** required:
 - The broad repo baseline is noisy and must not be used as a cleanup acceptance gate. Focused backend tests are a better signal for this plan.
 - Phase 1 re-verification confirmed `src/http/handlers/ws.ts` is unregistered dead code: the live app mounts `src/http/router.ts`, which only registers the `v1` route matrix, and repo search now only finds the websocket handler file itself plus a stale mock in `tests/http/projects.test.ts`.
 - The old websocket path is not currently asserted explicitly in `tests/http/app.test.ts`; removed-surface coverage is implicit via the app-level `404` fallback unless Phase 1 adds a direct `/v1/runs/:runId/ws` negative assertion.
-- After Phase 1 cleanup, the only remaining websocket-path reference in the repo is the explicit `/v1/runs/:runId/ws` negative assertion in `tests/http/app.test.ts`; no live imports or route registrations surfaced.
+- After Phase 1 cleanup, the only remaining websocket-path reference in code/tests is the explicit `/v1/runs/:runId/ws` negative assertion in `tests/http/app.test.ts`; no live imports or route registrations surfaced.
+- Phase 2 reachability checks were cleaner than expected: repo search found no imports of `src/maestro/session.ts` or its status helpers anywhere, so the runtime narrowing did not require follow-on production rewiring beyond the planned `parentSessionId` and stale-test cleanup.
 
 ## Outcomes & Retrospective
 
-Phase 1 landed as planned: the backend tree no longer carries a dead websocket handler or a stale projects-test mock implying a realtime control-plane surface still exists. The operator-facing route set is unchanged, and removed-surface coverage now asserts the websocket path directly through the app-level `404` boundary.
+Phases 1 and 2 landed as planned: the backend tree no longer carries the dead websocket handler, stale Maestro session/approval contracts, or adjacent write-only `parentSessionId` baggage that implied a broader runtime model than the current Think-backed slice actually uses. The operator-facing route set is unchanged, the active `sessionId` / `taskSessionId` bridge stayed intact, and the focused runtime suite passed after the contract narrowing.
 
 If later phases uncover a live dependency on one of the remaining suspected dead seams, update this section and the relevant phase handoff before continuing.
 
@@ -265,6 +283,8 @@ Planning baseline evidence:
 - `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts tests/lib/artifact-keys.test.ts tests/lib/finalize-run.test.ts tests/lib/workflows/run-workflow-compile.test.ts tests/lib/agents/keystone-think-agent.test.ts` -> passes.
 - `rtk npm run test -- tests/lib/agents/implementer-agent.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts` -> passes.
 - Phase 1 validation: `rtk npm run test -- tests/http/app.test.ts tests/http/projects.test.ts` -> passes after deleting `src/http/handlers/ws.ts`, removing the stale websocket mock from `tests/http/projects.test.ts`, and adding a direct `/v1/runs/run-123/ws` `404` assertion in `tests/http/app.test.ts`.
+- Phase 2 reachability check: `rtk rg -n "SessionType|SessionStatus|WorkspaceStrategy|AgentRuntimeKind|ArtifactStorageBackend|SessionEvent|Approval|Lease|canTransitionSessionStatus|buildConfiguredSession|deriveSessionStatusForAgentTurnOutcome|parentSessionId" src tests` -> only `WorkspaceStrategy`, `AgentRuntimeKind`, and `ArtifactStorageBackend` are live imports; `src/maestro/session.ts` is self-contained dead code; `parentSessionId` is write-only in `src/durable-objects/TaskSessionDO.ts`.
+- Phase 2 validation: `rtk npm run test -- tests/lib/agents/runtime-contract.test.ts tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/task-session-do.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts` -> passes (6 files, 23 tests) after deleting `src/maestro/session.ts`, narrowing `src/maestro/contracts.ts`, removing `parentSessionId`, and cleaning the stale Think-agent test mocks.
 
 Primary file inventory for execution:
 
@@ -358,7 +378,7 @@ Delete dormant session/approval/event-era Maestro contracts and keep only the ru
 
 ### Phase Handoff
 
-**Status:** Pending
+**Status:** Complete
 
 **Goal**  
 Make `src/maestro/` honest about the current backend by removing or narrowing dead legacy contracts while preserving the active agent-runtime seam.
@@ -384,7 +404,7 @@ Out of scope: redesigning the Think runtime, renaming the live task-session brid
 Potentially small import updates in `src/keystone/agents/base/KeystoneThinkAgent.ts`, `src/durable-objects/TaskSessionDO.ts`, or nearby tests.
 
 **Validation**  
-Run `rtk npm run test -- tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/task-session-do.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts`.  
+Run `rtk npm run test -- tests/lib/agents/runtime-contract.test.ts tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/task-session-do.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts`.  
 Success means the Think-backed runtime and task workflow tests still pass after the contract narrowing.
 
 **Plan / Docs To Update**  
@@ -399,6 +419,12 @@ A narrower `src/maestro/` surface that no longer exports dormant approval/sessio
 
 **Known Constraints / Baseline Failures**  
 `rtk npm run typecheck` is already red outside this phase because of `tests/lib/db-client-worker.test.ts`; do not use broad typecheck as the phase gate.
+
+**Completion Notes**  
+Deleted `src/maestro/session.ts`, narrowed `src/maestro/contracts.ts` to the live `WorkspaceStrategy`, `AgentRuntimeKind`, and `ArtifactStorageBackend` families, removed write-only `parentSessionId` baggage from `src/durable-objects/TaskSessionDO.ts`, and dropped the stale `getSessionRecord` / `updateSessionStatus` mocks from `tests/lib/agents/keystone-think-agent.test.ts`. Focused validation passed with `rtk npm run test -- tests/lib/agents/runtime-contract.test.ts tests/lib/agents/keystone-think-agent.test.ts tests/lib/agents/implementer-agent.test.ts tests/lib/task-session-do.test.ts tests/lib/workflows/task-workflow-think.test.ts tests/lib/workflows/task-workflow-scripted.test.ts`.
+
+**Next Starter Context**  
+Phase 2 is complete and should be committed without the unrelated `package-lock.json` churn. Phase 3 can now focus entirely on artifact-surface narrowing: `src/lib/artifacts/keys.ts`, `src/lib/db/artifacts.ts`, `src/http/api/v1/artifacts/contracts.ts`, `src/keystone/integration/finalize-run.ts`, and the focused artifact/finalization/workflow tests. The Maestro runtime seam is now reduced to the live contract families, `src/maestro/session.ts` is gone, and the `sessionId` / `taskSessionId` / `buildStableSessionId` bridge remains unchanged for the next pass.
 
 ## Phase 3 - Narrow the Artifact Surface to the Current Model
 

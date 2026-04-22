@@ -33,7 +33,6 @@ export type TaskSessionState = {
   sessionId: string;
   taskId: string;
   runTaskId: string;
-  parentSessionId?: string | null | undefined;
   sandboxId: string;
   workspace?: MaterializedWorkspace | undefined;
   activeProcess?: ProcessSnapshot | undefined;
@@ -46,7 +45,6 @@ export type InitializeTaskSessionInput = {
   sessionId: string;
   taskId: string;
   runTaskId: string;
-  parentSessionId?: string | null | undefined;
   sandboxId?: string | undefined;
 };
 
@@ -190,7 +188,6 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
         sessionId: input.sessionId,
         taskId: input.taskId,
         runTaskId: input.runTaskId,
-        parentSessionId: input.parentSessionId ?? null,
         sandboxId: input.sandboxId ?? buildRunSandboxId(input.tenantId, input.runId)
       };
       await this.persistState();
