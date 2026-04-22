@@ -35,6 +35,7 @@ function getActionLinkClassName({ isActive }: NavLinkRenderProps) {
 export function ShellSidebar() {
   const { actions, meta, state } = useProjectManagement();
   const { actions: themeActions, state: themeState } = useTheme();
+  const currentProjectDescription = state.currentProject?.description?.trim();
   const currentProjectLabel =
     state.currentProject?.displayName ??
     (meta.status === "loading"
@@ -43,8 +44,8 @@ export function ShellSidebar() {
         ? "No projects yet"
         : "Unable to load projects");
   const projectSummary =
-    state.currentProject?.description ??
-    state.currentProject?.projectKey ??
+    currentProjectDescription ||
+    state.currentProject?.projectKey ||
     (meta.status === "loading"
       ? "Keystone is loading the available project list."
       : meta.status === "empty"

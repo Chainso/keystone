@@ -305,6 +305,10 @@ function getProjectSelector() {
   return screen.getByRole("combobox", { name: "Project" });
 }
 
+function getThemePreferencePanel() {
+  return screen.getByRole("group", { name: "Theme preference" }).closest("section");
+}
+
 function buildProjectsResponse(projects: CurrentProject[]) {
   return {
     data: {
@@ -822,6 +826,30 @@ describe("App shell", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("falls back to the project key in the sidebar when the current project description is blank", async () => {
+    const projectWithBlankDescription: CurrentProject = {
+      projectId: "project-fallback",
+      projectKey: "fallback-project-key",
+      displayName: "Fallback Project",
+      description: ""
+    };
+
+    stubProjectListFetch([projectWithBlankDescription]);
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+
+    const projectPanel = getProjectSelector().closest("section");
+
+    expect(projectPanel).not.toBeNull();
+    expect(
+      within(projectPanel as HTMLElement).getAllByText(projectWithBlankDescription.projectKey, {
+        selector: "p"
+      })
+    ).toHaveLength(2);
+  });
+
   it("renders a coherent no-project shell state when the API returns no projects", async () => {
     stubProjectListFetch([]);
 
@@ -1027,6 +1055,46 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-202/specification");
     });
+  });
+
+  it("keeps the workspace-location chrome visible on nested run detail routes", async () => {
+    const project: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const run = createLiveRunFixture(project.projectId, {
+      runId: "run-104",
+      workflowInstanceId: "wf-run-104"
+    });
+
+    stubRunCreationFetch({
+      createRunResponses: [
+        () =>
+          createErrorResponse({
+            code: "unexpected_create",
+            message: "Create run should not be called for this test.",
+            status: 500
+          })
+      ],
+      initialRuns: [run],
+      knownRunsById: {
+        [run.runId]: run
+      },
+      project
+    });
+
+    renderRoute("/runs/run-104/specification", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
+    const workspaceLocation = screen.getByLabelText("Workspace location");
+
+    expectWorkspaceLocation("Keystone Cloudflare", "Runs");
+    expect(
+      within(workspaceLocation).getByText("Create runs and step into the current run workspace.")
+    ).toBeInTheDocument();
   });
 
   it("does not navigate into a stale run when the current project changes before + New run resolves", async () => {
@@ -1323,7 +1391,14 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
     expectWorkspaceLocation("Keystone Cloudflare", "Documentation");
 
-    const themePreference = screen.getByRole("group", { name: "Theme preference" });
+    const themePreferencePanel = getThemePreferencePanel();
+
+    expect(themePreferencePanel).not.toBeNull();
+    expect(themePreferencePanel?.closest("aside")?.lastElementChild).toBe(themePreferencePanel);
+
+    const themePreference = within(themePreferencePanel as HTMLElement).getByRole("group", {
+      name: "Theme preference"
+    });
 
     fireEvent.click(within(themePreference).getByRole("radio", { name: "Dark" }));
 

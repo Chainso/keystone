@@ -265,6 +265,11 @@ Baseline compatibility facts already captured:
   **Decision:** Tightened the focused shell tests to assert the new workspace-location chrome and the sidebar-owned theme toggle while preserving existing route and project-management behavior.
   **Rationale:** Phase 4 changes the shared app frame, so the validation had to prove the new chrome contract without drifting into destination-specific assertions.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 4 fix pass
+  **Decision:** Ran the one allowed targeted fix pass to restore the sidebar project-summary fallback for blank descriptions and to strengthen shell tests around the reserved footer toggle slot plus nested run-detail workspace chrome.
+  **Rationale:** Review found that the project-management layer normalizes missing descriptions to `""`, and the initial Phase 4 assertions proved only toggle existence rather than the required footer placement and run-detail shell-chrome contract.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -281,6 +286,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 3 completed: workspace wrapper inventory, frame primitives, and Keystone-owned `EntityTable` landed and are now consumed by the current shared/layout scaffold surfaces.
 - [x] 2026-04-22 Phase 3 targeted fix pass completed: `EntityTable` now exposes explicit row activation, generic table styling no longer uses `runs-*` naming, and activation-suppression behavior is covered in the targeted UI tests.
 - [x] 2026-04-22 Phase 4 completed: the persistent shell now uses wrapper-backed sidebar panels, route-aware stage chrome, and the footer-owned theme toggle slot without pushing destination-specific behavior into the shell.
+- [x] 2026-04-22 Phase 4 targeted fix pass completed: blank project descriptions now fall back to stable sidebar copy, and shell coverage now proves the footer-owned theme toggle slot plus nested run-detail workspace-location chrome.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -359,8 +365,9 @@ Phase 4 outcome on 2026-04-22:
 
 - the app shell now reads as one project-scoped workspace: the sidebar uses wrapper-backed panels for project context, destination navigation, and footer-owned theme controls, while the main stage gets a route-aware workspace-location strip without moving destination logic into `ui/src/routes/`
 - the left rail now exposes the visible `system | light | dark` preference control at the bottom of the persistent sidebar, reusing the Phase 2 theme provider/storage seam instead of introducing a second theme owner
+- the targeted fix pass closed the remaining shell regressions by treating blank project descriptions like missing sidebar summary data and by proving, through focused tests, that the theme toggle stays in the reserved sidebar footer slot and that nested `/runs/:id/specification` routes still render the workspace-location chrome
 - global navigation and project actions stay stable against the workspace spec, but the shell markup now keeps destination summaries out of link accessible names and avoids duplicating stage-state headings like `Loading projects`
-- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 4 implementation; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 4 implementation and fix pass; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
 
@@ -636,7 +643,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
 - **Goal:** Rebuild the persistent app frame and left sidebar around the new wrapper system.
 - **Scope Boundary:** In scope are the shell layout, persistent sidebar, destination framing, and top-level chrome. Out of scope are run-detail interiors, document editing, and live chat behavior.
 - **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/shared/layout/app-shell.tsx`, `ui/src/shared/layout/shell-sidebar.tsx`, `ui/src/routes/shell-layout.tsx`.
@@ -646,8 +653,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** one cohesive persistent left rail and shell frame that match the workspace spec, including the reserved theme toggle location.
 - **Commit Expectation:** `rebuild keystone shell chrome`
 - **Known Constraints / Baseline Failures:** keep destinations and sidebar structure stable. Do not drift into destination-specific behavior.
-- **Completion Notes:** Rebuilt the shared shell around the Phase 3 wrapper layer without expanding route ownership: the persistent sidebar now uses stacked workspace panels for project context, project actions, global navigation, and the footer-owned theme selector; destination summaries moved into route-aware shell chrome above the outlet content; and the shell-specific tests now assert the new workspace-location strip plus the visible sidebar theme toggle while preserving existing live project-management behavior. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
-- **Next Starter Context:** Phase 5 should keep `ui/src/routes/` thin and treat the new shell chrome as stable. Build the `Runs` index and run-detail frame inside the existing route tree by reusing the wrapper-backed sidebar/stage contract, the `resolveShellLocation` route framing seam, and the footer-owned theme toggle placement without reintroducing destination-specific shell logic.
+- **Completion Notes:** Rebuilt the shared shell around the Phase 3 wrapper layer without expanding route ownership: the persistent sidebar now uses stacked workspace panels for project context, project actions, global navigation, and the footer-owned theme selector; destination summaries moved into route-aware shell chrome above the outlet content; and the shell-specific tests now assert the new workspace-location strip plus the visible sidebar theme toggle while preserving existing live project-management behavior. The targeted fix pass then restored the blank-description fallback so the project summary falls back to `projectKey`, strengthened the theme-toggle assertion to prove the toggle panel remains in the reserved bottom sidebar slot, and added run-detail shell coverage for nested `/runs/:id/specification` routes. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- **Next Starter Context:** Phase 5 should keep `ui/src/routes/` thin and treat the new shell chrome as stable. Build the `Runs` index and run-detail frame inside the existing route tree by reusing the wrapper-backed sidebar/stage contract, the `resolveShellLocation` route framing seam, the footer-owned theme toggle placement, and the sidebar summary fallback without reintroducing destination-specific shell logic.
 
 ### Phase 5: Runs Index And Run-Detail Structural Frame
 
