@@ -5,6 +5,7 @@ import type { LanguageModel } from "ai";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 
+import type { AgentRuntimeArtifactKind } from "../../../lib/artifacts/model";
 import type { AgentTurnContext, AgentRuntimeArtifact } from "../../../maestro/agent-runtime";
 import type { SandboxAgentBridge } from "../../../lib/workspace/init";
 import { execSandboxAgentBash } from "../tools/bash";
@@ -183,7 +184,7 @@ function inferContentType(filePath: string) {
   return "text/plain; charset=utf-8";
 }
 
-function inferArtifactKind(filePath: string) {
+function inferArtifactKind(filePath: string): AgentRuntimeArtifactKind {
   if (filePath.endsWith(".md")) {
     return "run_note";
   }

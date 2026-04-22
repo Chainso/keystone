@@ -14,6 +14,7 @@ import {
   uuid
 } from "drizzle-orm/pg-core";
 
+import type { ArtifactKind } from "../artifacts/model";
 import type { DocumentKind, DocumentScopeType } from "../documents/model";
 
 const jsonbDefault = sql`'{}'::jsonb`;
@@ -28,7 +29,7 @@ export const artifactRefs = pgTable(
       .references(() => projects.projectId, { onDelete: "cascade" }),
     runId: text("run_id").references((): AnyPgColumn => runs.runId, { onDelete: "cascade" }),
     runTaskId: uuid("run_task_id"),
-    artifactKind: text("artifact_kind").notNull(),
+    artifactKind: text("artifact_kind").$type<ArtifactKind>().notNull(),
     storageBackend: text("storage_backend").notNull(),
     bucket: text("bucket").notNull(),
     objectKey: text("object_key").notNull(),

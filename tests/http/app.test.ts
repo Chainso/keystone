@@ -1302,7 +1302,7 @@ describe("app", () => {
       }
     });
   });
-  it("returns 404 for removed approval, event, coordinator, and decision-package surfaces", async () => {
+  it("returns 404 for removed approval, realtime, event, coordinator, and decision-package surfaces", async () => {
     const responses = await Promise.all([
       app.request(
         "http://example.com/v1/runs/run-123/evidence",
@@ -1345,6 +1345,16 @@ describe("app", () => {
         env
       ),
       app.request(
+        "http://example.com/v1/runs/run-123/ws",
+        {
+          headers: {
+            Authorization: "Bearer secret-dev-token",
+            "X-Keystone-Tenant-Id": "tenant-fixture"
+          }
+        },
+        env
+      ),
+      app.request(
         "http://example.com/v1/decision-packages",
         {
           headers: {
@@ -1356,6 +1366,6 @@ describe("app", () => {
       )
     ]);
 
-    expect(responses.map((response) => response.status)).toEqual([404, 404, 404, 404, 404]);
+    expect(responses.map((response) => response.status)).toEqual([404, 404, 404, 404, 404, 404]);
   });
 });

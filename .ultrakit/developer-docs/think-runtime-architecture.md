@@ -59,6 +59,8 @@ Important rules:
 - staged files under `/artifacts/out` are not durable until `TaskWorkflow` promotes them into R2 and records `artifact_refs`
 - task rematerialization excludes the current task's own prior artifacts from `/artifacts/in`
 
+`TaskSessionDO` is internal execution plumbing, not a product-level return to session-centric state.
+
 ## Think Implementer Path
 
 The current Think-backed task role is `implementer`.
@@ -104,9 +106,9 @@ The Think-backed task path is file-first:
 
 Current promoted artifact expectations:
 
-- markdown/text notes can be promoted as `run_note`
+- task turns can only promote `run_note` and `staged_output`
 - the scripted path still promotes `task_log`
-- finalization writes `run_summary`
+- finalization writes `run_summary` and keeps the stable object key `release/run-summary.json`
 
 Git commits made inside the task worktree are useful workspace state, but `TaskWorkflow` does not currently promote commit metadata into Keystone's durable task record.
 

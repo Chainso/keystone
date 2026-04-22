@@ -2,6 +2,8 @@
 
 Internal developer documentation for the project team. Covers architecture, runtime internals, and key design decisions.
 
+Start with [Target model handoff](./keystone-target-model-handoff.md) when changing persistence, API contracts, run orchestration, artifact promotion, or document behavior.
+
 ## Current Docs
 
 - [Target model handoff](./keystone-target-model-handoff.md)

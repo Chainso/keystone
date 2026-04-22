@@ -57,17 +57,18 @@ Current UI scope:
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
 - explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail artifact review with supported text preview plus compatibility messaging for unsupported content
+- live `Workstreams` loading through `GET /v1/projects/:projectId/tasks` with server-side filtering, pagination, and direct links back into `Runs > Execution`
 - board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
-- explicit compatibility states for `Documentation` and `Workstreams` when the selected live project is not present in the scaffold dataset
+- explicit compatibility states for `Documentation` when the selected live project is not present in the scaffold dataset
 
 Current UI non-goals:
 
-- live backend loading for `Documentation` and `Workstreams`
+- live backend loading for `Documentation`
 - real task conversations, streaming execution updates, or live review diff synthesis beyond artifact metadata plus supported text preview
 - persisted documentation or workstream editing
 - final visual polish
 - auth-specific UI flows or tenant-selection controls
-- destination-specific behavior beyond the current live project-management and runs surfaces
+- destination-specific behavior beyond the current live project-management, runs, and Workstreams surfaces
 
 ## UI Architecture
 
@@ -84,10 +85,10 @@ The frontend scaffold is intentionally split by ownership so future feature work
 Current UI boundary:
 
 - the scaffold is served from the same Worker deployable as the `v1` API
-- the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, and the full `Runs` destination
+- the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, the full `Runs` destination, and `Workstreams`
 - `Runs` is now truthful end to end for project-scoped index, run creation, planning authoring, explicit compile, execution DAG, and task artifact review
-- `Documentation` and `Workstreams` still rely on scaffold-backed selectors and render explicit compatibility states for non-scaffold live projects
-- documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree
+- `Documentation` still relies on scaffold-backed selectors and renders explicit compatibility states for non-scaffold live projects
+- documentation destination content, evidence, integration, and release flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend
 
@@ -95,6 +96,7 @@ The current backend contract is project-first:
 
 - `POST /v1/projects`, `GET /v1/projects`, `GET /v1/projects/:projectId`, and `PATCH /v1/projects/:projectId` manage durable project config and now return canonical `data`/`meta` envelopes
 - `GET /v1/projects/:projectId/runs` and `POST /v1/projects/:projectId/runs` manage project-scoped run collections
+- `GET /v1/projects/:projectId/tasks` backs the live `Workstreams` board with server-side filtering and pagination over authoritative run-task rows
 - project components materialize into the run sandbox and task-specific worktrees under `/workspace/runs/<run>/tasks/<task>/code/<component>`
 - project env vars are non-secret only in `v1`
 
@@ -105,6 +107,7 @@ The current UI-first `v1` surface is centered on:
 - `GET /v1/projects/:projectId`
 - `GET /v1/projects/:projectId/documents`
 - `GET /v1/projects/:projectId/runs`
+- `GET /v1/projects/:projectId/tasks`
 - `POST /v1/projects/:projectId/runs`
 - `GET /v1/runs/:runId`
 - `POST /v1/runs/:runId/compile`
@@ -120,10 +123,11 @@ The current UI-first `v1` surface is centered on:
 
 Removed from the target model and current backend contract:
 
-- legacy run-package resources
+- decision-package / legacy run-package resources
 - approval-gated repo access
 - run event streams / live update surfaces
 - release / evidence / integration placeholder resources
+- session/event-derived product state
 - public task-message write APIs
 
 For local validation, the fixture bootstrap helper converges on one deterministic fixture project per tenant:

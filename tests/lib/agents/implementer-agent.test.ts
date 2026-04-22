@@ -298,6 +298,34 @@ describe("implementer agent helpers", () => {
     expect(session.files.get("/artifacts/out/summary.md")?.content).toBe("# done\n");
   });
 
+  it("classifies non-markdown staged files as staged_output", async () => {
+    const session = new FakeExecutionSession();
+    const bridge = createBridge();
+
+    await session.writeFile("/artifacts/out/summary.md", "# done\n");
+    await session.writeFile("/artifacts/out/report.json", '{ "status": "ok" }\n');
+
+    const stagedArtifacts = await collectStagedArtifacts(
+      session as unknown as ExecutionSession,
+      bridge
+    );
+
+    expect(stagedArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "/artifacts/out/summary.md",
+          kind: "run_note",
+          contentType: "text/markdown; charset=utf-8"
+        }),
+        expect.objectContaining({
+          path: "/artifacts/out/report.json",
+          kind: "staged_output",
+          contentType: "application/json; charset=utf-8"
+        })
+      ])
+    );
+  });
+
   it("synthesizes a run_note when the turn staged no markdown artifact", async () => {
     const session = new FakeExecutionSession();
     const bridge = createBridge();

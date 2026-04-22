@@ -27,27 +27,6 @@ export function taskLogArtifactKey(
   return `${tenantRunPrefix(tenantId, runId)}/tasks/${keySegment(runTaskId)}/logs/${keySegment(attemptId)}.jsonl`;
 }
 
-export function taskEvidenceIndexArtifactKey(
-  tenantId: string,
-  runId: string,
-  taskId: string,
-  attemptId: string
-) {
-  return `${tenantRunPrefix(tenantId, runId)}/tasks/${keySegment(taskId)}/evidence/${keySegment(attemptId)}/index.json`;
-}
-
-export function integrationMergeReportArtifactKey(
-  tenantId: string,
-  runId: string,
-  integrationId: string
-) {
-  return `${tenantRunPrefix(tenantId, runId)}/integration/${keySegment(integrationId)}/merge-report.json`;
-}
-
-export function releasePackArtifactKey(tenantId: string, runId: string) {
-  return `${tenantRunPrefix(tenantId, runId)}/release/release-pack.zip`;
-}
-
 export function runSummaryArtifactKey(tenantId: string, runId: string) {
   return `${tenantRunPrefix(tenantId, runId)}/release/run-summary.json`;
 }

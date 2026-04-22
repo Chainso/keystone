@@ -1,5 +1,6 @@
 import type { ExecutionSession } from "@cloudflare/sandbox";
 
+import type { ArtifactKind } from "../artifacts/model";
 import {
   createAgentFilesystemLayout,
   type AgentFilesystemLayout
@@ -55,7 +56,7 @@ export type WorkspaceMaterializationSource =
 
 export interface ProjectedArtifactManifestEntry {
   artifactRefId: string;
-  kind: string;
+  kind: ArtifactKind;
   contentType: string;
   storageUri: string;
   projectedPath: string;
@@ -109,7 +110,7 @@ export interface MaterializedWorkspaceComponent {
 
 export interface ProjectedArtifactInput {
   artifactRefId: string;
-  kind: string;
+  kind: ArtifactKind;
   contentType: string;
   storageUri: string;
   body: string;
