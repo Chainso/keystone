@@ -5,6 +5,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../components/workspace/entity-table";
+import { DocumentationWorkspace } from "../features/documentation/components/documentation-workspace";
+import { buildDocumentationMarkdown } from "../features/documentation/use-documentation-view-model";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
 import {
@@ -651,59 +653,88 @@ describe("Destination scaffolds", () => {
     const { router } = renderRoute("/documentation");
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "current living product specification" })
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Doc tree" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Document viewer" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Current product specification" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Documentation categories" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Current document" })).toBeInTheDocument();
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
     expect(screen.queryByText("Deferred work")).not.toBeInTheDocument();
 
-    const documentationTree = screen.getByLabelText("Documentation tree");
-    expect(within(documentationTree).getByRole("heading", { name: "Product Specifications" })).toBeInTheDocument();
-    expect(within(documentationTree).getByRole("heading", { name: "Technical Architecture" })).toBeInTheDocument();
-    expect(within(documentationTree).getByRole("heading", { name: "Miscellaneous Notes" })).toBeInTheDocument();
-    expect(within(documentationTree).getAllByRole("button")).toHaveLength(4);
+    const documentationMetadata = screen.getByRole("group", { name: "Documentation metadata" });
+
+    expect(within(documentationMetadata).getByText("Keystone Cloudflare")).toBeInTheDocument();
+    expect(within(documentationMetadata).getByText("4 documents")).toBeInTheDocument();
+
+    const documentationNavigation = screen.getByRole("navigation", {
+      name: "Documentation categories"
+    });
+
     expect(
-      within(documentationTree).getByRole("button", { name: "Current docs/product/current.md" })
+      within(documentationNavigation).getByRole("heading", { name: "Product Specifications" })
     ).toBeInTheDocument();
     expect(
-      within(documentationTree).getByRole("button", {
+      within(documentationNavigation).getByRole("heading", { name: "Technical Architecture" })
+    ).toBeInTheDocument();
+    expect(
+      within(documentationNavigation).getByRole("heading", { name: "Miscellaneous Notes" })
+    ).toBeInTheDocument();
+    expect(within(documentationNavigation).getAllByRole("button")).toHaveLength(4);
+    expect(
+      within(documentationNavigation).getByRole("button", {
+        name: "Current docs/product/current.md"
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(documentationNavigation).getByRole("button", {
         name: "Current docs/architecture/current.md"
       })
     ).toBeInTheDocument();
 
-    const currentSpecButton = within(documentationTree).getByRole("button", {
+    const currentSpecButton = within(documentationNavigation).getByRole("button", {
       name: "Current docs/product/current.md"
     });
-    const currentArchitectureButton = within(documentationTree).getByRole("button", {
+    const currentArchitectureButton = within(documentationNavigation).getByRole("button", {
       name: "Current docs/architecture/current.md"
     });
-    const openQuestionsButton = within(documentationTree).getByRole("button", {
+    const openQuestionsButton = within(documentationNavigation).getByRole("button", {
       name: "Open questions docs/notes/open-questions.md"
     });
-    const documentViewer = screen.getByRole("heading", { name: "Document viewer" }).closest("section");
+    const getDocumentationRegion = () =>
+      screen.getByRole("region", {
+        name: "Documentation document"
+      });
+    const getCurrentDocumentPanel = () => {
+      const currentDocumentPanel = screen
+        .getByRole("heading", { name: "Current document" })
+        .closest("section");
 
-    expect(documentViewer).not.toBeNull();
+      expect(currentDocumentPanel).not.toBeNull();
+
+      return currentDocumentPanel as HTMLElement;
+    };
 
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "true");
     expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
-    expect(within(documentViewer as HTMLElement).getByText("docs/product/current.md")).toBeInTheDocument();
+    expect(
+      within(getCurrentDocumentPanel()).getByText("docs/product/current.md")
+    ).toBeInTheDocument();
+    expect(
+      within(getDocumentationRegion()).getByText(
+        "Operator work stays organized around Runs, Documentation, Workstreams, and project settings inside one workspace."
+      )
+    ).toBeInTheDocument();
 
     fireEvent.click(currentArchitectureButton);
 
-    expect(
-      await screen.findByRole("heading", { name: "current living architecture + decisions" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Current technical architecture" })).toBeInTheDocument();
     const architectureDocumentId = new URLSearchParams(router.state.location.search).get("document");
 
     expect(architectureDocumentId).toBeTruthy();
     expect(
-      within(documentViewer as HTMLElement).getByText("docs/architecture/current.md")
+      within(getCurrentDocumentPanel()).getByText("docs/architecture/current.md")
     ).toBeInTheDocument();
     expect(
-      within(documentViewer as HTMLElement).getByText(
+      within(getDocumentationRegion()).getByText(
         "The product runs as a Cloudflare-served SPA with route-owned destinations and feature-owned rendering surfaces."
       )
     ).toBeInTheDocument();
@@ -713,19 +744,19 @@ describe("Destination scaffolds", () => {
 
     fireEvent.click(openQuestionsButton);
 
-    expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
     const openQuestionsDocumentId = new URLSearchParams(router.state.location.search).get("document");
 
     expect(openQuestionsDocumentId).toBeTruthy();
     expect(openQuestionsDocumentId).not.toBe(architectureDocumentId);
     expect(
-      within(documentViewer as HTMLElement).getByText("docs/notes/open-questions.md")
+      within(getCurrentDocumentPanel()).getByText("docs/notes/open-questions.md")
     ).toBeInTheDocument();
     expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
     expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
     expect(openQuestionsButton).toHaveAttribute("aria-pressed", "true");
     expect(
-      within(documentationTree)
+      within(documentationNavigation)
         .getAllByRole("button")
         .filter((button) => button.getAttribute("aria-pressed") === "true")
     ).toHaveLength(1);
@@ -734,17 +765,13 @@ describe("Destination scaffolds", () => {
       await router.navigate(-1);
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "current living architecture + decisions" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Current technical architecture" })).toBeInTheDocument();
 
     await act(async () => {
       await router.navigate(-1);
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "current living product specification" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Current product specification" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("");
   });
 
@@ -763,7 +790,7 @@ describe("Destination scaffolds", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Open questions docs/notes/open-questions.md" })
     ).toHaveAttribute("aria-pressed", "true");
@@ -780,7 +807,9 @@ describe("Destination scaffolds", () => {
         name: "Documentation is not available for this project yet"
       })
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Documentation tree")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Documentation categories" })
+    ).not.toBeInTheDocument();
 
     fireEvent.change(getProjectSelector(), {
       target: {
@@ -788,7 +817,7 @@ describe("Destination scaffolds", () => {
       }
     });
 
-    expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("?document=project-open-questions");
   });
 
@@ -796,9 +825,7 @@ describe("Destination scaffolds", () => {
     const { router } = renderRoute("/documentation?document=missing-document");
 
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
-    expect(
-      await screen.findByRole("heading", { name: "current living product specification" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Current product specification" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(router.state.location.search).toBe("?document=project-spec-current");
@@ -836,7 +863,60 @@ describe("Destination scaffolds", () => {
     expect(
       screen.getByText(/Project documentation still depends on scaffold-backed data\./i)
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Documentation tree")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Documentation categories" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders documentation markdown through Plate with list structure preserved", () => {
+    render(
+      <DocumentationWorkspace
+        model={{
+          currentProjectLabel: "Keystone Cloudflare",
+          documentCountLabel: "1 document",
+          groups: [
+            {
+              groupId: "notes",
+              label: "Miscellaneous Notes",
+              summary: "1 document",
+              documents: [
+                {
+                  documentId: "checklist",
+                  isSelected: true,
+                  label: "Checklist",
+                  path: "docs/notes/checklist.md",
+                  title: "Checklist"
+                }
+              ]
+            }
+          ],
+          selectDocument: vi.fn(),
+          selectedDocument: {
+            documentId: "checklist",
+            markdown: buildDocumentationMarkdown([
+              "# Checklist",
+              "- Preserve scaffold truth",
+              "- Keep list structure"
+            ]),
+            path: "docs/notes/checklist.md",
+            title: "Checklist",
+            viewerTitle: "checklist"
+          },
+          title: "Project documentation"
+        }}
+      />
+    );
+
+    const documentationRegion = screen.getByRole("region", {
+      name: "Documentation document"
+    });
+
+    expect(within(documentationRegion).getByRole("heading", { name: "Checklist" })).toBeInTheDocument();
+    expect(
+      within(documentationRegion)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent?.trim())
+    ).toEqual(["Preserve scaffold truth", "Keep list structure"]);
   });
 
   it("renders the canonical workstreams rows with the default Active filter and runId column", async () => {

@@ -1465,8 +1465,29 @@ pre {
   grid-template-columns: minmax(18rem, 0.9fr) minmax(0, 1.2fr);
 }
 
+.documentation-shell-summary {
+  max-width: 58rem;
+  margin: 0;
+}
+
+.documentation-header-meta,
+.documentation-tree-group-header,
+.documentation-tree-item-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.documentation-header-meta {
+  justify-items: end;
+  align-content: start;
+}
+
 .documentation-tree-note {
   margin: 0;
+}
+
+.documentation-tree-panel {
+  gap: 1.15rem;
 }
 
 .documentation-tree-group {
@@ -1474,8 +1495,7 @@ pre {
 }
 
 .documentation-tree-group-header {
-  flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
 .documentation-tree-group-title,
@@ -1509,6 +1529,17 @@ pre {
   font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+.documentation-tree-item-copy {
+  min-width: 0;
+}
+
+.documentation-tree-item-path {
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .documentation-tree-item.is-active,
@@ -1987,6 +2018,10 @@ pre {
   }
 
   .project-config-shell-meta {
+    justify-items: start;
+  }
+
+  .documentation-header-meta {
     justify-items: start;
   }
 }

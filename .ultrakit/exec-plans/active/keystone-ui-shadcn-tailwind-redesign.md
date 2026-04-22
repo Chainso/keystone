@@ -340,6 +340,16 @@ Baseline compatibility facts already captured:
   **Decision:** Added visible keyboard-focus treatment to the source-mode radio cards, wired shared form and list help text through `aria-describedby`, waited for `useProjectManagement().state.currentProject` before loading live settings, and tightened the focused shell tests to assert metadata plus truthful loading/error branches.
   **Rationale:** Review found a hidden-radio card focus regression, visual-only help text on shared wrappers, thin non-ready shell coverage, and a live-settings load path that could briefly render scaffold compatibility data before the real selected project resolved.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 11
+  **Decision:** Rebuilt `Documentation` around the shared workspace header, category-navigation framing, and a Plate-backed current-document surface while preserving the exact scaffold-compatibility gate for non-scaffold live projects.
+  **Rationale:** Phase 11 needed project documentation to read like the same document system as planning without inventing backend capabilities or weakening the current compatibility truth.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 11
+  **Decision:** Added a line-aware markdown projection for scaffold `contentLines[]` data and tightened the focused destination tests around named navigation/document regions before rerunning the locked validation commands.
+  **Rationale:** The scaffold documentation source is not stored as canonical markdown, and Plate changes heading/list DOM semantics, so the phase needed a truthful projection seam plus region-scoped assertions rather than brittle raw-text assumptions.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -369,6 +379,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 9 targeted fix pass completed: Workstreams rows now pass shared task tones explicitly, the summary header chips are a covered contract, and the locked Phase 9 validation commands reran green.
 - [x] 2026-04-22 Phase 10 completed: `New project` and `Project settings` now share the redesigned shell, section framing, component cards, and configuration form language while preserving deep links, direct create/save actions, and provider-owned payload truth.
 - [x] 2026-04-22 Phase 10 targeted fix pass completed: source-mode cards now expose visible keyboard focus, shared form/list descriptions are wired to their controls, and live settings waits for the real selected project while focused shell tests prove the metadata plus non-ready branches.
+- [x] 2026-04-22 Phase 11 completed: `Documentation` now uses the workspace header language, grouped category navigation, and a shared Plate document viewer while preserving the exact scaffold-backed compatibility gate and non-live-project honesty.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -379,7 +390,7 @@ Baseline compatibility facts already captured:
 - [x] Phase 8: task detail review workspace.
 - [x] Phase 9: workstreams surface.
 - [x] Phase 10: project configuration surfaces.
-- [ ] Phase 11: documentation surfaces via Plate.
+- [x] Phase 11: documentation surfaces via Plate.
 - [ ] Phase 12: planning locator completion and Cloudflare conversation binding.
 - [ ] Phase 13: assistant-ui planning and task chat cutover.
 - [ ] Phase 14: durable docs, regression cleanup, and final validation.
@@ -413,6 +424,7 @@ Baseline compatibility facts already captured:
 - `StatusPill` label inference is not sufficient for task rows whose visible labels are intentionally normalized. On `Workstreams`, failed and cancelled task rows need the shared explicit task-tone mapping even though the page still collapses ready/pending states into the visible `Queued` label.
 - When project-configuration cards add explanatory copy inside radio-label containers, Testing Library's exact-name `radio` queries will include that copy unless it is marked `aria-hidden`. Keep the `Local path` / `Git URL` radios' accessible names exact because the route suite depends on that contract.
 - `useCurrentProject()` is still a compatibility helper, not a safe live-settings authority. On `/settings`, the shared shell can legitimately remain at `Loading projects` until project-management resolves the selected project, and only then should the project-configuration shell begin its own selected-project loading state.
+- Project-scoped documentation scaffold data still arrives as `contentLines[]`, not canonical markdown. Plate-backed documentation therefore needs a small projection seam that preserves list blocks and blank-line truth before rendering, and the route tests should keep asserting against the named document region rather than raw text-node shape.
 
 ## Outcomes & Retrospective
 
@@ -511,6 +523,15 @@ Phase 10 outcome on 2026-04-22:
 - component configuration now uses clearer repository cards, an explicit type picker surface that still offers only `Git repository`, and a source-mode choice that preserves the exact `Local path` / `Git URL` radio contract even with richer explanatory copy
 - the targeted fix pass then restored visible keyboard focus on the hidden-radio source-mode cards, kept shell metadata covered in both loading and error states, and prevented scaffold compatibility data from briefly loading as live settings before the real selected project resolved
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 10 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 11 outcome on 2026-04-22:
+
+- `Documentation` now shares the same workspace language as planning and the other project-scoped destinations: a stable page header, grouped document-category navigation, and a calmer current-document panel instead of the earlier line-by-line scaffold viewer
+- the current document body now renders through `ui/src/components/editor/plate-markdown-document.tsx`, so project documentation uses the same Plate-backed markdown surface as planning while the route layer stays thin and the scaffold dataset remains the only truth source
+- Phase 11 kept the compatibility contract exact: only scaffold-backed selected projects get documentation content, while non-scaffold live projects still show the explicit compatibility state instead of a fake empty or live document view
+- the new line-aware `contentLines[] -> markdown` projection preserves paragraph spacing plus list/heading structure before handing scaffold content to Plate, which keeps the documentation surface truthful without claiming a live markdown backend now exists
+- focused destination coverage now asserts the documentation metadata/header contract, category navigation semantics, stable deep-link/canonicalization behavior, compatibility mode, and one Plate list-render path through the shared document region
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 11 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
 
@@ -905,7 +926,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Pending approval.
+- **Status:** Complete on 2026-04-22.
 - **Goal:** Apply Plate-backed document surfaces to the project-scoped `Documentation` destination while preserving its current compatibility truth.
 - **Scope Boundary:** In scope are documentation layout, category navigation framing, document rendering, and compatibility states. Out of scope are new backend documentation capabilities and chat UI.
 - **Read First:** `design/workspace-spec.md`, `.ultrakit/developer-docs/m1-architecture.md`, `ui/src/features/documentation/components/documentation-workspace.tsx`, `ui/src/features/documentation/use-documentation-view-model.ts`.
@@ -915,7 +936,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** project-scoped documentation uses the same document language as planning while preserving scaffold-backed truth where the backend is not live.
 - **Commit Expectation:** `migrate documentation destination to plate`
 - **Known Constraints / Baseline Failures:** do not fake live documentation for non-scaffold projects.
-- **Next Starter Context:** after this phase, document surfaces should feel consistent across planning and documentation.
+- **Completion Notes:** `ui/src/features/documentation/components/documentation-workspace.tsx` now presents `Documentation` through the shared workspace-page header, grouped category navigation, stable metadata chips, and a calmer current-document panel while keeping the route layer thin. `ui/src/features/documentation/use-documentation-view-model.ts` still owns the selected-project lookup, `?document=` canonicalization, and exact scaffold-compatibility branch, but now also projects scaffold `contentLines[]` into line-aware markdown so headings, lists, and paragraph spacing remain truthful when rendered through `PlateMarkdownDocument`. `ui/src/app/styles.css` adds the documentation header/navigation styling needed for the redesigned destination, and `ui/src/test/destination-scaffolds.test.tsx` now asserts the new metadata/navigation contracts, the named document region, compatibility behavior, canonicalization, and one focused Plate list-render path. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`.
+- **Next Starter Context:** Phase 12 should treat the Documentation destination as stable. Keep the exact scaffold-backed compatibility gate, grouped category navigation, and `contentLines[] -> markdown` projection intact while adding planning/task conversation-locator truth plus Cloudflare binding; do not reopen documentation backend promises or chat UI in that phase.
 
 ### Phase 12: Planning Locator Completion And Cloudflare Conversation Binding
 
