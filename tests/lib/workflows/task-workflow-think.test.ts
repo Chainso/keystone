@@ -5,6 +5,14 @@ import type { AgentRuntimeArtifactKind } from "../../../src/lib/artifacts/model"
 const mocked = vi.hoisted(() => {
   const close = vi.fn(async () => undefined);
   const runTasks: Array<Record<string, unknown>> = [];
+  const sandboxFiles = new Map<
+    string,
+    {
+      content: string;
+      mimeType: string;
+      size: number;
+    }
+  >();
   const taskSession = {
     initialize: vi.fn(async () => undefined),
     ensureWorkspace: vi.fn(async (input: { env?: Record<string, string> }) => ({
@@ -172,19 +180,33 @@ const mocked = vi.hoisted(() => {
       etag: "etag-1",
       sizeBytes: 50
     })),
-    readSandboxAgentFile: vi.fn(async () => ({
-      content: "# Run Note\n\nImplemented the approved change.\n",
-      encoding: "utf-8" as const,
-      mimeType: "text/markdown; charset=utf-8",
-      isBinary: false,
-      size: 50
-    })),
+    readSandboxAgentFile: vi.fn(async (_bridge, requestedPath: string) => {
+      const file = sandboxFiles.get(requestedPath) ?? {
+        content: "# Run Note\n\nImplemented the approved change.\n",
+        mimeType: "text/markdown; charset=utf-8",
+        size: 50
+      };
+
+      return {
+        content: file.content,
+        encoding: "utf-8" as const,
+        mimeType: file.mimeType,
+        isBinary: false,
+        size: file.size
+      };
+    }),
     reset() {
       runTasks.length = 0;
+      sandboxFiles.clear();
       taskSession.initialize.mockClear();
       taskSession.ensureWorkspace.mockClear();
       taskSession.preserveForInspection.mockClear();
       taskSession.teardown.mockClear();
+      sandboxFiles.set("/artifacts/out/compiled-handoff-note.md", {
+        content: "# Run Note\n\nImplemented the approved change.\n",
+        mimeType: "text/markdown; charset=utf-8",
+        size: 50
+      });
       runTasks.push({
         runTaskId: "run-task-123",
         runId: "run-123",
@@ -216,6 +238,17 @@ const mocked = vi.hoisted(() => {
         metadata: {
           modelId: "gpt-5.4"
         }
+      });
+    },
+    setSandboxFile(
+      filePath: string,
+      content: string,
+      mimeType: string = "text/plain; charset=utf-8"
+    ) {
+      sandboxFiles.set(filePath, {
+        content,
+        mimeType,
+        size: content.length
       });
     },
     runImplementerTurn: vi.fn(async (): Promise<{
@@ -489,6 +522,61 @@ describe("TaskWorkflow Think runtime", () => {
       exitCode: 0,
       workflowStatus: "complete"
     });
+  });
+
+  it("promotes non-markdown Think artifacts as staged_output under the runTaskId path", async () => {
+    mocked.setSandboxFile(
+      "/artifacts/out/result.json",
+      '{ "status": "ok" }\n',
+      "application/json; charset=utf-8"
+    );
+    mocked.runImplementerTurn.mockResolvedValueOnce({
+      outcome: "completed",
+      stagedArtifacts: [
+        {
+          path: "/artifacts/out/compiled-handoff-note.md",
+          kind: "run_note",
+          contentType: "text/markdown; charset=utf-8",
+          metadata: {
+            fileName: "compiled-handoff-note.md"
+          }
+        },
+        {
+          path: "/artifacts/out/result.json",
+          kind: "staged_output",
+          contentType: "application/json; charset=utf-8",
+          metadata: {
+            fileName: "result.json"
+          }
+        }
+      ],
+      events: [],
+      summary: "Implemented the change and staged structured output.",
+      metadata: {}
+    });
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+
+    await workflow.run(createWorkflowEvent("think_live") as never, step as never);
+
+    expect(mocked.createArtifactRef).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        runId: "run-123",
+        runTaskId: "run-task-123",
+        artifactKind: "staged_output",
+        bucket: "keystone-artifacts-dev",
+        objectKey: "tenants/tenant-fixture/runs/run-123/tasks/run-task-123/artifacts/result.json",
+        contentType: "application/json; charset=utf-8"
+      })
+    );
+    expect(mocked.readSandboxAgentFile).toHaveBeenCalledWith(
+      expect.any(Object),
+      "/artifacts/out/result.json"
+    );
   });
 
   it("rejects unsupported staged artifact kinds from Think before promotion", async () => {

@@ -6,6 +6,7 @@ import {
 } from "../../src/lib/artifacts/keys";
 
 const RUN_TASK_ID_1 = "11111111-1111-4111-8111-111111111111";
+const RUN_TASK_ID_2 = "22222222-2222-4222-8222-222222222222";
 
 const planningDocuments = {
   specification: {
@@ -60,15 +61,44 @@ const mocked = vi.hoisted(() => {
   const state = {
     artifactRefInputs: [] as Array<Record<string, unknown>>,
     artifactRefs: [] as Array<Record<string, unknown>>,
+    deletedArtifactRefIds: [] as string[],
+    deletedObjectKeys: [] as string[],
     jsonWrites: [] as Array<{ key: string; value: unknown }>,
-    runUpdates: [] as Array<Record<string, unknown>>
+    objectsByKey: new Map<string, unknown>(),
+    runRecord: {
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      projectId: "project-fixture",
+      workflowInstanceId: "workflow-run-123",
+      executionEngine: "think_live",
+      sandboxId: null,
+      status: "active",
+      compiledSpecRevisionId: null as string | null,
+      compiledArchitectureRevisionId: null as string | null,
+      compiledExecutionPlanRevisionId: null as string | null,
+      compiledAt: null as Date | null,
+      startedAt: null,
+      endedAt: null,
+      createdAt: new Date("2026-04-17T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-17T00:00:00.000Z")
+    },
+    runUpdates: [] as Array<Record<string, unknown>>,
+    nextRunUpdateError: null as Error | null
   };
 
   function reset() {
     state.artifactRefInputs.length = 0;
     state.artifactRefs.length = 0;
+    state.deletedArtifactRefIds.length = 0;
+    state.deletedObjectKeys.length = 0;
     state.jsonWrites.length = 0;
+    state.objectsByKey.clear();
+    state.runRecord.compiledSpecRevisionId = null;
+    state.runRecord.compiledArchitectureRevisionId = null;
+    state.runRecord.compiledExecutionPlanRevisionId = null;
+    state.runRecord.compiledAt = null;
     state.runUpdates.length = 0;
+    state.nextRunUpdateError = null;
     replaceLiveParsedPlan(defaultLiveParsedPlan);
   }
 
@@ -76,6 +106,9 @@ const mocked = vi.hoisted(() => {
     liveParsedPlan,
     replaceLiveParsedPlan,
     state,
+    failNextRunUpdate: (message = "update failed") => {
+      state.nextRunUpdateError = new Error(message);
+    },
     reset,
     persistCompiledRunGraph: vi.fn(async (_client, input) => ({
       run: {
@@ -86,10 +119,18 @@ const mocked = vi.hoisted(() => {
         executionEngine: "think_live",
         sandboxId: null,
         status: "active",
-        compiledSpecRevisionId: input.compiledSpecRevisionId ?? null,
-        compiledArchitectureRevisionId: input.compiledArchitectureRevisionId ?? null,
-        compiledExecutionPlanRevisionId: input.compiledExecutionPlanRevisionId ?? null,
-        compiledAt: new Date("2026-04-17T00:00:00.000Z"),
+        compiledSpecRevisionId:
+          (state.runRecord.compiledSpecRevisionId =
+            input.compiledSpecRevisionId ?? null),
+        compiledArchitectureRevisionId:
+          (state.runRecord.compiledArchitectureRevisionId =
+            input.compiledArchitectureRevisionId ?? null),
+        compiledExecutionPlanRevisionId:
+          (state.runRecord.compiledExecutionPlanRevisionId =
+            input.compiledExecutionPlanRevisionId ?? null),
+        compiledAt:
+          (state.runRecord.compiledAt =
+            input.compiledAt ?? new Date("2026-04-17T00:00:00.000Z")),
         startedAt: null,
         endedAt: null,
         createdAt: new Date("2026-04-17T00:00:00.000Z"),
@@ -107,7 +148,7 @@ const mocked = vi.hoisted(() => {
           index: number
         ) => ({
           taskId: task.taskId,
-          runTaskId: task.runTaskId ?? [RUN_TASK_ID_1][index] ?? crypto.randomUUID(),
+          runTaskId: task.runTaskId ?? [RUN_TASK_ID_1, RUN_TASK_ID_2][index] ?? crypto.randomUUID(),
           name: task.name,
           description: task.description,
           status: task.status ?? "ready",
@@ -143,6 +184,20 @@ const mocked = vi.hoisted(() => {
       state.artifactRefs.push(artifactRef);
       return artifactRef;
     }),
+    deleteArtifactRef: vi.fn(async (_client, input) => {
+      state.deletedArtifactRefIds.push(input.artifactRefId);
+
+      const artifactIndex = state.artifactRefs.findIndex(
+        (artifactRef) => artifactRef.artifactRefId === input.artifactRefId
+      );
+
+      if (artifactIndex === -1) {
+        return null;
+      }
+
+      const [deletedArtifactRef] = state.artifactRefs.splice(artifactIndex, 1);
+      return deletedArtifactRef ?? null;
+    }),
     findArtifactRefByObjectKey: vi.fn(async (_client, input) => {
       return (
         state.artifactRefs.find(
@@ -156,29 +211,30 @@ const mocked = vi.hoisted(() => {
         ) ?? null
       );
     }),
+    getRunRecord: vi.fn(async () => ({
+      ...state.runRecord
+    })),
     updateRunRecord: vi.fn(async (_client, input) => {
+      if (state.nextRunUpdateError) {
+        const error = state.nextRunUpdateError;
+        state.nextRunUpdateError = null;
+        throw error;
+      }
+
       state.runUpdates.push(input as Record<string, unknown>);
+      state.runRecord.compiledSpecRevisionId = input.compiledSpecRevisionId ?? null;
+      state.runRecord.compiledArchitectureRevisionId = input.compiledArchitectureRevisionId ?? null;
+      state.runRecord.compiledExecutionPlanRevisionId =
+        input.compiledExecutionPlanRevisionId ?? null;
+      state.runRecord.compiledAt = input.compiledAt ?? null;
 
       return {
-        tenantId: input.tenantId,
-        runId: "run-123",
-        projectId: "project-fixture",
-        workflowInstanceId: "workflow-run-123",
-        executionEngine: "think_live",
-        sandboxId: null,
-        status: "active",
-        compiledSpecRevisionId: input.compiledSpecRevisionId ?? null,
-        compiledArchitectureRevisionId: input.compiledArchitectureRevisionId ?? null,
-        compiledExecutionPlanRevisionId: input.compiledExecutionPlanRevisionId ?? null,
-        compiledAt: input.compiledAt ?? null,
-        startedAt: null,
-        endedAt: null,
-        createdAt: new Date("2026-04-17T00:00:00.000Z"),
-        updatedAt: new Date("2026-04-17T00:00:00.000Z")
+        ...state.runRecord
       };
     }),
     putArtifactJson: vi.fn(async (_bucket, _namespace, key, value) => {
       state.jsonWrites.push({ key, value });
+      state.objectsByKey.set(key, JSON.parse(JSON.stringify(value)));
 
       return {
         storageBackend: "r2",
@@ -186,6 +242,15 @@ const mocked = vi.hoisted(() => {
         etag: `etag-${state.jsonWrites.length}`,
         sizeBytes: JSON.stringify(value).length
       };
+    }),
+    getArtifactText: vi.fn(async (_bucket, key) => {
+      const value = state.objectsByKey.get(key);
+
+      return value === undefined ? null : JSON.stringify(value, null, 2);
+    }),
+    deleteArtifactObject: vi.fn(async (_bucket, key) => {
+      state.deletedObjectKeys.push(key);
+      state.objectsByKey.delete(key);
     }),
     createChatCompletion: vi.fn(async () => ({
       id: "chatcmpl-live",
@@ -203,15 +268,19 @@ const mocked = vi.hoisted(() => {
 
 vi.mock("../../src/lib/db/artifacts", () => ({
   createArtifactRef: mocked.createArtifactRef,
+  deleteArtifactRef: mocked.deleteArtifactRef,
   findArtifactRefByObjectKey: mocked.findArtifactRefByObjectKey
 }));
 
 vi.mock("../../src/lib/db/runs", () => ({
+  getRunRecord: mocked.getRunRecord,
   persistCompiledRunGraph: mocked.persistCompiledRunGraph,
   updateRunRecord: mocked.updateRunRecord
 }));
 
 vi.mock("../../src/lib/artifacts/r2", () => ({
+  deleteArtifactObject: mocked.deleteArtifactObject,
+  getArtifactText: mocked.getArtifactText,
   putArtifactJson: mocked.putArtifactJson
 }));
 
@@ -403,6 +472,76 @@ describe("plan-run compile metadata", () => {
     );
     expect(mocked.state.artifactRefInputs).toHaveLength(firstArtifactCount);
     expect(mocked.state.runUpdates).toHaveLength(firstRunUpdateCount + 1);
+  });
+
+  it("restores the previous compiled plan when a replay fails after reusing deterministic artifact keys", async () => {
+    const first = await compileRunPlan(createCompileInput());
+    const runPlanKey = runPlanArtifactKey("tenant-fixture", "run-123");
+    const firstTask = first.plan.tasks[0];
+
+    if (!firstTask?.runTaskId) {
+      throw new Error("Expected the initial compiled plan to include a persisted runTaskId.");
+    }
+
+    const firstHandoffKey = taskHandoffArtifactKey("tenant-fixture", "run-123", firstTask.runTaskId);
+    const initialRunPlanObject = JSON.parse(
+      JSON.stringify(mocked.state.objectsByKey.get(runPlanKey))
+    ) as Record<string, unknown>;
+    const initialHandoffObject = JSON.parse(
+      JSON.stringify(mocked.state.objectsByKey.get(firstHandoffKey))
+    ) as Record<string, unknown>;
+
+    mocked.replaceLiveParsedPlan({
+      summary: "Live compile produced a replay with an extra follow-up task.",
+      tasks: [
+        {
+          taskId: firstTask.taskId,
+          title: "Adjust the greeting implementation",
+          summary: "Reuse the existing implementation task.",
+          instructions: ["Implement the approved change.", "Run the relevant checks."],
+          acceptanceCriteria: ["Relevant checks pass."],
+          dependsOn: []
+        },
+        {
+          taskId: "task-live-follow-up",
+          title: "Capture the rollout note",
+          summary: "Add a follow-up note after the implementation task completes.",
+          instructions: ["Write the rollout note."],
+          acceptanceCriteria: ["The rollout note is staged."],
+          dependsOn: [firstTask.taskId]
+        }
+      ]
+    });
+    mocked.failNextRunUpdate("compiled provenance update failed");
+
+    await expect(compileRunPlan(createCompileInput())).rejects.toThrow(
+      /compiled provenance update failed/
+    );
+
+    expect(mocked.state.deletedObjectKeys).toEqual([
+      taskHandoffArtifactKey("tenant-fixture", "run-123", RUN_TASK_ID_2)
+    ]);
+    expect(mocked.state.deletedArtifactRefIds).toHaveLength(1);
+    expect(mocked.state.objectsByKey.get(runPlanKey)).toEqual(initialRunPlanObject);
+    expect(mocked.state.objectsByKey.get(firstHandoffKey)).toEqual(initialHandoffObject);
+    expect(
+      mocked.state.objectsByKey.get(taskHandoffArtifactKey("tenant-fixture", "run-123", RUN_TASK_ID_2))
+    ).toBeUndefined();
+    expect(mocked.persistCompiledRunGraph).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        compiledSpecRevisionId: first.plan.sourceRevisionIds.specification,
+        compiledArchitectureRevisionId: first.plan.sourceRevisionIds.architecture,
+        compiledExecutionPlanRevisionId: first.plan.sourceRevisionIds.executionPlan,
+        tasks: [
+          expect.objectContaining({
+            taskId: firstTask.taskId,
+            runTaskId: firstTask.runTaskId,
+            dependsOn: []
+          })
+        ]
+      })
+    );
   });
 
   it("rejects live compile output with unknown dependency ids", async () => {

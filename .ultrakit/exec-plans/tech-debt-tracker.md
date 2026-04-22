@@ -52,13 +52,13 @@ New entries should follow this format:
 
 1. **ID:** `TD-2026-04-18-004`
 2. **Date Added:** `2026-04-18`
-3. **Area:** `UI-first API scaffold backends`
-4. **Description:** The UI-first contract now exposes `ProjectDocument`, first-class `DecisionPackage` detail/list surfaces, operator steering, `EvidenceBundle`, `IntegrationRecord`, and `Release`, but several of those routes are still typed stubs or structured `not_implemented` writes rather than real persisted behavior.
-5. **Impact:** The UI can wire against the stable routes and types today, but those flows cannot yet provide real document collections, durable operator messages, evidence bundling, integration records, or release orchestration.
-6. **Owner:** `keystone-ui-first-api-scaffold`
-7. **Proposed Fix:** Add the missing persistence/projection layers and delivery behavior behind the frozen routes, starting with durable operator-message delivery and first-class decision-package/document collections.
-8. **Target Window:** `next UI/backend feature implementation cycle`
-9. **Status:** `open`
+3. **Area:** `Retired UI-first scaffold surfaces`
+4. **Description:** Historical note: the old UI-first scaffold used to advertise `DecisionPackage`, `EvidenceBundle`, `IntegrationRecord`, and `Release` families before the target-model cleanup removed those dead surfaces from the current backend and contributor docs on 2026-04-21.
+5. **Impact:** Contributors previously could mistake the retired scaffold vocabulary for active backend work.
+6. **Owner:** `keystone-target-model-dead-surface-cleanup`
+7. **Proposed Fix:** Keep the current project/document/run/task/artifact-first docs and tests aligned so the retired DecisionPackage / Evidence / Integration / Release family does not reappear as active debt.
+8. **Target Window:** `next docs/model audit if drift returns`
+9. **Status:** `closed (2026-04-21)`
 
 1. **ID:** `TD-2026-04-20-005`
 2. **Date Added:** `2026-04-20`
