@@ -5,6 +5,7 @@ import {
   DocumentFrameRule,
   DocumentFrameSummary
 } from "../../../components/workspace/document-frame";
+import { PlateMarkdownDocument } from "../../../components/editor/plate-markdown-document";
 import {
   WorkspaceEmptyState,
   WorkspaceEmptyStateActions,
@@ -39,20 +40,32 @@ function PlanningConversationPanel({
         <WorkspacePanelSummary>{phaseSummary}</WorkspacePanelSummary>
       </WorkspacePanelHeader>
 
-      {conversationLocator ? (
-        <article className="message-card" aria-label="Conversation status">
-          <p className="message-card-speaker">Conversation status</p>
-          <p className="message-card-body">Conversation attached to this document.</p>
-          <DocumentFrameSummary>
-            Live message history will resolve through the attached conversation when chat transport is added.
-          </DocumentFrameSummary>
+      <div className="planning-conversation-stack">
+        {conversationLocator ? (
+          <article className="message-card" aria-label="Conversation status">
+            <p className="message-card-speaker">Conversation status</p>
+            <p className="message-card-body">Conversation attached to this document.</p>
+            <DocumentFrameSummary>
+              Live message history will resolve through the attached conversation when chat transport is added.
+            </DocumentFrameSummary>
+          </article>
+        ) : (
+          <article className="message-card" aria-label="Conversation status">
+            <p className="message-card-speaker">Conversation status</p>
+            <p className="message-card-body">No conversation is attached to this document yet.</p>
+          </article>
+        )}
+
+        <article className="message-card" aria-label="Chat placeholder">
+          <p className="message-card-speaker">Chat placeholder</p>
+          <p className="message-card-body">
+            Live planning chat lands in a later phase. This pane keeps the final split and document focus stable for now.
+          </p>
+          <div className="conversation-composer-placeholder" aria-hidden="true">
+            Message composer placeholder
+          </div>
         </article>
-      ) : (
-        <article className="message-card" aria-label="Conversation status">
-          <p className="message-card-speaker">Conversation status</p>
-          <p className="message-card-body">No conversation is attached to this document yet.</p>
-        </article>
-      )}
+      </div>
     </WorkspacePanel>
   );
 }
@@ -73,11 +86,10 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
         {props.state === "ready" ? (
           <>
             <DocumentFrameBody>
-              {props.documentLines.map((line, index) => (
-                <p key={`${index}:${line}`} className="document-line">
-                  {line}
-                </p>
-              ))}
+              <PlateMarkdownDocument
+                label={`${props.panelTitle} document`}
+                markdown={props.documentMarkdown}
+              />
             </DocumentFrameBody>
             <div className="shell-state-actions">
               <button
@@ -97,18 +109,37 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
             {props.submitErrorMessage ? (
               <p className="form-field-error">{props.submitErrorMessage}</p>
             ) : null}
-            <FormTextField
-              label={props.titleField.label}
-              value={props.titleField.value}
-              onChange={(event) => props.titleField.onChange(event.currentTarget.value)}
-              disabled={props.isSubmitting}
-            />
-            <FormTextAreaField
-              label={props.bodyField.label}
-              value={props.bodyField.value}
-              onChange={(event) => props.bodyField.onChange(event.currentTarget.value)}
-              disabled={props.isSubmitting}
-            />
+            <div className="planning-document-editor">
+              <div className="planning-document-editor-fields">
+                <FormTextField
+                  label={props.titleField.label}
+                  value={props.titleField.value}
+                  onChange={(event) => props.titleField.onChange(event.currentTarget.value)}
+                  disabled={props.isSubmitting}
+                />
+                <FormTextAreaField
+                  label={props.bodyField.label}
+                  value={props.bodyField.value}
+                  onChange={(event) => props.bodyField.onChange(event.currentTarget.value)}
+                  disabled={props.isSubmitting}
+                />
+              </div>
+
+              <section className="planning-document-preview">
+                <div className="planning-document-preview-header">
+                  <p className="document-name">Live preview</p>
+                  <p className="planning-document-preview-summary">
+                    Plate renders the current markdown source while markdown remains the canonical document format.
+                  </p>
+                </div>
+                <DocumentFrameRule />
+                <PlateMarkdownDocument
+                  label="Document preview"
+                  markdown={props.bodyField.value}
+                  emptyMessage="Start writing markdown to preview this document."
+                />
+              </section>
+            </div>
             <div className="shell-state-actions">
               <button
                 type="button"
@@ -176,7 +207,7 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
 
 export function PlanningWorkspaceFrame(props: RunPlanningPhaseViewModel) {
   return (
-    <WorkspaceSplit>
+    <WorkspaceSplit className="planning-workspace-split">
       <WorkspaceSplitPane>
         <PlanningConversationPanel
           phaseTitle={props.phaseTitle}

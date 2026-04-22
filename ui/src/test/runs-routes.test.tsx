@@ -35,6 +35,12 @@ function createDeferred<T>() {
   };
 }
 
+function expectPlanningDocumentToContain(documentLabel: string, expectedText: string) {
+  expect(screen.getByRole("region", { name: documentLabel })).toHaveTextContent(
+    expectedText.replace(/^[-*]\s*/, "").trim()
+  );
+}
+
 function createRunFixture(
   runId: string,
   overrides: Partial<StaticRunDetailRecord> = {}
@@ -1363,12 +1369,12 @@ describe("Run routes", () => {
 
       expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: phaseHeading })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: revisionTitle })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: `${revisionTitle} document` })).toBeInTheDocument();
       expect(screen.getByText(documentPath)).toBeInTheDocument();
       expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
         "Conversation attached to this document."
       );
-      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+      expectPlanningDocumentToContain(`${revisionTitle} document`, expectedLine);
     }
   );
 
@@ -1378,12 +1384,15 @@ describe("Run routes", () => {
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Run Specification" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Run Specification document" })).toBeInTheDocument();
     expect(screen.getByText("specification")).toBeInTheDocument();
     expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
       "Conversation attached to this document."
     );
-    expect(screen.getByText("- Replace scaffold run detail with live data.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Specification document",
+      "- Replace scaffold run detail with live data."
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
 
@@ -1398,6 +1407,7 @@ describe("Run routes", () => {
           "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n"
       }
     });
+    expectPlanningDocumentToContain("Document preview", "Save current revisions without route churn.");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -1405,7 +1415,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Save current revisions without route churn.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Specification v2 document",
+      "- Save current revisions without route churn."
+    );
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
 
     expect(getFetchRequests(fetchMock)).toEqual(
@@ -1476,7 +1489,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Retry the save after a transient failure.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Specification v2 document",
+      "- Retry the save after a transient failure."
+    );
     expect(screen.queryByText("Unable to save specification changes.")).not.toBeInTheDocument();
     expect(createRunDocumentRevision).toHaveBeenCalledTimes(2);
   });
@@ -1512,9 +1528,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("- Single-flight planning mutations prevent duplicates.")
-    ).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Specification document",
+      "- Single-flight planning mutations prevent duplicates."
+    );
     expect(
       countFetchRequests(fetchMock, {
         method: "POST",
@@ -1578,7 +1595,7 @@ describe("Run routes", () => {
       await waitFor(() => {
         expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
       });
-      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+      expectPlanningDocumentToContain(`${defaultTitle} document`, expectedLine);
       expect(router.state.location.pathname).toBe(path);
 
       expect(getFetchRequests(fetchMock)).toEqual(
@@ -1652,7 +1669,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Conflict recovery reflects backend truth.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Architecture document",
+      "- Conflict recovery reflects backend truth."
+    );
     expect(screen.queryByText("No architecture document yet")).not.toBeInTheDocument();
     expect(createRunDocument).toHaveBeenCalledTimes(1);
     expect(listRunDocuments).toHaveBeenCalledTimes(2);
@@ -1696,7 +1716,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Save the first architecture revision.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Architecture document",
+      "- Save the first architecture revision."
+    );
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
   });
 
@@ -1840,7 +1863,7 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Save is still pending.")).toBeInTheDocument();
+    expectPlanningDocumentToContain("Run Architecture document", "- Save is still pending.");
   });
 
   it("only exposes Compile run when the live planning documents are ready for compilation", async () => {

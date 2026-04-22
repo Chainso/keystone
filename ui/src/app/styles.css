@@ -853,6 +853,10 @@ pre {
   gap: 1rem;
 }
 
+.planning-workspace-split {
+  grid-template-columns: minmax(18rem, 0.98fr) minmax(0, 1.18fr);
+}
+
 .workspace-split-pane {
   min-width: 0;
 }
@@ -879,6 +883,36 @@ pre {
 
 .message-card-body {
   margin: 0;
+}
+
+.planning-conversation-stack,
+.planning-document-editor,
+.planning-document-editor-fields,
+.planning-document-preview,
+.planning-document-preview-header,
+.markdown-document-surface {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.conversation-composer-placeholder,
+.markdown-document-surface-empty {
+  padding: 0.95rem 1rem;
+  border: 1px dashed var(--border-muted);
+  background: color-mix(in srgb, var(--surface-subtle) 88%, transparent);
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.conversation-composer-placeholder {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--border-muted) 72%, transparent);
+}
+
+.planning-document-preview-summary {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
 }
 
 .document-card-summary,
@@ -910,6 +944,91 @@ pre {
 .document-rule {
   height: 1px;
   background: var(--border-muted);
+}
+
+.markdown-document-surface-content {
+  min-height: 12rem;
+  color: var(--text-primary);
+}
+
+.markdown-document-surface-content .slate-h1,
+.markdown-document-surface-content .slate-h2,
+.markdown-document-surface-content .slate-h3,
+.markdown-document-surface-content .slate-h4,
+.markdown-document-surface-content .slate-h5,
+.markdown-document-surface-content .slate-h6,
+.markdown-document-surface-content .slate-p,
+.markdown-document-surface-content .slate-blockquote,
+.markdown-document-surface-content .slate-code_block,
+.markdown-document-surface-content .slate-ul,
+.markdown-document-surface-content .slate-ol {
+  margin: 0;
+}
+
+.markdown-document-surface-content .slate-h1,
+.markdown-document-surface-content .slate-h2,
+.markdown-document-surface-content .slate-h3,
+.markdown-document-surface-content .slate-h4,
+.markdown-document-surface-content .slate-h5,
+.markdown-document-surface-content .slate-h6 {
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.markdown-document-surface-content .slate-h1 {
+  font-size: clamp(1.45rem, 2vw, 1.85rem);
+}
+
+.markdown-document-surface-content .slate-h2 {
+  font-size: clamp(1.2rem, 1.8vw, 1.45rem);
+}
+
+.markdown-document-surface-content .slate-h3,
+.markdown-document-surface-content .slate-h4,
+.markdown-document-surface-content .slate-h5,
+.markdown-document-surface-content .slate-h6 {
+  font-size: 1rem;
+}
+
+.markdown-document-surface-content .slate-p,
+.markdown-document-surface-content .slate-lic,
+.markdown-document-surface-content .slate-blockquote {
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.markdown-document-surface-content .slate-ul,
+.markdown-document-surface-content .slate-ol {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1.3rem;
+  color: var(--text-secondary);
+}
+
+.markdown-document-surface-content .slate-blockquote {
+  padding-left: 1rem;
+  border-left: 2px solid var(--accent-line);
+}
+
+.markdown-document-surface-content .slate-code_block {
+  overflow-x: auto;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--border-muted);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.markdown-document-surface-content .slate-code_line {
+  white-space: pre;
+}
+
+.markdown-document-surface-content .slate-a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
 }
 
 .document-section {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { canonicalizeMarkdown } from "../../components/editor/plate-markdown-document";
 import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 import { useUnsavedChangesGuard } from "../../shared/navigation/use-unsaved-changes-guard";
 import {
@@ -211,9 +212,11 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
 
   async function saveChanges() {
     const trimmedTitle = title.trim();
+    const hasBodyChanges = body !== sourceDraft.body;
+    const savedBody = hasBodyChanges ? canonicalizeMarkdown(body) : body;
     const canSaveNow =
       trimmedTitle.length > 0 &&
-      body.trim().length > 0 &&
+      savedBody.trim().length > 0 &&
       hasUnsavedChanges;
 
     if (!canSaveNow || saveInFlightRef.current) {
@@ -226,7 +229,7 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
 
     try {
       await actions.savePlanningDocument(phaseId, {
-        body,
+        body: savedBody,
         title: trimmedTitle
       });
     } catch (error) {
@@ -255,8 +258,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
       hasUnsavedChanges,
       helperMessage:
         planningState.status === "ready"
-          ? "Saving creates a new current revision for this run document."
-          : "Saving creates the first current revision for this run document.",
+          ? "Markdown stays canonical. Save creates a new current revision and refreshes the Plate document surface from that source."
+          : "Markdown stays canonical. Save creates the first current revision and loads the Plate document surface from that source.",
       isSubmitting,
       panelTitle: title.trim() || base.panelTitle,
       phaseSummary: base.phaseSummary,
@@ -276,7 +279,7 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   if (planningState.status === "ready") {
     return {
       conversationLocator: base.conversationLocator,
-      documentLines: planningState.content.split(/\r?\n/),
+      documentMarkdown: planningState.content,
       documentPath: base.documentPath,
       editDocument: startEditing,
       panelTitle: planningState.revision.title,

@@ -46,7 +46,7 @@ interface RunPlanningPhaseBaseViewModel {
 }
 
 export interface RunPlanningPhaseReadyViewModel extends RunPlanningPhaseBaseViewModel {
-  documentLines: string[];
+  documentMarkdown: string;
   editDocument: () => void;
   state: "ready";
 }
