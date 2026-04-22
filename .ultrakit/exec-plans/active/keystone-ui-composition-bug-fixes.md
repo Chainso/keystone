@@ -103,6 +103,11 @@ Allowed internal change:
   **Decision:** Replace the custom project-switcher popup with a native project `<select>`, move documentation/workstreams state into search params, and add one shared unsaved-changes guard plus one shared UTC formatter instead of re-solving those behaviors per destination.  
   **Rationale:** The shell control was behaving like an incomplete custom widget, while documentation/workstreams state and run-planning protection were all variants of navigation and formatting problems. A small set of truthful shared seams fixed the shipped bugs without widening Phase 2 into a broader composition refactor.
 
+- **Date:** 2026-04-21  
+  **Phase:** Phase 2 fix pass  
+  **Decision:** Keep Phase 2 closed only after stabilizing the documentation hook order and adding direct-mount URL-state plus pending-save guard coverage.  
+  **Rationale:** `/documentation` stays mounted while the shell project selector changes projects, so the previous `useDocumentationViewModel` early returns could change hook order between scaffold-backed and compatibility renders. The original tests also proved click/back flows but not direct deep-link hydration or the in-flight save navigation path, so the phase needed a targeted fix pass and a full gate rerun to become credible.
+
 ## Progress
 
 - [x] 2026-04-21 Installed workspace dependencies with `npm install`.
@@ -113,7 +118,8 @@ Allowed internal change:
 - [x] 2026-04-21 Ran the one allowed Phase 1 fix pass, hardened the remaining `runs-routes` transition assertions, and revalidated the exact `npx` gate plus the standalone route suite.
 - [x] Phase 1 complete: stabilize the UI test harness and targeted validation path, with fix-pass revalidation.
 - [x] 2026-04-21 Completed the Phase 2 bug-fix pass with a native shell project selector, guarded run-planning edits, URL-backed documentation/workstreams state, duplicate-key cleanup, and shared UTC formatting.
-- [x] Phase 2 complete: ship the user-facing bug-fix pass for navigation state, accessibility, and data formatting.
+- [x] 2026-04-21 Ran the one allowed Phase 2 fix pass, stabilized documentation hook order across mounted project switches, and added direct-mount URL-state plus pending-save guard coverage.
+- [x] Phase 2 complete: ship the user-facing bug-fix pass for navigation state, accessibility, and data formatting, with fix-pass revalidation.
 - [ ] Phase 3 complete: unify the project-configuration component hierarchy and provider contract.
 - [ ] Phase 4 complete: simplify the runs/planning component hierarchy and supporting utilities.
 - [ ] Phase 5 complete: update durable docs/notes, rerun final validation, and prepare the plan for archival.
@@ -135,6 +141,7 @@ Allowed internal change:
 - `tsconfig.ui.json` was not actually UI-only in practice because the UI imports shared root contract modules. Without `worker-configuration.d.ts`, the command surfaced 82 root-file errors that do not appear in the main workspace typecheck because the generated Cloudflare declarations were missing from that config.
 - In this repo, `rtk npx vitest ...` is not a truthful validation shorthand because RTK routes it through npm-script lookup and reports `Missing script: "vitest"`. Use direct `npx ...` commands or the RTK-native `rtk vitest` / `rtk lint` / `rtk tsc` wrappers instead.
 - During Phase 2, deriving `page = 1` for a project switch was not enough on its own for `Workstreams`; the new project could still issue one stale page fetch before the URL reset landed. The final fix had to suppress task loading until the page-reset search-param update committed.
+- During the Phase 2 fix pass, the documentation runtime issue was reproducible as a real mounted-route hazard: switching `/documentation` between a scaffold-backed project and a compatibility-only live project changes `useDocumentationViewModel` from returning a full tree to returning early, so every hook in that file has to stay above the compatibility returns.
 
 ## Outcomes & Retrospective
 
@@ -157,8 +164,9 @@ The main remaining open item before execution is user approval of the phase sequ
 Phase 2 outcome on 2026-04-21:
 
 - The shell now uses a truthful native project selector instead of an incomplete custom popup, while preserving the existing project persistence key and destination paths.
-- Documentation and workstreams now treat selection/filter/pagination as URL state, with targeted tests proving browser-history restoration.
-- Run-planning edits now warn on both in-app navigation and browser unload while dirty, and the touched run/workstream surfaces share one UTC formatter instead of repeating ad hoc timestamp logic.
+- Documentation and workstreams now treat selection/filter/pagination as URL state, with fix-pass coverage for mounted documentation project switches plus direct deep-link hydration and canonicalization.
+- Run-planning edits now warn on both in-app navigation and browser unload while dirty, and the fix pass now proves the same guard still blocks route changes while a save request is in flight.
+- The touched run/workstream surfaces share one UTC formatter instead of repeating ad hoc timestamp logic.
 
 ## Context and Orientation
 
@@ -355,7 +363,7 @@ Important interfaces and seams that should still exist after this plan:
 
 ### Phase Handoff
 
-- **Status:** Completed on 2026-04-21
+- **Status:** Complete (implemented on 2026-04-21; fix pass revalidated on 2026-04-21)
 - **Goal:** Ship the highest-value current UI bug fixes for shell interaction, unsaved planning edits, and destination URL state.
 - **Scope Boundary:** In scope: project-switcher behavior, planning unsaved-change guard, documentation selection URL state, workstreams filter/page URL state, duplicate key cleanup, and date-format cleanup for touched destinations. Out of scope: project-configuration hierarchy refactors and major run-planning structure changes.
 - **Read First:**
@@ -386,8 +394,8 @@ Important interfaces and seams that should still exist after this plan:
 - **Deliverables:** Accessible shell interaction improvements, URL-backed destination state, unsaved-change protection, and low-level rendering/data-format fixes.
 - **Commit Expectation:** `Fix UI navigation and state bugs`
 - **Known Constraints / Baseline Failures:** Preserve the current route tree and destination labels; do not redesign the shell or change top-level navigation semantics.
-- **Completion Notes:** `ui/src/shared/layout/shell-sidebar.tsx` now uses a native `<select>` for project switching, so the shell keeps the same product posture without depending on a half-finished custom listbox. `ui/src/shared/navigation/use-unsaved-changes-guard.ts` protects dirty planning edits on route changes and `beforeunload`, `ui/src/features/documentation/use-documentation-view-model.ts` and `ui/src/features/workstreams/use-workstreams-view-model.ts` now back user-facing selection state with search params, `ui/src/shared/formatting/date.ts` centralizes the touched UTC formatting, and `ui/src/features/documentation/components/documentation-workspace.tsx` now keys document lines safely by index. The Phase 2 gate passed with `npx vitest run ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx`, `npx eslint ui/src vitest.config.ts`, and `npx tsc --noEmit -p tsconfig.ui.json`.
-- **Next Starter Context:** Phase 3 should treat the native shell project selector as the new truthful contract and keep downstream tests on combobox semantics rather than reviving button/listbox assumptions. Preserve the new search-param contracts for `Documentation` and `Workstreams`, keep the shared unsaved-change/date utilities reusable instead of duplicating them inside project-configuration code, and do not fold this bug-fix work into broader route or destination redesign.
+- **Completion Notes:** `ui/src/shared/layout/shell-sidebar.tsx` now uses a native `<select>` for project switching, so the shell keeps the same product posture without depending on a half-finished custom listbox. `ui/src/shared/navigation/use-unsaved-changes-guard.ts` protects dirty planning edits on route changes and `beforeunload`, `ui/src/features/documentation/use-documentation-view-model.ts` and `ui/src/features/workstreams/use-workstreams-view-model.ts` now back user-facing selection state with search params, `ui/src/shared/formatting/date.ts` centralizes the touched UTC formatting, and `ui/src/features/documentation/components/documentation-workspace.tsx` now keys document lines safely by index. The fix pass then moved the documentation canonicalization effect ahead of the compatibility returns so mounted project switches cannot change hook order, added direct-mount coverage for documentation/workstreams deep-link hydration and canonicalization, and added `ui/src/test/runs-routes.test.tsx` coverage for blocking navigation while a save request is still pending. The Phase 2 gate re-passed with `npx vitest run ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx`, `npx eslint ui/src vitest.config.ts`, and `npx tsc --noEmit -p tsconfig.ui.json`.
+- **Next Starter Context:** Phase 3 should treat the native shell project selector as the new truthful contract and keep downstream tests on combobox semantics rather than reviving button/listbox assumptions. Preserve the new search-param contracts for `Documentation` and `Workstreams`, keep every hook in `ui/src/features/documentation/use-documentation-view-model.ts` above the compatibility returns, keep the shared unsaved-change/date utilities reusable instead of duplicating them inside project-configuration code, and do not fold this bug-fix work into broader route or destination redesign.
 
 ## Phase 3: Project Configuration Composition Cleanup
 

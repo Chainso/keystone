@@ -1700,6 +1700,60 @@ describe("Run routes", () => {
     expect(cleanBeforeUnloadEvent.returnValue).toBe("");
   });
 
+  it("keeps the navigation guard active while a planning save is still pending", async () => {
+    const confirmMock = vi.fn(() => false);
+    const pendingSave = createDeferred<void>();
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    const createRunDocumentRevision = vi.fn(
+      async (...args: Parameters<RunManagementApi["createRunDocumentRevision"]>) => {
+        await pendingSave.promise;
+        return baseRunApi.createRunDocumentRevision(...args);
+      }
+    );
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      createRunDocumentRevision
+    };
+
+    vi.stubGlobal("confirm", confirmMock);
+
+    const { router } = renderRunRoute("/runs/run-105/architecture", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Save is still pending.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
+    expect(createRunDocumentRevision).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith(
+        "You have unsaved changes in Architecture. Leave this document without saving?"
+      );
+    });
+    expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
+    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+      "# Architecture\n- Save is still pending.\n"
+    );
+
+    pendingSave.resolve(undefined);
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Save is still pending.")).toBeInTheDocument();
+  });
+
   it("only exposes Compile run when the live planning documents are ready for compilation", async () => {
     renderRunRoute("/runs/run-108/execution-plan");
 

@@ -659,6 +659,66 @@ describe("Destination scaffolds", () => {
     expect(router.state.location.search).toBe("");
   });
 
+  it("hydrates a documentation deep link and keeps the mounted route stable across project switches", async () => {
+    const alternateProject: CurrentProject = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Alternate operator workspace."
+    };
+
+    stubProjectListFetch([scaffoldProject, alternateProject]);
+
+    const { router } = renderRoute("/documentation?document=project-open-questions", {
+      useBrowserProjectApi: true
+    });
+
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open questions docs/notes/open-questions.md" })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(router.state.location.search).toBe("?document=project-open-questions");
+
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: alternateProject.projectId
+      }
+    });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Documentation is not available for this project yet"
+      })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Documentation tree")).not.toBeInTheDocument();
+
+    fireEvent.change(getProjectSelector(), {
+      target: {
+        value: scaffoldProject.projectId
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "open questions" })).toBeInTheDocument();
+    expect(router.state.location.search).toBe("?document=project-open-questions");
+  });
+
+  it("canonicalizes an unknown documentation deep link to the default document", async () => {
+    const { router } = renderRoute("/documentation?document=missing-document");
+
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "current living product specification" })
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("?document=project-spec-current");
+    });
+    expect(
+      screen.getByRole("button", { name: "Current docs/product/current.md" })
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("renders a compatibility state for documentation on a non-scaffold live project", async () => {
     const projects: CurrentProject[] = [
       {
@@ -1336,6 +1396,76 @@ describe("Destination scaffolds", () => {
         );
       })
     ).toHaveLength(2);
+  });
+
+  it("hydrates live workstreams from direct search params and canonicalizes an out-of-range page", async () => {
+    const secondPageTask = createLiveProjectTaskFixture({
+      logicalTaskId: "TASK-LIVE-026",
+      name: "Second page workstream",
+      runId: "run-live-026",
+      taskId: "task-live-026",
+      updatedAt: "2026-04-20T12:26:00.000Z"
+    });
+    const fetchMock = stubLiveWorkstreamsFetch({
+      taskResponsesByKey: {
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "all", 3)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "all",
+                items: [],
+                page: 3,
+                pageCount: 2,
+                total: 26
+              })
+            )
+        ],
+        [createProjectTaskQueryKey(scaffoldProject.projectId, "all", 2)]: [
+          () =>
+            createJsonResponse(
+              buildProjectTasksResponse({
+                filter: "all",
+                items: [secondPageTask],
+                page: 2,
+                pageCount: 2,
+                total: 26
+              })
+            )
+        ]
+      }
+    });
+
+    const { router } = renderRoute("/workstreams?filter=all&page=3", {
+      useBrowserProjectApi: true
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Project work across runs" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All" })).toHaveClass("is-active");
+    expect(
+      fetchMock.mock.calls.some(([request]) => {
+        const url = typeof request === "string" ? request : request.toString();
+
+        return url.includes("/v1/projects/project-keystone-cloudflare/tasks?filter=all&page=3");
+      })
+    ).toBe(true);
+
+    expect(await screen.findByRole("link", { name: "TASK-LIVE-026" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe("?filter=all&page=2");
+    });
+    expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
+      "Showing 26-26 of 26 tasks · Page 2 of 2"
+    );
+    expect(
+      fetchMock.mock.calls.some(([request]) => {
+        const url = typeof request === "string" ? request : request.toString();
+
+        return url.includes("/v1/projects/project-keystone-cloudflare/tasks?filter=all&page=2");
+      })
+    ).toBe(true);
   });
 
   it("resets to page 1 when the filter changes after paging", async () => {

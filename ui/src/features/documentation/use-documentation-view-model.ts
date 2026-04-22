@@ -48,6 +48,31 @@ export function useDocumentationViewModel(): DocumentationViewModel {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDocumentId = searchParams.get("document");
   const scaffoldProject = getProject(project.projectId, state.dataset);
+  const selection = scaffoldProject
+    ? getProjectDocumentationSelection(
+        project.projectId,
+        requestedDocumentId,
+        state.dataset
+      )
+    : null;
+  const selectedDocumentId = selection?.selectedDocument.documentId ?? null;
+
+  useEffect(() => {
+    if (
+      !requestedDocumentId ||
+      !selectedDocumentId ||
+      requestedDocumentId === selectedDocumentId
+    ) {
+      return;
+    }
+
+    setSearchParams(
+      updateSearchParams(searchParams, {
+        document: selectedDocumentId
+      }),
+      { replace: true }
+    );
+  }, [requestedDocumentId, searchParams, selectedDocumentId, setSearchParams]);
 
   if (!scaffoldProject) {
     return {
@@ -63,12 +88,6 @@ export function useDocumentationViewModel(): DocumentationViewModel {
     };
   }
 
-  const selection = getProjectDocumentationSelection(
-    project.projectId,
-    requestedDocumentId,
-    state.dataset
-  );
-
   if (!selection) {
     return {
       compatibilityState: {
@@ -81,24 +100,6 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       selectDocument() {}
     };
   }
-
-  useEffect(() => {
-    if (!requestedDocumentId || requestedDocumentId === selection.selectedDocument.documentId) {
-      return;
-    }
-
-    setSearchParams(
-      updateSearchParams(searchParams, {
-        document: selection.selectedDocument.documentId
-      }),
-      { replace: true }
-    );
-  }, [
-    requestedDocumentId,
-    searchParams,
-    selection.selectedDocument.documentId,
-    setSearchParams
-  ]);
 
   return {
     title: "Project documentation",
