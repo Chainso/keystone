@@ -57,17 +57,18 @@ Current UI scope:
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
 - explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail artifact review with supported text preview plus compatibility messaging for unsupported content
+- live `Workstreams` loading through the project tasks API, with server-backed filter and pagination URL state
 - board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
-- explicit compatibility states for `Documentation` and `Workstreams` when the selected live project is not present in the scaffold dataset
+- an explicit compatibility state for `Documentation` when the selected live project is not present in the scaffold dataset
 
 Current UI non-goals:
 
-- live backend loading for `Documentation` and `Workstreams`
+- live backend loading for `Documentation`
 - real task conversations, streaming execution updates, or live review diff synthesis beyond artifact metadata plus supported text preview
 - persisted documentation or workstream editing
 - final visual polish
 - auth-specific UI flows or tenant-selection controls
-- destination-specific behavior beyond the current live project-management and runs surfaces
+- destination-specific behavior beyond the current live project-management, workstreams, and runs surfaces
 
 ## UI Architecture
 
@@ -86,7 +87,8 @@ Current UI boundary:
 - the scaffold is served from the same Worker deployable as the `v1` API
 - the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, and the full `Runs` destination
 - `Runs` is now truthful end to end for project-scoped index, run creation, planning authoring, explicit compile, execution DAG, and task artifact review
-- `Documentation` and `Workstreams` still rely on scaffold-backed selectors and render explicit compatibility states for non-scaffold live projects
+- `Workstreams` now follows the selected project through the real project-tasks API with server-backed filter and pagination state
+- `Documentation` still relies on scaffold-backed selectors and renders an explicit compatibility state for non-scaffold live projects
 - documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend
