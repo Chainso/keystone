@@ -250,6 +250,11 @@ Baseline compatibility facts already captured:
   **Decision:** Added the first Keystone-owned workspace wrapper layer under `ui/src/components/workspace/*`, then moved shared layout states and the current run/workstream/document scaffold surfaces onto those wrappers instead of leaving raw shadcn/TanStack composition in feature code.
   **Rationale:** Later shell and destination phases need stable product-wide panes, split layouts, document/review frames, and dense table behavior before larger UI rewrites begin.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 3 fix pass
+  **Decision:** Ran the one allowed targeted fix pass to replace `EntityTable`'s DOM-scraping row click usage with an explicit row-activation seam, neutralize the generic table chrome away from `runs-*` styling, and add wrapper-level activation-suppression coverage.
+  **Rationale:** Review found that the first-cut wrapper still leaked a runs-specific class contract and left row activation coupled to the first rendered link instead of a reusable table-owned abstraction.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -264,6 +269,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 2 targeted fix pass completed: first-paint theming moved into `ui/index.html`, storage access was hardened, and bootstrap/token-consumer coverage now reflects the real Phase 2 contract.
 - [x] 2026-04-22 Phase 2 closeout exception pass completed: the exact targeted route-test validation reran green on HEAD `8b48028`, the reported `runs-routes` failure was not reproducible in isolated reruns, and no further Phase 2 code change was required.
 - [x] 2026-04-22 Phase 3 completed: workspace wrapper inventory, frame primitives, and Keystone-owned `EntityTable` landed and are now consumed by the current shared/layout scaffold surfaces.
+- [x] 2026-04-22 Phase 3 targeted fix pass completed: `EntityTable` now exposes explicit row activation, generic table styling no longer uses `runs-*` naming, and activation-suppression behavior is covered in the targeted UI tests.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -297,6 +303,7 @@ Baseline compatibility facts already captured:
 - Phase 2's first-paint contract needs a dedicated `ui/index.html` head seam; a `main.tsx` bootstrap still starts after the app module begins evaluating and can flash the light theme on a cold load before the stored dark preference is applied.
 - A later read-only verification report claimed the "Write first revision" route flow could not find the `Document title` textbox in `ui/src/test/runs-routes.test.tsx`, but rerunning the exact Phase 2 target command plus five isolated reruns of that specific test on HEAD `8b48028` all passed, so the reported failure is currently classified as non-reproducible validation drift rather than a checked-in Phase 2 regression.
 - The new wrapper layer still swaps between empty-state and table/document bodies in several destinations, so UI tests that hold onto a `findByRole(...)` element handle across filter or editor-state transitions can fail even though the next DOM has rendered correctly. Stable assertions need to re-query after the awaited render point.
+- Phase 3's initial `EntityTable` seam was still too DOM-shaped: reusable row activation needs to be expressed as an explicit row-level callback owned by the wrapper, not by asking feature callers to scrape the first rendered `a[href]` out of table cells.
 
 ## Outcomes & Retrospective
 
@@ -330,10 +337,11 @@ Phase 2 outcome on 2026-04-22:
 Phase 3 outcome on 2026-04-22:
 
 - `ui/src/components/workspace/` now owns reusable `WorkspacePage`, `WorkspacePanel`, `WorkspaceSplit`, `WorkspaceEmptyState`, `DocumentFrame`, `ReviewSection`, and `EntityTable` primitives so later phases can compose product-wide structure without rewriting the same shell logic in feature files
-- `EntityTable` wraps the shadcn `Table` pattern and TanStack row model behind a Keystone API that supports shared empty states, footer/pagination slots, and row-click handling without pushing raw table-state wiring into each destination
+- `EntityTable` wraps the shadcn `Table` pattern and TanStack row model behind a Keystone API that supports shared empty states, footer/pagination slots, and explicit row activation without pushing raw table-state wiring or DOM scraping into each destination
 - shared layout states and the current scaffold/live transition surfaces now consume the wrapper layer: app-shell fallback states, runs index tables, workstreams board, run detail scaffolds, planning/execution/documentation workspaces, and task review/document panes all now read through the same workspace vocabulary
 - `StatusPill` now resolves through the shadcn `Badge` primitive while preserving the existing Keystone tone classes, so status treatments participate in the new wrapper/primitives stack instead of staying on legacy markup
-- `ui/src/app/styles.css` now includes the supporting wrapper hooks for page headers, panel headings, split panes, and table shells needed by the new primitives, without starting the larger Phase 4 shell redesign
+- the Phase 3 fix pass removed the leftover `runs-*` styling contract from the generic table shell, keeping the shared stylesheet neutral while preserving the current runs/workstreams consumers
+- targeted wrapper coverage now proves that `EntityTable` suppresses row activation for modifier-clicks and nested interactive controls, while the route-level tests still prove that the current runs/workstreams consumers navigate correctly on row-body clicks
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 3 implementation; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
@@ -593,7 +601,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
 - **Goal:** Create the stable wrapper inventory that later destination phases will compose.
 - **Scope Boundary:** In scope are shared workspace panes, split containers, shell-friendly wrappers, status treatments, tables, empty states, and review/document frame wrappers. Out of scope are destination-specific business logic changes.
 - **Read First:** `design/design-guidelines.md`, `ui/AGENTS.md`, `ui/src/components/ui/*`, `ui/src/shared/layout/*`.
@@ -603,8 +611,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** the wrapper inventory exists and is ready for shell and destination phases to consume, including a Keystone `EntityTable` built on the shadcn data-table pattern.
 - **Commit Expectation:** `build keystone workspace wrapper layer`
 - **Known Constraints / Baseline Failures:** wrappers must remain product-wide and must not absorb feature-specific API state.
-- **Completion Notes:** Added Keystone-owned workspace primitives under `ui/src/components/workspace/` for page framing, panels, split panes, empty states, document/review wrappers, and a shared `EntityTable`. Updated the current shared/layout and scaffold/live feature surfaces to consume that vocabulary instead of open-coding wrapper logic: app-shell loading/empty/error states now render through `WorkspacePage`, run-detail scaffolds and detail-state fallbacks use the same page wrappers, planning/execution/documentation/task-detail workspaces now use `WorkspacePanel`, `WorkspaceSplit`, `DocumentFrame`, `ReviewSection`, and `WorkspaceEmptyState`, and both runs/workstreams list surfaces now flow through `EntityTable` rather than direct feature-owned table composition. `ui/src/components/ui/table.tsx` gained an optional container class seam to support the wrapper shell, `ui/src/shared/layout/status-pill.tsx` now renders via shadcn `Badge`, and `ui/src/app/styles.css` now contains the wrapper-specific hooks required by these primitives. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
-- **Next Starter Context:** Phase 4 should rebuild the persistent shell and sidebar by composing the new `WorkspacePage`/`WorkspacePanel` wrappers instead of adding another shell-specific layout layer. Keep the visible theme toggle work inside the Phase 2 provider seam, and continue routing dense list surfaces through `EntityTable` rather than dropping back to raw shadcn/TanStack composition.
+- **Completion Notes:** Added Keystone-owned workspace primitives under `ui/src/components/workspace/` for page framing, panels, split panes, empty states, document/review wrappers, and a shared `EntityTable`. Updated the current shared/layout and scaffold/live feature surfaces to consume that vocabulary instead of open-coding wrapper logic: app-shell loading/empty/error states now render through `WorkspacePage`, run-detail scaffolds and detail-state fallbacks use the same page wrappers, planning/execution/documentation/task-detail workspaces now use `WorkspacePanel`, `WorkspaceSplit`, `DocumentFrame`, `ReviewSection`, and `WorkspaceEmptyState`, and both runs/workstreams list surfaces now flow through `EntityTable` rather than direct feature-owned table composition. The targeted fix pass then tightened the reusable table boundary so row activation now routes through an explicit `onRowActivate` seam instead of first-link DOM scraping, renamed the generic table panel/shell classes away from `runs-*`, and added focused tests for modifier-key and nested-interactive suppression. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- **Next Starter Context:** Phase 4 should rebuild the persistent shell and sidebar by composing the new `WorkspacePage`/`WorkspacePanel` wrappers instead of adding another shell-specific layout layer. Keep the visible theme toggle work inside the Phase 2 provider seam, continue routing dense list surfaces through `EntityTable`, and treat `onRowActivate` plus the neutral `entity-table*` styling hooks as the stable table contract rather than reintroducing feature-owned DOM scraping or runs-specific class names.
 
 ### Phase 4: Global Shell And Project-Scoped Chrome
 

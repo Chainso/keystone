@@ -616,12 +616,11 @@ pre {
   gap: 1rem;
 }
 
-.runs-table-panel {
+.entity-table-panel {
   display: grid;
   gap: 1rem;
 }
 
-.runs-table-header,
 .workspace-page-header,
 .workspace-panel-header,
 .type-picker-header,
@@ -644,12 +643,12 @@ pre {
   overflow-x: auto;
 }
 
-.runs-table {
+.entity-table {
   width: 100%;
   min-width: 40rem;
 }
 
-.runs-table thead th {
+.entity-table thead th {
   padding: 0 0.75rem 0.75rem;
   border-bottom: 1px solid var(--border-strong);
   color: var(--text-muted);
@@ -659,15 +658,15 @@ pre {
   text-transform: uppercase;
 }
 
-.runs-table tbody td {
+.entity-table tbody td {
   padding: 0.85rem 0.75rem;
   border-bottom: 1px solid var(--border-muted);
   color: var(--text-secondary);
   vertical-align: top;
 }
 
-.runs-table tbody tr:hover,
-.runs-table tbody tr:focus-within {
+.entity-table tbody tr:hover,
+.entity-table tbody tr:focus-within {
   background: var(--surface-subtle);
 }
 
@@ -1165,7 +1164,6 @@ pre {
   }
 
   .workspace-panel-header,
-  .runs-table-header,
   .workspace-page-header,
   .type-picker-header,
   .component-card-header,
@@ -1190,7 +1188,7 @@ pre {
     padding: 1rem;
   }
 
-  .runs-table {
+  .entity-table {
     min-width: 32rem;
   }
 

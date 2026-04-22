@@ -1,4 +1,3 @@
-import type { MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../../components/workspace/entity-table";
@@ -80,12 +79,6 @@ export function RunsIndexRoute() {
     }
   ];
 
-  function handleRowClick(event: MouseEvent<HTMLTableRowElement>) {
-    const primaryLink = event.currentTarget.querySelector<HTMLAnchorElement>("a[href]");
-
-    primaryLink?.click();
-  }
-
   async function handleCreateRun() {
     try {
       const runId = await model.createRun();
@@ -102,7 +95,7 @@ export function RunsIndexRoute() {
 
   return (
     <WorkspacePage>
-      <WorkspacePageSection className="runs-table-panel">
+      <WorkspacePageSection className="entity-table-panel">
         <WorkspacePageHeader>
           <WorkspacePageHeading>
             <h1 className="page-title runs-page-title">{model.title}</h1>
@@ -155,7 +148,7 @@ export function RunsIndexRoute() {
             ariaLabel="Runs"
             columns={scaffoldColumns}
             getRowId={(run) => run.runId}
-            onRowClick={handleRowClick}
+            onRowActivate={(run) => navigate(run.detailPath)}
             rows={model.scaffoldRuns}
           />
         ) : (
@@ -163,7 +156,7 @@ export function RunsIndexRoute() {
             ariaLabel="Runs"
             columns={liveColumns}
             getRowId={(run) => run.runId}
-            onRowClick={handleRowClick}
+            onRowActivate={(run) => navigate(run.detailPath)}
             rows={model.liveRuns}
           />
         )}

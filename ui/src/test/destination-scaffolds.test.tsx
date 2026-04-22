@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+import { EntityTable, type EntityTableColumn } from "../components/workspace/entity-table";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
 import {
@@ -131,6 +132,63 @@ function expectProjectConfigurationChromeRemoved(container: HTMLElement) {
 
 function getTableBodyRows() {
   return within(screen.getByRole("table")).getAllByRole("row").slice(1);
+}
+
+interface EntityTableHarnessRow {
+  rowId: string;
+  summary: string;
+}
+
+function renderEntityTableHarness(input: {
+  onNestedAction: () => void;
+  onRowActivate: (row: EntityTableHarnessRow) => void;
+}) {
+  const row: EntityTableHarnessRow = {
+    rowId: "row-1",
+    summary: "Open run detail"
+  };
+  const columns: EntityTableColumn<EntityTableHarnessRow>[] = [
+    {
+      cell: (currentRow) => currentRow.rowId,
+      header: "Row",
+      id: "row"
+    },
+    {
+      cell: (currentRow) => currentRow.summary,
+      header: "Summary",
+      id: "summary"
+    },
+    {
+      cell: () => (
+        <button type="button" onClick={input.onNestedAction}>
+          Inspect row
+        </button>
+      ),
+      header: "Actions",
+      id: "actions"
+    }
+  ];
+
+  render(
+    <EntityTable
+      ariaLabel="Entity table harness"
+      columns={columns}
+      getRowId={(currentRow) => currentRow.rowId}
+      onRowActivate={input.onRowActivate}
+      rows={[row]}
+    />
+  );
+
+  const bodyRow = within(screen.getByRole("table", { name: "Entity table harness" })).getAllByRole(
+    "row"
+  )[1];
+
+  expect(bodyRow).toBeDefined();
+
+  return {
+    row,
+    rowElement: bodyRow as HTMLElement
+  };
 }
 
 function expectWorkstreamRows(expectedRows: string[][]) {
@@ -1757,6 +1815,34 @@ describe("Destination scaffolds", () => {
       "Conversation attached to this task."
     );
     expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
+  });
+
+  it("suppresses row activation when the user holds a modifier key", () => {
+    const onNestedAction = vi.fn();
+    const onRowActivate = vi.fn();
+    const { row, rowElement } = renderEntityTableHarness({
+      onNestedAction,
+      onRowActivate
+    });
+
+    fireEvent.click(within(rowElement).getByText(row.summary), { metaKey: true });
+
+    expect(onNestedAction).not.toHaveBeenCalled();
+    expect(onRowActivate).not.toHaveBeenCalled();
+  });
+
+  it("suppresses row activation when the click starts on a nested interactive control", () => {
+    const onNestedAction = vi.fn();
+    const onRowActivate = vi.fn();
+    const { rowElement } = renderEntityTableHarness({
+      onNestedAction,
+      onRowActivate
+    });
+
+    fireEvent.click(within(rowElement).getByRole("button", { name: "Inspect row" }));
+
+    expect(onNestedAction).toHaveBeenCalledTimes(1);
+    expect(onRowActivate).not.toHaveBeenCalled();
   });
 
   it("redirects /projects/new to overview and keeps the tabbed create form live", async () => {

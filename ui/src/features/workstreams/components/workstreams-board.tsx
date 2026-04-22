@@ -12,9 +12,10 @@ import type { WorkstreamRowViewModel, WorkstreamsViewModel } from "../use-workst
 
 interface WorkstreamsBoardProps {
   model: WorkstreamsViewModel;
+  onRowActivate?: ((row: WorkstreamRowViewModel) => void) | undefined;
 }
 
-export function WorkstreamsBoard({ model }: WorkstreamsBoardProps) {
+export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps) {
   const columns: EntityTableColumn<WorkstreamRowViewModel>[] = [
     {
       cell: (row) => (
@@ -80,7 +81,7 @@ export function WorkstreamsBoard({ model }: WorkstreamsBoardProps) {
 
   return (
     <WorkspacePage>
-      <WorkspacePageSection className="runs-table-panel">
+      <WorkspacePageSection className="entity-table-panel">
         <WorkspacePageHeader>
           <WorkspacePageHeading>
             <h1 className="page-title runs-page-title">{model.title}</h1>
@@ -123,11 +124,7 @@ export function WorkstreamsBoard({ model }: WorkstreamsBoardProps) {
           }
           footer={paginationFooter}
           getRowId={(row) => row.rowId}
-          onRowClick={(event) => {
-            const primaryLink = event.currentTarget.querySelector<HTMLAnchorElement>("a[href]");
-
-            primaryLink?.click();
-          }}
+          onRowActivate={onRowActivate}
           rows={model.rows}
         />
       </WorkspacePageSection>

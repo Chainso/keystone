@@ -50,12 +50,12 @@ interface EntityTableProps<RowData> {
   emptyState?: EntityTableEmptyState | undefined;
   footer?: ReactNode | undefined;
   getRowId: (row: RowData) => string;
-  onRowClick?: ((event: MouseEvent<HTMLTableRowElement>, row: RowData) => void) | undefined;
+  onRowActivate?: ((row: RowData) => void) | undefined;
   rows: RowData[];
   tableClassName?: string | undefined;
 }
 
-function shouldIgnoreRowClick(event: MouseEvent<HTMLTableRowElement>) {
+function shouldIgnoreRowActivation(event: MouseEvent<HTMLTableRowElement>) {
   const target = event.target;
 
   return (
@@ -91,7 +91,7 @@ export function EntityTable<RowData>({
   emptyState,
   footer,
   getRowId,
-  onRowClick,
+  onRowActivate,
   rows,
   tableClassName
 }: EntityTableProps<RowData>) {
@@ -121,7 +121,7 @@ export function EntityTable<RowData>({
     <div className={cn("entity-table-shell", className)}>
       <Table
         aria-label={ariaLabel}
-        className={cn("runs-table", tableClassName)}
+        className={cn("entity-table", tableClassName)}
         containerClassName={cn("table-scroll", containerClassName)}
       >
         <TableHeader>
@@ -146,15 +146,15 @@ export function EntityTable<RowData>({
           {table.getRowModel().rows.map((row) => (
             <TableRow
               key={row.id}
-              className={onRowClick ? "table-clickable-row" : undefined}
+              className={onRowActivate ? "table-clickable-row" : undefined}
               onClick={
-                onRowClick
+                onRowActivate
                   ? (event) => {
-                      if (shouldIgnoreRowClick(event)) {
+                      if (shouldIgnoreRowActivation(event)) {
                         return;
                       }
 
-                      onRowClick(event, row.original);
+                      onRowActivate(row.original);
                     }
                   : undefined
               }
