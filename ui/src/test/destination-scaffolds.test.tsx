@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../components/workspace/entity-table";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
@@ -214,6 +215,14 @@ function expectWorkstreamLink(taskDisplayId: string, href: string) {
 
 function expectActiveWorkstreamFilter(label: string) {
   expect(screen.getByRole("radio", { name: label })).toHaveAttribute("data-state", "on");
+}
+
+function expectWorkstreamsSummary(labels: string[]) {
+  const summary = screen.getByRole("group", { name: "Workstreams summary" });
+
+  labels.forEach((label) => {
+    expect(within(summary).getByText(label)).toBeInTheDocument();
+  });
 }
 
 function getProjectSelector() {
@@ -823,6 +832,7 @@ describe("Destination scaffolds", () => {
     expect(
       screen.getByText("Track running, queued, and blocked work across every run in Keystone Cloudflare.")
     ).toBeInTheDocument();
+    expectWorkstreamsSummary(["Keystone Cloudflare", "5 matching tasks", "25 per page"]);
     expect(screen.getByText("Filters:")).toBeInTheDocument();
     expectActiveWorkstreamFilter("Active");
     expect(screen.getByRole("region", { name: "Task detail handoff" })).toHaveTextContent(
@@ -943,6 +953,7 @@ describe("Destination scaffolds", () => {
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-LIVE-001" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
+    expectWorkstreamsSummary(["Keystone Cloudflare", "3 matching tasks", "25 per page"]);
     expectActiveWorkstreamFilter("Active");
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -957,6 +968,7 @@ describe("Destination scaffolds", () => {
     fireEvent.click(screen.getByRole("radio", { name: "All" }));
     await screen.findByRole("link", { name: "TASK-LIVE-003" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-003" })).toBeInTheDocument();
+    expectWorkstreamsSummary(["Keystone Cloudflare", "4 matching tasks", "25 per page"]);
 
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -1189,6 +1201,7 @@ describe("Destination scaffolds", () => {
     );
 
     expect(screen.getByText("Filters:")).toBeInTheDocument();
+    expectWorkstreamsSummary(["Keystone Cloudflare", "0 matching tasks", "25 per page"]);
     expect(
       screen.getByText("Show work that is ready or pending while it waits to enter execution.")
     ).toBeInTheDocument();
@@ -1202,6 +1215,92 @@ describe("Destination scaffolds", () => {
     fireEvent.click(screen.getByRole("radio", { name: "All" }));
 
     expect(setActiveFilter).toHaveBeenCalledWith("all");
+  });
+
+  it("keeps workstream status pills on the shared task tone contract", () => {
+    render(
+      <MemoryRouter>
+        <WorkstreamsBoard
+          model={{
+            activeFilterDescription:
+              "Show blocked work that is waiting on unresolved blockers or prerequisites.",
+            currentProjectLabel: "Keystone Cloudflare",
+            title: "Project work across runs",
+            summary:
+              "Surface blocked work that needs intervention across every run in Keystone Cloudflare.",
+            filters: [
+              {
+                filterId: "all",
+                label: "All",
+                isActive: false
+              },
+              {
+                filterId: "active",
+                label: "Active",
+                isActive: false
+              },
+              {
+                filterId: "running",
+                label: "Running",
+                isActive: false
+              },
+              {
+                filterId: "queued",
+                label: "Queued",
+                isActive: false
+              },
+              {
+                filterId: "blocked",
+                label: "Blocked",
+                isActive: true
+              }
+            ],
+            goToNextPage() {},
+            goToPreviousPage() {},
+            rows: [
+              {
+                detailPath: "/runs/run-104/execution/tasks/task-failed",
+                rowId: "run-104-task-failed",
+                runDisplayId: "run-104",
+                status: "Failed",
+                statusTone: "blocked",
+                taskDisplayId: "TASK-FAILED",
+                title: "Recover failed workspace load",
+                updatedLabel: "2026-04-20 12:00 UTC"
+              },
+              {
+                detailPath: "/runs/run-104/execution/tasks/task-cancelled",
+                rowId: "run-104-task-cancelled",
+                runDisplayId: "run-104",
+                status: "Cancelled",
+                statusTone: "blocked",
+                taskDisplayId: "TASK-CANCELLED",
+                title: "Stop superseded rollout",
+                updatedLabel: "2026-04-20 12:05 UTC"
+              }
+            ],
+            pagination: {
+              currentPage: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              pageCount: 1,
+              pageSize: 25,
+              rangeLabel: "Showing 1-2 of 2 tasks"
+            },
+            pageSizeLabel: "25 per page",
+            recordSummaryLabel: "2 matching tasks",
+            retry() {},
+            routeGuidance:
+              "Rows open the matching task inside Runs > Execution without leaving the selected project.",
+            setActiveFilter() {}
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    expectWorkstreamsSummary(["Keystone Cloudflare", "2 matching tasks", "25 per page"]);
+    expect(screen.getByText("Failed")).toHaveClass("status-pill-blocked");
+    expect(screen.getByText("Cancelled")).toHaveClass("status-pill-blocked");
   });
 
   it("renders a live workstreams loading state before the task collection resolves", async () => {

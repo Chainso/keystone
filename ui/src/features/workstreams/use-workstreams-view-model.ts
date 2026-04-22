@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 
 import type { ProjectTaskFilter } from "../../../../src/http/api/v1/projects/contracts";
 import { formatUtcTimestamp } from "../../shared/formatting/date";
+import type { StatusTone } from "../../shared/layout/status-pill";
 import { buildRunTaskPath } from "../../shared/navigation/run-phases";
 import {
   parsePositiveIntegerSearchParam,
@@ -17,6 +18,7 @@ import type {
   ProjectTaskCollectionRecord,
   ProjectTaskRecord
 } from "../projects/project-management-api";
+import { getTaskStatusTone } from "../runs/run-status";
 
 export type WorkstreamFilterId = ProjectTaskFilter;
 
@@ -78,6 +80,7 @@ export interface WorkstreamRowViewModel {
   rowId: string;
   runDisplayId: string;
   status: string;
+  statusTone: StatusTone;
   taskDisplayId: string;
   title: string;
   updatedLabel: string;
@@ -413,15 +416,18 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
     shouldResetPageForProjectChange
   ]);
 
-  const rows = (visiblePage?.items ?? []).map((task) => ({
-    detailPath: buildRunTaskPath(task.runId, task.taskId),
-    rowId: `${task.runId}-${task.taskId}`,
-    runDisplayId: task.runId,
-    status: formatTaskStatusLabel(task.status),
-    taskDisplayId: resolveTaskDisplayId(task.logicalTaskId, task.taskId),
-    title: task.title,
-    updatedLabel: formatTaskUpdatedLabel(task)
-  }));
+  const rows = (visiblePage?.items ?? []).map((task) => {
+    return {
+      detailPath: buildRunTaskPath(task.runId, task.taskId),
+      rowId: `${task.runId}-${task.taskId}`,
+      runDisplayId: task.runId,
+      status: formatTaskStatusLabel(task.status),
+      statusTone: getTaskStatusTone(task.status),
+      taskDisplayId: resolveTaskDisplayId(task.logicalTaskId, task.taskId),
+      title: task.title,
+      updatedLabel: formatTaskUpdatedLabel(task)
+    };
+  });
   const contentState =
     visibleStatus === "loading"
       ? ({

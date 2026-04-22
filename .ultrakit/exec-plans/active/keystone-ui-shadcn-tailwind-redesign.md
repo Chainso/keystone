@@ -320,6 +320,11 @@ Baseline compatibility facts already captured:
   **Decision:** Updated the focused destination tests to assert the shadcn filter control's radio semantics and the current task-workspace conversation copy before rerunning the locked Phase 9 validation commands.
   **Rationale:** The filter surface moved from custom buttons to shadcn `ToggleGroup`, and the row-handoff assertion needed to match the real Phase 8 task-detail copy rather than stale expectations.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 9 targeted fix pass
+  **Decision:** Restored explicit task-status tone mapping on Workstreams rows while preserving the existing `Queued`/`Running`/`Blocked`/`Complete` labels, made the summary-chip cluster an explicit grouped contract, and tightened the focused destination tests to assert both the summary labels and blocked-tone handling for failed/cancelled rows.
+  **Rationale:** Review found that the label-only `StatusPill` path could render failed or cancelled tasks with neutral treatment and that the new summary header region was not actually covered by the Phase 9 validation tests.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -346,6 +351,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 8 completed: task detail now uses a real conversation/review split with changed-file groups, unified diffs, and supporting-artifact metadata over the current run API seam.
 - [x] 2026-04-22 Phase 8 targeted fix pass completed: review diffs now infer from real text artifact kinds, the sidebar invalidates stale loads across task switches and empty-review states, and the route suite now covers fallback, partial fetch failure, retry, and truthful task-to-task navigation.
 - [x] 2026-04-22 Phase 9 completed: `Workstreams` now uses the workspace-system header, shadcn single-select filters, status-pill rows, and explicit pagination/handoff framing while preserving server-driven filter/page state and direct task-detail routing.
+- [x] 2026-04-22 Phase 9 targeted fix pass completed: Workstreams rows now pass shared task tones explicitly, the summary header chips are a covered contract, and the locked Phase 9 validation commands reran green.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -387,6 +393,7 @@ Baseline compatibility facts already captured:
 - The workflow-first lag window also needs an explicit task-record-readiness seam on both the DAG inspector and the task route. A workflow node is not yet an honest task-detail target until the corresponding `run_tasks` row has materialized.
 - Task artifact metadata alone is not enough to build the review sidebar: changed-file grouping and diff type have to be derived by loading reviewable text artifact `contentUrl` values and parsing whichever payloads contain unified diff text, because the list endpoint exposes only artifact-level metadata.
 - shadcn single-select `ToggleGroup` controls expose filter items as `radio` elements, not button-role toggles. Future route tests and accessibility assertions need to query the workstream filters through radio semantics once a destination adopts that primitive.
+- `StatusPill` label inference is not sufficient for task rows whose visible labels are intentionally normalized. On `Workstreams`, failed and cancelled task rows need the shared explicit task-tone mapping even though the page still collapses ready/pending states into the visible `Queued` label.
 
 ## Outcomes & Retrospective
 
@@ -474,6 +481,7 @@ Phase 9 outcome on 2026-04-22:
 - `Workstreams` now shares the same workspace header language as `Runs` and `Execution` while staying list-first: the page exposes project context, matching-task count, and the locked 25-row page size without adding a new dashboard frame
 - the filter strip now uses shadcn `ToggleGroup` semantics over the existing server-driven `filter` plus `page` URL state, so the operator can move between `All`, `Active`, `Running`, `Queued`, and `Blocked` without losing the current project or the existing backend contract
 - the table still routes directly into `/runs/:runId/execution/tasks/:taskId`, but rows now scan more cleanly through status pills and the destination now makes the `Runs > Execution` handoff explicit in both the operator summary and pagination framing
+- the targeted fix pass then restored explicit task-tone wiring on Workstreams rows without changing the Phase 9 visible status labels, made the summary-chip cluster a grouped header contract, and extended the focused destination suite so regressions in the summary labels or failed/cancelled task tones now fail fast
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 9 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
@@ -835,7 +843,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
 - **Goal:** Rebuild `Workstreams` as a dense operational list that shares the same workspace language as `Runs` and `Execution`.
 - **Scope Boundary:** In scope are server-driven filters, table rendering, pagination framing, row interaction, and route handoff into task detail. Out of scope are backend pagination changes and AI conversation UI.
 - **Read First:** `design/workspace-spec.md`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/features/workstreams/use-workstreams-view-model.ts`.
@@ -845,8 +853,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** `Workstreams` is a coherent list-first operational surface using the locked filters and a Keystone `EntityTable` built from the shadcn data-table pattern over TanStack.
 - **Commit Expectation:** `redesign workstreams surface`
 - **Known Constraints / Baseline Failures:** no virtualization or heavier grid dependency is needed for the current product contract.
-- **Completion Notes:** Rebuilt `ui/src/features/workstreams/components/workstreams-board.tsx` around the workspace-system header and a denser operator surface: the page now exposes project context, matching-task count, locked page-size framing, shadcn `ToggleGroup` filters, status-pill rows, and explicit `Runs > Execution` handoff copy while keeping the board list-first. `ui/src/features/workstreams/use-workstreams-view-model.ts` now projects the active filter description, summary copy, pagination facts, and project/task counts that the board needs without changing the existing `/v1/projects/:projectId/tasks` filter or pagination contract. `ui/src/app/styles.css` now styles the new header, filter band, mono task/run identifiers, and pagination framing. `ui/src/test/destination-scaffolds.test.tsx` now asserts the real shadcn radio semantics for filters plus the updated task-detail handoff copy, and validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
-- **Next Starter Context:** Phase 10 should treat the Phase 9 `Workstreams` surface as stable. Keep the server-driven filter/page URL state, shadcn filter-radio semantics, status-pill table contract, and direct task-detail handoff into `Runs > Execution` intact; focus on rebuilding the project configuration tabs and forms without pulling `Workstreams` or live task-conversation runtime back into scope.
+- **Completion Notes:** Rebuilt `ui/src/features/workstreams/components/workstreams-board.tsx` around the workspace-system header and a denser operator surface: the page now exposes project context, matching-task count, locked page-size framing, shadcn `ToggleGroup` filters, status-pill rows, and explicit `Runs > Execution` handoff copy while keeping the board list-first. `ui/src/features/workstreams/use-workstreams-view-model.ts` now projects the active filter description, summary copy, pagination facts, and project/task counts that the board needs without changing the existing `/v1/projects/:projectId/tasks` filter or pagination contract. `ui/src/app/styles.css` now styles the new header, filter band, mono task/run identifiers, and pagination framing. The targeted fix pass then restored explicit task-tone wiring on the workstream row model via the shared task-status tone helper while preserving the Phase 9 visible labels, made the summary-chip cluster an explicit grouped header contract, and extended `ui/src/test/destination-scaffolds.test.tsx` to assert the summary labels plus failed/cancelled blocked-tone coverage. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 10 should treat the Phase 9 `Workstreams` surface as stable. Keep the server-driven filter/page URL state, shadcn filter-radio semantics, grouped summary header chips, explicit task-tone table contract, and direct task-detail handoff into `Runs > Execution` intact; focus on rebuilding the project configuration tabs and forms without pulling `Workstreams` or live task-conversation runtime back into scope.
 
 ### Phase 10: Project Configuration Surfaces
 

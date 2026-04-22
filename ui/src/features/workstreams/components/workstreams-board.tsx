@@ -39,7 +39,7 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
       id: "run"
     },
     {
-      cell: (row) => <StatusPill label={row.status} />,
+      cell: (row) => <StatusPill label={row.status} tone={row.statusTone} />,
       header: "Status",
       id: "status"
     },
@@ -96,7 +96,11 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
             <h1 className="page-title runs-page-title">{model.title}</h1>
             <p className="page-summary">{model.summary}</p>
           </WorkspacePageHeading>
-          <WorkspacePageActions className="workstreams-header-meta" aria-label="Workstreams summary">
+          <WorkspacePageActions
+            className="workstreams-header-meta"
+            aria-label="Workstreams summary"
+            role="group"
+          >
             <span className="meta-chip">{model.currentProjectLabel}</span>
             <span className="meta-chip">{model.recordSummaryLabel}</span>
             <span className="meta-chip">{model.pageSizeLabel}</span>
