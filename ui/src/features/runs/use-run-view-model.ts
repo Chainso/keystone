@@ -269,11 +269,6 @@ function buildPhaseStepperViewModel(
     workflow: NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["workflow"]>;
   }
 ): RunPhaseStepViewModel[] {
-  const executionAvailable = hasCompiledWorkflowData({
-    compiledFrom: input.run.compiledFrom,
-    workflow: input.workflow
-  });
-
   return runPhaseDefinitions.map((phase) => ({
     href: buildRunPhasePath(input.run.runId, phase.id),
     isAvailable: phase.id === "execution" ? hasCompileProvenance(input.run) : true,
