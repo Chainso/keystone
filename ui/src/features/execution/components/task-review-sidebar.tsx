@@ -20,6 +20,7 @@ import type {
   TaskArtifactViewModel,
   TaskArtifactsViewModel
 } from "../use-execution-view-model";
+import { partitionTaskReviewArtifacts } from "../task-review-artifacts";
 
 type ReviewDiffGroupId = "add" | "copy" | "delete" | "modify" | "rename";
 
@@ -40,9 +41,15 @@ interface ReviewDiffGroupViewModel {
 }
 
 type ReviewDiffContentState =
-  | { message: string; status: "idle" | "loading" }
-  | { groups: ReviewDiffGroupViewModel[]; message: string | null; status: "ready" }
-  | { message: string; status: "error" };
+  | { artifactSignature: string; message: string; status: "idle" | "loading" }
+  | {
+      artifactSignature: string;
+      groups: ReviewDiffGroupViewModel[];
+      message: string | null;
+      parsedArtifactIds: string[];
+      status: "ready";
+    }
+  | { artifactSignature: string; message: string; status: "error" };
 
 const reviewDiffGroupDefinitions: Record<
   ReviewDiffGroupId,
@@ -86,7 +93,7 @@ function getReviewContentErrorMessage(error: unknown) {
     return error.message;
   }
 
-  return "Unable to load changed files from the current diff artifacts.";
+  return "Unable to load changed files from the current reviewable text artifacts.";
 }
 
 function buildReviewFilePathLabel(file: FileData) {
@@ -136,14 +143,16 @@ function buildReviewDiffFiles(
   artifact: TaskArtifactViewModel,
   content: string
 ): ReviewDiffFileViewModel[] {
-  return parseDiff(content, { nearbySequences: "zip" }).map((file, index) => ({
-    artifactId: artifact.artifactId,
-    diffType: file.type,
-    fileKey: `${artifact.artifactId}:${file.newPath ?? file.oldPath ?? index}`,
-    hunks: file.hunks,
-    pathLabel: buildReviewFilePathLabel(file),
-    summaryLabel: buildReviewFileSummaryLabel(file)
-  }));
+  return parseDiff(content, { nearbySequences: "zip" })
+    .filter((file) => file.hunks.length > 0 || Boolean(file.oldPath) || Boolean(file.newPath))
+    .map((file, index) => ({
+      artifactId: artifact.artifactId,
+      diffType: file.type,
+      fileKey: `${artifact.artifactId}:${file.newPath ?? file.oldPath ?? index}`,
+      hunks: file.hunks,
+      pathLabel: buildReviewFilePathLabel(file),
+      summaryLabel: buildReviewFileSummaryLabel(file)
+    }));
 }
 
 function buildReviewDiffGroups(files: ReviewDiffFileViewModel[]): ReviewDiffGroupViewModel[] {
@@ -165,83 +174,113 @@ function buildReviewDiffGroups(files: ReviewDiffFileViewModel[]): ReviewDiffGrou
     .filter((group): group is ReviewDiffGroupViewModel => group !== null);
 }
 
+function buildEmptyReviewDiffState(artifactSignature: string): ReviewDiffContentState {
+  return {
+    artifactSignature,
+    groups: [],
+    message: null,
+    parsedArtifactIds: [],
+    status: "ready"
+  };
+}
+
+function buildLoadingReviewDiffState(artifactSignature: string): ReviewDiffContentState {
+  return {
+    artifactSignature,
+    message: "Loading changed files from the current task artifacts.",
+    status: "loading"
+  };
+}
+
 function useTaskReviewDiffContent(artifacts: TaskArtifactViewModel[]) {
   const api = useRunManagementApi();
   const [retryToken, setRetryToken] = useState(0);
   const requestIdRef = useRef(0);
-  const diffArtifacts = useMemo(
-    () => artifacts.filter((artifact) => artifact.kind === "git_diff"),
+  const reviewCandidates = useMemo(
+    () => partitionTaskReviewArtifacts(artifacts).reviewCandidates,
     [artifacts]
   );
-  const [state, setState] = useState<ReviewDiffContentState>(() =>
-    diffArtifacts.length === 0
-      ? { message: "No changed files are recorded for this task yet.", status: "ready", groups: [] }
-      : { message: "Loading unified diffs from the current task artifacts.", status: "idle" }
-  );
-  const diffArtifactSignature = diffArtifacts
-    .map((artifact) => `${artifact.artifactId}:${artifact.contentUrl}`)
+  const reviewCandidateSignature = reviewCandidates
+    .map(
+      (artifact) =>
+        `${artifact.artifactId}:${artifact.kind}:${artifact.contentType}:${artifact.contentUrl}`
+    )
     .join("|");
+  const fallbackState =
+    reviewCandidates.length === 0
+      ? buildEmptyReviewDiffState(reviewCandidateSignature)
+      : buildLoadingReviewDiffState(reviewCandidateSignature);
+  const [state, setState] = useState<ReviewDiffContentState>(() =>
+    fallbackState
+  );
+  const visibleState =
+    state.artifactSignature === reviewCandidateSignature ? state : fallbackState;
 
   useEffect(() => {
-    if (diffArtifacts.length === 0) {
-      setState({
-        groups: [],
-        message: "No changed files are recorded for this task yet.",
-        status: "ready"
-      });
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
+    if (reviewCandidates.length === 0) {
+      setState(buildEmptyReviewDiffState(reviewCandidateSignature));
       return;
     }
 
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    setState({
-      message: "Loading unified diffs from the current task artifacts.",
-      status: "loading"
-    });
+    setState(buildLoadingReviewDiffState(reviewCandidateSignature));
 
     void Promise.allSettled(
-      diffArtifacts.map(async (artifact) => {
+      reviewCandidates.map(async (artifact) => {
         const content = await api.getArtifactContent(artifact.contentUrl);
 
-        return buildReviewDiffFiles(artifact, content);
+        return {
+          artifactId: artifact.artifactId,
+          files: buildReviewDiffFiles(artifact, content)
+        };
       })
     ).then((results) => {
       if (requestIdRef.current !== requestId) {
         return;
       }
 
-      const loadedFiles = results.flatMap((result) =>
-        result.status === "fulfilled" ? result.value : []
+      const successfulLoads = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : []
       );
       const failedLoads = results.filter(
         (result): result is PromiseRejectedResult => result.status === "rejected"
       );
 
-      if (loadedFiles.length === 0 && failedLoads.length > 0) {
+      if (successfulLoads.length === 0 && failedLoads.length > 0) {
         setState({
+          artifactSignature: reviewCandidateSignature,
           message: getReviewContentErrorMessage(failedLoads[0].reason),
           status: "error"
         });
         return;
       }
 
+      const loadedFiles = successfulLoads.flatMap((result) => result.files);
+      const parsedArtifactIds = successfulLoads
+        .filter((result) => result.files.length > 0)
+        .map((result) => result.artifactId);
+
       setState({
+        artifactSignature: reviewCandidateSignature,
         groups: buildReviewDiffGroups(loadedFiles),
         message:
           failedLoads.length > 0
-            ? `${failedLoads.length} diff artifact${failedLoads.length === 1 ? "" : "s"} could not be loaded and are omitted from this view.`
+            ? `${failedLoads.length} reviewable text artifact${failedLoads.length === 1 ? "" : "s"} could not be loaded and ${failedLoads.length === 1 ? "is" : "are"} omitted from this view.`
             : null,
+        parsedArtifactIds,
         status: "ready"
       });
     });
-  }, [api, diffArtifactSignature, retryToken]);
+  }, [api, reviewCandidateSignature, reviewCandidates, retryToken]);
 
   return {
-    diffArtifacts,
+    reviewCandidates,
     retry: () => {
       setRetryToken((current) => current + 1);
     },
-    state
+    state: visibleState
   };
 }
 
@@ -318,19 +357,28 @@ function SupportingArtifactsSection({ artifacts }: { artifacts: TaskArtifactView
 }
 
 function TaskReviewSidebarReady({ artifacts }: { artifacts: TaskArtifactViewModel[] }) {
-  const { diffArtifacts, retry, state } = useTaskReviewDiffContent(artifacts);
-  const supportingArtifacts = useMemo(
-    () => artifacts.filter((artifact) => artifact.kind !== "git_diff"),
+  const { retry, reviewCandidates, state } = useTaskReviewDiffContent(artifacts);
+  const { supportingArtifacts: metadataOnlyArtifacts } = useMemo(
+    () => partitionTaskReviewArtifacts(artifacts),
     [artifacts]
   );
+  const supportingArtifacts = useMemo(() => {
+    if (state.status !== "ready") {
+      return metadataOnlyArtifacts;
+    }
+
+    const parsedArtifactIds = new Set(state.parsedArtifactIds);
+
+    return artifacts.filter((artifact) => !parsedArtifactIds.has(artifact.artifactId));
+  }, [artifacts, metadataOnlyArtifacts, state]);
 
   return (
     <div className="task-review-sidebar">
       <ReviewSection>
         <ReviewSectionLabel>Changed files</ReviewSectionLabel>
         <DocumentFrameSummary>
-          Unified diffs load from the current task artifact content URL through the authenticated
-          run API seam.
+          Changed files are inferred from current task text artifacts whose content parses as
+          unified diff through the authenticated run API seam.
         </DocumentFrameSummary>
       </ReviewSection>
 
@@ -352,18 +400,18 @@ function TaskReviewSidebarReady({ artifacts }: { artifacts: TaskArtifactViewMode
             </button>
           </WorkspaceEmptyStateActions>
         </WorkspaceEmptyState>
-      ) : state.groups.length === 0 ? (
-        <DocumentFrameSummary>
-          {diffArtifacts.length === 0
-            ? "No changed files are recorded for this task yet."
-            : "No changed files were parsed from the current diff artifacts."}
-        </DocumentFrameSummary>
       ) : (
         <>
           {state.message ? <DocumentFrameSummary>{state.message}</DocumentFrameSummary> : null}
-          {state.groups.map((group) => (
-            <ReviewDiffGroup key={group.id} group={group} />
-          ))}
+          {state.groups.length === 0 ? (
+            <DocumentFrameSummary>
+              {reviewCandidates.length === 0
+                ? "No changed files are recorded for this task yet."
+                : "No changed files were parsed from the current reviewable text artifacts."}
+            </DocumentFrameSummary>
+          ) : (
+            state.groups.map((group) => <ReviewDiffGroup key={group.id} group={group} />)
+          )}
         </>
       )}
 

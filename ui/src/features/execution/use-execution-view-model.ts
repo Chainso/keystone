@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 
+import type { ArtifactResource } from "../../../../src/http/api/v1/artifacts/contracts";
 import { formatUtcTimestamp } from "../../shared/formatting/date";
 import { buildRunPhasePath, buildRunTaskPath } from "../../shared/navigation/run-phases";
 import type { StatusTone } from "../../shared/layout/status-pill";
 import { getTaskStatusPresentation } from "../runs/run-status";
 import type { ConversationLocator } from "../runs/run-types";
 import { useReadyRunDetail } from "../runs/use-ready-run-detail";
+import { partitionTaskReviewArtifacts } from "./task-review-artifacts";
 
 type ReadyRunTasks = ReturnType<typeof useReadyRunDetail>["state"]["tasks"];
 type WorkflowNodes = NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["workflow"]>["nodes"];
@@ -176,7 +178,7 @@ export interface TaskArtifactViewModel {
   artifactId: string;
   contentType: string;
   contentUrl: string;
-  kind: string;
+  kind: ArtifactResource["kind"];
   sha256: string | null;
   sizeLabel: string;
 }
@@ -447,21 +449,18 @@ function buildTaskReviewSummary(taskArtifacts: TaskArtifactsViewModel) {
     return "No review artifacts are recorded for this task yet.";
   }
 
-  const diffArtifactCount = taskArtifacts.items.filter(
-    (artifact) => artifact.kind === "git_diff"
-  ).length;
-  const supportingArtifactCount = taskArtifacts.items.length - diffArtifactCount;
+  const { reviewCandidates, supportingArtifacts } = partitionTaskReviewArtifacts(taskArtifacts.items);
   const summaryParts: string[] = [];
 
-  if (diffArtifactCount > 0) {
+  if (reviewCandidates.length > 0) {
     summaryParts.push(
-      `${diffArtifactCount} diff artifact${diffArtifactCount === 1 ? "" : "s"}`
+      `${reviewCandidates.length} text artifact${reviewCandidates.length === 1 ? "" : "s"}`
     );
   }
 
-  if (supportingArtifactCount > 0) {
+  if (supportingArtifacts.length > 0) {
     summaryParts.push(
-      `${supportingArtifactCount} supporting artifact${supportingArtifactCount === 1 ? "" : "s"}`
+      `${supportingArtifacts.length} supporting artifact${supportingArtifacts.length === 1 ? "" : "s"}`
     );
   }
 

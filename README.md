@@ -56,7 +56,7 @@ Current UI scope:
 - a live `Runs` index with a real `+ New run` action
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
-- explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail artifact review with supported text preview plus compatibility messaging for unsupported content
+- explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail review that infers changed files from text task artifacts while keeping non-diff outputs as metadata-only support records
 - live `Workstreams` loading through the project tasks API, with server-backed filter and pagination URL state
 - live `Workstreams` loading through `GET /v1/projects/:projectId/tasks` with server-side filtering, pagination, and direct links back into `Runs > Execution`
 - board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
@@ -66,7 +66,7 @@ Current UI scope:
 Current UI non-goals:
 
 - live backend loading for `Documentation`
-- real task conversations, streaming execution updates, or live review diff synthesis beyond artifact metadata plus supported text preview
+- real task conversations, streaming execution updates, or backend-owned review diff metadata beyond the current text-artifact seam
 - persisted documentation or workstream editing
 - final visual polish
 - auth-specific UI flows or tenant-selection controls

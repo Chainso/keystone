@@ -154,7 +154,7 @@ Baseline compatibility facts already captured:
 
 - **Date:** 2026-04-21
 - **Decision:** Use `react-diff-view` for task review diffs.
-- **Rationale:** The current artifact seam is unified diff text at `contentUrl`, not old/new value pairs. `react-diff-view` matches that model more cleanly and is a better React 19 fit than `react-diff-viewer-continued`.
+- **Rationale:** The current review seam is text artifact content fetched from `contentUrl`, not old/new value pairs. `react-diff-view` matches that model more cleanly and is a better React 19 fit than `react-diff-viewer-continued`.
 - **Alternatives considered:** `react-diff-viewer-continued`; custom diff rendering. Both are weaker fits for the existing artifact seam.
 
 ### Decision 14: Dense operational tables use the shadcn data-table pattern, backed by TanStack Table
@@ -305,6 +305,11 @@ Baseline compatibility facts already captured:
   **Decision:** Rebuilt task detail into a real task workspace: the left pane now reads as a task conversation frame with task-scoped context and an honest live-chat placeholder, while the right pane now loads diff artifact content through the existing run API seam, groups changed files, renders unified diffs via `react-diff-view`, and keeps non-diff artifacts as metadata-only supporting records.
   **Rationale:** The Phase 8 contract required a true conversation-plus-review task surface without inventing old/new snapshot APIs or backend changes, and the existing artifact metadata does not carry file-grouping detail until the diff text at `contentUrl` is fetched and parsed.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 8 targeted fix pass
+  **Decision:** Replaced the fake `git_diff` / `screenshot` review classifier with a truthful text-artifact seam: the task sidebar now treats `run_note` and `staged_output` text artifacts as review candidates, derives changed-file groups only from payloads that parse as unified diff, keeps the remaining task artifacts as metadata-only support records, and invalidates in-flight diff loads when the task or artifact set changes.
+  **Rationale:** Review found that the first Phase 8 cut depended on artifact kinds the backend never emits, could leave stale diff state visible across task switches, and did not yet prove the real text-artifact fallback/retry behavior in the route suite.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -329,6 +334,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 7 completed: execution now defaults to a graph-first workspace with dependency-step DAG rendering, workflow status groups, selected-task inspection, and an explicit task-detail handoff.
 - [x] 2026-04-22 Phase 7 targeted fix pass completed: execution handoff copy is now task-detail scoped, workflow-only nodes no longer over-promise task detail before task rows materialize, DAG cards are height-clamped to the fixed canvas math, and the targeted route suite now covers lagging plus branching workflows.
 - [x] 2026-04-22 Phase 8 completed: task detail now uses a real conversation/review split with changed-file groups, unified diffs, and supporting-artifact metadata over the current run API seam.
+- [x] 2026-04-22 Phase 8 targeted fix pass completed: review diffs now infer from real text artifact kinds, the sidebar invalidates stale loads across task switches and empty-review states, and the route suite now covers fallback, partial fetch failure, retry, and truthful task-to-task navigation.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -351,12 +357,12 @@ Baseline compatibility facts already captured:
 - `vite.config.ts`, `tsconfig.ui.json`, and `vitest.config.ts` currently do not implement the alias and plugin wiring that the target stack requires.
 - The repo already has `ai`, `agents`, `@cloudflare/ai-chat`, and `@ai-sdk/openai`, but not Tailwind, shadcn bootstrap, Plate packages, assistant-ui, or the table/form/diff helpers now locked in this plan.
 - Document contracts are already markdown-first. Plate should be a markdown projection, not a storage-format replacement.
-- Planning and task conversation panes are still placeholder UI even though document/task contracts already carry conversation locators.
+- Planning conversation panes are still placeholder UI, and task detail still keeps only the live-message portion placeholder-framed even though document/task contracts already carry conversation locators.
 - `tests/http/app.test.ts` still expects the task conversation route to be missing, which confirms that conversation transport is a real implementation phase and not a styling concern.
-- The current task artifact seam is unified diff text, which materially affects the diff-library decision.
+- The current task review seam is text `run_note` / `staged_output` artifact content loaded through `contentUrl`, which materially affects both the diff-library decision and the UI-side review classifier.
 - The current shadcn registry does not ship a standalone `data-table` UI component for this stack. It ships a `data-table-demo` example plus the guide built on `Table` and `@tanstack/react-table`, so Phase 1 should seed the required primitives and keep feature-owned TanStack composition out of scope until the Phase 3 Keystone wrapper.
 - Phase 1 can defer the broader token migration, but it cannot leave `ui/src/app/styles.css` as legacy-only CSS. The real bootstrap minimum is `@import "tailwindcss"`, `@import "tw-animate-css"`, and a small semantic token bridge from the current palette into the shadcn variables already referenced by the generated primitives. The full token takeover, persisted theme model, and Radix bootstrap exit still belong to Phase 2.
-- `rtk npx tsc --noEmit -p tsconfig.ui.json` still fails outside Phase 1 on unrelated existing typing drift: the `git_diff` / `screenshot` artifact-kind fixture mismatch in `ui/src/test/runs-routes.test.tsx` and `projectedArtifacts[].kind` still typed as `string` in `src/keystone/agents/implementer/ImplementerAgent.ts`.
+- Earlier execution surfaced a UI-only fixture mismatch around invented artifact kinds in `ui/src/test/runs-routes.test.tsx`; the Phase 8 targeted fix pass clears that portion, but `projectedArtifacts[].kind` is still typed as `string` in `src/keystone/agents/implementer/ImplementerAgent.ts`.
 - On this host, `npm run build` still needs a host shell because Wrangler and Docker hit sandbox write constraints after `vite build` succeeds.
 - The current shell sidebar still has no footer-owned theme-control slot, so Phase 2 should land the provider/storage seam and token system first, then let Phase 4 mount the visible toggle in the persistent left sidebar without inventing a second theme owner.
 - Phase 2's first-paint contract needs a dedicated `ui/index.html` head seam; a `main.tsx` bootstrap still starts after the app module begins evaluating and can flash the light theme on a cold load before the stored dark preference is applied.
@@ -368,7 +374,7 @@ Baseline compatibility facts already captured:
 - Plate's current markdown deserialize/serialize path is not safe as a Phase 6 persistence boundary for common authored forms like task lists and strikethrough. For this slice, Plate should render markdown source, but save/export must stay on the authored markdown string path.
 - The live run-detail refresh can surface a non-empty workflow graph before the task collection catches up. Phase 7 therefore has to project the DAG from workflow nodes first and enrich it with task-row metadata opportunistically instead of treating an empty task list as proof that execution is still unavailable.
 - The workflow-first lag window also needs an explicit task-record-readiness seam on both the DAG inspector and the task route. A workflow node is not yet an honest task-detail target until the corresponding `run_tasks` row has materialized.
-- Task artifact metadata alone is not enough to build the review sidebar: changed-file grouping and diff type have to be derived by loading the current diff artifact `contentUrl` and parsing the unified diff text, because the list endpoint exposes only artifact-level metadata.
+- Task artifact metadata alone is not enough to build the review sidebar: changed-file grouping and diff type have to be derived by loading reviewable text artifact `contentUrl` values and parsing whichever payloads contain unified diff text, because the list endpoint exposes only artifact-level metadata.
 
 ## Outcomes & Retrospective
 
@@ -446,9 +452,9 @@ Phase 7 outcome on 2026-04-22:
 Phase 8 outcome on 2026-04-22:
 
 - task detail now reads as the intended product split instead of an artifact-preview utility: the left pane is a task conversation frame with task handoff, execution state, dependency/downstream navigation, and an explicit placeholder for the still-missing live chat transport
-- the right pane now behaves like a real review inspector: changed files are grouped by diff type, unified diffs render inline through `react-diff-view`, and file sections stay collapsible without inventing old/new snapshot APIs beyond the current `contentUrl` seam
-- non-diff artifacts remain visible as supporting records in the review sidebar, which keeps screenshot or other evidence metadata available without pretending dedicated viewers landed in this phase
-- targeted route coverage now proves the changed-file groups, parsed multi-file diff rendering, supporting-artifact metadata, and the updated task-review error state, matching the final Phase 8 task-detail contract
+- the right pane now behaves like a real review inspector: changed files are grouped by diff type, unified diffs render inline through `react-diff-view`, and file sections stay collapsible by inferring diff content from real text `run_note` / `staged_output` artifacts rather than a fake dedicated diff kind
+- task artifacts that do not parse as diffs remain visible as supporting records in the review sidebar, which keeps metadata for notes, images, and other outputs available without pretending dedicated viewers landed in this phase
+- the targeted fix pass then hardened the route: stale diff loads are invalidated across task switches and empty-review states, and targeted route coverage now proves the changed-file groups, real-artifact fallback, partial fetch failure, retry, and updated task-review error state, matching the final Phase 8 task-detail contract
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 8 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
@@ -684,7 +690,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** all known dependencies are installed, aliasing is consistent across build/test/typecheck, shadcn bootstrap files exist, the initial primitive seed set is generated, and the table bootstrap path is ready for Phase 3 to wrap the shadcn data-table pattern rather than raw TanStack usage.
 - **Commit Expectation:** `bootstrap ui dependency and build foundation`
 - **Known Constraints / Baseline Failures:** lint and typecheck already fail outside this phase; `rtk npx tsc --noEmit -p tsconfig.ui.json` also still fails outside this phase on unrelated existing typing drift in `ui/src/test/runs-routes.test.tsx` and `src/keystone/agents/implementer/ImplementerAgent.ts`; `build` remains host-constrained after `vite build`.
-- **Completion Notes:** Installed the locked dependency families plus shadcn-required runtime packages (`cmdk`, `radix-ui`, `react-resizable-panels`), added consistent `@/* -> ui/src/*` alias wiring, created `components.json` and `ui/src/lib/utils.ts`, and generated the initial shadcn seed set under `ui/src/components/ui/*`. The current shadcn registry only exposes a `data-table-demo` example, so the Phase 1 table path is the official guide pattern: `@tanstack/react-table` plus seeded table/form/menu primitives, with no feature-owned TanStack composition introduced yet. The targeted fix pass completed the minimum truthful stylesheet foundation in `ui/src/app/styles.css` by turning on Tailwind output, importing `tw-animate-css`, and aliasing the current palette into the semantic tokens that the generated primitives already reference, while still leaving the broader theme-system takeover to Phase 2. The same fix pass also removed the `DropdownMenuCheckboxItem` `exactOptionalPropertyTypes` regression and made mobile `Sidebar` prop forwarding match desktop behavior. `rtk npx tsc --noEmit -p tsconfig.ui.json` was reclassified back to baseline because it still fails on the unrelated `git_diff` / `screenshot` artifact-kind fixture mismatch in `ui/src/test/runs-routes.test.tsx` and the existing `projectedArtifacts[].kind` as `string` typing drift in `src/keystone/agents/implementer/ImplementerAgent.ts`.
+- **Completion Notes:** Installed the locked dependency families plus shadcn-required runtime packages (`cmdk`, `radix-ui`, `react-resizable-panels`), added consistent `@/* -> ui/src/*` alias wiring, created `components.json` and `ui/src/lib/utils.ts`, and generated the initial shadcn seed set under `ui/src/components/ui/*`. The current shadcn registry only exposes a `data-table-demo` example, so the Phase 1 table path is the official guide pattern: `@tanstack/react-table` plus seeded table/form/menu primitives, with no feature-owned TanStack composition introduced yet. The targeted fix pass completed the minimum truthful stylesheet foundation in `ui/src/app/styles.css` by turning on Tailwind output, importing `tw-animate-css`, and aliasing the current palette into the semantic tokens that the generated primitives already reference, while still leaving the broader theme-system takeover to Phase 2. The same fix pass also removed the `DropdownMenuCheckboxItem` `exactOptionalPropertyTypes` regression and made mobile `Sidebar` prop forwarding match desktop behavior. `rtk npx tsc --noEmit -p tsconfig.ui.json` was reclassified back to baseline because it still fails on unrelated existing typing drift, and earlier execution later showed that the UI fixture-mismatch portion was a separate issue cleared in the Phase 8 targeted fix pass.
 - **Next Starter Context:** Phase 2 should start from the generated shadcn primitives and the now-live Tailwind entrypoint already on disk, then take over `ui/src/app/styles.css` for the final token model, dark-mode variant ownership, persisted theme wiring, and Radix bootstrap removal. Do not regenerate the seed set; build on the existing `components.json` contract and replace the temporary semantic-token bridge with the centralized theme system.
 
 ### Phase 2: Theme Tokens, Root Theme Provider, And Direct-Radix Exit
@@ -793,7 +799,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
 - **Goal:** Rebuild task detail around the left conversation frame and right review inspector.
 - **Scope Boundary:** In scope are the task detail shell, changed-file groups, unified diff rendering, review sidebar behavior, and task-specific states. Out of scope are live chat binding and backend artifact changes.
 - **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/runs/run-management-api.ts`.
@@ -803,7 +809,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** task detail becomes a real review workspace with unified diff rendering through `react-diff-view`.
 - **Commit Expectation:** `redesign task review workspace`
 - **Known Constraints / Baseline Failures:** keep artifact truth tied to the current API seam and `contentUrl`; do not invent old/new snapshot APIs.
-- **Completion Notes:** Replaced the old artifact-preview-first task route with a real task workspace. `ui/src/features/execution/use-execution-view-model.ts` now enriches task detail with task-scope conversation entries, activity copy, and review-summary facts while preserving the existing artifact metadata seam. `ui/src/features/execution/components/task-detail-workspace.tsx` now renders the product-shaped split: a left conversation frame with task handoff, execution status, dependency/downstream navigation, and an honest live-chat placeholder, plus a right code-review pane. The new `ui/src/features/execution/components/task-review-sidebar.tsx` loads diff artifact text through `getArtifactContent(contentUrl)`, parses unified diffs with `react-diff-view`, groups changed files by diff type, renders one-pane diffs inside collapsible file sections, and keeps non-diff artifacts visible as metadata-only supporting records. `ui/src/app/styles.css` now imports the `react-diff-view` stylesheet, maps it onto the shared theme tokens, and adds the task-review layout/diff styling needed for the new inspector. `ui/src/test/runs-routes.test.tsx` now proves the changed-file groups, multi-file diff rendering, supporting-artifact metadata, and the renamed task-review error state. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Completion Notes:** Replaced the old artifact-preview-first task route with a real task workspace. `ui/src/features/execution/use-execution-view-model.ts` now enriches task detail with task-scope conversation entries, activity copy, and review-summary facts while preserving the existing artifact metadata seam. `ui/src/features/execution/components/task-detail-workspace.tsx` now renders the product-shaped split: a left conversation frame with task handoff, execution status, dependency/downstream navigation, and an honest live-chat placeholder, plus a right code-review pane. The new `ui/src/features/execution/components/task-review-sidebar.tsx` infers reviewable changed files from text `run_note` and `staged_output` artifacts by loading `contentUrl`, parsing whichever payloads contain unified diff text, grouping changed files by diff type, rendering one-pane diffs inside collapsible file sections, and leaving the remaining task artifacts as metadata-only supporting records. The targeted fix pass then invalidated in-flight diff loads across task/artifact changes so stale reviews cannot flash between tasks or after empty-review routes. `ui/src/app/styles.css` now imports the `react-diff-view` stylesheet, maps it onto the shared theme tokens, and adds the task-review layout/diff styling needed for the new inspector. `ui/src/test/runs-routes.test.tsx` now proves the changed-file groups, real-artifact fallback, partial fetch failure, retry, truthful task-to-task route preservation, and the renamed task-review error state. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
 - **Next Starter Context:** Phase 9 should treat the Phase 8 task-detail workspace as stable. Keep the graph-to-task handoff, the task conversation/review split, the diff grouping/parsing contract over `contentUrl`, and the metadata-only supporting-artifact lane intact; the main visible gap left in task detail is still live conversation behavior, so Phase 9 should stay focused on the Workstreams surface.
 
 ### Phase 9: Workstreams Surface
@@ -1095,7 +1101,7 @@ Subagent findings folded into this rewrite:
   conversation rendering layer and `ExternalStoreRuntime`-style bridge over Cloudflare-owned message state
 
 - **`react-diff-view`**
-  unified diff renderer aligned with the current `git_diff` artifact seam
+  unified diff renderer aligned with the current text-artifact review seam
 
 - **`ui/src/components/workspace/*`**
   durable wrapper layer for shell, panes, inspectors, status, empty states, and action rows

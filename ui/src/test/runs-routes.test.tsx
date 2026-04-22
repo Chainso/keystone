@@ -269,8 +269,10 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
   "run-104": {
     ...createRunFixture("run-104", {
       artifactContents: {
-        "/v1/artifacts/artifact-task-032-diff/content":
-          "diff --git a/ui/src/features/execution/components/task-detail-workspace.tsx b/ui/src/features/execution/components/task-detail-workspace.tsx\nindex 1111111..2222222 100644\n--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n@@ -18,3 +18,4 @@ export function TaskDetailWorkspace() {\n-  return <p>Artifacts and review</p>;\n+  return <p>Code review</p>;\n+  // keep artifact access inside the authenticated run API seam\n }\ndiff --git a/ui/src/features/execution/components/task-review-sidebar.tsx b/ui/src/features/execution/components/task-review-sidebar.tsx\nnew file mode 100644\n--- /dev/null\n+++ b/ui/src/features/execution/components/task-review-sidebar.tsx\n@@ -0,0 +1,3 @@\n+export function TaskReviewSidebar() {\n+  return \"render unified diffs from task artifact content\";\n+}\n"
+        "/v1/artifacts/artifact-task-032-review/content":
+          "diff --git a/ui/src/features/execution/components/task-detail-workspace.tsx b/ui/src/features/execution/components/task-detail-workspace.tsx\nindex 1111111..2222222 100644\n--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n@@ -18,3 +18,4 @@ export function TaskDetailWorkspace() {\n-  return <p>Artifacts and review</p>;\n+  return <p>Code review</p>;\n+  // keep artifact access inside the authenticated run API seam\n }\ndiff --git a/ui/src/features/execution/components/task-review-sidebar.tsx b/ui/src/features/execution/components/task-review-sidebar.tsx\nnew file mode 100644\n--- /dev/null\n+++ b/ui/src/features/execution/components/task-review-sidebar.tsx\n@@ -0,0 +1,3 @@\n+export function TaskReviewSidebar() {\n+  return \"render unified diffs from task artifact content\";\n+}\n",
+        "/v1/artifacts/artifact-task-032-note/content":
+          "# Review note\n\nKept task-level review inside the authenticated run API seam.\n"
       },
       run: {
         compiledFrom: {
@@ -290,18 +292,26 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
       taskArtifacts: {
         "task-032": [
           {
-            artifactId: "artifact-task-032-diff",
+            artifactId: "artifact-task-032-review",
             contentType: "text/plain; charset=utf-8",
-            contentUrl: "/v1/artifacts/artifact-task-032-diff/content",
-            kind: "git_diff",
+            contentUrl: "/v1/artifacts/artifact-task-032-review/content",
+            kind: "staged_output",
             sha256: "task-032-sha",
             sizeBytes: 4096
+          },
+          {
+            artifactId: "artifact-task-032-note",
+            contentType: "text/markdown; charset=utf-8",
+            contentUrl: "/v1/artifacts/artifact-task-032-note/content",
+            kind: "run_note",
+            sha256: "task-032-note-sha",
+            sizeBytes: 1024
           },
           {
             artifactId: "artifact-task-032-preview",
             contentType: "image/png",
             contentUrl: "/v1/artifacts/artifact-task-032-preview/content",
-            kind: "screenshot",
+            kind: "staged_output",
             sha256: "task-032-preview-sha",
             sizeBytes: 8192
           }
@@ -457,7 +467,7 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
             artifactId: "artifact-task-082-diff",
             contentType: "text/plain; charset=utf-8",
             contentUrl: "/v1/artifacts/artifact-task-082-diff/content",
-            kind: "git_diff",
+            kind: "staged_output",
             sha256: "task-082-sha",
             sizeBytes: 2048
           }
@@ -882,6 +892,16 @@ function expectRunDetailStateChrome() {
 function createRunApi(overrides: Partial<RunManagementApi> = {}): RunManagementApi {
   return {
     ...staticRunApi,
+    ...overrides
+  };
+}
+
+function createRunApiFromFixtures(
+  fixtures: Record<string, StaticRunDetailRecord>,
+  overrides: Partial<RunManagementApi> = {}
+): RunManagementApi {
+  return {
+    ...createStaticRunManagementApi(fixtures),
     ...overrides
   };
 }
@@ -2835,8 +2855,10 @@ describe("Run routes", () => {
     expect(screen.getByText("ui/src/features/execution/components/task-detail-workspace.tsx")).toBeInTheDocument();
     expect(screen.getByText("ui/src/features/execution/components/task-review-sidebar.tsx")).toBeInTheDocument();
     expect(screen.getByText("Supporting artifacts")).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+    expect(screen.getByText("run_note · text/markdown; charset=utf-8 · 1.0 KB")).toBeInTheDocument();
     expect(screen.getByText("artifact-task-032-preview")).toBeInTheDocument();
-    expect(screen.getByText("screenshot · image/png · 8.0 KB")).toBeInTheDocument();
+    expect(screen.getByText("staged_output · image/png · 8.0 KB")).toBeInTheDocument();
     expect(
       await screen.findByText((content) =>
         content.includes("keep artifact access inside the authenticated run API seam")
@@ -2851,6 +2873,128 @@ describe("Run routes", () => {
     expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load text preview" })).not.toBeInTheDocument();
     expect(screen.queryByText("Artifacts and review")).not.toBeInTheDocument();
+  });
+
+  it("keeps non-diff review candidates as supporting metadata when no unified diff can be parsed", async () => {
+    const fixtures = cloneRunFixtures();
+    fixtures["run-104"].artifactContents = {
+      ...(fixtures["run-104"].artifactContents ?? {}),
+      "/v1/artifacts/artifact-task-032-review/content":
+        "# Review note\n\nNo patch was attached to this task output.\n"
+    };
+
+    renderRunRoute(
+      "/runs/run-104/execution/tasks/task-032",
+      createRunApiFromFixtures(fixtures)
+    );
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("No changed files were parsed from the current reviewable text artifacts.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-review")).toBeInTheDocument();
+    expect(screen.getByText("staged_output · text/plain; charset=utf-8 · 4.0 KB")).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+  });
+
+  it("keeps successful changed files visible when one reviewable text artifact fails to load", async () => {
+    const fixtures = cloneRunFixtures();
+    const baseRunApi = createStaticRunManagementApi(fixtures);
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getArtifactContent: vi.fn(async (contentUrl) => {
+        if (contentUrl === "/v1/artifacts/artifact-task-032-note/content") {
+          throw new Error("Run note fetch failed.");
+        }
+
+        return baseRunApi.getArtifactContent(contentUrl);
+      })
+    };
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
+
+    expect(await screen.findByText("Modified files")).toBeInTheDocument();
+    expect(
+      screen.getByText("1 reviewable text artifact could not be loaded and is omitted from this view.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+  });
+
+  it("retries changed-file loading after review content fetch fails", async () => {
+    const fixtures = cloneRunFixtures();
+    const baseRunApi = createStaticRunManagementApi(fixtures);
+    let failReviewLoads = true;
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getArtifactContent: vi.fn(async (contentUrl) => {
+        if (
+          failReviewLoads &&
+          (contentUrl === "/v1/artifacts/artifact-task-032-review/content" ||
+            contentUrl === "/v1/artifacts/artifact-task-032-note/content")
+        ) {
+          throw new Error("Review artifact fetch failed.");
+        }
+
+        return baseRunApi.getArtifactContent(contentUrl);
+      })
+    };
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
+
+    expect(await screen.findByText("Unable to load changed files")).toBeInTheDocument();
+    expect(screen.getByText("Review artifact fetch failed.")).toBeInTheDocument();
+
+    failReviewLoads = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry review" }));
+
+    expect(await screen.findByText("Modified files")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load changed files")).not.toBeInTheDocument();
+  });
+
+  it("clears pending changed-file state when routing to a task with no review artifacts", async () => {
+    const fixtures = cloneRunFixtures();
+    const baseRunApi = createStaticRunManagementApi(fixtures);
+    const deferredReviewContent = createDeferred<string>();
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getArtifactContent: vi.fn(async (contentUrl) => {
+        if (contentUrl === "/v1/artifacts/artifact-task-032-review/content") {
+          return deferredReviewContent.promise;
+        }
+
+        return baseRunApi.getArtifactContent(contentUrl);
+      })
+    };
+
+    const { router } = renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(screen.getByText("Loading changed files from the current task artifacts.")).toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByRole("list", { name: "Depends on" })).getByRole("link", {
+        name: /task-031/i
+      })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/execution/tasks/task-031");
+    });
+    expect(await screen.findByRole("heading", { name: "run-104 / task-031" })).toBeInTheDocument();
+    expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Modified files")).not.toBeInTheDocument();
+
+    deferredReviewContent.resolve(
+      await baseRunApi.getArtifactContent("/v1/artifacts/artifact-task-032-review/content")
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
+      expect(screen.queryByText("Modified files")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("ui/src/features/execution/components/task-review-sidebar.tsx")
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("renders a task-detail error state when artifact metadata fails to load", async () => {
