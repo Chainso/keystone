@@ -228,7 +228,7 @@ describe("demo scripts", () => {
         tenantId: "tenant-local",
         projectId: "project-fixture",
         runId: "run-local-123",
-        executionEngine: "scripted",
+        executionEngine: "think_live",
         status: "configured",
         nextSteps: {
           createDocuments: "/v1/runs/run-local-123/documents",
@@ -240,7 +240,7 @@ describe("demo scripts", () => {
           method: "POST",
           path: "/v1/projects/project-fixture/runs",
           body: {
-            executionEngine: "scripted"
+            executionEngine: "think_live"
           }
         })
       ]);
@@ -415,12 +415,16 @@ describe("demo scripts", () => {
             data: {
               items: [
                 {
-                  taskId: "task-1",
+                  taskId: "task-prepare-code",
                   status: "completed"
                 },
                 {
-                  taskId: "task-2",
-                  status: "ready"
+                  taskId: "task-prepare-tests",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-implement",
+                  status: "completed"
                 }
               ]
             }
@@ -442,7 +446,7 @@ describe("demo scripts", () => {
         baseUrl: server.baseUrl,
         projectId: "project-123",
         runId: "run-123",
-        executionEngine: "scripted",
+        executionEngine: "think_live",
         status: "archived",
         compiledFrom: {
           specificationRevisionId: "spec-rev-1",
@@ -450,22 +454,22 @@ describe("demo scripts", () => {
           executionPlanRevisionId: "plan-rev-1"
         },
         tasks: {
-          total: 2,
-          completed: 1,
-          ready: 1,
+          total: 3,
+          completed: 3,
+          ready: 0,
           active: 0,
           pending: 0,
           failed: 0,
           cancelled: 0
         },
         demoContract: {
-          contractId: "scripted-document-run"
+          contractId: "think-live-document-run"
         }
       });
       expect(persisted).toMatchObject({
         baseUrl: server.baseUrl,
         runId: "run-123",
-        executionEngine: "scripted"
+        executionEngine: "think_live"
       });
       expect(createdDocuments).toEqual([
         {
@@ -498,6 +502,9 @@ describe("demo scripts", () => {
           body: expect.any(String)
         })
       ]);
+      expect(createdRevisions[0]?.body).toContain("at least two root tasks");
+      expect(createdRevisions[1]?.body).toContain("Root task A");
+      expect(createdRevisions[2]?.body).toContain("depends on tasks 1 and 2");
     } finally {
       await server.close();
     }
@@ -633,7 +640,7 @@ describe("demo scripts", () => {
     }
   });
 
-  it("demo:validate reads persisted run state and verifies compile provenance plus task conversations", async () => {
+  it("demo:validate reads persisted run state and verifies the non-trivial DAG proof for think_live", async () => {
     const statePath = await createTempStatePath();
     const server = await startStubServer((request) => {
       if (request.method === "GET" && request.path === "/v1/runs/run-validate-123") {
@@ -642,7 +649,7 @@ describe("demo scripts", () => {
             data: {
               runId: "run-validate-123",
               status: "archived",
-              executionEngine: "think_mock",
+              executionEngine: "think_live",
               compiledFrom: {
                 specificationRevisionId: "spec-rev-validate",
                 architectureRevisionId: "arch-rev-validate",
@@ -659,14 +666,70 @@ describe("demo scripts", () => {
             data: {
               items: [
                 {
-                  taskId: "task-validate",
+                  taskId: "task-prepare-code",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-prepare-tests",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-implement",
                   status: "completed",
                   conversation: {
                     agentClass: "KeystoneThinkAgent",
-                    agentName: "tenant:tenant-dev-local:run:run-validate-123:task:task-validate"
+                    agentName: "tenant:tenant-dev-local:run:run-validate-123:task:task-implement"
                   }
                 }
               ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-123/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-prepare-code",
+                  name: "Inspect greeting implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-prepare-tests",
+                  name: "Inspect greeting tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-implement",
+                  name: "Implement greeting update",
+                  status: "completed",
+                  dependsOn: ["task-prepare-code", "task-prepare-tests"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-prepare-code",
+                  toTaskId: "task-implement"
+                },
+                {
+                  fromTaskId: "task-prepare-tests",
+                  toTaskId: "task-implement"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
             }
           }
         };
@@ -682,7 +745,7 @@ describe("demo scripts", () => {
           {
             baseUrl: server.baseUrl,
             runId: "run-validate-123",
-            executionEngine: "think_mock"
+            executionEngine: "think_live"
           },
           null,
           2
@@ -698,7 +761,7 @@ describe("demo scripts", () => {
         ok: true,
         baseUrl: server.baseUrl,
         runId: "run-validate-123",
-        executionEngine: "think_mock",
+        executionEngine: "think_live",
         status: "archived",
         compiledFrom: {
           specificationRevisionId: "spec-rev-validate",
@@ -706,13 +769,258 @@ describe("demo scripts", () => {
           executionPlanRevisionId: "plan-rev-validate"
         },
         tasks: {
-          total: 1,
-          completed: 1
+          total: 3,
+          completed: 3
+        },
+        workflow: {
+          totalTasks: 3,
+          rootTasks: 2,
+          dependentTasks: 1,
+          edges: 2
+        },
+        demoContract: {
+          contractId: "think-live-document-run"
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate keeps the narrow think_mock proof path available", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-mock",
+              status: "archived",
+              executionEngine: "think_mock",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-validate",
+                architectureRevisionId: "arch-rev-validate",
+                executionPlanRevisionId: "plan-rev-validate"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-validate",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-mock:task:task-validate"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-validate",
+                  name: "Implement execution plan",
+                  status: "completed",
+                  dependsOn: []
+                }
+              ],
+              edges: [],
+              summary: {
+                totalTasks: 1,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 1,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-mock",
+            executionEngine: "think_mock"
+          },
+          null,
+          2
+        )
+      );
+
+      const { stdout } = await runDemoScript("demo:validate", [], {
+        KEYSTONE_DEMO_STATE_PATH: statePath
+      });
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        ok: true,
+        baseUrl: server.baseUrl,
+        runId: "run-validate-mock",
+        executionEngine: "think_mock",
+        workflow: {
+          totalTasks: 1,
+          rootTasks: 1,
+          dependentTasks: 0,
+          edges: 0
         },
         demoContract: {
           contractId: "think-mock-document-run"
         }
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects a think_live run that lacks an independent root", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-linear") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-linear",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-linear",
+                architectureRevisionId: "arch-rev-linear",
+                executionPlanRevisionId: "plan-rev-linear"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-linear/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-linear:task:task-c"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-linear/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect greeting implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect greeting tests",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement greeting update",
+                  status: "completed",
+                  dependsOn: ["task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-b"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-linear",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(async () => {
+        try {
+          await runDemoScript("demo:validate", [], {
+            KEYSTONE_DEMO_STATE_PATH: statePath
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+
+          expect(message).toMatch(/at least two root tasks/);
+          return;
+        }
+
+        throw new Error("Expected demo:validate to fail when the DAG proof has only one root.");
+      }).not.toThrow();
     } finally {
       await server.close();
     }

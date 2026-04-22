@@ -87,7 +87,7 @@ export function resolveBaseUrl() {
 }
 
 export function resolveExecutionEngine(): ExecutionEngine {
-  const value = getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "scripted";
+  const value = getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "think_live";
 
   if (value === "scripted" || value === "think_mock" || value === "think_live") {
     return value;
@@ -106,10 +106,10 @@ export function describeDemoContract(executionEngine: ExecutionEngine): DemoCont
   if (executionEngine === "think_live") {
     return {
       contractId: "think-live-document-run",
-      proofScope: "Project-backed run with document-driven compile and live Think execution",
+      proofScope: "Project-backed run with document-driven compile and live Think DAG execution",
       modelExecution: "Live local chat-completions backend",
       workflowStatus:
-        "Proves the explicit run-document workflow from run creation through compile, task execution, and archived completion."
+        "Proves the document-driven run contract through archived completion with multiple tasks, dependency edges, and independent roots."
     };
   }
 
@@ -127,7 +127,7 @@ export function describeDemoContract(executionEngine: ExecutionEngine): DemoCont
     contractId: "scripted-document-run",
     proofScope: "Project-backed run with document-driven compile and scripted task execution",
     modelExecution: "Scripted task runner",
-    workflowStatus: "Default document-driven demo path."
+    workflowStatus: "Explicit scripted document-driven demo path."
   };
 }
 

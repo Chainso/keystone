@@ -23,6 +23,13 @@ type DemoValidationContract = {
   demoContract: DemoContract;
 };
 
+type DemoDagProof = {
+  totalTasks: number;
+  rootTasks: number;
+  dependentTasks: number;
+  edges: number;
+};
+
 function getArg(name: string) {
   const prefix = `--${name}=`;
   const argument = process.argv.slice(2).find((value) => value.startsWith(prefix));
@@ -66,7 +73,7 @@ export function resolveBaseUrl(persistedState?: PersistedDemoState) {
 }
 
 export function resolveExecutionEngine() {
-  return getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "scripted";
+  return getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "think_live";
 }
 
 function resolveActualExecutionEngine(summary: RunSummary): ExecutionEngine {
@@ -126,6 +133,62 @@ async function fetchRunTasks(baseUrl: string, runId: string) {
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+async function fetchRunWorkflowGraph(baseUrl: string, runId: string) {
+  const response = await fetch(`${baseUrl}/v1/runs/${encodeURIComponent(runId)}/workflow`, {
+    headers: {
+      Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
+      "X-Keystone-Tenant-Id": process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Run workflow graph fetch failed with ${response.status}: ${await response.text()}`
+    );
+  }
+
+  return response.json() as Promise<Record<string, unknown>>;
+}
+
+function summarizeDagProof(workflowGraph: Record<string, unknown>): DemoDagProof {
+  const detail = requireDataObject(workflowGraph, "Run workflow graph");
+  const nodes = asArray(detail.nodes).map((node) => asObject(node) ?? {});
+  const edges = asArray(detail.edges);
+  const rootTasks = nodes.filter((node) => asArray(node.dependsOn).length === 0).length;
+  const dependentTasks = nodes.length - rootTasks;
+
+  return {
+    totalTasks: nodes.length,
+    rootTasks,
+    dependentTasks,
+    edges: edges.length
+  };
+}
+
+function requireNonTrivialDagProof(executionEngine: ExecutionEngine, dagProof: DemoDagProof) {
+  if (executionEngine === "think_mock") {
+    return;
+  }
+
+  if (dagProof.totalTasks < 3) {
+    throw new Error(
+      `Expected ${executionEngine} demo proof to expose at least three compiled tasks.`
+    );
+  }
+
+  if (dagProof.rootTasks < 2) {
+    throw new Error(
+      `Expected ${executionEngine} demo proof to expose at least two root tasks.`
+    );
+  }
+
+  if (dagProof.edges < 1 || dagProof.dependentTasks < 1) {
+    throw new Error(
+      `Expected ${executionEngine} demo proof to expose at least one dependency edge.`
+    );
+  }
+}
+
 export async function main() {
   const explicitRunId = resolveExplicitRunId();
   const explicitBaseUrl = resolveExplicitBaseUrl();
@@ -141,6 +204,7 @@ export async function main() {
   const summary = await fetchRunDetail(baseUrl, runId);
   const detail = requireDataObject(summary as Record<string, unknown>, "Run detail");
   const tasks = await fetchRunTasks(baseUrl, runId);
+  const workflowGraph = await fetchRunWorkflowGraph(baseUrl, runId);
   const tasksData = requireDataObject(tasks, "Run task list");
   const taskItems = asArray(tasksData.items).map((task) => asObject(task) ?? {});
   const { executionEngine, demoContract } = resolveValidatedRunContract(
@@ -150,6 +214,7 @@ export async function main() {
   const status = typeof detail.status === "string" ? detail.status : "unknown";
   const compiledFrom = asObject(detail.compiledFrom);
   const taskSummary = summarizeTasks(taskItems);
+  const dagProof = summarizeDagProof(workflowGraph);
 
   if (status !== "archived") {
     throw new Error(`Expected archived run, received ${status}.`);
@@ -162,6 +227,8 @@ export async function main() {
   if (taskSummary.total < 1) {
     throw new Error("Expected at least one compiled run task.");
   }
+
+  requireNonTrivialDagProof(executionEngine, dagProof);
 
   if (executionEngine !== "scripted") {
     const taskWithConversation = taskItems.find((task) => {
@@ -187,6 +254,7 @@ export async function main() {
         status,
         compiledFrom,
         tasks: taskSummary,
+        workflow: dagProof,
         demoContract
       },
       null,

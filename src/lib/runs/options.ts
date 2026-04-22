@@ -23,7 +23,7 @@ export function resolveRunExecutionEngine(
   return (
     parseExecutionEngine(existingExecutionEngine) ??
     parseExecutionEngine(requestedExecutionEngine) ??
-    "scripted"
+    "think_live"
   );
 }
 

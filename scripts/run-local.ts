@@ -13,7 +13,7 @@ function resolveBaseUrl() {
 }
 
 function resolveExecutionEngine() {
-  return getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "scripted";
+  return getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "think_live";
 }
 
 async function readJsonResponse(response: Response) {

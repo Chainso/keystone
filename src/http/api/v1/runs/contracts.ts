@@ -74,7 +74,7 @@ export const workflowGraphResourceSchema = buildResourceSchema("workflow_graph",
 });
 
 export const runCreateRequestSchema = z.object({
-  executionEngine: z.enum(executionEngineValues).default("scripted")
+  executionEngine: z.enum(executionEngineValues).default("think_live")
 }).strict();
 
 export const runCompileRequestSchema = z.object({}).strict().default({});
