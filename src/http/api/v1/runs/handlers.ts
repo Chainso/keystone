@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import type { AppEnv } from "../../../../env";
 import { listRunArtifacts } from "../../../../lib/db/artifacts";
 import { createWorkerDatabaseClient } from "../../../../lib/db/client";
+import { getDocumentRevision, getRunDocument } from "../../../../lib/db/documents";
 import { loadRequiredRunPlanningDocuments } from "../../../../lib/documents/runtime";
 import { getProject } from "../../../../lib/db/projects";
 import { resolveRunExecutionEngine } from "../../../../lib/runs/options";
@@ -15,6 +16,10 @@ import {
 } from "../../../../lib/db/runs";
 import { jsonErrorResponse, throwJsonHttpError } from "../../../../lib/http/errors";
 import { buildRunWorkflowInstanceId } from "../../../../lib/workflows/ids";
+import {
+  documentRevisionDetailEnvelopeSchema,
+  serializeDocumentRevisionResource
+} from "../documents/contracts";
 import {
   runCompileActionEnvelopeSchema,
   runCompileRequestSchema,
@@ -176,6 +181,26 @@ function requireTaskId(context: Context<AppEnv>) {
   }
 
   return taskId;
+}
+
+function requireDocumentId(context: Context<AppEnv>) {
+  const documentId = context.req.param("documentId");
+
+  if (!documentId) {
+    throwJsonHttpError(400, "invalid_path", "Document ID is required.");
+  }
+
+  return documentId;
+}
+
+function requireDocumentRevisionId(context: Context<AppEnv>) {
+  const documentRevisionId = context.req.param("documentRevisionId");
+
+  if (!documentRevisionId) {
+    throwJsonHttpError(400, "invalid_path", "Document revision ID is required.");
+  }
+
+  return documentRevisionId;
 }
 
 function isWorkflowInstanceNotFound(error: unknown) {
@@ -444,6 +469,60 @@ export async function getTaskHandler(context: Context<AppEnv>) {
           apiVersion: "v1",
           envelope: "detail",
           resourceType: "task"
+        }
+      })
+    );
+  } finally {
+    await state.client.close();
+  }
+}
+
+export async function getRunDocumentRevisionHandler(context: Context<AppEnv>) {
+  const runId = requireRunId(context);
+  const documentId = requireDocumentId(context);
+  const documentRevisionId = requireDocumentRevisionId(context);
+  const state = await loadRunState(context, runId);
+
+  if (!state) {
+    return jsonErrorResponse("run_not_found", `Run ${runId} was not found.`, 404);
+  }
+
+  try {
+    const document = await getRunDocument(state.client, {
+      tenantId: state.auth.tenantId,
+      runId,
+      documentId
+    });
+
+    if (!document) {
+      return jsonErrorResponse(
+        "document_not_found",
+        `Document ${documentId} was not found for run ${runId}.`,
+        404
+      );
+    }
+
+    const revision = await getDocumentRevision(state.client, {
+      tenantId: state.auth.tenantId,
+      documentId,
+      documentRevisionId
+    });
+
+    if (!revision) {
+      return jsonErrorResponse(
+        "document_revision_not_found",
+        `Document revision ${documentRevisionId} was not found for run ${runId} document ${documentId}.`,
+        404
+      );
+    }
+
+    return context.json(
+      documentRevisionDetailEnvelopeSchema.parse({
+        data: serializeDocumentRevisionResource(revision),
+        meta: {
+          apiVersion: "v1",
+          envelope: "detail",
+          resourceType: "document_revision"
         }
       })
     );

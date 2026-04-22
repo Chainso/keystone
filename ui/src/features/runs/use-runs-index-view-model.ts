@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
+import { buildRunPath } from "../../shared/navigation/run-phases";
 import {
   useProjectManagement,
   useProjectManagementApi
 } from "../projects/project-context";
+import { useRunManagementApi } from "./run-detail-context";
 import type {
   ApiProjectRunRecord,
   ProjectRunRecord,
@@ -16,6 +18,7 @@ interface RunsCompatibilityState {
 }
 
 interface LiveRunRowViewModel {
+  detailPath: string;
   executionEngine: string;
   latestActivityLabel: string;
   runId: string;
@@ -41,7 +44,11 @@ interface RunsSnapshot {
 }
 
 export interface RunsIndexViewModel {
+  canCreateRun: boolean;
   compatibilityState?: RunsCompatibilityState;
+  createRun: () => Promise<string | null>;
+  createRunErrorMessage: string | null;
+  isCreatingRun: boolean;
   liveRuns: LiveRunRowViewModel[];
   retry: () => void;
   scaffoldRuns: ScaffoldRunRowViewModel[];
@@ -84,6 +91,7 @@ function getRunsErrorMessage(error: unknown) {
 
 function normalizeLiveRuns(runs: ApiProjectRunRecord[]): LiveRunRowViewModel[] {
   return runs.map((run) => ({
+    detailPath: buildRunPath(run.runId),
     executionEngine: run.executionEngine,
     latestActivityLabel: buildLiveRunActivityLabel(run),
     runId: run.runId,
@@ -106,14 +114,24 @@ function normalizeScaffoldRuns(runs: ScaffoldProjectRunRecord[]): ScaffoldRunRow
 
 export function useRunsIndexViewModel(): RunsIndexViewModel {
   const api = useProjectManagementApi();
+  const runApi = useRunManagementApi();
   const { state } = useProjectManagement();
   const currentProject = state.currentProject;
   const requestIdRef = useRef(0);
+  const createRunRequestIdRef = useRef(0);
+  const createRunRequestRef = useRef<Promise<string | null> | null>(null);
   const [snapshot, setSnapshot] = useState<RunsSnapshot>({
     errorMessage: null,
     presentation: "live",
     runs: [],
     status: currentProject ? "loading" : "empty"
+  });
+  const [createRunState, setCreateRunState] = useState<{
+    errorMessage: string | null;
+    status: "idle" | "submitting";
+  }>({
+    errorMessage: null,
+    status: "idle"
   });
 
   async function loadRuns(projectId: string) {
@@ -156,7 +174,70 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
     }
   }
 
+  async function createRun() {
+    if (!currentProject) {
+      throw new Error("Choose a project before creating a run.");
+    }
+
+    const existingRequest = createRunRequestRef.current;
+
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const requestId = createRunRequestIdRef.current + 1;
+    createRunRequestIdRef.current = requestId;
+
+    const createRequest = (async () => {
+      setCreateRunState({
+        errorMessage: null,
+        status: "submitting"
+      });
+
+      try {
+        const run = await runApi.createRun(currentProject.projectId);
+
+        if (createRunRequestIdRef.current === requestId) {
+          setCreateRunState({
+            errorMessage: null,
+            status: "idle"
+          });
+
+          return run.runId;
+        }
+
+        return null;
+      } catch (error) {
+        if (createRunRequestIdRef.current === requestId) {
+          setCreateRunState({
+            errorMessage: getRunsErrorMessage(error),
+            status: "idle"
+          });
+        }
+
+        throw error;
+      }
+    })();
+
+    createRunRequestRef.current = createRequest;
+
+    try {
+      return await createRequest;
+    } finally {
+      if (createRunRequestRef.current === createRequest) {
+        createRunRequestRef.current = null;
+      }
+    }
+  }
+
   useEffect(() => {
+    createRunRequestIdRef.current += 1;
+    createRunRequestRef.current = null;
+    setCreateRunState({
+      errorMessage: null,
+      status: "idle"
+    });
+
     if (!currentProject) {
       setSnapshot({
         errorMessage: null,
@@ -172,10 +253,16 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
 
   if (!currentProject) {
     return {
+      canCreateRun: false,
       compatibilityState: {
         heading: "No project selected",
         message: "Choose a project before opening Runs."
       },
+      async createRun() {
+        throw new Error("Choose a project before creating a run.");
+      },
+      createRunErrorMessage: null,
+      isCreatingRun: false,
       liveRuns: [],
       retry() {},
       scaffoldRuns: [],
@@ -185,10 +272,14 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
 
   if (snapshot.status === "loading") {
     return {
+      canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
         heading: "Loading runs",
         message: `Keystone is loading runs for ${currentProject.displayName}.`
       },
+      createRun,
+      createRunErrorMessage: createRunState.errorMessage,
+      isCreatingRun: createRunState.status === "submitting",
       liveRuns: [],
       retry() {
         void loadRuns(currentProject.projectId);
@@ -200,10 +291,14 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
 
   if (snapshot.status === "error") {
     return {
+      canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
         heading: "Unable to load runs",
         message: snapshot.errorMessage ?? "Keystone could not load project runs."
       },
+      createRun,
+      createRunErrorMessage: createRunState.errorMessage,
+      isCreatingRun: createRunState.status === "submitting",
       liveRuns: [],
       retry() {
         void loadRuns(currentProject.projectId);
@@ -215,10 +310,14 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
 
   if (snapshot.status === "empty") {
     return {
+      canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
         heading: "No runs yet",
         message: `${currentProject.displayName} does not have any recorded runs yet.`
       },
+      createRun,
+      createRunErrorMessage: createRunState.errorMessage,
+      isCreatingRun: createRunState.status === "submitting",
       liveRuns: [],
       retry() {
         void loadRuns(currentProject.projectId);
@@ -229,6 +328,10 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
   }
 
   return {
+    canCreateRun: createRunState.status !== "submitting",
+    createRun,
+    createRunErrorMessage: createRunState.errorMessage,
+    isCreatingRun: createRunState.status === "submitting",
     liveRuns:
       snapshot.presentation === "live"
         ? normalizeLiveRuns(snapshot.runs as ApiProjectRunRecord[])

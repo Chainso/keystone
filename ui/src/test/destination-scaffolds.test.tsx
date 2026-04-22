@@ -5,6 +5,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
+import {
+  createStaticRunManagementApi,
+  type StaticRunDetailRecord
+} from "../features/runs/run-management-api";
 import { WorkstreamsBoard } from "../features/workstreams/components/workstreams-board";
 import {
   buildEmptyState,
@@ -24,6 +28,65 @@ const scaffoldProject: CurrentProject = {
   displayName: "Keystone Cloudflare",
   description: "Internal operator workspace for the Keystone Cloudflare project."
 };
+const workstreamRunFixtures: StaticRunDetailRecord[] = [
+  {
+    run: {
+      compiledFrom: {
+        architectureRevisionId: "run-101-architecture-v1",
+        compiledAt: "2026-04-20T12:12:00.000Z",
+        executionPlanRevisionId: "run-101-execution-plan-v1",
+        specificationRevisionId: "run-101-specification-v1"
+      },
+      endedAt: null,
+      executionEngine: "scripted",
+      projectId: scaffoldProject.projectId,
+      runId: "run-101",
+      startedAt: "2026-04-20T12:00:00.000Z",
+      status: "active",
+      workflowInstanceId: "wf-run-101"
+    },
+    taskArtifacts: {},
+    tasks: [
+      {
+        conversation: {
+          agentClass: "KeystoneThinkAgent",
+          agentName: "tenant:tenant-dev-local:run:run-101:task:task-019"
+        },
+        dependsOn: [],
+        description: "Preserve canonical task links from Workstreams into Runs.",
+        endedAt: null,
+        logicalTaskId: "TASK-019",
+        name: "Blocked task visibility",
+        runId: "run-101",
+        startedAt: "2026-04-20T12:01:00.000Z",
+        status: "blocked",
+        taskId: "task-019",
+        updatedAt: "2026-04-20T12:01:00.000Z"
+      }
+    ],
+    workflow: {
+      edges: [],
+      nodes: [
+        {
+          dependsOn: [],
+          name: "Blocked task visibility",
+          status: "blocked",
+          taskId: "task-019"
+        }
+      ],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 1
+      }
+    }
+  }
+];
+const workstreamRunApi = createStaticRunManagementApi(workstreamRunFixtures);
 type ResponseFactory = () => Promise<Response> | Response;
 
 afterEach(() => {
@@ -1392,7 +1455,7 @@ describe("Destination scaffolds", () => {
   });
 
   it("opens a workstream task when the user clicks the row body", async () => {
-    const { router } = renderRoute("/workstreams");
+    const { router } = renderRoute("/workstreams", { runApi: workstreamRunApi });
 
     expect(
       await screen.findByRole("heading", { name: "Project work across runs" })
@@ -1408,43 +1471,11 @@ describe("Destination scaffolds", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-101/execution/tasks/task-019");
     });
-  });
-
-  it("opens canonical workstream task routes without falling back to placeholder task ids", async () => {
-    renderRoute("/runs/run-103/execution/tasks/task-021");
-
-    expect(await screen.findByRole("heading", { name: "Run-103 / TASK-021" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "run-101 / task-019" })).toBeInTheDocument();
     expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
       "Conversation attached to this task."
     );
-    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
-
-    cleanup();
-
-    renderRoute("/runs/run-101/execution/tasks/task-019");
-
-    expect(await screen.findByRole("heading", { name: "Run-101 / TASK-019" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this task."
-    );
-    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
-  });
-
-  it("renders recorded artifact cards for execution tasks that include review output", async () => {
-    renderRoute("/runs/run-104/execution/tasks/task-033");
-
-    expect(await screen.findByRole("heading", { name: "Run-104 / TASK-033" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this task."
-    );
-    const artifactCard = screen
-      .getByText("ui/src/features/execution/components/task-detail-workspace.tsx")
-      .closest("details");
-
-    expect(artifactCard).not.toBeNull();
-    expect(artifactCard).toHaveTextContent("Task detail split layout.");
-    expect(artifactCard).toHaveTextContent("+ render task updates beside the review sidebar");
-    expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
+    expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
   });
 
   it("redirects /projects/new to overview and keeps the tabbed create form live", async () => {

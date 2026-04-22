@@ -1,68 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-import type { ArtifactResource } from "../../../../src/http/api/v1/artifacts/contracts";
-import type { TaskResource, WorkflowGraphResource } from "../../../../src/http/api/v1/runs/contracts";
-import { buildRunPhasePath } from "../../shared/navigation/run-phases";
-import { useOptionalRunExecutionApi } from "./execution-api";
-import { useResourceModel } from "../resource-model/context";
-import {
-  getRun,
-  getRunSummary,
-  getRunWorkflowGraph,
-  getTask,
-  getTaskArtifacts,
-  listRunTasks
-} from "../resource-model/selectors";
-import type { ConversationLocator, ResourceTask } from "../resource-model/types";
+import { buildRunPhasePath, buildRunTaskPath } from "../../shared/navigation/run-phases";
+import { useRunDetail } from "../runs/run-detail-context";
 
-type ExecutionNodeTone = "active" | "blocked" | "complete" | "queued";
-
-interface CompatibilityState {
-  actionLabel?: string;
-  heading: string;
-  message: string;
-}
-
-interface ExecutionTaskRecord {
-  blockedBy: string[];
-  conversationLocator: ConversationLocator | null;
-  dependsOn: string[];
-  displayId: string;
-  runId: string;
-  status: string;
-  taskId: string;
-  title: string;
-}
-
-interface LiveExecutionSnapshot {
-  errorMessage: string | null;
-  rows: ExecutionRowViewModel[];
-  status: "idle" | "loading" | "ready" | "empty" | "error";
-}
-
-interface ArtifactPanelState {
-  message: string | null;
-  status: "loading" | "ready" | "empty" | "error";
-}
-
-interface LiveTaskDetailSnapshot {
-  artifactState: ArtifactPanelState;
-  artifactNotice: string | null;
-  artifacts: TaskArtifactViewModel[];
-  errorMessage: string | null;
-  task: TaskResource | null;
-  tasks: TaskResource[];
-  status: "idle" | "loading" | "ready" | "error";
-}
+type ConversationLocator = {
+  agentClass: string;
+  agentName: string;
+};
 
 export interface ExecutionNodeViewModel {
-  blockedByCount: number;
-  dependencyCount: number;
   detailPath: string;
-  displayId: string;
-  graphLabel: string;
-  statusLabel: string;
-  statusTone: ExecutionNodeTone;
+  dependencyCount: number;
+  status: string;
   taskId: string;
   title: string;
 }
@@ -73,132 +22,102 @@ export interface ExecutionRowViewModel {
   tasks: ExecutionNodeViewModel[];
 }
 
-export interface RunExecutionViewModel {
-  compatibilityState?: CompatibilityState;
-  retry: () => void;
+export interface RunExecutionReadyViewModel {
   rows: ExecutionRowViewModel[];
+  state: "ready";
+  summary: string;
 }
+
+export interface RunExecutionEmptyViewModel {
+  message: string;
+  state: "empty";
+}
+
+export interface RunExecutionPendingViewModel {
+  message: string;
+  refresh: () => void;
+  refreshLabel: string;
+  state: "pending";
+}
+
+export type RunExecutionViewModel =
+  | RunExecutionReadyViewModel
+  | RunExecutionEmptyViewModel
+  | RunExecutionPendingViewModel;
 
 export interface TaskArtifactViewModel {
   artifactId: string;
-  details: string[];
-  href?: string;
-  summary: string;
-  title: string;
+  contentType: string;
+  contentUrl: string;
+  kind: string;
+  sha256: string | null;
+  sizeLabel: string;
+}
+
+export interface TaskArtifactsViewModel {
+  items: TaskArtifactViewModel[];
+  message: string | null;
+  retry?: (() => void) | undefined;
+  state: "loading" | "ready" | "empty" | "error";
 }
 
 export interface TaskDependencyViewModel {
-  displayId: string;
   taskId: string;
   title: string;
 }
 
-export interface TaskDetailViewModel {
-  artifactState: ArtifactPanelState;
-  artifactNotice: string | null;
-  artifactSectionLabel: string;
-  artifacts: TaskArtifactViewModel[];
+export interface TaskDetailReadyViewModel {
+  artifacts: TaskArtifactsViewModel;
   backPath: string;
-  blockedBy: TaskDependencyViewModel[];
-  compatibilityState?: CompatibilityState;
   conversationLocator: ConversationLocator | null;
   dependsOn: TaskDependencyViewModel[];
-  retry: () => void;
+  downstreamTasks: TaskDependencyViewModel[];
   runDisplayId: string;
+  state: "ready";
   status: string;
   taskDisplayId: string;
   title: string;
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
+export interface TaskDetailStateViewModel {
+  backPath: string;
+  message: string;
+  runDisplayId: string;
+  state: "not_found" | "unavailable";
+  taskDisplayId: string;
+}
+
+export type TaskDetailViewModel =
+  | TaskDetailReadyViewModel
+  | TaskDetailStateViewModel;
+
+function formatByteSize(sizeBytes: number | null) {
+  if (sizeBytes === null) {
+    return "Size unavailable";
   }
 
-  return "Unable to load execution data.";
-}
-
-function humanizeToken(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function formatHumanLabel(value: string) {
-  return value
-    .split(/[_\s-]+/)
-    .filter((segment) => segment.length > 0)
-    .map((segment) => humanizeToken(segment.toLowerCase()))
-    .join(" ");
-}
-
-function getTaskStatusLabel(status: string) {
-  switch (status.toLowerCase()) {
-    case "active":
-    case "running":
-      return "Running";
-    case "blocked":
-      return "Blocked";
-    case "ready":
-      return "Ready";
-    case "queued":
-      return "Queued";
-    case "pending":
-      return "Queued";
-    case "completed":
-    case "complete":
-      return "Complete";
-    case "failed":
-      return "Failed";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return formatHumanLabel(status);
-  }
-}
-
-function getTaskStatusTone(status: string): ExecutionNodeTone {
-  switch (status.toLowerCase()) {
-    case "active":
-    case "running":
-      return "active";
-    case "completed":
-    case "complete":
-      return "complete";
-    case "ready":
-    case "pending":
-    case "queued":
-      return "queued";
-    case "blocked":
-    case "failed":
-    case "cancelled":
-    default:
-      return "blocked";
-  }
-}
-
-function resolveTaskDisplayId(logicalTaskId: string | null | undefined, taskId: string) {
-  if (typeof logicalTaskId === "string" && logicalTaskId.trim().length > 0) {
-    return logicalTaskId;
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
   }
 
-  return taskId;
-}
-
-function buildBlockedByIndex(tasks: Array<Pick<ExecutionTaskRecord, "dependsOn" | "taskId">>) {
-  const blockedByIndex = new Map<string, string[]>();
-
-  for (const task of tasks) {
-    for (const dependencyId of task.dependsOn) {
-      const existing = blockedByIndex.get(dependencyId) ?? [];
-
-      existing.push(task.taskId);
-      blockedByIndex.set(dependencyId, existing);
-    }
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(1)} KB`;
   }
 
-  return blockedByIndex;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[], errorContext = "Workflow graph") {
+function useReadyRunDetail() {
+  const runDetail = useRunDetail();
+
+  if (runDetail.meta.status !== "ready" || !runDetail.state.run || !runDetail.state.workflow) {
+    throw new Error("Execution view models require a ready RunDetailProvider.");
+  }
+
+  return runDetail;
+}
+
+function groupTasksByDepth(tasks: ReturnType<typeof useReadyRunDetail>["state"]["tasks"]) {
   const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
   const depthByTaskId = new Map<string, number>();
 
@@ -212,7 +131,7 @@ function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[], errorContext = "Workf
     const task = tasksById.get(taskId);
 
     if (!task) {
-      throw new Error(`${errorContext} references missing dependency task "${taskId}".`);
+      throw new Error(`Workflow graph references missing task "${taskId}".`);
     }
 
     const depth =
@@ -228,7 +147,7 @@ function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[], errorContext = "Workf
     getTaskDepth(task.taskId);
   });
 
-  return tasks.reduce<Map<number, ExecutionTaskRecord[]>>((rows, task) => {
+  return tasks.reduce<Map<number, typeof tasks>>((rows, task) => {
     const depth = depthByTaskId.get(task.taskId) ?? 0;
     const existing = rows.get(depth);
 
@@ -242,548 +161,211 @@ function groupTaskIdsByDepth(tasks: ExecutionTaskRecord[], errorContext = "Workf
   }, new Map());
 }
 
-function buildExecutionRows(tasks: ExecutionTaskRecord[], errorContext?: string) {
-  const rowsByDepth = groupTaskIdsByDepth(tasks, errorContext);
+function buildExecutionRows(
+  tasks: ReturnType<typeof useReadyRunDetail>["state"]["tasks"],
+  runId: string
+): ExecutionRowViewModel[] {
+  const rowsByDepth = groupTasksByDepth(tasks);
 
   return [...rowsByDepth.entries()]
     .sort(([left], [right]) => left - right)
     .map(([depth, rowTasks]) => ({
-      rowId: `execution-row-${depth}`,
       depth,
-      tasks: rowTasks.map(toExecutionNodeViewModel)
+      rowId: `execution-row-${depth}`,
+      tasks: rowTasks.map((task) => ({
+        detailPath: buildRunTaskPath(runId, task.taskId),
+        dependencyCount: task.dependsOn.length,
+        status: task.status,
+        taskId: task.taskId,
+        title: task.name
+      }))
     }));
 }
 
-function toExecutionNodeViewModel(task: ExecutionTaskRecord): ExecutionNodeViewModel {
+function buildTaskRelationshipMap(tasks: ReturnType<typeof useReadyRunDetail>["state"]["tasks"]) {
+  const downstreamByTaskId = new Map<string, string[]>();
+
+  for (const task of tasks) {
+    for (const dependencyId of task.dependsOn) {
+      const downstream = downstreamByTaskId.get(dependencyId) ?? [];
+      downstream.push(task.taskId);
+      downstreamByTaskId.set(dependencyId, downstream);
+    }
+  }
+
+  return downstreamByTaskId;
+}
+
+export function useRunExecutionViewModel(): RunExecutionViewModel {
+  const { actions, state } = useReadyRunDetail();
+  const run = state.run!;
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const executionPending =
+    run.compiledFrom !== null &&
+    (state.workflow!.summary.totalTasks === 0 || state.tasks.length === 0);
+
+  function refreshExecution() {
+    if (isRefreshing) {
+      return;
+    }
+
+    setIsRefreshing(true);
+
+    void actions
+      .reload()
+      .catch(() => {
+        // The provider owns the next visible state after reload failures.
+      })
+      .finally(() => {
+        setIsRefreshing(false);
+      });
+  }
+
+  useEffect(() => {
+    if (!executionPending || isRefreshing) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      refreshExecution();
+    }, 2_000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [executionPending, isRefreshing, refreshExecution, run.compiledFrom?.compiledAt]);
+
+  if (!run.compiledFrom) {
+    return {
+      message: "Execution becomes available after this run has been compiled.",
+      state: "empty"
+    };
+  }
+
+  if (executionPending) {
+    return {
+      message: "Compile was accepted for this run. Keystone is still materializing the live execution graph.",
+      refresh: refreshExecution,
+      refreshLabel: isRefreshing ? "Refreshing execution..." : "Refresh execution",
+      state: "pending"
+    };
+  }
+
   return {
-    taskId: task.taskId,
-    displayId: task.displayId,
-    graphLabel: task.displayId,
-    title: task.title,
-    statusLabel: getTaskStatusLabel(task.status),
-    statusTone: getTaskStatusTone(task.status),
-    dependencyCount: task.dependsOn.length,
-    blockedByCount: task.blockedBy.length,
-    detailPath: buildRunPhasePath(task.runId, "execution") + `/tasks/${task.taskId}`
+    rows: buildExecutionRows(state.tasks, run.runId),
+    state: "ready",
+    summary: `${state.workflow!.summary.totalTasks} tasks · ${state.workflow!.summary.readyTasks} ready · ${state.workflow!.summary.pendingTasks} pending · ${state.workflow!.summary.activeTasks} active · ${state.workflow!.summary.completedTasks} completed`
   };
 }
 
-function selectTaskDependency(
-  taskId: string,
-  tasksById: ReadonlyMap<string, ExecutionTaskRecord>
-): TaskDependencyViewModel {
-  const task = tasksById.get(taskId);
+export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
+  const { actions, state } = useReadyRunDetail();
+  const run = state.run!;
+  const backPath = buildRunPhasePath(run.runId, "execution");
+  const task = state.tasks.find((candidate) => candidate.taskId === taskId) ?? null;
+  const taskArtifacts = state.taskArtifacts[taskId];
+  const tasksById = new Map(state.tasks.map((candidate) => [candidate.taskId, candidate]));
+  const downstreamByTaskId = buildTaskRelationshipMap(state.tasks);
+
+  useEffect(() => {
+    if (!run.compiledFrom || !task) {
+      return;
+    }
+
+    if (!taskArtifacts || taskArtifacts.status === "idle") {
+      void actions.loadTaskArtifacts(task.taskId);
+    }
+  }, [actions, run.compiledFrom, task, taskArtifacts]);
+
+  if (!run.compiledFrom) {
+    return {
+      backPath,
+      message: "Execution is not available for this run until compile has produced a workflow.",
+      runDisplayId: run.runId,
+      state: "unavailable",
+      taskDisplayId: taskId
+    };
+  }
 
   if (!task) {
     return {
-      taskId,
-      displayId: taskId,
-      title: "Task details are unavailable for this dependency."
-    };
-  }
-
-  return {
-    taskId: task.taskId,
-    displayId: task.displayId,
-    title: task.title
-  };
-}
-
-function toScaffoldTaskRecord(task: ResourceTask): ExecutionTaskRecord {
-  return {
-    blockedBy: [...task.blockedBy],
-    conversationLocator: task.conversationLocator ?? null,
-    dependsOn: [...task.dependsOn],
-    displayId: task.displayId,
-    runId: task.runId,
-    status: task.status,
-    taskId: task.taskId,
-    title: task.title
-  };
-}
-
-function buildLiveExecutionTaskRecords(
-  runId: string,
-  workflow: WorkflowGraphResource,
-  tasks: TaskResource[]
-) {
-  const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
-  const taskRecords = workflow.nodes.map((node) => {
-    const task = tasksById.get(node.taskId);
-
-    return {
-      blockedBy: [],
-      conversationLocator: task?.conversation ?? null,
-      dependsOn: [...node.dependsOn],
-      displayId: resolveTaskDisplayId(task?.logicalTaskId, node.taskId),
-      runId,
-      status: task?.status ?? node.status,
-      taskId: node.taskId,
-      title: task?.name ?? node.name
-    } satisfies ExecutionTaskRecord;
-  });
-  const blockedByIndex = buildBlockedByIndex(taskRecords);
-
-  return taskRecords.map((task) => ({
-    ...task,
-    blockedBy: blockedByIndex.get(task.taskId) ?? []
-  }));
-}
-
-function formatArtifactSize(sizeBytes: number | null) {
-  if (sizeBytes === null) {
-    return "Size unknown";
-  }
-
-  return `${sizeBytes} bytes`;
-}
-
-function toScaffoldArtifactViewModel(artifact: {
-  artifactId: string;
-  diff: string[];
-  path: string;
-  summary: string;
-}): TaskArtifactViewModel {
-  return {
-    artifactId: artifact.artifactId,
-    title: artifact.path,
-    summary: artifact.summary,
-    details: artifact.diff
-  };
-}
-
-function toLiveArtifactViewModel(artifact: ArtifactResource): TaskArtifactViewModel {
-  return {
-    artifactId: artifact.artifactId,
-    title: artifact.artifactId,
-    summary: `${formatHumanLabel(artifact.kind)} · ${artifact.contentType} · ${formatArtifactSize(artifact.sizeBytes)}`,
-    details: [
-      `Kind: ${formatHumanLabel(artifact.kind)}`,
-      `Content type: ${artifact.contentType}`,
-      `Size: ${formatArtifactSize(artifact.sizeBytes)}`,
-      ...(artifact.sha256 ? [`SHA-256: ${artifact.sha256}`] : [])
-    ],
-    href: artifact.contentUrl
-  };
-}
-
-function useLiveRunExecutionSnapshot(runId: string) {
-  const api = useOptionalRunExecutionApi();
-  const requestIdRef = useRef(0);
-  const [snapshot, setSnapshot] = useState<LiveExecutionSnapshot>({
-    errorMessage: null,
-    rows: [],
-    status: api ? "loading" : "idle"
-  });
-
-  function loadExecution() {
-    if (!api) {
-      return;
-    }
-
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-
-    setSnapshot({
-      errorMessage: null,
-      rows: [],
-      status: "loading"
-    });
-
-    void Promise.all([api.getRunWorkflow(runId), api.listRunTasks(runId)])
-      .then(([workflow, tasks]) => {
-        if (requestIdRef.current !== requestId) {
-          return;
-        }
-
-        const rows = buildExecutionRows(
-          buildLiveExecutionTaskRecords(runId, workflow, tasks),
-          `Workflow graph for run "${runId}"`
-        );
-
-        setSnapshot({
-          errorMessage: null,
-          rows,
-          status: rows.length > 0 ? "ready" : "empty"
-        });
-      })
-      .catch((error) => {
-        if (requestIdRef.current !== requestId) {
-          return;
-        }
-
-        setSnapshot({
-          errorMessage: getErrorMessage(error),
-          rows: [],
-          status: "error"
-        });
-      });
-  }
-
-  useEffect(() => {
-    if (!api) {
-      setSnapshot({
-        errorMessage: null,
-        rows: [],
-        status: "idle"
-      });
-      return;
-    }
-
-    loadExecution();
-  }, [api, runId]);
-
-  return {
-    retry: loadExecution,
-    snapshot
-  };
-}
-
-function useLiveTaskDetailSnapshot(runId: string, taskId: string) {
-  const api = useOptionalRunExecutionApi();
-  const requestIdRef = useRef(0);
-  const [snapshot, setSnapshot] = useState<LiveTaskDetailSnapshot>({
-    artifactState: {
-      message: "Loading task artifacts.",
-      status: "loading"
-    },
-    artifactNotice: null,
-    artifacts: [],
-    errorMessage: null,
-    task: null,
-    tasks: [],
-    status: api ? "loading" : "idle"
-  });
-
-  function loadTaskDetail() {
-    if (!api) {
-      return;
-    }
-
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-
-    setSnapshot({
-      artifactState: {
-        message: "Loading task artifacts.",
-        status: "loading"
-      },
-      artifactNotice: null,
-      artifacts: [],
-      errorMessage: null,
-      task: null,
-      tasks: [],
-      status: "loading"
-    });
-
-    const artifactsPromise = api
-      .listRunTaskArtifacts(runId, taskId)
-      .then((artifacts) => {
-        if (artifacts.length === 0) {
-          return {
-            artifactNotice: null,
-            artifactState: {
-              message: "No artifacts recorded for this task yet.",
-              status: "empty" as const
-            },
-            artifacts: [] as TaskArtifactViewModel[]
-          };
-        }
-
-        return {
-          artifactNotice:
-            "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead.",
-          artifactState: {
-            message: null,
-            status: "ready" as const
-          },
-          artifacts: artifacts.map(toLiveArtifactViewModel)
-        };
-      })
-      .catch(() => ({
-        artifactNotice: null,
-        artifactState: {
-          message: "Unable to load task artifacts.",
-          status: "error" as const
-        },
-        artifacts: [] as TaskArtifactViewModel[]
-      }));
-
-    void Promise.all([api.getRunTask(runId, taskId), api.listRunTasks(runId), artifactsPromise])
-      .then(([task, tasks, artifactResult]) => {
-        if (requestIdRef.current !== requestId) {
-          return;
-        }
-
-        setSnapshot({
-          artifactState: artifactResult.artifactState,
-          artifactNotice: artifactResult.artifactNotice,
-          artifacts: artifactResult.artifacts,
-          errorMessage: null,
-          task,
-          tasks,
-          status: "ready"
-        });
-      })
-      .catch((error) => {
-        if (requestIdRef.current !== requestId) {
-          return;
-        }
-
-        setSnapshot({
-          artifactState: {
-            message: "Task artifacts are unavailable until task detail loads.",
-            status: "error"
-          },
-          artifactNotice: null,
-          artifacts: [],
-          errorMessage: getErrorMessage(error),
-          task: null,
-          tasks: [],
-          status: "error"
-        });
-      });
-  }
-
-  useEffect(() => {
-    if (!api) {
-      setSnapshot({
-        artifactState: {
-          message: "Loading task artifacts.",
-          status: "loading"
-        },
-        artifactNotice: null,
-        artifacts: [],
-        errorMessage: null,
-        task: null,
-        tasks: [],
-        status: "idle"
-      });
-      return;
-    }
-
-    loadTaskDetail();
-  }, [api, runId, taskId]);
-
-  return {
-    retry: loadTaskDetail,
-    snapshot
-  };
-}
-
-export function useRunExecutionViewModel(runId: string): RunExecutionViewModel {
-  const liveApi = useOptionalRunExecutionApi();
-  const { state } = useResourceModel();
-  const live = useLiveRunExecutionSnapshot(runId);
-
-  if (liveApi) {
-    if (live.snapshot.status === "loading") {
-      return {
-        compatibilityState: {
-          heading: "Loading execution",
-          message: `Keystone is loading the live execution graph for ${runId}.`
-        },
-        retry: live.retry,
-        rows: []
-      };
-    }
-
-    if (live.snapshot.status === "error") {
-      return {
-        compatibilityState: {
-          actionLabel: "Retry",
-          heading: "Unable to load execution",
-          message: live.snapshot.errorMessage ?? "Keystone could not load the execution graph."
-        },
-        retry: live.retry,
-        rows: []
-      };
-    }
-
-    if (live.snapshot.status === "empty") {
-      return {
-        compatibilityState: {
-          heading: "No execution tasks yet",
-          message: `${runId} does not have any execution tasks to render yet.`
-        },
-        retry: live.retry,
-        rows: []
-      };
-    }
-
-    return {
-      retry: live.retry,
-      rows: live.snapshot.rows
-    };
-  }
-
-  const workflowGraph = getRunWorkflowGraph(runId, state.dataset);
-
-  if (!workflowGraph) {
-    throw new Error(`Run "${runId}" has no workflow graph in the scaffold dataset.`);
-  }
-
-  const tasks = workflowGraph.nodes.map((node) => {
-    const task = getTask(node.taskId, state.dataset);
-
-    if (!task || task.runId !== runId) {
-      throw new Error(`Workflow graph for run "${runId}" references missing task "${node.taskId}".`);
-    }
-
-    return toScaffoldTaskRecord(task);
-  });
-
-  return {
-    retry() {},
-    rows: buildExecutionRows(tasks, `Workflow graph for run "${runId}"`)
-  };
-}
-
-export function useTaskDetailViewModel(runId: string, taskId: string): TaskDetailViewModel {
-  const liveApi = useOptionalRunExecutionApi();
-  const { state } = useResourceModel();
-  const live = useLiveTaskDetailSnapshot(runId, taskId);
-  const backPath = buildRunPhasePath(runId, "execution");
-
-  if (liveApi) {
-    if (live.snapshot.status === "loading") {
-      return {
-        artifactState: {
-          message: "Loading task artifacts.",
-          status: "loading"
-        },
-        artifactNotice: null,
-        artifactSectionLabel: "Execution artifacts",
-        artifacts: [],
-        backPath,
-        blockedBy: [],
-        compatibilityState: {
-          heading: "Loading task detail",
-          message: `Keystone is loading live task detail for ${taskId}.`
-        },
-        conversationLocator: null,
-        dependsOn: [],
-        retry: live.retry,
-        runDisplayId: runId,
-        status: "Loading",
-        taskDisplayId: taskId,
-        title: "Loading task detail."
-      };
-    }
-
-    if (live.snapshot.status === "error" || !live.snapshot.task) {
-      return {
-        artifactState: live.snapshot.artifactState,
-        artifactNotice: null,
-        artifactSectionLabel: "Execution artifacts",
-        artifacts: [],
-        backPath,
-        blockedBy: [],
-        compatibilityState: {
-          actionLabel: "Retry",
-          heading: "Unable to load task detail",
-          message: live.snapshot.errorMessage ?? "Keystone could not load this task."
-        },
-        conversationLocator: null,
-        dependsOn: [],
-        retry: live.retry,
-        runDisplayId: runId,
-        status: "Unavailable",
-        taskDisplayId: taskId,
-        title: "Task detail unavailable."
-      };
-    }
-
-    const allTaskRecords = live.snapshot.tasks.map((task) => ({
-      blockedBy: [],
-      conversationLocator: task.conversation ?? null,
-      dependsOn: [...task.dependsOn],
-      displayId: resolveTaskDisplayId(task.logicalTaskId, task.taskId),
-      runId: task.runId,
-      status: task.status,
-      taskId: task.taskId,
-      title: task.name
-    }));
-    const blockedByIndex = buildBlockedByIndex(allTaskRecords);
-    const runTasksById = new Map(
-      allTaskRecords.map((task) => [
-        task.taskId,
-        {
-          ...task,
-          blockedBy: blockedByIndex.get(task.taskId) ?? []
-        }
-      ])
-    );
-    const currentTask =
-      runTasksById.get(live.snapshot.task.taskId) ?? {
-        blockedBy: blockedByIndex.get(live.snapshot.task.taskId) ?? [],
-        conversationLocator: live.snapshot.task.conversation ?? null,
-        dependsOn: [...live.snapshot.task.dependsOn],
-        displayId: resolveTaskDisplayId(
-          live.snapshot.task.logicalTaskId,
-          live.snapshot.task.taskId
-        ),
-        runId: live.snapshot.task.runId,
-        status: live.snapshot.task.status,
-        taskId: live.snapshot.task.taskId,
-        title: live.snapshot.task.name
-      };
-
-    return {
-      artifactState: live.snapshot.artifactState,
-      artifactNotice: live.snapshot.artifactNotice,
-      artifactSectionLabel: "Execution artifacts",
-      artifacts: live.snapshot.artifacts,
       backPath,
-      blockedBy: currentTask.blockedBy.map((dependencyId) =>
-        selectTaskDependency(dependencyId, runTasksById)
-      ),
-      conversationLocator: currentTask.conversationLocator,
-      dependsOn: currentTask.dependsOn.map((dependencyId) =>
-        selectTaskDependency(dependencyId, runTasksById)
-      ),
-      retry: live.retry,
-      runDisplayId: runId,
-      status: getTaskStatusLabel(currentTask.status),
-      taskDisplayId: currentTask.displayId,
-      title: currentTask.title
+      message: `Task ${taskId} was not found for run ${run.runId}.`,
+      runDisplayId: run.runId,
+      state: "not_found",
+      taskDisplayId: taskId
     };
   }
 
-  const run = getRun(runId, state.dataset);
-  const runSummary = getRunSummary(runId, state.dataset);
-  const task = getTask(taskId, state.dataset);
+  const dependsOn = task.dependsOn.flatMap((dependencyId) => {
+    const dependency = tasksById.get(dependencyId);
 
-  if (!run || !runSummary) {
-    throw new Error(`Run "${runId}" is missing from the scaffold dataset.`);
-  }
+    return dependency
+      ? [
+          {
+            taskId: dependency.taskId,
+            title: dependency.name
+          }
+        ]
+      : [];
+  });
+  const downstreamTasks = (downstreamByTaskId.get(task.taskId) ?? []).flatMap((downstreamTaskId) => {
+    const downstreamTask = tasksById.get(downstreamTaskId);
 
-  if (!task || task.runId !== runId) {
-    throw new Error(
-      `Task route "/runs/${runId}/execution/tasks/${taskId}" does not match any known execution task.`
-    );
-  }
-
-  const runTasks = listRunTasks(runId, state.dataset).map(toScaffoldTaskRecord);
-  const runTasksById = new Map(runTasks.map((candidate) => [candidate.taskId, candidate]));
+    return downstreamTask
+      ? [
+          {
+            taskId: downstreamTask.taskId,
+            title: downstreamTask.name
+          }
+        ]
+      : [];
+  });
+  const artifactsViewModel: TaskArtifactsViewModel =
+    !taskArtifacts || taskArtifacts.status === "idle" || taskArtifacts.status === "loading"
+      ? {
+          items: [],
+          message: "Keystone is loading artifact metadata for this task.",
+          state: "loading"
+        }
+      : taskArtifacts.status === "error"
+        ? {
+            items: [],
+            message: taskArtifacts.errorMessage ?? "Unable to load task artifacts.",
+            retry: () => {
+              void actions.loadTaskArtifacts(task.taskId, { force: true });
+            },
+            state: "error"
+          }
+        : taskArtifacts.items.length === 0
+          ? {
+              items: [],
+              message: "No artifacts are recorded for this task yet.",
+              state: "empty"
+            }
+          : {
+              items: taskArtifacts.items.map((artifact) => ({
+                artifactId: artifact.artifactId,
+                contentType: artifact.contentType,
+                contentUrl: artifact.contentUrl,
+                kind: artifact.kind,
+                sha256: artifact.sha256,
+                sizeLabel: formatByteSize(artifact.sizeBytes)
+              })),
+              message: null,
+              state: "ready"
+            };
 
   return {
-    artifactState: {
-      message:
-        task.artifactIds.length === 0 ? "No artifacts recorded for this task yet." : null,
-      status: task.artifactIds.length === 0 ? "empty" : "ready"
-    },
-    artifactNotice: null,
-    artifactSectionLabel: "Changed files",
-    artifacts: getTaskArtifacts(task.taskId, state.dataset).map(toScaffoldArtifactViewModel),
+    artifacts: artifactsViewModel,
     backPath,
-    blockedBy: task.blockedBy.map((dependencyId) => selectTaskDependency(dependencyId, runTasksById)),
-    conversationLocator: task.conversationLocator ?? null,
-    dependsOn: task.dependsOn.map((dependencyId) => selectTaskDependency(dependencyId, runTasksById)),
-    retry() {},
-    runDisplayId: runSummary.displayId,
-    status: getTaskStatusLabel(task.status),
-    taskDisplayId: task.displayId,
-    title: task.title
+    conversationLocator: task.conversation ?? null,
+    dependsOn,
+    downstreamTasks,
+    runDisplayId: run.runId,
+    state: "ready",
+    status: task.status,
+    taskDisplayId: task.taskId,
+    title: task.name
   };
 }

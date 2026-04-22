@@ -897,6 +897,54 @@ describe("app", () => {
     });
   });
 
+  it("returns a run document revision detail with a public contentUrl", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan/revisions/revision-run-plan-v1",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        documentRevisionId: "revision-run-plan-v1",
+        revisionNumber: 1,
+        title: "Execution Plan v1",
+        artifactId: "artifact-run-plan-v1",
+        contentUrl: "/v1/artifacts/artifact-run-plan-v1/content"
+      },
+      meta: {
+        resourceType: "document_revision"
+      }
+    });
+  });
+
+  it("returns document_revision_not_found when the requested run document revision is missing", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan/revisions/revision-missing",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "document_revision_not_found",
+        message: "Document revision revision-missing was not found for run run-123 document doc-run-plan."
+      }
+    });
+  });
+
   it("returns run_not_found for nested run-document routes when the run is missing", async () => {
     mocked.getRunRecord.mockResolvedValueOnce(undefined as never);
 
@@ -1192,6 +1240,68 @@ describe("app", () => {
     });
   });
 
+  it("lists task-scoped artifact resources for a run task", async () => {
+    mocked.listRunArtifacts.mockResolvedValueOnce(
+      [
+        runArtifactFixture,
+        {
+          ...runArtifactFixture,
+          artifactRefId: "artifact-run-summary",
+          runTaskId: null,
+          artifactKind: "run_summary"
+        }
+      ] as never
+    );
+
+    const response = await app.request(
+      `http://example.com/v1/runs/run-123/tasks/${RUN_TASK_IMPLEMENTATION_ID}/artifacts`,
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        total: 1,
+        items: [
+          {
+            artifactId: "artifact-implementer-note",
+            kind: "run_note",
+            contentUrl: "/v1/artifacts/artifact-implementer-note/content"
+          }
+        ]
+      },
+      meta: {
+        resourceType: "artifact"
+      }
+    });
+  });
+
+  it("returns task_not_found when requesting artifacts for a missing run task", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/tasks/run-task-missing/artifacts",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "task_not_found",
+        message: "Task run-task-missing was not found for run run-123."
+      }
+    });
+  });
   it("returns 404 for removed approval, event, coordinator, and decision-package surfaces", async () => {
     const responses = await Promise.all([
       app.request(

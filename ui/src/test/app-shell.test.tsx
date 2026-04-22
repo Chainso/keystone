@@ -80,6 +80,68 @@ function buildRunsResponse(runs: LiveRunFixture[]) {
   };
 }
 
+function buildRunDetailResponse(run: LiveRunFixture) {
+  return {
+    data: run,
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "run" as const
+    }
+  };
+}
+
+function buildEmptyRunDocumentsResponse() {
+  return {
+    data: {
+      items: [],
+      total: 0
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "document" as const
+    }
+  };
+}
+
+function buildEmptyRunWorkflowResponse() {
+  return {
+    data: {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "workflow_graph" as const
+    }
+  };
+}
+
+function buildEmptyRunTasksResponse() {
+  return {
+    data: {
+      items: [],
+      total: 0
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "task" as const
+    }
+  };
+}
+
 function buildProjectDetailResponse(project: {
   components: Array<{
     componentKey: string;
@@ -142,8 +204,47 @@ function createJsonResponse(payload: unknown, status = 200) {
   });
 }
 
+function createErrorResponse(input: { code: string; message: string; status: number }) {
+  return createJsonResponse(
+    {
+      error: {
+        code: input.code,
+        message: input.message,
+        details: null
+      }
+    },
+    input.status
+  );
+}
+
+function createDeferredResponse() {
+  let resolveResponse: ((response: Response) => void) | null = null;
+  const promise = new Promise<Response>((resolve) => {
+    resolveResponse = resolve;
+  });
+
+  return {
+    promise,
+    resolve(response: Response) {
+      resolveResponse?.(response);
+    }
+  };
+}
+
 function getRequestHeaders(request: RequestInfo | URL, init?: RequestInit) {
   return request instanceof Request ? request.headers : new Headers(init?.headers);
+}
+
+async function parseRequestJson(request: RequestInfo | URL, init?: RequestInit) {
+  if (request instanceof Request) {
+    return request.json();
+  }
+
+  if (typeof init?.body !== "string") {
+    throw new Error("Expected JSON request body.");
+  }
+
+  return JSON.parse(init.body);
 }
 
 function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
@@ -268,6 +369,91 @@ function stubProjectListFetchSequence(
   });
 }
 
+function stubRunCreationFetch(options: {
+  createRunResponses: ResponseFactory[];
+  initialRuns?: LiveRunFixture[];
+  knownRunsById?: Record<string, LiveRunFixture>;
+  project: CurrentProject;
+}) {
+  let createRunCallIndex = 0;
+  const createRunBodies: unknown[] = [];
+  const knownRuns = new Map<string, LiveRunFixture>(
+    [...(options.initialRuns ?? []), ...Object.values(options.knownRunsById ?? {})].map((run) => [
+      run.runId,
+      run
+    ])
+  );
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = input instanceof Request ? input.method : init?.method ?? "GET";
+
+    expectDevAuthHeaders(input, init);
+
+    if (url === "/v1/projects" && method === "GET") {
+      return createJsonResponse(buildProjectsResponse([options.project]));
+    }
+
+    if (url === `/v1/projects/${options.project.projectId}/runs` && method === "GET") {
+      return createJsonResponse(buildRunsResponse(options.initialRuns ?? []));
+    }
+
+    if (url === `/v1/projects/${options.project.projectId}/runs` && method === "POST") {
+      createRunBodies.push(await parseRequestJson(input, init));
+      const responseFactory =
+        options.createRunResponses[
+          Math.min(createRunCallIndex, options.createRunResponses.length - 1)
+        ];
+
+      createRunCallIndex += 1;
+
+      return await responseFactory!();
+    }
+
+    const runDetailMatch = url.match(/^\/v1\/runs\/([^/]+)$/);
+
+    if (runDetailMatch && method === "GET") {
+      const runId = decodeURIComponent(runDetailMatch[1]!);
+      const run = knownRuns.get(runId);
+
+      return run
+        ? createJsonResponse(buildRunDetailResponse(run))
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    const runDocumentsMatch = url.match(/^\/v1\/runs\/([^/]+)\/documents$/);
+
+    if (runDocumentsMatch && method === "GET") {
+      return createJsonResponse(buildEmptyRunDocumentsResponse());
+    }
+
+    const runWorkflowMatch = url.match(/^\/v1\/runs\/([^/]+)\/workflow$/);
+
+    if (runWorkflowMatch && method === "GET") {
+      return createJsonResponse(buildEmptyRunWorkflowResponse());
+    }
+
+    const runTasksMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks$/);
+
+    if (runTasksMatch && method === "GET") {
+      return createJsonResponse(buildEmptyRunTasksResponse());
+    }
+
+    throw new Error(`Unexpected fetch request: ${method} ${url}`);
+  });
+
+  vi.stubGlobal("fetch", fetchMock);
+
+  return {
+    createRunBodies,
+    fetchMock
+  };
+}
+
 function createDeferredProjectsResponse(projects: CurrentProject[]) {
   let resolveResponse: ((response: Response) => void) | null = null;
   const promise = new Promise<Response>((resolve) => {
@@ -327,18 +513,14 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Keystone Cloudflare/i })).toBeInTheDocument();
-    expect(await screen.findByText("run-104")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "run-104" })).toHaveAttribute("href", "/runs/run-104");
     expect(screen.getByText("wf-run-104")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
     expectShellLinkTarget("Workstreams", "/workstreams");
     expectShellLinkTarget("New project", "/projects/new");
     expectShellLinkTarget("Project settings", "/settings");
-    expect(screen.getByRole("button", { name: /\+ New run/i })).toBeDisabled();
-    expect(
-      screen.getByText(/Live runs are listed without deep links until the run-detail route can render API-backed run data truthfully\./i)
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\+ New run/i })).toBeEnabled();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/destination content is intentionally scaffold-only/i)
@@ -452,6 +634,233 @@ describe("App shell", () => {
 
     expect(await screen.findByText("run-104")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("creates a real run from the index and routes straight into its specification page", async () => {
+    const project: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const createdRun = createLiveRunFixture(project.projectId, {
+      runId: "run-201",
+      startedAt: null,
+      status: "configured",
+      workflowInstanceId: "wf-run-201"
+    });
+    const deferredCreateResponse = createDeferredResponse();
+    const { createRunBodies, fetchMock } = stubRunCreationFetch({
+      createRunResponses: [() => deferredCreateResponse.promise],
+      knownRunsById: {
+        [createdRun.runId]: createdRun
+      },
+      project
+    });
+    const { router } = renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
+
+    expect(screen.getByRole("button", { name: "Creating run..." })).toBeDisabled();
+
+    deferredCreateResponse.resolve(createJsonResponse(buildRunDetailResponse(createdRun), 201));
+
+    expect(await screen.findByRole("heading", { name: "run-201" })).toBeInTheDocument();
+    expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-201/specification");
+    });
+    expect(createRunBodies).toEqual([{ executionEngine: "scripted" }]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/v1/projects/${project.projectId}/runs`,
+      expect.objectContaining({
+        body: JSON.stringify({ executionEngine: "scripted" }),
+        method: "POST"
+      })
+    );
+  });
+
+  it("reuses the in-flight create-run request when + New run is activated again before completion", async () => {
+    const project: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const createdRun = createLiveRunFixture(project.projectId, {
+      runId: "run-202",
+      startedAt: null,
+      status: "configured",
+      workflowInstanceId: "wf-run-202"
+    });
+    const deferredCreateResponse = createDeferredResponse();
+    const { createRunBodies, fetchMock } = stubRunCreationFetch({
+      createRunResponses: [() => deferredCreateResponse.promise],
+      knownRunsById: {
+        [createdRun.runId]: createdRun
+      },
+      project
+    });
+    const { router } = renderRoute("/runs", { useBrowserProjectApi: true });
+
+    const createButton = await screen.findByRole("button", { name: "+ New run" });
+
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+
+    expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
+    expect(createRunBodies).toEqual([{ executionEngine: "scripted" }]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/v1/projects/${project.projectId}/runs`,
+      expect.objectContaining({
+        body: JSON.stringify({ executionEngine: "scripted" }),
+        method: "POST"
+      })
+    );
+    expect(
+      fetchMock.mock.calls.filter(([url, init]) => {
+        const requestUrl = typeof url === "string" ? url : url.toString();
+        const method = url instanceof Request ? url.method : init?.method ?? "GET";
+
+        return requestUrl === `/v1/projects/${project.projectId}/runs` && method === "POST";
+      })
+    ).toHaveLength(1);
+
+    deferredCreateResponse.resolve(createJsonResponse(buildRunDetailResponse(createdRun), 201));
+
+    expect(await screen.findByRole("heading", { name: "run-202" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-202/specification");
+    });
+  });
+
+  it("does not navigate into a stale run when the current project changes before + New run resolves", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+    const createdRun = createLiveRunFixture("project-keystone-cloudflare", {
+      runId: "run-203",
+      startedAt: null,
+      status: "configured",
+      workflowInstanceId: "wf-run-203"
+    });
+    const deferredCreateResponse = createDeferredResponse();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = input instanceof Request ? input.method : init?.method ?? "GET";
+
+      expectDevAuthHeaders(input, init);
+
+      if (url === "/v1/projects" && method === "GET") {
+        return createJsonResponse(buildProjectsResponse(projects));
+      }
+
+      if (url === "/v1/projects/project-keystone-cloudflare/runs" && method === "GET") {
+        return createJsonResponse(buildRunsResponse([]));
+      }
+
+      if (url === "/v1/projects/project-alt/runs" && method === "GET") {
+        return createJsonResponse(
+          buildRunsResponse([
+            createLiveRunFixture("project-alt", {
+              runId: "run-alt-401",
+              workflowInstanceId: "wf-run-alt-401"
+            })
+          ])
+        );
+      }
+
+      if (url === "/v1/projects/project-keystone-cloudflare/runs" && method === "POST") {
+        return deferredCreateResponse.promise;
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}` && method === "GET") {
+        return createJsonResponse(buildRunDetailResponse(createdRun));
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}/documents` && method === "GET") {
+        return createJsonResponse(buildEmptyRunDocumentsResponse());
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}/workflow` && method === "GET") {
+        return createJsonResponse(buildEmptyRunWorkflowResponse());
+      }
+
+      if (url === `/v1/runs/${createdRun.runId}/tasks` && method === "GET") {
+        return createJsonResponse(buildEmptyRunTasksResponse());
+      }
+
+      throw new Error(`Unexpected fetch request: ${method} ${url}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { router } = renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
+    expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Keystone Cloudflare/i }));
+    fireEvent.click(screen.getByRole("option", { name: /Alt Project/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    });
+    expect(await screen.findByText("run-alt-401")).toBeInTheDocument();
+
+    deferredCreateResponse.resolve(createJsonResponse(buildRunDetailResponse(createdRun), 201));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs");
+    });
+    expect(screen.getByRole("button", { name: /Alt Project/i })).toBeInTheDocument();
+    expect(screen.getByText("run-alt-401")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "run-203" })).not.toBeInTheDocument();
+  });
+
+  it("surfaces create-run failures on the index and restores the button state", async () => {
+    const project: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    stubRunCreationFetch({
+      createRunResponses: [
+        () =>
+          createErrorResponse({
+            code: "request_failed",
+            message: "Run creation failed.",
+            status: 503
+          })
+      ],
+      project
+    });
+
+    const { router } = renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Run creation failed.");
+    expect(screen.getByRole("button", { name: "+ New run" })).toBeEnabled();
+    expect(router.state.location.pathname).toBe("/runs");
   });
 
   it("renders honest latest activity labels for ended, compiled, and idle live runs", async () => {

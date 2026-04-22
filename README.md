@@ -51,20 +51,19 @@ Current UI scope:
 - the global project-scoped sidebar with a live project list, persisted current-project selection, and a real project switcher
 - live `New project` creation through `POST /v1/projects`
 - live `Project settings` load/save through `GET /v1/projects/:projectId` and `PATCH /v1/projects/:projectId`
-- a live project-scoped `Runs` index backed by `GET /v1/projects/:projectId/runs`
+- a live project-scoped `Runs` workspace backed by the real run APIs from index through execution review
 - top-level destination routes for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
-- a plain `Runs` index with a disabled `New run` control
+- a live `Runs` index with a real `+ New run` action
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
-- a graph-first `Execution` board with workflow nodes and a task-detail route with chat-plus-review split
+- live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
+- explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail artifact review with supported text preview plus compatibility messaging for unsupported content
 - board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
 - explicit compatibility states for `Documentation` and `Workstreams` when the selected live project is not present in the scaffold dataset
 
 Current UI non-goals:
 
 - live backend loading for `Documentation` and `Workstreams`
-- real run creation
-- live run-detail cutover for non-scaffold runs
-- real task conversations, DAG layout, or review diff content
+- real task conversations, streaming execution updates, or live review diff synthesis beyond artifact metadata plus supported text preview
 - persisted documentation or workstream editing
 - final visual polish
 - auth-specific UI flows or tenant-selection controls
@@ -85,9 +84,9 @@ The frontend scaffold is intentionally split by ownership so future feature work
 Current UI boundary:
 
 - the scaffold is served from the same Worker deployable as the `v1` API
-- the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, and the `Runs` index
+- the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, and the full `Runs` destination
+- `Runs` is now truthful end to end for project-scoped index, run creation, planning authoring, explicit compile, execution DAG, and task artifact review
 - `Documentation` and `Workstreams` still rely on scaffold-backed selectors and render explicit compatibility states for non-scaffold live projects
-- non-scaffold live runs do not yet have a truthful run-detail route, so the `Runs` index avoids broken deep links for those rows
 - documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend
@@ -111,8 +110,10 @@ The current UI-first `v1` surface is centered on:
 - `POST /v1/runs/:runId/compile`
 - `GET /v1/runs/:runId/documents`
 - `POST /v1/runs/:runId/documents`
+- `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId`
 - `GET /v1/runs/:runId/workflow`
 - `GET /v1/runs/:runId/tasks`
+- `GET /v1/runs/:runId/tasks/:taskId/artifacts`
 - `GET /v1/runs/:runId/tasks/:taskId`
 - `GET /v1/artifacts/:artifactId`
 - `GET /v1/artifacts/:artifactId/content`

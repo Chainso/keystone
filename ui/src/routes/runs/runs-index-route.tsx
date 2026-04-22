@@ -2,6 +2,7 @@ import type { MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useRunsIndexViewModel } from "../../features/runs/use-runs-index-view-model";
+import { buildRunPhasePath } from "../../shared/navigation/run-phases";
 import { StatusPill } from "../../shared/layout/status-pill";
 
 export function RunsIndexRoute() {
@@ -26,15 +27,42 @@ export function RunsIndexRoute() {
     navigate(detailPath);
   }
 
+  async function handleCreateRun() {
+    try {
+      const runId = await model.createRun();
+
+      if (!runId) {
+        return;
+      }
+
+      navigate(buildRunPhasePath(runId, "specification"));
+    } catch {
+      // The view model owns the visible error state for create-run failures.
+    }
+  }
+
   return (
     <div className="page-stage">
       <section className="page-section runs-table-panel">
         <div className="runs-table-header">
           <h1 className="page-title runs-page-title">{model.title}</h1>
-          <button type="button" className="ghost-button" disabled>
-            + New run
+          <button
+            type="button"
+            className="ghost-button"
+            aria-busy={model.isCreatingRun || undefined}
+            disabled={!model.canCreateRun}
+            onClick={() => {
+              void handleCreateRun();
+            }}
+          >
+            {model.isCreatingRun ? "Creating run..." : "+ New run"}
           </button>
         </div>
+        {model.createRunErrorMessage ? (
+          <p className="document-card-summary" role="alert">
+            {model.createRunErrorMessage}
+          </p>
+        ) : null}
 
         {model.compatibilityState ? (
           <section className="empty-state-card">
@@ -104,8 +132,16 @@ export function RunsIndexRoute() {
                 </thead>
                 <tbody>
                   {model.liveRuns.map((run) => (
-                    <tr key={run.runId}>
-                      <td>{run.runId}</td>
+                    <tr
+                      key={run.runId}
+                      className="table-clickable-row"
+                      onClick={(event) => handleRowClick(event, run.detailPath)}
+                    >
+                      <td>
+                        <Link to={run.detailPath} className="table-primary-link">
+                          {run.runId}
+                        </Link>
+                      </td>
                       <td>{run.workflowInstanceId}</td>
                       <td>{run.executionEngine}</td>
                       <td>
@@ -118,10 +154,6 @@ export function RunsIndexRoute() {
               </table>
             </div>
 
-            <p className="page-section-copy">
-              Live runs are listed without deep links until the run-detail route can render API-backed
-              run data truthfully.
-            </p>
           </>
         )}
       </section>

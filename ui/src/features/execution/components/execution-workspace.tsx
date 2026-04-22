@@ -6,6 +6,28 @@ interface ExecutionWorkspaceProps {
   model: RunExecutionViewModel;
 }
 
+function getExecutionNodeTone(status: string) {
+  const normalized = status.toLowerCase();
+
+  if (normalized.includes("fail") || normalized.includes("cancel")) {
+    return "blocked";
+  }
+
+  if (normalized.includes("active") || normalized.includes("running")) {
+    return "active";
+  }
+
+  if (normalized.includes("complete")) {
+    return "complete";
+  }
+
+  if (normalized.includes("ready") || normalized.includes("pending")) {
+    return "queued";
+  }
+
+  return "neutral";
+}
+
 export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
   return (
     <section className="workspace-panel execution-panel">
@@ -15,18 +37,30 @@ export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
         </div>
       </header>
 
-      {model.compatibilityState ? (
+      {model.state === "empty" || model.state === "pending" ? (
         <section className="empty-state-card">
-          <h3 className="document-card-title">{model.compatibilityState.heading}</h3>
-          <p className="document-card-summary">{model.compatibilityState.message}</p>
-          {model.compatibilityState.actionLabel ? (
-            <button type="button" className="secondary-button" onClick={model.retry}>
-              {model.compatibilityState.actionLabel}
-            </button>
+          <h3 className="document-card-title">
+            {model.state === "pending" ? "Execution is materializing" : "Execution is read-only"}
+          </h3>
+          <p className="document-card-summary">{model.message}</p>
+          {model.state === "pending" ? (
+            <div className="shell-state-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={model.refresh}
+              >
+                {model.refreshLabel}
+              </button>
+            </div>
           ) : null}
         </section>
       ) : (
         <div className="execution-board" aria-label="Execution workflow graph">
+          <p className="document-card-summary" aria-label="Execution summary">
+            {model.summary}
+          </p>
+
           {model.rows.map((row, rowIndex) => (
             <div
               key={row.rowId}
@@ -41,21 +75,14 @@ export function ExecutionWorkspace({ model }: ExecutionWorkspaceProps) {
                 <Link
                   key={task.taskId}
                   to={task.detailPath}
-                  className={`execution-node execution-node-${task.statusTone}`}
+                  className={`execution-node execution-node-${getExecutionNodeTone(task.status)}`}
                 >
-                  <span className="execution-node-label">{task.graphLabel}</span>
+                  <span className="execution-node-label">{task.taskId}</span>
                   <span className="execution-node-title">{task.title}</span>
-                  <span className="document-name">
-                    {task.displayId} · {task.statusLabel}
-                  </span>
+                  <span className="document-name">{task.status}</span>
                   {task.dependencyCount > 0 ? (
                     <span className="document-card-summary">
                       Depends on {task.dependencyCount} prior {task.dependencyCount === 1 ? "task" : "tasks"}
-                    </span>
-                  ) : null}
-                  {task.blockedByCount > 0 ? (
-                    <span className="document-card-summary">
-                      Blocked by {task.blockedByCount} {task.blockedByCount === 1 ? "task" : "tasks"}
                     </span>
                   ) : null}
                 </Link>

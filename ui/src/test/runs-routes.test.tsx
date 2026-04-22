@@ -1,75 +1,711 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
-import { serializeProjectListItem } from "../../../src/http/api/v1/projects/contracts";
-import type { RunExecutionApi } from "../features/execution/execution-api";
+import type { RunManagementApi, StaticRunDetailRecord } from "../features/runs/run-management-api";
+import {
+  createStaticRunManagementApi,
+  RunManagementApiError
+} from "../features/runs/run-management-api";
 import { renderRoute } from "./render-route";
-
-const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
-const liveProject = {
-  projectId: "project-keystone-cloudflare",
-  projectKey: "keystone-cloudflare",
-  displayName: "Keystone Cloudflare",
-  description: "Internal operator workspace for the Keystone Cloudflare project."
-};
-
-interface LiveRunFixture {
-  compiledFrom: {
-    specificationRevisionId: string;
-    architectureRevisionId: string;
-    executionPlanRevisionId: string;
-    compiledAt: string;
-  } | null;
-  endedAt: string | null;
-  executionEngine: "scripted" | "think_mock" | "think_live";
-  projectId: string;
-  runId: string;
-  startedAt: string | null;
-  status: string;
-  workflowInstanceId: string;
-}
-
-interface LiveTaskFixture {
-  conversation: {
-    agentClass: string;
-    agentName: string;
-  } | null;
-  dependsOn: string[];
-  description: string;
-  endedAt: string | null;
-  logicalTaskId: string;
-  name: string;
-  startedAt: string | null;
-  status: string;
-  taskId: string;
-  updatedAt: string;
-}
-
-interface LiveArtifactFixture {
-  artifactId: string;
-  contentType: string;
-  contentUrl: string;
-  kind: string;
-  sha256: string | null;
-  sizeBytes: number | null;
-}
-
-beforeEach(() => {
-  window.localStorage.clear();
-});
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
+
+function createDeferred<T>() {
+  let resolvePromise: ((value: T) => void) | null = null;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return {
+    promise,
+    resolve(value: T) {
+      resolvePromise?.(value);
+    }
+  };
+}
+
+function createRunFixture(
+  runId: string,
+  overrides: Partial<StaticRunDetailRecord> = {}
+): StaticRunDetailRecord {
+  const specificationDocumentId = `${runId}-specification`;
+  const architectureDocumentId = `${runId}-architecture`;
+  const executionPlanDocumentId = `${runId}-execution-plan`;
+  const specificationRevisionId = `${runId}-specification-v1`;
+  const architectureRevisionId = `${runId}-architecture-v1`;
+  const executionPlanRevisionId = `${runId}-execution-plan-v1`;
+
+  return {
+    documents: [
+      {
+        currentRevisionId: specificationRevisionId,
+        documentId: specificationDocumentId,
+        kind: "specification",
+        path: "specification",
+        scopeType: "run",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: `${runId}-specification-conversation`
+        }
+      },
+      {
+        currentRevisionId: architectureRevisionId,
+        documentId: architectureDocumentId,
+        kind: "architecture",
+        path: "architecture",
+        scopeType: "run",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: `${runId}-architecture-conversation`
+        }
+      },
+      {
+        currentRevisionId: executionPlanRevisionId,
+        documentId: executionPlanDocumentId,
+        kind: "execution_plan",
+        path: "execution-plan",
+        scopeType: "run",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: `${runId}-execution-plan-conversation`
+        }
+      }
+    ],
+    revisions: [
+      {
+        content: "# Specification\n- Replace scaffold run detail with live data.\n",
+        documentId: specificationDocumentId,
+        revision: {
+          artifactId: `${runId}-specification-artifact`,
+          contentUrl: `/v1/artifacts/${runId}-specification-artifact/content`,
+          createdAt: "2026-04-20T12:00:00.000Z",
+          documentRevisionId: specificationRevisionId,
+          revisionNumber: 1,
+          title: "Run Specification"
+        }
+      },
+      {
+        content: "# Architecture\n- Keep route files thin.\n",
+        documentId: architectureDocumentId,
+        revision: {
+          artifactId: `${runId}-architecture-artifact`,
+          contentUrl: `/v1/artifacts/${runId}-architecture-artifact/content`,
+          createdAt: "2026-04-20T12:05:00.000Z",
+          documentRevisionId: architectureRevisionId,
+          revisionNumber: 1,
+          title: "Run Architecture"
+        }
+      },
+      {
+        content: "# Execution Plan\n- Cut over the live provider seam.\n",
+        documentId: executionPlanDocumentId,
+        revision: {
+          artifactId: `${runId}-execution-plan-artifact`,
+          contentUrl: `/v1/artifacts/${runId}-execution-plan-artifact/content`,
+          createdAt: "2026-04-20T12:10:00.000Z",
+          documentRevisionId: executionPlanRevisionId,
+          revisionNumber: 1,
+          title: "Execution Plan"
+        }
+      }
+    ],
+    run: {
+      compiledFrom: null,
+      endedAt: null,
+      executionEngine: "scripted",
+      projectId: "project-keystone-cloudflare",
+      runId,
+      startedAt: "2026-04-20T12:00:00.000Z",
+      status: "configured",
+      workflowInstanceId: `wf-${runId}`
+    },
+    taskArtifacts: {},
+    tasks: [],
+    workflow: {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    },
+    ...overrides
+  };
+}
+
+const runFixtures: Record<string, StaticRunDetailRecord> = {
+  "run-101": {
+    ...createRunFixture("run-101"),
+    documents: [
+      {
+        currentRevisionId: "run-101-specification-v1",
+        documentId: "run-101-specification",
+        kind: "specification",
+        path: "specification",
+        scopeType: "run",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: "run-101-specification-conversation"
+        }
+      }
+    ],
+    revisions: [
+      {
+        content: "# Specification\n- One planning document exists.\n",
+        documentId: "run-101-specification",
+        revision: {
+          artifactId: "run-101-specification-artifact",
+          contentUrl: "/v1/artifacts/run-101-specification-artifact/content",
+          createdAt: "2026-04-20T12:00:00.000Z",
+          documentRevisionId: "run-101-specification-v1",
+          revisionNumber: 1,
+          title: "Run Specification"
+        }
+      }
+    ]
+  },
+  "run-102": createRunFixture("run-102"),
+  "run-103": {
+    ...createRunFixture("run-103"),
+    documents: [
+      {
+        currentRevisionId: "run-103-specification-v1",
+        documentId: "run-103-specification",
+        kind: "specification",
+        path: "specification",
+        scopeType: "run",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: "run-103-specification-conversation"
+        }
+      },
+      {
+        currentRevisionId: "run-103-architecture-v1",
+        documentId: "run-103-architecture",
+        kind: "architecture",
+        path: "architecture",
+        scopeType: "run",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: "run-103-architecture-conversation"
+        }
+      }
+    ],
+    revisions: [
+      {
+        content: "# Specification\n- Architecture is the current focus.\n",
+        documentId: "run-103-specification",
+        revision: {
+          artifactId: "run-103-specification-artifact",
+          contentUrl: "/v1/artifacts/run-103-specification-artifact/content",
+          createdAt: "2026-04-20T12:00:00.000Z",
+          documentRevisionId: "run-103-specification-v1",
+          revisionNumber: 1,
+          title: "Run Specification"
+        }
+      },
+      {
+        content: "# Architecture\n- Execution plan is still missing.\n",
+        documentId: "run-103-architecture",
+        revision: {
+          artifactId: "run-103-architecture-artifact",
+          contentUrl: "/v1/artifacts/run-103-architecture-artifact/content",
+          createdAt: "2026-04-20T12:05:00.000Z",
+          documentRevisionId: "run-103-architecture-v1",
+          revisionNumber: 1,
+          title: "Run Architecture"
+        }
+      }
+    ]
+  },
+  "run-104": {
+    ...createRunFixture("run-104", {
+      artifactContents: {
+        "/v1/artifacts/artifact-task-032-diff/content":
+          "--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n+ keep artifact access inside the authenticated run API seam\n"
+      },
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-104-architecture-v1",
+          compiledAt: "2026-04-20T12:20:00.000Z",
+          executionPlanRevisionId: "run-104-execution-plan-v1",
+          specificationRevisionId: "run-104-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "think_live",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-104",
+        startedAt: "2026-04-20T12:30:00.000Z",
+        status: "active",
+        workflowInstanceId: "wf-run-104"
+      },
+      taskArtifacts: {
+        "task-032": [
+          {
+            artifactId: "artifact-task-032-diff",
+            contentType: "text/plain; charset=utf-8",
+            contentUrl: "/v1/artifacts/artifact-task-032-diff/content",
+            kind: "git_diff",
+            sha256: "task-032-sha",
+            sizeBytes: 4096
+          },
+          {
+            artifactId: "artifact-task-032-preview",
+            contentType: "image/png",
+            contentUrl: "/v1/artifacts/artifact-task-032-preview/content",
+            kind: "screenshot",
+            sha256: "task-032-preview-sha",
+            sizeBytes: 8192
+          }
+        ]
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Draft the run specification.",
+          endedAt: "2026-04-20T12:35:00.000Z",
+          logicalTaskId: "TASK-030",
+          name: "Specification outline",
+          runId: "run-104",
+          startedAt: "2026-04-20T12:31:00.000Z",
+          status: "completed",
+          taskId: "task-030",
+          updatedAt: "2026-04-20T12:35:00.000Z"
+        },
+        {
+          conversation: null,
+          dependsOn: ["task-030"],
+          description: "Translate the specification into architecture decisions.",
+          endedAt: "2026-04-20T12:42:00.000Z",
+          logicalTaskId: "TASK-031",
+          name: "Architecture decisions",
+          runId: "run-104",
+          startedAt: "2026-04-20T12:36:00.000Z",
+          status: "completed",
+          taskId: "task-031",
+          updatedAt: "2026-04-20T12:42:00.000Z"
+        },
+        {
+          conversation: {
+            agentClass: "KeystoneThinkAgent",
+            agentName: "tenant:tenant-dev-local:run:run-104:task:task-032"
+          },
+          dependsOn: ["task-031"],
+          description: "Implement the live run-detail provider.",
+          endedAt: null,
+          logicalTaskId: "TASK-032",
+          name: "Live run provider cutover",
+          runId: "run-104",
+          startedAt: "2026-04-20T12:43:00.000Z",
+          status: "active",
+          taskId: "task-032",
+          updatedAt: "2026-04-20T12:43:00.000Z"
+        }
+      ],
+      workflow: {
+        edges: [
+          { fromTaskId: "task-030", toTaskId: "task-031" },
+          { fromTaskId: "task-031", toTaskId: "task-032" }
+        ],
+        nodes: [
+          { dependsOn: [], name: "Specification outline", status: "completed", taskId: "task-030" },
+          { dependsOn: ["task-030"], name: "Architecture decisions", status: "completed", taskId: "task-031" },
+          { dependsOn: ["task-031"], name: "Live run provider cutover", status: "active", taskId: "task-032" }
+        ],
+        summary: {
+          activeTasks: 1,
+          cancelledTasks: 0,
+          completedTasks: 2,
+          failedTasks: 0,
+          pendingTasks: 0,
+          readyTasks: 0,
+          totalTasks: 3
+        }
+      }
+    })
+  },
+  "run-105": {
+    ...createRunFixture("run-105"),
+    documents: [
+      {
+        currentRevisionId: "run-105-specification-v1",
+        documentId: "run-105-specification",
+        kind: "specification",
+        path: "specification",
+        scopeType: "run",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: "run-105-specification-conversation"
+        }
+      },
+      {
+        currentRevisionId: null,
+        documentId: "run-105-architecture",
+        kind: "architecture",
+        path: "architecture",
+        scopeType: "run",
+        conversation: null
+      }
+    ],
+    revisions: [
+      {
+        content: "# Specification\n- Architecture has not been written yet.\n",
+        documentId: "run-105-specification",
+        revision: {
+          artifactId: "run-105-specification-artifact",
+          contentUrl: "/v1/artifacts/run-105-specification-artifact/content",
+          createdAt: "2026-04-20T12:00:00.000Z",
+          documentRevisionId: "run-105-specification-v1",
+          revisionNumber: 1,
+          title: "Run Specification"
+        }
+      }
+    ]
+  },
+  "run-106": {
+    ...createRunFixture("run-106"),
+    documents: [],
+    revisions: []
+  },
+  "run-107": {
+    ...createRunFixture("run-107", {
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-107-architecture-v1",
+          compiledAt: "2026-04-20T12:50:00.000Z",
+          executionPlanRevisionId: "run-107-execution-plan-v1",
+          specificationRevisionId: "run-107-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "scripted",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-107",
+        startedAt: null,
+        status: "configured",
+        workflowInstanceId: "wf-run-107"
+      }
+    })
+  },
+  "run-108": {
+    ...createRunFixture("run-108", {
+      artifactContents: {
+        "/v1/artifacts/artifact-task-082-diff/content":
+          "--- a/ui/src/features/runs/components/execution-plan-workspace.tsx\n+++ b/ui/src/features/runs/components/execution-plan-workspace.tsx\n+ add explicit compile routing into the DAG\n"
+      },
+      run: {
+        compiledFrom: null,
+        endedAt: null,
+        executionEngine: "scripted",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-108",
+        startedAt: "2026-04-20T13:00:00.000Z",
+        status: "configured",
+        workflowInstanceId: "wf-run-108"
+      },
+      taskArtifacts: {
+        "task-082": [
+          {
+            artifactId: "artifact-task-082-diff",
+            contentType: "text/plain; charset=utf-8",
+            contentUrl: "/v1/artifacts/artifact-task-082-diff/content",
+            kind: "git_diff",
+            sha256: "task-082-sha",
+            sizeBytes: 2048
+          }
+        ]
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Compile the run plan into executable tasks.",
+          endedAt: "2026-04-20T13:05:00.000Z",
+          logicalTaskId: "TASK-080",
+          name: "Compile run plan",
+          runId: "run-108",
+          startedAt: "2026-04-20T13:01:00.000Z",
+          status: "completed",
+          taskId: "task-080",
+          updatedAt: "2026-04-20T13:05:00.000Z"
+        },
+        {
+          conversation: null,
+          dependsOn: ["task-080"],
+          description: "Prepare the execution graph for review.",
+          endedAt: "2026-04-20T13:07:00.000Z",
+          logicalTaskId: "TASK-081",
+          name: "Prepare execution graph",
+          runId: "run-108",
+          startedAt: "2026-04-20T13:05:00.000Z",
+          status: "completed",
+          taskId: "task-081",
+          updatedAt: "2026-04-20T13:07:00.000Z"
+        },
+        {
+          conversation: {
+            agentClass: "KeystoneThinkAgent",
+            agentName: "tenant:tenant-dev-local:run:run-108:task:task-082"
+          },
+          dependsOn: ["task-081"],
+          description: "Review the compiled execution DAG.",
+          endedAt: null,
+          logicalTaskId: "TASK-082",
+          name: "Review execution DAG",
+          runId: "run-108",
+          startedAt: "2026-04-20T13:08:00.000Z",
+          status: "ready",
+          taskId: "task-082",
+          updatedAt: "2026-04-20T13:08:00.000Z"
+        }
+      ],
+      workflow: {
+        edges: [
+          { fromTaskId: "task-080", toTaskId: "task-081" },
+          { fromTaskId: "task-081", toTaskId: "task-082" }
+        ],
+        nodes: [
+          { dependsOn: [], name: "Compile run plan", status: "completed", taskId: "task-080" },
+          {
+            dependsOn: ["task-080"],
+            name: "Prepare execution graph",
+            status: "completed",
+            taskId: "task-081"
+          },
+          {
+            dependsOn: ["task-081"],
+            name: "Review execution DAG",
+            status: "ready",
+            taskId: "task-082"
+          }
+        ],
+        summary: {
+          activeTasks: 0,
+          cancelledTasks: 0,
+          completedTasks: 2,
+          failedTasks: 0,
+          pendingTasks: 0,
+          readyTasks: 1,
+          totalTasks: 3
+        }
+      }
+    })
+  },
+  "run-109": {
+    ...createRunFixture("run-109", {
+      revisions: [
+        {
+          content: "# Specification\n- Keep the compiled workflow available while planning changes.\n",
+          documentId: "run-109-specification",
+          revision: {
+            artifactId: "run-109-specification-artifact",
+            contentUrl: "/v1/artifacts/run-109-specification-artifact/content",
+            createdAt: "2026-04-20T13:10:00.000Z",
+            documentRevisionId: "run-109-specification-v1",
+            revisionNumber: 1,
+            title: "Run Specification"
+          }
+        },
+        {
+          content: "# Architecture\n- Recompile when planning revisions drift.\n",
+          documentId: "run-109-architecture",
+          revision: {
+            artifactId: "run-109-architecture-artifact",
+            contentUrl: "/v1/artifacts/run-109-architecture-artifact/content",
+            createdAt: "2026-04-20T13:12:00.000Z",
+            documentRevisionId: "run-109-architecture-v1",
+            revisionNumber: 1,
+            title: "Run Architecture"
+          }
+        },
+        {
+          content: "# Execution Plan\n- Previous compiled revision.\n",
+          documentId: "run-109-execution-plan",
+          revision: {
+            artifactId: "run-109-execution-plan-artifact-v1",
+            contentUrl: "/v1/artifacts/run-109-execution-plan-artifact-v1/content",
+            createdAt: "2026-04-20T13:14:00.000Z",
+            documentRevisionId: "run-109-execution-plan-v1",
+            revisionNumber: 1,
+            title: "Execution Plan"
+          }
+        },
+        {
+          content: "# Execution Plan\n- Current planning revision is newer than the compiled graph.\n",
+          documentId: "run-109-execution-plan",
+          revision: {
+            artifactId: "run-109-execution-plan-artifact-v2",
+            contentUrl: "/v1/artifacts/run-109-execution-plan-artifact-v2/content",
+            createdAt: "2026-04-20T13:16:00.000Z",
+            documentRevisionId: "run-109-execution-plan-v2",
+            revisionNumber: 2,
+            title: "Execution Plan"
+          }
+        }
+      ],
+      documents: [
+        {
+          currentRevisionId: "run-109-specification-v1",
+          documentId: "run-109-specification",
+          kind: "specification",
+          path: "specification",
+          scopeType: "run",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "run-109-specification-conversation"
+          }
+        },
+        {
+          currentRevisionId: "run-109-architecture-v1",
+          documentId: "run-109-architecture",
+          kind: "architecture",
+          path: "architecture",
+          scopeType: "run",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "run-109-architecture-conversation"
+          }
+        },
+        {
+          currentRevisionId: "run-109-execution-plan-v2",
+          documentId: "run-109-execution-plan",
+          kind: "execution_plan",
+          path: "execution-plan",
+          scopeType: "run",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "run-109-execution-plan-conversation"
+          }
+        }
+      ],
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-109-architecture-v1",
+          compiledAt: "2026-04-20T13:15:00.000Z",
+          executionPlanRevisionId: "run-109-execution-plan-v1",
+          specificationRevisionId: "run-109-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "scripted",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-109",
+        startedAt: "2026-04-20T13:18:00.000Z",
+        status: "configured",
+        workflowInstanceId: "wf-run-109"
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Inspect the currently compiled workflow.",
+          endedAt: null,
+          logicalTaskId: "TASK-090",
+          name: "Inspect current execution graph",
+          runId: "run-109",
+          startedAt: "2026-04-20T13:18:30.000Z",
+          status: "ready",
+          taskId: "task-090",
+          updatedAt: "2026-04-20T13:18:30.000Z"
+        }
+      ],
+      workflow: {
+        edges: [],
+        nodes: [
+          {
+            dependsOn: [],
+            name: "Inspect current execution graph",
+            status: "ready",
+            taskId: "task-090"
+          }
+        ],
+        summary: {
+          activeTasks: 0,
+          cancelledTasks: 0,
+          completedTasks: 0,
+          failedTasks: 0,
+          pendingTasks: 0,
+          readyTasks: 1,
+          totalTasks: 1
+        }
+      }
+    })
+  }
+};
+
+const staticRunApi = createStaticRunManagementApi(runFixtures);
+
+function renderRunRoute(initialEntry: string, runApi: RunManagementApi = staticRunApi) {
+  return renderRoute(initialEntry, { runApi });
+}
+
+function createRunApi(overrides: Partial<RunManagementApi> = {}): RunManagementApi {
+  return {
+    ...staticRunApi,
+    ...overrides
+  };
+}
 
 function createJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "content-type": "application/json"
+    }
+  });
+}
+
+function createTextResponse(body: string, contentType = "text/plain; charset=utf-8") {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": contentType
+    }
+  });
+}
+
+function createRunDetailResponse(run: StaticRunDetailRecord["run"]) {
+  return createJsonResponse({
+    data: run,
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "run" as const
+    }
+  });
+}
+
+function createTaskCollectionResponse(tasks: NonNullable<StaticRunDetailRecord["tasks"]>) {
+  return createJsonResponse({
+    data: {
+      items: tasks,
+      total: tasks.length
+    },
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "collection" as const,
+      resourceType: "task" as const
+    }
+  });
+}
+
+function createWorkflowDetailResponse(workflow: NonNullable<StaticRunDetailRecord["workflow"]>) {
+  return createJsonResponse({
+    data: workflow,
+    meta: {
+      apiVersion: "v1" as const,
+      envelope: "detail" as const,
+      resourceType: "workflow_graph" as const
     }
   });
 }
@@ -85,271 +721,472 @@ function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
   expect(headers.get("x-keystone-tenant-id")).toBe("tenant-dev-local");
 }
 
-function buildProjectsResponse() {
-  return {
-    data: {
-      items: [
-        serializeProjectListItem({
-          projectId: liveProject.projectId,
-          projectKey: liveProject.projectKey,
-          displayName: liveProject.displayName,
-          description: liveProject.description,
-          createdAt: defaultTimestamp,
-          updatedAt: defaultTimestamp
-        })
-      ],
-      total: 1
+function createErrorResponse(input: { code: string; message: string; status: number }) {
+  return createJsonResponse(
+    {
+      error: {
+        code: input.code,
+        message: input.message,
+        details: null
+      }
     },
-    meta: {
-      apiVersion: "v1" as const,
-      envelope: "collection" as const,
-      resourceType: "project" as const
-    }
-  };
+    input.status
+  );
 }
 
-function createLiveRunFixture(overrides: Partial<LiveRunFixture> = {}): LiveRunFixture {
+function cloneRunFixtures() {
+  return structuredClone(runFixtures);
+}
+
+function getRunRequestUrl(request: RequestInfo | URL) {
+  return typeof request === "string" ? request : request.toString();
+}
+
+function getRunRequestMethod(request: RequestInfo | URL, init?: RequestInit) {
+  return request instanceof Request ? request.method : init?.method ?? "GET";
+}
+
+async function parseRequestJson(request: RequestInfo | URL, init?: RequestInit) {
+  if (request instanceof Request) {
+    return request.json();
+  }
+
+  if (typeof init?.body !== "string") {
+    throw new Error("Expected JSON request body.");
+  }
+
+  return JSON.parse(init.body);
+}
+
+function findRunDocument(run: StaticRunDetailRecord, documentId: string) {
+  return run.documents?.find((document) => document.documentId === documentId) ?? null;
+}
+
+function findRunRevision(
+  run: StaticRunDetailRecord,
+  documentId: string,
+  documentRevisionId: string
+) {
+  return (
+    run.revisions?.find((candidate) => {
+      if (candidate.documentId) {
+        return (
+          candidate.documentId === documentId &&
+          candidate.revision.documentRevisionId === documentRevisionId
+        );
+      }
+
+      return findRunDocument(run, documentId)?.currentRevisionId === candidate.revision.documentRevisionId;
+    }) ?? null
+  );
+}
+
+function buildCompiledFrom(run: StaticRunDetailRecord) {
+  const specification = run.documents?.find((document) => document.path === "specification");
+  const architecture = run.documents?.find((document) => document.path === "architecture");
+  const executionPlan = run.documents?.find((document) => document.path === "execution-plan");
+
+  if (
+    !specification?.currentRevisionId ||
+    !architecture?.currentRevisionId ||
+    !executionPlan?.currentRevisionId
+  ) {
+    return null;
+  }
+
   return {
-    compiledFrom: null,
-    endedAt: null,
-    executionEngine: "scripted",
-    projectId: liveProject.projectId,
-    runId: "run-live-201",
-    startedAt: "2026-04-20T12:00:00.000Z",
-    status: "running",
-    workflowInstanceId: "wf-live-201",
-    ...overrides
+    architectureRevisionId: architecture.currentRevisionId,
+    compiledAt: new Date().toISOString(),
+    executionPlanRevisionId: executionPlan.currentRevisionId,
+    specificationRevisionId: specification.currentRevisionId
   };
 }
 
-function createLiveTaskFixture(overrides: Partial<LiveTaskFixture> = {}): LiveTaskFixture {
-  return {
-    conversation: null,
-    dependsOn: [],
-    description: "Live task detail for execution cutover tests.",
-    endedAt: null,
-    logicalTaskId: "TASK-LIVE-001",
-    name: "Compile execution context",
-    startedAt: null,
-    status: "ready",
-    taskId: "task-live-001",
-    updatedAt: "2026-04-20T12:00:00.000Z",
-    ...overrides
-  };
+function getFetchRequests(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.map(([request, init]) => ({
+    method: getRunRequestMethod(request, init),
+    url: getRunRequestUrl(request)
+  }));
 }
 
-function createLiveArtifactFixture(overrides: Partial<LiveArtifactFixture> = {}): LiveArtifactFixture {
-  return {
-    artifactId: "artifact-task-log-1",
-    contentType: "text/plain",
-    contentUrl: "/v1/artifacts/artifact-task-log-1/content",
-    kind: "task_log",
-    sha256: "sha256-task-log-1",
-    sizeBytes: 128,
-    ...overrides
-  };
+function countFetchRequests(
+  fetchMock: ReturnType<typeof vi.fn>,
+  input: {
+    method: string;
+    url: string;
+  }
+) {
+  return getFetchRequests(fetchMock).filter(
+    (request) => request.method === input.method && request.url === input.url
+  ).length;
 }
 
-function buildRunResource(run: LiveRunFixture) {
-  return {
-    resourceType: "run" as const,
-    scaffold: {
-      implementation: "reused" as const,
-      note: null
-    },
-    runId: run.runId,
-    projectId: run.projectId,
-    workflowInstanceId: run.workflowInstanceId,
-    executionEngine: run.executionEngine,
-    status: run.status,
-    compiledFrom: run.compiledFrom,
-    startedAt: run.startedAt,
-    endedAt: run.endedAt
-  };
-}
-
-function buildTaskResource(runId: string, task: LiveTaskFixture) {
-  return {
-    resourceType: "task" as const,
-    scaffold: {
-      implementation: "reused" as const,
-      note: null
-    },
-    runId,
-    taskId: task.taskId,
-    logicalTaskId: task.logicalTaskId,
-    name: task.name,
-    description: task.description,
-    status: task.status,
-    dependsOn: task.dependsOn,
-    conversation: task.conversation,
-    updatedAt: task.updatedAt,
-    startedAt: task.startedAt,
-    endedAt: task.endedAt
-  };
-}
-
-function buildWorkflowResource(runId: string, tasks: LiveTaskFixture[]) {
-  return {
-    resourceType: "workflow_graph" as const,
-    scaffold: {
-      implementation: "projected" as const,
-      note: "Projected from run_tasks and run_task_dependencies."
-    },
-    nodes: tasks.map((task) => ({
-      taskId: task.taskId,
-      name: task.name,
-      status: task.status,
-      dependsOn: task.dependsOn
-    })),
-    edges: tasks.flatMap((task) =>
-      task.dependsOn.map((dependencyId) => ({
-        fromTaskId: dependencyId,
-        toTaskId: task.taskId
-      }))
-    ),
-    summary: {
-      totalTasks: tasks.length,
-      activeTasks: tasks.filter((task) => task.status === "active").length,
-      pendingTasks: tasks.filter((task) => task.status === "pending").length,
-      completedTasks: tasks.filter((task) => task.status === "completed").length,
-      readyTasks: tasks.filter((task) => task.status === "ready").length,
-      failedTasks: tasks.filter((task) => task.status === "failed").length,
-      cancelledTasks: tasks.filter((task) => task.status === "cancelled").length
-    }
-  };
-}
-
-function buildArtifactResource(artifact: LiveArtifactFixture) {
-  return {
-    resourceType: "artifact" as const,
-    scaffold: {
-      implementation: "reused" as const,
-      note: null
-    },
-    artifactId: artifact.artifactId,
-    kind: artifact.kind,
-    contentType: artifact.contentType,
-    sizeBytes: artifact.sizeBytes,
-    sha256: artifact.sha256,
-    contentUrl: artifact.contentUrl
-  };
-}
-
-function stubLiveRunRouteFetch(input: {
-  artifactsByTaskId?: Record<string, LiveArtifactFixture[]>;
-  run?: LiveRunFixture;
-  taskDetailsByTaskId?: Record<string, LiveTaskFixture>;
-  tasks: LiveTaskFixture[];
-}) {
-  const run = input.run ?? createLiveRunFixture();
-  const taskDetailsByTaskId = input.taskDetailsByTaskId ?? {};
-  const artifactsByTaskId = input.artifactsByTaskId ?? {};
-  const taskCollection = input.tasks.map((task) => buildTaskResource(run.runId, task));
-  const workflow = buildWorkflowResource(run.runId, input.tasks);
-
+function createBrowserRunFetch(
+  overrides: Record<string, (() => Promise<Response> | Response) | undefined> = {}
+) {
+  const browserRunFixtures = cloneRunFixtures();
   const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof request === "string" ? request : request.toString();
-    const method = request instanceof Request ? request.method : init?.method ?? "GET";
+    const url = getRunRequestUrl(request);
+    const method = getRunRequestMethod(request, init);
 
     expectDevAuthHeaders(request, init);
 
-    if (url === "/v1/projects" && method === "GET") {
-      return createJsonResponse(buildProjectsResponse());
+    const override = overrides[`${method} ${url}`] ?? overrides[url];
+
+    if (override) {
+      return await override();
     }
 
-    if (url === `/v1/runs/${run.runId}` && method === "GET") {
-      return createJsonResponse({
-        data: buildRunResource(run),
-        meta: {
-          apiVersion: "v1" as const,
-          envelope: "detail" as const,
-          resourceType: "run" as const
-        }
-      });
+    const runMatch = url.match(/^\/v1\/runs\/([^/]+)$/);
+
+    if (runMatch) {
+      const runId = decodeURIComponent(runMatch[1]!);
+      const run = browserRunFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: run.run,
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "detail" as const,
+              resourceType: "run" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
     }
 
-    if (url === `/v1/runs/${run.runId}/workflow` && method === "GET") {
-      return createJsonResponse({
-        data: workflow,
-        meta: {
-          apiVersion: "v1" as const,
-          envelope: "detail" as const,
-          resourceType: "workflow_graph" as const
-        }
-      });
-    }
+    const runCompileMatch = url.match(/^\/v1\/runs\/([^/]+)\/compile$/);
 
-    if (url === `/v1/runs/${run.runId}/tasks` && method === "GET") {
-      return createJsonResponse({
-        data: {
-          items: taskCollection,
-          total: taskCollection.length
-        },
-        meta: {
-          apiVersion: "v1" as const,
-          envelope: "collection" as const,
-          resourceType: "task" as const
-        }
-      });
-    }
+    if (runCompileMatch) {
+      const runId = decodeURIComponent(runCompileMatch[1]!);
+      const run = browserRunFixtures[runId];
 
-    const taskArtifactMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks\/([^/]+)\/artifacts$/);
-
-    if (taskArtifactMatch && method === "GET") {
-      const requestedRunId = decodeURIComponent(taskArtifactMatch[1]!);
-      const taskId = decodeURIComponent(taskArtifactMatch[2]!);
-
-      if (requestedRunId !== run.runId) {
-        throw new Error(`Unexpected fetch request: ${method} ${url}`);
+      if (!run) {
+        return createErrorResponse({
+          code: "run_not_found",
+          message: `Run ${runId} was not found.`,
+          status: 404
+        });
       }
 
-      return createJsonResponse({
-        data: {
-          items: (artifactsByTaskId[taskId] ?? []).map(buildArtifactResource),
-          total: (artifactsByTaskId[taskId] ?? []).length
-        },
-        meta: {
-          apiVersion: "v1" as const,
-          envelope: "collection" as const,
-          resourceType: "artifact" as const
-        }
-      });
-    }
-
-    const taskMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks\/([^/]+)$/);
-
-    if (taskMatch && method === "GET") {
-      const requestedRunId = decodeURIComponent(taskMatch[1]!);
-      const taskId = decodeURIComponent(taskMatch[2]!);
-
-      if (requestedRunId !== run.runId) {
-        throw new Error(`Unexpected fetch request: ${method} ${url}`);
+      if (method !== "POST") {
+        throw new Error(`Unexpected method ${method} for ${url}`);
       }
 
-      const task =
-        taskDetailsByTaskId[taskId] ?? input.tasks.find((candidate) => candidate.taskId === taskId);
+      const compiledFrom = buildCompiledFrom(run);
 
-      if (!task) {
+      if (!compiledFrom) {
+        return createErrorResponse({
+          code: "run_documents_incomplete",
+          message:
+            "Run compilation requires specification, architecture, and execution-plan documents.",
+          status: 409
+        });
+      }
+
+      run.run = {
+        ...run.run,
+        compiledFrom,
+        status: (run.tasks ?? []).some((task) => task.status === "ready" || task.status === "active")
+          ? "active"
+          : run.run.status
+      };
+
+      return createJsonResponse(
+        {
+          data: {
+            run: run.run,
+            status: "accepted",
+            workflowInstanceId: run.run.workflowInstanceId
+          },
+          meta: {
+            apiVersion: "v1" as const,
+            envelope: "action" as const,
+            resourceType: "run" as const
+          }
+        },
+        202
+      );
+    }
+
+    const runDocumentsMatch = url.match(/^\/v1\/runs\/([^/]+)\/documents$/);
+
+    if (runDocumentsMatch) {
+      const runId = decodeURIComponent(runDocumentsMatch[1]!);
+      const run = browserRunFixtures[runId];
+
+      if (!run) {
+        return createErrorResponse({
+          code: "run_not_found",
+          message: `Run ${runId} was not found.`,
+          status: 404
+        });
+      }
+
+      if (method === "POST") {
+        const input = (await parseRequestJson(request, init)) as {
+          conversation?: NonNullable<StaticRunDetailRecord["documents"]>[number]["conversation"];
+          kind: NonNullable<StaticRunDetailRecord["documents"]>[number]["kind"];
+          path: string;
+        };
+
+        if (run.documents?.some((document) => document.path === input.path)) {
+          return createErrorResponse({
+            code: "document_path_conflict",
+            message: "A document with that logical path already exists in this scope.",
+            status: 409
+          });
+        }
+
+        const documentId = `${runId}-${input.path.replace(/\//g, "-")}`;
+        const createdDocument = {
+          conversation: input.conversation ?? null,
+          currentRevisionId: null,
+          documentId,
+          kind: input.kind,
+          path: input.path,
+          scopeType: "run" as const
+        };
+
+        run.documents = [...(run.documents ?? []), createdDocument];
+
         return createJsonResponse(
           {
-            error: {
-              code: "task_not_found",
-              message: `Task ${taskId} was not found for run ${run.runId}.`
+            data: createdDocument,
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "detail" as const,
+              resourceType: "document" as const
             }
           },
-          404
+          201
         );
       }
 
       return createJsonResponse({
-        data: buildTaskResource(run.runId, task),
+        data: {
+          items: run.documents ?? [],
+          total: run.documents?.length ?? 0
+        },
         meta: {
           apiVersion: "v1" as const,
-          envelope: "detail" as const,
-          resourceType: "task" as const
+          envelope: "collection" as const,
+          resourceType: "document" as const
         }
       });
+    }
+
+    const runDocumentRevisionMatch = url.match(
+      /^\/v1\/runs\/([^/]+)\/documents\/([^/]+)\/revisions\/([^/]+)$/
+    );
+
+    if (runDocumentRevisionMatch) {
+      const runId = decodeURIComponent(runDocumentRevisionMatch[1]!);
+      const documentId = decodeURIComponent(runDocumentRevisionMatch[2]!);
+      const documentRevisionId = decodeURIComponent(runDocumentRevisionMatch[3]!);
+      const run = browserRunFixtures[runId];
+      const revision = run ? findRunRevision(run, documentId, documentRevisionId) : null;
+
+      return revision
+        ? createJsonResponse({
+            data: revision.revision,
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "detail" as const,
+              resourceType: "document_revision" as const
+            }
+          })
+        : createErrorResponse({
+            code: "document_revision_not_found",
+            message: `Document revision ${documentRevisionId} was not found for run ${runId}.`,
+            status: 404
+          });
+    }
+
+    const runDocumentRevisionsCollectionMatch = url.match(
+      /^\/v1\/runs\/([^/]+)\/documents\/([^/]+)\/revisions$/
+    );
+
+    if (runDocumentRevisionsCollectionMatch) {
+      const runId = decodeURIComponent(runDocumentRevisionsCollectionMatch[1]!);
+      const documentId = decodeURIComponent(runDocumentRevisionsCollectionMatch[2]!);
+      const run = browserRunFixtures[runId];
+
+      if (!run) {
+        return createErrorResponse({
+          code: "run_not_found",
+          message: `Run ${runId} was not found.`,
+          status: 404
+        });
+      }
+
+      if (method !== "POST") {
+        throw new Error(`Unexpected method ${method} for ${url}`);
+      }
+
+      const document = findRunDocument(run, documentId);
+
+      if (!document) {
+        return createErrorResponse({
+          code: "document_not_found",
+          message: `Document ${documentId} was not found for run ${runId}.`,
+          status: 404
+        });
+      }
+
+      const input = (await parseRequestJson(request, init)) as {
+        body: string;
+        title: string;
+      };
+      const currentRevision = document.currentRevisionId
+        ? run.revisions?.find(
+            (candidate) => candidate.revision.documentRevisionId === document.currentRevisionId
+          ) ?? null
+        : null;
+      const revisionNumber = (currentRevision?.revision.revisionNumber ?? 0) + 1;
+      const createdRevision = {
+        content: input.body,
+        documentId: document.documentId,
+        revision: {
+          artifactId: `${document.documentId}-artifact-v${revisionNumber}`,
+          contentUrl: `/v1/artifacts/${document.documentId}-artifact-v${revisionNumber}/content`,
+          createdAt: new Date().toISOString(),
+          documentRevisionId: `${document.documentId}-v${revisionNumber}`,
+          revisionNumber,
+          title: input.title
+        }
+      };
+
+      run.revisions = [...(run.revisions ?? []), createdRevision];
+      run.documents = (run.documents ?? []).map((candidate) =>
+        candidate.documentId === document.documentId
+          ? {
+              ...candidate,
+              currentRevisionId: createdRevision.revision.documentRevisionId
+            }
+          : candidate
+      );
+
+      return createJsonResponse(
+        {
+          data: createdRevision.revision,
+          meta: {
+            apiVersion: "v1" as const,
+            envelope: "detail" as const,
+            resourceType: "document_revision" as const
+          }
+        },
+        201
+      );
+    }
+
+    const runWorkflowMatch = url.match(/^\/v1\/runs\/([^/]+)\/workflow$/);
+
+    if (runWorkflowMatch) {
+      const runId = decodeURIComponent(runWorkflowMatch[1]!);
+      const run = browserRunFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: run.workflow ?? {
+              edges: [],
+              nodes: [],
+              summary: {
+                activeTasks: 0,
+                cancelledTasks: 0,
+                completedTasks: 0,
+                failedTasks: 0,
+                pendingTasks: 0,
+                readyTasks: 0,
+                totalTasks: 0
+              }
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "detail" as const,
+              resourceType: "workflow_graph" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    const runTasksMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks$/);
+
+    if (runTasksMatch) {
+      const runId = decodeURIComponent(runTasksMatch[1]!);
+      const run = browserRunFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: {
+              items: run.tasks ?? [],
+              total: run.tasks?.length ?? 0
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "collection" as const,
+              resourceType: "task" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    const runTaskArtifactsMatch = url.match(/^\/v1\/runs\/([^/]+)\/tasks\/([^/]+)\/artifacts$/);
+
+    if (runTaskArtifactsMatch) {
+      const runId = decodeURIComponent(runTaskArtifactsMatch[1]!);
+      const taskId = decodeURIComponent(runTaskArtifactsMatch[2]!);
+      const run = browserRunFixtures[runId];
+
+      return run
+        ? createJsonResponse({
+            data: {
+              items: run.taskArtifacts?.[taskId] ?? [],
+              total: run.taskArtifacts?.[taskId]?.length ?? 0
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "collection" as const,
+              resourceType: "artifact" as const
+            }
+          })
+        : createErrorResponse({
+            code: "run_not_found",
+            message: `Run ${runId} was not found.`,
+            status: 404
+          });
+    }
+
+    for (const run of Object.values(browserRunFixtures)) {
+      const revisionRecord = run.revisions?.find(
+        (candidate) => candidate.revision.contentUrl === url
+      );
+
+      if (revisionRecord) {
+        return createTextResponse(revisionRecord.content);
+      }
+
+      const artifactContent = run.artifactContents?.[url];
+
+      if (artifactContent !== undefined) {
+        const artifact = Object.values(run.taskArtifacts ?? {})
+          .flat()
+          .find((candidate) => candidate.contentUrl === url);
+
+        return createTextResponse(artifactContent, artifact?.contentType);
+      }
     }
 
     throw new Error(`Unexpected fetch request: ${method} ${url}`);
@@ -357,89 +1194,16 @@ function stubLiveRunRouteFetch(input: {
 
   vi.stubGlobal("fetch", fetchMock);
 
-  return fetchMock;
-}
-
-function createExecutionApiStub(input: {
-  artifactsByTaskId?: Record<string, Error | LiveArtifactFixture[]>;
-  run?: Error | ReturnType<typeof buildRunResource>;
-  taskDetailsByTaskId?: Record<string, Error | unknown>;
-  tasks?: Error | unknown[];
-  workflow?: Error | ReturnType<typeof buildWorkflowResource>;
-}): RunExecutionApi {
-  const run =
-    input.run ??
-    buildRunResource(createLiveRunFixture());
-  const tasks = input.tasks ?? [];
-  const workflow =
-    input.workflow ??
-    buildWorkflowResource(
-      run instanceof Error ? "run-live-201" : run.runId,
-      []
-    );
-
   return {
-    async getRun() {
-      if (run instanceof Error) {
-        throw run;
-      }
-
-      return run;
-    },
-    async getRunTask(_runId, taskId) {
-      const value =
-        input.taskDetailsByTaskId?.[taskId] ??
-        (Array.isArray(tasks)
-          ? tasks.find(
-              (candidate): candidate is { taskId: string } =>
-                typeof candidate === "object" &&
-                candidate !== null &&
-                "taskId" in candidate &&
-                candidate.taskId === taskId
-            )
-          : undefined);
-
-      if (value instanceof Error) {
-        throw value;
-      }
-
-      if (!value) {
-        throw new Error(`Task ${taskId} was not found.`);
-      }
-
-      return value as never;
-    },
-    async getRunWorkflow() {
-      if (workflow instanceof Error) {
-        throw workflow;
-      }
-
-      return workflow;
-    },
-    async listRunTaskArtifacts(_runId, taskId) {
-      const value = input.artifactsByTaskId?.[taskId] ?? [];
-
-      if (value instanceof Error) {
-        throw value;
-      }
-
-      return value.map(buildArtifactResource);
-    },
-    async listRunTasks() {
-      if (tasks instanceof Error) {
-        throw tasks;
-      }
-
-      return tasks as never;
-    }
+    fetchMock
   };
 }
 
 describe("Run routes", () => {
-  it("redirects /runs/:runId to the derived default phase", async () => {
-    const { router } = renderRoute("/runs/run-104");
+  it("redirects /runs/:runId to execution when compiled workflow data exists", async () => {
+    const { router } = renderRunRoute("/runs/run-104");
 
-    expect(await screen.findByRole("heading", { name: "Run-104" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-104/execution");
     });
@@ -449,83 +1213,783 @@ describe("Run routes", () => {
       })
     ).toHaveAttribute("href", "/runs/run-104/execution");
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.getByText("Project workspace navigation")).toBeInTheDocument();
   });
 
-  it("redirects run-102 to execution-plan when no compiled tasks exist", async () => {
-    const { router } = renderRoute("/runs/run-102");
+  it("redirects an uncompiled run to the first incomplete planning step", async () => {
+    const { router: planRouter } = renderRunRoute("/runs/run-102");
 
-    expect(await screen.findByRole("heading", { name: "Run-102" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "run-102" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-102/execution-plan");
+      expect(planRouter.state.location.pathname).toBe("/runs/run-102/execution-plan");
     });
+
+    const { router: architectureRouter } = renderRunRoute("/runs/run-103");
+
+    expect(await screen.findByRole("heading", { name: "run-103" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(architectureRouter.state.location.pathname).toBe("/runs/run-103/execution-plan");
+    });
+
+    const { router: specificationRouter } = renderRunRoute("/runs/run-101");
+
+    expect(await screen.findByRole("heading", { name: "run-101" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(specificationRouter.state.location.pathname).toBe("/runs/run-101/architecture");
+    });
+  });
+
+  it("redirects a compiled run with a materializing workflow into execution", async () => {
+    const { router } = renderRunRoute("/runs/run-107");
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-107/execution");
+    });
+    expect(screen.getByText("Execution is materializing")).toBeInTheDocument();
     expect(
-      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
-        name: "Execution Plan"
-      })
-    ).toHaveAttribute("href", "/runs/run-102/execution-plan");
-    const navigation = screen.getByRole("navigation", { name: "Run phases" });
-    expect(within(navigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
-    expect(within(navigation).getByText("Execution").closest(".run-step-link")).toHaveAttribute(
-      "aria-disabled",
-      "true"
-    );
-    expect(
-      await screen.findByRole("heading", { name: "Execution Plan conversation" })
+      screen.getByText(
+        "Compile was accepted for this run. Keystone is still materializing the live execution graph."
+      )
     ).toBeInTheDocument();
-  });
-
-  it("redirects run-103 to architecture when execution-plan is unavailable", async () => {
-    const { router } = renderRoute("/runs/run-103");
-
-    expect(await screen.findByRole("heading", { name: "Run-103" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-103/architecture");
-    });
-    expect(
-      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
-        name: "Architecture"
-      })
-    ).toHaveAttribute("href", "/runs/run-103/architecture");
+    expect(screen.getByRole("button", { name: "Refresh execution" })).toBeInTheDocument();
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
         name: "Execution"
       })
-    ).toHaveAttribute("href", "/runs/run-103/execution");
-    expect(
-      await screen.findByRole("heading", { name: "Architecture conversation" })
-    ).toBeInTheDocument();
+    ).toHaveAttribute("href", "/runs/run-107/execution");
   });
 
-  it("redirects run-101 to specification when only the specification doc exists", async () => {
-    const { router } = renderRoute("/runs/run-101");
+  it("redirects a brand-new run with no planning documents to specification", async () => {
+    const { router } = renderRunRoute("/runs/run-106");
 
-    expect(await screen.findByRole("heading", { name: "Run-101" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-101/specification");
+      expect(router.state.location.pathname).toBe("/runs/run-106/specification");
+    });
+
+    expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
+  });
+
+  it("renders the loading state before the live run provider resolves", async () => {
+    const deferredRun = createDeferred<StaticRunDetailRecord["run"]>();
+    const runApi = createRunApi({
+      getRun: vi.fn(async () => deferredRun.promise)
+    });
+
+    renderRunRoute("/runs/run-104/specification", runApi);
+
+    expect(await screen.findByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+
+    deferredRun.resolve(runFixtures["run-104"]!.run);
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+  });
+
+  it("resets the run-detail provider immediately when navigation switches runs", async () => {
+    const deferredRun = createDeferred<StaticRunDetailRecord["run"]>();
+    const runApi = createRunApi({
+      getRun: vi.fn(async (runId) => {
+        if (runId === "run-104") {
+          return deferredRun.promise;
+        }
+
+        return staticRunApi.getRun(runId);
+      })
+    });
+    const { router } = renderRunRoute("/runs/run-101/specification", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-101" })).toBeInTheDocument();
+
+    void router.navigate("/runs/run-104/specification");
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+    });
+
+    expect(screen.getByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "run-101" })).not.toBeInTheDocument();
+
+    deferredRun.resolve(runFixtures["run-104"]!.run);
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      documentPath: "architecture",
+      expectedLine: "- Keep route files thin.",
+      path: "/runs/run-104/architecture",
+      phaseHeading: "Architecture conversation",
+      revisionTitle: "Run Architecture"
+    },
+    {
+      documentPath: "execution-plan",
+      expectedLine: "- Cut over the live provider seam.",
+      path: "/runs/run-104/execution-plan",
+      phaseHeading: "Execution Plan conversation",
+      revisionTitle: "Execution Plan"
+    }
+  ])(
+    "loads the current planning revision for $path through the live route seam",
+    async ({ documentPath, expectedLine, path, phaseHeading, revisionTitle }) => {
+      createBrowserRunFetch();
+
+      renderRoute(path);
+
+      expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: phaseHeading })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: revisionTitle })).toBeInTheDocument();
+      expect(screen.getByText(documentPath)).toBeInTheDocument();
+      expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+        "Conversation attached to this document."
+      );
+      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+    }
+  );
+
+  it("loads the current specification revision and saves a new revision without route churn", async () => {
+    const { fetchMock } = createBrowserRunFetch();
+    const { router } = renderRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Run Specification" })).toBeInTheDocument();
+    expect(screen.getByText("specification")).toBeInTheDocument();
+    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+      "Conversation attached to this document."
+    );
+    expect(screen.getByText("- Replace scaffold run detail with live data.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+      target: {
+        value: "Run Specification v2"
+      }
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value:
+          "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Specification v2" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Save current revisions without route churn.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+    expect(getFetchRequests(fetchMock)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "POST",
+          url: "/v1/runs/run-104/documents/run-104-specification/revisions"
+        })
+      ])
+    );
+  });
+
+  it("deduplicates rapid create and save activations for a planning document", async () => {
+    const { fetchMock } = createBrowserRunFetch();
+
+    renderRoute("/runs/run-106/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
+
+    const createButton = screen.getByRole("button", {
+      name: "Create specification document"
+    });
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+
+    expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
+      "Run Specification"
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Specification\n- Single-flight planning mutations prevent duplicates.\n"
+      }
+    });
+
+    const saveButton = screen.getByRole("button", { name: "Save changes" });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(await screen.findByRole("heading", { name: "Run Specification" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
     expect(
-      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
-        name: "Specification"
-      })
-    ).toHaveAttribute("href", "/runs/run-101/specification");
+      screen.getByText("- Single-flight planning mutations prevent duplicates.")
+    ).toBeInTheDocument();
     expect(
-      await screen.findByRole("heading", { name: "Specification conversation" })
+      countFetchRequests(fetchMock, {
+        method: "POST",
+        url: "/v1/runs/run-106/documents"
+      })
+    ).toBe(1);
+    expect(
+      countFetchRequests(fetchMock, {
+        method: "POST",
+        url: "/v1/runs/run-106/documents/run-106-specification/revisions"
+      })
+    ).toBe(1);
+  });
+
+  it.each([
+    {
+      defaultTitle: "Run Specification",
+      documentId: "run-106-specification",
+      emptyTitle: "No specification document yet",
+      expectedLine: "- Define the live planning specification.",
+      path: "/runs/run-106/specification"
+    },
+    {
+      defaultTitle: "Run Architecture",
+      documentId: "run-106-architecture",
+      emptyTitle: "No architecture document yet",
+      expectedLine: "- Keep the shared planning layout stable.",
+      path: "/runs/run-106/architecture"
+    },
+    {
+      defaultTitle: "Execution Plan",
+      documentId: "run-106-execution-plan",
+      emptyTitle: "No execution plan document yet",
+      expectedLine: "- Save the current execution plan without leaving the route.",
+      path: "/runs/run-106/execution-plan"
+    }
+  ])(
+    "creates and saves a missing planning document for $path without route churn",
+    async ({ defaultTitle, documentId, emptyTitle, expectedLine, path }) => {
+      const { fetchMock } = createBrowserRunFetch();
+      const { router } = renderRoute(path);
+
+      expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
+      expect(screen.getByText(emptyTitle)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Create`, "i") }));
+
+      expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
+        defaultTitle
+      );
+
+      fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+        target: {
+          value: `${defaultTitle}\n${expectedLine}\n`
+        }
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+      expect(await screen.findByRole("heading", { name: defaultTitle })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+      });
+      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+      expect(router.state.location.pathname).toBe(path);
+
+      expect(getFetchRequests(fetchMock)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: "POST",
+            url: `/v1/runs/run-106/documents`
+          }),
+          expect.objectContaining({
+            method: "POST",
+            url: `/v1/runs/run-106/documents/${documentId}/revisions`
+          })
+        ])
+      );
+    }
+  );
+
+  it("reconciles document path conflicts by reloading the existing backend document state", async () => {
+    const existingDocument = {
+      conversation: {
+        agentClass: "PlanningDocumentAgent",
+        agentName: "run-106-architecture-conversation"
+      },
+      currentRevisionId: "run-106-architecture-v1",
+      documentId: "run-106-architecture",
+      kind: "architecture" as const,
+      path: "architecture",
+      scopeType: "run" as const
+    };
+    let listRunDocumentsCallCount = 0;
+    const listRunDocuments = vi.fn(async () => {
+      listRunDocumentsCallCount += 1;
+
+      return listRunDocumentsCallCount === 1 ? [] : [existingDocument];
+    });
+    const createRunDocument = vi.fn(async () => {
+      throw new RunManagementApiError({
+        code: "document_path_conflict",
+        message: "A document with that logical path already exists in this scope.",
+        status: 409
+      });
+    });
+    const getRunDocumentRevision = vi.fn(async () => ({
+      artifactId: "run-106-architecture-artifact",
+      contentUrl: "/v1/artifacts/run-106-architecture-artifact/content",
+      createdAt: "2026-04-20T12:05:00.000Z",
+      documentRevisionId: "run-106-architecture-v1",
+      revisionNumber: 1,
+      title: "Run Architecture"
+    }));
+    const getDocumentContent = vi.fn(
+      async () => "# Architecture\n- Conflict recovery reflects backend truth.\n"
+    );
+
+    renderRunRoute(
+      "/runs/run-106/architecture",
+      createRunApi({
+        createRunDocument,
+        getDocumentContent,
+        getRunDocumentRevision,
+        listRunDocuments
+      })
+    );
+
+    expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
+    expect(screen.getByText("No architecture document yet")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create architecture document" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Conflict recovery reflects backend truth.")).toBeInTheDocument();
+    expect(screen.queryByText("No architecture document yet")).not.toBeInTheDocument();
+    expect(createRunDocument).toHaveBeenCalledTimes(1);
+    expect(listRunDocuments).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a planning page with no current revision enter the editor, discard changes, and save", async () => {
+    const { router } = renderRunRoute(
+      "/runs/run-105/architecture",
+      createStaticRunManagementApi(cloneRunFixtures())
+    );
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+    expect(screen.getByText("No current architecture revision")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+
+    expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
+      "Run Architecture"
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Discarded draft changes.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+
+    expect(screen.getByText("No current architecture revision")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Document body" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Architecture\n- Save the first architecture revision.\n"
+      }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("- Save the first architecture revision.")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
+  });
+
+  it("only exposes Compile run when the live planning documents are ready for compilation", async () => {
+    renderRunRoute("/runs/run-108/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Compile run" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Compile persists the execution graph from the current specification, architecture, and execution plan."
+      )
+    ).toBeInTheDocument();
+
+    cleanup();
+
+    renderRunRoute("/runs/run-103/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-103" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compile run" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Compile becomes available once current revisions exist for: Execution Plan."
+      )
+    ).toBeInTheDocument();
+
+    cleanup();
+
+    renderRunRoute("/runs/run-104/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compile run" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-104/execution"
+    );
+
+    cleanup();
+
+    renderRunRoute("/runs/run-109/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-109" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recompile run" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open current execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-109/execution"
+    );
+    expect(
+      screen.getByText(
+        "Current planning revisions are newer than the execution graph. Recompile to refresh Execution with the latest live documents."
+      )
+    ).toBeInTheDocument();
+
+    cleanup();
+
+    renderRunRoute("/runs/run-107/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Compile was accepted for this run. Keystone is waiting for the live execution graph to become available."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
+  });
+
+  it("compiles a ready run, refreshes live state, and routes into execution", async () => {
+    const { fetchMock } = createBrowserRunFetch();
+    const { router } = renderRoute("/runs/run-108/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
+
+    expect(await screen.findByRole("button", { name: "Compiling run..." })).toBeDisabled();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-108/execution");
+    });
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
+        name: "Execution"
+      })
+    ).toHaveAttribute("href", "/runs/run-108/execution");
+    expect(
+      countFetchRequests(fetchMock, {
+        method: "POST",
+        url: "/v1/runs/run-108/compile"
+      })
+    ).toBe(1);
+  });
+
+  it("routes into execution and waits there while a delayed compile materializes the workflow", async () => {
+    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    };
+    const compiledRun = {
+      ...runFixtures["run-108"]!.run,
+      compiledFrom: buildCompiledFrom(runFixtures["run-108"]!)
+    };
+    const compiledTasks = runFixtures["run-108"]!.tasks ?? [];
+    const compiledWorkflow = runFixtures["run-108"]!.workflow!;
+    let workflowRequestCount = 0;
+    let compileAccepted = false;
+
+    createBrowserRunFetch({
+      "/v1/runs/run-108": () =>
+        createRunDetailResponse(compileAccepted ? compiledRun : runFixtures["run-108"]!.run),
+      "/v1/runs/run-108/compile": () => {
+        compileAccepted = true;
+
+        return createJsonResponse(
+          {
+            data: {
+              run: compiledRun,
+              status: "accepted",
+              workflowInstanceId: compiledRun.workflowInstanceId
+            },
+            meta: {
+              apiVersion: "v1" as const,
+              envelope: "action" as const,
+              resourceType: "run" as const
+            }
+          },
+          202
+        );
+      },
+      "/v1/runs/run-108/workflow": () => {
+        workflowRequestCount += 1;
+
+        return createWorkflowDetailResponse(
+          workflowRequestCount >= 3 ? compiledWorkflow : emptyWorkflow
+        );
+      },
+      "/v1/runs/run-108/tasks": () =>
+        createTaskCollectionResponse(workflowRequestCount >= 3 ? compiledTasks : [])
+    });
+
+    const { router } = renderRoute("/runs/run-108/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-108/execution");
+    });
+    expect(await screen.findByText("Execution is materializing")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh execution" }));
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it("does not navigate back into an older run when compile acceptance resolves after switching routes", async () => {
+    const compiledRun = {
+      ...runFixtures["run-108"]!.run,
+      compiledFrom: buildCompiledFrom(runFixtures["run-108"]!)
+    };
+    const deferredCompileResponse = createDeferred<Response>();
+    let compileAccepted = false;
+
+    createBrowserRunFetch({
+      "/v1/runs/run-108": () =>
+        createRunDetailResponse(compileAccepted ? compiledRun : runFixtures["run-108"]!.run),
+      "/v1/runs/run-108/compile": () => {
+        return deferredCompileResponse.promise;
+      }
+    });
+
+    const { router } = renderRoute("/runs/run-108/execution-plan");
+
+    expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
+
+    await router.navigate("/runs/run-104/specification");
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+    compileAccepted = true;
+    deferredCompileResponse.resolve(
+      createJsonResponse(
+        {
+          data: {
+            run: compiledRun,
+            status: "accepted",
+            workflowInstanceId: compiledRun.workflowInstanceId
+          },
+          meta: {
+            apiVersion: "v1" as const,
+            envelope: "action" as const,
+            resourceType: "run" as const
+          }
+        },
+        202
+      )
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+    });
+  });
+
+  it("renders a planning-page error state when the current revision cannot be read", async () => {
+    const runApi = createRunApi({
+      getRunDocumentRevision: vi.fn(async (runId, documentId, documentRevisionId) => {
+        if (documentRevisionId === "run-104-specification-v1") {
+          throw new Error("Revision load failed.");
+        }
+
+        return staticRunApi.getRunDocumentRevision(runId, documentId, documentRevisionId);
+      })
+    });
+
+    renderRunRoute("/runs/run-104/specification", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByText("Unable to load specification")).toBeInTheDocument();
+    expect(screen.getByText("Revision load failed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("surfaces browser-backed run not-found states without the static seam", async () => {
+    createBrowserRunFetch();
+
+    renderRoute("/runs/run-404/specification");
+
+    expect(await screen.findByRole("heading", { name: "Run not found" })).toBeInTheDocument();
+    expect(screen.getByText("Run run-404 was not found.")).toBeInTheDocument();
+  });
+
+  it("surfaces browser-backed run load failures without falling through to stale content", async () => {
+    createBrowserRunFetch({
+      "/v1/runs/run-104": () =>
+        createErrorResponse({
+          code: "request_failed",
+          message: "Run detail load exploded.",
+          status: 503
+        })
+    });
+
+    renderRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expect(screen.getByText("Run detail load exploded.")).toBeInTheDocument();
+  });
+
+  it("renders the execution DAG shell from live workflow data", async () => {
+    renderRunRoute("/runs/run-104/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Execution summary")).toHaveTextContent(
+      "3 tasks · 0 ready · 0 pending · 1 active · 2 completed"
+    );
+    expect(screen.getByRole("link", { name: /task-030/i })).toHaveAttribute(
+      "href",
+      "/runs/run-104/execution/tasks/task-030"
+    );
+    expect(screen.getByRole("link", { name: /task-032/i })).toHaveAttribute(
+      "href",
+      "/runs/run-104/execution/tasks/task-032"
+    );
+    expect(screen.getByText("Live run provider cutover")).toBeInTheDocument();
+    expect(
+      screen.getByText("Workflow rows are grouped by dependency depth in the current workflow graph.")
     ).toBeInTheDocument();
   });
 
-  it("renders run index rows with run-detail navigation targets", async () => {
-    const { router } = renderRoute("/runs");
+  it("renders an honest execution empty state when compile has not produced a workflow", async () => {
+    renderRunRoute("/runs/run-102/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Execution becomes available after this run has been compiled.")
+    ).toBeInTheDocument();
+    const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
+    const executionStep = within(phaseNavigation)
+      .getByText("Execution")
+      .closest('[aria-disabled="true"]');
+
+    expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
+    expect(executionStep).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("renders task artifacts and loads preview content through the authenticated run API seam", async () => {
+    renderRunRoute("/runs/run-104/execution/tasks/task-032");
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
+      "Conversation attached to this task."
+    );
+    expect(screen.getByText("Depends on")).toBeInTheDocument();
+    expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
+    expect(await screen.findByText("artifact-task-032-diff")).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-preview")).toBeInTheDocument();
+    expect(screen.getByText("Content type: text/plain; charset=utf-8")).toBeInTheDocument();
+    const textArtifactCard = screen.getByText("artifact-task-032-diff").closest("details");
+    const unsupportedArtifactCard = screen.getByText("artifact-task-032-preview").closest("details");
+
+    expect(textArtifactCard).not.toBeNull();
+    expect(unsupportedArtifactCard).not.toBeNull();
+    expect(
+      within(textArtifactCard as HTMLElement).getByText(
+        /Text preview is available for this artifact and loads on demand through the run API seam/i
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open artifact content" })).not.toBeInTheDocument();
+    expect(
+      within(unsupportedArtifactCard as HTMLElement).getByText(
+        "Preview unavailable in this view because image/png is not text-compatible."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(unsupportedArtifactCard as HTMLElement).queryByRole("button", {
+        name: "Load text preview"
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
+    );
+
+    expect(
+      await within(textArtifactCard as HTMLElement).findByText((content) =>
+        content.includes("keep artifact access inside the authenticated run API seam")
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
+    expect(screen.queryByText("+ keep task detail scoped to the selected run")).not.toBeInTheDocument();
+  });
+
+  it("renders a task-detail error state when artifact metadata fails to load", async () => {
+    const runApi = createRunApi({
+      listTaskArtifacts: vi.fn(async (runId, taskId) => {
+        if (taskId === "task-032") {
+          throw new Error("Artifact load failed.");
+        }
+
+        return staticRunApi.listTaskArtifacts(runId, taskId);
+      })
+    });
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(await screen.findByText("Unable to load task artifacts")).toBeInTheDocument();
+    expect(screen.getByText("Artifact load failed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("surfaces an invalid task route as a truthful not-found state", async () => {
+    renderRunRoute("/runs/run-104/execution/tasks/task-999");
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-999" })).toBeInTheDocument();
+    expect(screen.getByText("Task not found")).toBeInTheDocument();
+    expect(screen.getByText("Task task-999 was not found for run run-104.")).toBeInTheDocument();
+    expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
+  });
+
+  it("opens the scaffold run index row into the live run-detail route", async () => {
+    const { router } = renderRunRoute("/runs");
 
     expect(await screen.findByRole("heading", { name: "Runs" })).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "Run-104" })).toHaveAttribute(
-      "href",
-      "/runs/run-104"
-    );
-    expect(screen.getByRole("link", { name: "Run-103" })).toHaveAttribute("href", "/runs/run-103");
-    expect(screen.getByText("Execution Plan")).toBeInTheDocument();
-
-    const row = screen.getByRole("link", { name: "Run-104" }).closest("tr");
+    const row = (await screen.findByRole("link", { name: "Run-104" })).closest("tr");
 
     expect(row).not.toBeNull();
 
@@ -534,551 +1998,6 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-104/execution");
     });
-  });
-
-  it.each([
-    {
-      path: "/runs/run-104/specification",
-      title: "Specification conversation",
-      document: "Living product spec",
-      documentPath: "runs/run-104/specification/product-spec.md"
-    },
-    {
-      path: "/runs/run-104/architecture",
-      title: "Architecture conversation",
-      document: "Living architecture doc",
-      documentPath: "runs/run-104/architecture/architecture.md"
-    },
-    {
-      path: "/runs/run-104/execution-plan",
-      title: "Execution Plan conversation",
-      document: "Execution plan doc",
-      documentPath: "runs/run-104/execution-plan/execution-plan.md"
-    }
-  ])(
-    "renders the planning workspace from document and conversation locator data for $path",
-    async ({ path, title, document, documentPath }) => {
-      renderRoute(path);
-
-      expect(await screen.findByRole("heading", { name: "Run-104" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: document })).toBeInTheDocument();
-      expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-        "Conversation attached to this document."
-      );
-      expect(screen.getByLabelText("Conversation status")).not.toHaveTextContent(
-        "document-conversation"
-      );
-      expect(screen.getByText(documentPath)).toBeInTheDocument();
-      expect(screen.queryByRole("textbox", { name: "Message composer" })).not.toBeInTheDocument();
-      expect(screen.getByRole("navigation", { name: "Run phases" })).toBeInTheDocument();
-    }
-  );
-
-  it("renders the execution DAG shell", async () => {
-    const { container } = renderRoute("/runs/run-104/execution");
-
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Run shell navigation/i })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution/tasks/task-032"
-    );
-    expect(screen.getByRole("link", { name: /Task detail routing/i })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution/tasks/task-033"
-    );
-    expect(
-      screen.getByText("Workflow rows are grouped by dependency depth in the current workflow graph.")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Depth 4: sibling tasks share dependency depth; left-to-right position is not ordered."
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Click a task node to open that task inside Execution.")
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Execution summary")).not.toBeInTheDocument();
-
-    const branchRow = container.querySelector(".execution-dag-row-branch");
-    const rows = [...container.querySelectorAll(".execution-dag-row")];
-
-    expect(rows).toHaveLength(5);
-    expect(within(rows[0] as HTMLElement).getByText("Specification outline")).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText("Architecture decisions")).toBeInTheDocument();
-    expect(within(rows[2] as HTMLElement).getByText("Execution plan")).toBeInTheDocument();
-    expect(branchRow).not.toBeNull();
-    expect(within(branchRow as HTMLElement).getByText("Run shell navigation")).toBeInTheDocument();
-    expect(within(branchRow as HTMLElement).getByText("Documentation grouping")).toBeInTheDocument();
-    expect(within(rows[4] as HTMLElement).getByText("Task detail routing")).toBeInTheDocument();
-    expect(branchRow?.querySelectorAll(".execution-node .execution-dag-arrow")).toHaveLength(0);
-  });
-
-  it("renders the task detail split inside execution", async () => {
-    renderRoute("/runs/run-104/execution/tasks/task-032");
-
-    expect(await screen.findByRole("heading", { name: "Run-104 / TASK-032" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this task."
-    );
-    expect(screen.getByLabelText("Conversation status")).not.toHaveTextContent("task-conversation");
-    expect(screen.getByRole("heading", { name: "Artifacts and review" })).toBeInTheDocument();
-    expect(screen.getByText("Changed files")).toBeInTheDocument();
-    expect(screen.getByText("TASK-031")).toBeInTheDocument();
-    const routeArtifactCard = screen
-      .getByText("ui/src/routes/runs/task-detail-route.tsx")
-      .closest("details");
-    const workspaceArtifactCard = screen
-      .getByText("ui/src/features/execution/components/execution-workspace.tsx")
-      .closest("details");
-
-    expect(routeArtifactCard).not.toBeNull();
-    expect(routeArtifactCard).toHaveTextContent("Task detail route behavior.");
-    expect(routeArtifactCard).toHaveTextContent("+ keep task detail scoped to the selected run");
-    expect(workspaceArtifactCard).not.toBeNull();
-    expect(workspaceArtifactCard).toHaveTextContent("Workflow DAG surface.");
-    expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Steer this task" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to DAG" })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution"
-    );
-  });
-
-  it("surfaces an invalid task route through the route error boundary", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    try {
-      renderRoute("/runs/run-104/execution/tasks/task-999");
-
-      expect(await screen.findByText("Unexpected Application Error!")).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          'Task route "/runs/run-104/execution/tasks/task-999" does not match any known execution task.'
-        )
-      ).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "Artifacts and review" })).not.toBeInTheDocument();
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
-  it("cuts live runs over to execution and disables planning phases", async () => {
-    const liveRun = createLiveRunFixture();
-    const liveTasks = [
-      createLiveTaskFixture({
-        logicalTaskId: "TASK-LIVE-001",
-        name: "Compile execution context",
-        status: "completed",
-        taskId: "task-live-001"
-      }),
-      createLiveTaskFixture({
-        conversation: {
-          agentClass: "task_session",
-          agentName: "task-session-live-002"
-        },
-        dependsOn: ["task-live-001"],
-        logicalTaskId: "TASK-LIVE-002",
-        name: "Run execution shell",
-        startedAt: "2026-04-20T12:10:00.000Z",
-        status: "active",
-        taskId: "task-live-002",
-        updatedAt: "2026-04-20T12:14:00.000Z"
-      }),
-      createLiveTaskFixture({
-        dependsOn: ["task-live-002"],
-        logicalTaskId: "task-live-003",
-        name: "Task detail drill-in",
-        status: "blocked",
-        taskId: "task-live-003",
-        updatedAt: "2026-04-20T12:16:00.000Z"
-      }),
-      createLiveTaskFixture({
-        dependsOn: ["task-live-003"],
-        logicalTaskId: "TASK-LIVE-004",
-        name: "Workstreams follow-on",
-        status: "pending",
-        taskId: "task-live-004",
-        updatedAt: "2026-04-20T12:18:00.000Z"
-      })
-    ];
-
-    stubLiveRunRouteFetch({
-      run: liveRun,
-      tasks: liveTasks
-    });
-
-    const { router } = renderRoute(`/runs/${liveRun.runId}`, { useBrowserProjectApi: true });
-
-    expect(await screen.findByRole("heading", { name: liveRun.runId })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe(`/runs/${liveRun.runId}/execution`);
-    });
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.queryByText("Project workspace navigation")).not.toBeInTheDocument();
-
-    const navigation = screen.getByRole("navigation", { name: "Run phases" });
-
-    expect(within(navigation).getByRole("link", { name: "Execution" })).toHaveAttribute(
-      "href",
-      `/runs/${liveRun.runId}/execution`
-    );
-    expect(within(navigation).getByText("Specification").closest(".run-step-link")).toHaveAttribute(
-      "aria-disabled",
-      "true"
-    );
-    expect(within(navigation).getByText("Architecture").closest(".run-step-link")).toHaveAttribute(
-      "aria-disabled",
-      "true"
-    );
-    expect(within(navigation).getByText("Execution Plan").closest(".run-step-link")).toHaveAttribute(
-      "aria-disabled",
-      "true"
-    );
-    expect(await screen.findByRole("link", { name: /Run execution shell/i })).toHaveAttribute(
-      "href",
-      `/runs/${liveRun.runId}/execution/tasks/task-live-002`
-    );
-    expect(await screen.findByRole("link", { name: /Task detail drill-in/i })).toHaveAttribute(
-      "href",
-      `/runs/${liveRun.runId}/execution/tasks/task-live-003`
-    );
-  });
-
-  it("renders live task detail with dependency resolution and raw artifact links", async () => {
-    const liveRun = createLiveRunFixture();
-    const liveTasks = [
-      createLiveTaskFixture({
-        logicalTaskId: "TASK-LIVE-001",
-        name: "Compile execution context",
-        status: "completed",
-        taskId: "task-live-001"
-      }),
-      createLiveTaskFixture({
-        conversation: {
-          agentClass: "task_session",
-          agentName: "task-session-live-002"
-        },
-        dependsOn: ["task-live-001"],
-        logicalTaskId: "TASK-LIVE-002",
-        name: "Run execution shell",
-        startedAt: "2026-04-20T12:10:00.000Z",
-        status: "active",
-        taskId: "task-live-002",
-        updatedAt: "2026-04-20T12:14:00.000Z"
-      }),
-      createLiveTaskFixture({
-        dependsOn: ["task-live-002"],
-        logicalTaskId: "task-live-003",
-        name: "Task detail drill-in",
-        status: "blocked",
-        taskId: "task-live-003",
-        updatedAt: "2026-04-20T12:16:00.000Z"
-      }),
-      createLiveTaskFixture({
-        dependsOn: ["task-live-003"],
-        logicalTaskId: "TASK-LIVE-004",
-        name: "Workstreams follow-on",
-        status: "pending",
-        taskId: "task-live-004",
-        updatedAt: "2026-04-20T12:18:00.000Z"
-      })
-    ];
-
-    stubLiveRunRouteFetch({
-      artifactsByTaskId: {
-        "task-live-003": [createLiveArtifactFixture()]
-      },
-      run: liveRun,
-      tasks: liveTasks
-    });
-
-    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-003`, {
-      useBrowserProjectApi: true
-    });
-
-    expect(
-      await screen.findByRole("heading", { name: `${liveRun.runId} / task-live-003` })
-    ).toBeInTheDocument();
-    expect(await screen.findByLabelText("Conversation status")).toHaveTextContent(
-      "No conversation is attached to this task yet."
-    );
-    expect(await screen.findByText("Execution artifacts")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead."
-      )
-    ).toBeInTheDocument();
-    expect(screen.getByText("TASK-LIVE-002")).toBeInTheDocument();
-    expect(screen.getByText("TASK-LIVE-004")).toBeInTheDocument();
-    expect(screen.getByText("artifact-task-log-1")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to DAG" })).toHaveAttribute(
-      "href",
-      `/runs/${liveRun.runId}/execution`
-    );
-    expect(screen.getByRole("link", { name: "Open raw artifact" })).toHaveAttribute(
-      "href",
-      "/v1/artifacts/artifact-task-log-1/content"
-    );
-  });
-
-  it("falls back to taskId in live task detail headings and dependency rows", async () => {
-    const liveRun = createLiveRunFixture();
-    const dependencyTask = {
-      ...buildTaskResource(
-        liveRun.runId,
-        createLiveTaskFixture({
-          logicalTaskId: "TASK-LIVE-001",
-          name: "Compile execution context",
-          status: "completed",
-          taskId: "task-live-001"
-        })
-      ),
-      logicalTaskId: undefined
-    };
-    const currentTask = {
-      ...buildTaskResource(
-        liveRun.runId,
-        createLiveTaskFixture({
-          dependsOn: ["task-live-001"],
-          logicalTaskId: "TASK-LIVE-002",
-          name: "Run execution shell",
-          status: "active",
-          taskId: "task-live-002"
-        })
-      ),
-      logicalTaskId: undefined
-    };
-    const blockedTask = {
-      ...buildTaskResource(
-        liveRun.runId,
-        createLiveTaskFixture({
-          dependsOn: ["task-live-002"],
-          logicalTaskId: "TASK-LIVE-003",
-          name: "Task detail drill-in",
-          status: "blocked",
-          taskId: "task-live-003"
-        })
-      ),
-      logicalTaskId: undefined
-    };
-
-    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-002`, {
-      executionApi: createExecutionApiStub({
-        run: buildRunResource(liveRun),
-        taskDetailsByTaskId: {
-          "task-live-002": currentTask
-        },
-        tasks: [dependencyTask, currentTask, blockedTask]
-      }),
-      project: liveProject
-    });
-
-    expect(
-      await screen.findByRole("heading", { name: `${liveRun.runId} / task-live-002` })
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Depends on")).toHaveTextContent("task-live-001");
-    expect(screen.getByLabelText("Blocked by")).toHaveTextContent("task-live-003");
-  });
-
-  it("renders an empty live execution state when the workflow has no tasks", async () => {
-    const liveRun = createLiveRunFixture();
-
-    renderRoute(`/runs/${liveRun.runId}/execution`, {
-      executionApi: createExecutionApiStub({
-        run: buildRunResource(liveRun),
-        tasks: [],
-        workflow: buildWorkflowResource(liveRun.runId, [])
-      }),
-      project: liveProject
-    });
-
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(await screen.findByText("No execution tasks yet")).toBeInTheDocument();
-    expect(
-      screen.getByText(`${liveRun.runId} does not have any execution tasks to render yet.`)
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Execution workflow graph")).not.toBeInTheDocument();
-  });
-
-  it("surfaces live run-task loading failures in the execution compatibility state", async () => {
-    const liveRun = createLiveRunFixture();
-
-    renderRoute(`/runs/${liveRun.runId}/execution`, {
-      executionApi: createExecutionApiStub({
-        run: buildRunResource(liveRun),
-        tasks: new Error("Unable to load run tasks."),
-        workflow: buildWorkflowResource(liveRun.runId, [])
-      }),
-      project: liveProject
-    });
-
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(await screen.findByText("Unable to load execution")).toBeInTheDocument();
-    expect(screen.getByText("Unable to load run tasks.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
-  });
-
-  it("surfaces inconsistent live workflow dependencies instead of flattening them into the graph", async () => {
-    const liveRun = createLiveRunFixture();
-    const task = buildTaskResource(
-      liveRun.runId,
-      createLiveTaskFixture({
-        dependsOn: ["task-live-missing"],
-        logicalTaskId: "TASK-LIVE-002",
-        name: "Run execution shell",
-        status: "active",
-        taskId: "task-live-002"
-      })
-    );
-
-    renderRoute(`/runs/${liveRun.runId}/execution`, {
-      executionApi: createExecutionApiStub({
-        run: buildRunResource(liveRun),
-        tasks: [task],
-        workflow: {
-          resourceType: "workflow_graph",
-          scaffold: {
-            implementation: "projected",
-            note: "Projected from run_tasks and run_task_dependencies."
-          },
-          nodes: [
-            {
-              dependsOn: ["task-live-missing"],
-              name: "Run execution shell",
-              status: "active",
-              taskId: "task-live-002"
-            }
-          ],
-          edges: [
-            {
-              fromTaskId: "task-live-missing",
-              toTaskId: "task-live-002"
-            }
-          ],
-          summary: {
-            activeTasks: 1,
-            cancelledTasks: 0,
-            completedTasks: 0,
-            failedTasks: 0,
-            pendingTasks: 0,
-            readyTasks: 0,
-            totalTasks: 1
-          }
-        }
-      }),
-      project: liveProject
-    });
-
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(await screen.findByText("Unable to load execution")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        `Workflow graph for run "${liveRun.runId}" references missing dependency task "task-live-missing".`
-      )
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText("Execution workflow graph")).not.toBeInTheDocument();
-  });
-
-  it("renders a distinct empty-artifacts state for live task detail", async () => {
-    const liveRun = createLiveRunFixture();
-    const liveTasks = [
-      buildTaskResource(
-        liveRun.runId,
-        createLiveTaskFixture({
-          logicalTaskId: "TASK-LIVE-001",
-          name: "Compile execution context",
-          status: "completed",
-          taskId: "task-live-001"
-        })
-      ),
-      buildTaskResource(
-        liveRun.runId,
-        createLiveTaskFixture({
-          dependsOn: ["task-live-001"],
-          logicalTaskId: "TASK-LIVE-002",
-          name: "Run execution shell",
-          status: "active",
-          taskId: "task-live-002"
-        })
-      )
-    ];
-
-    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-002`, {
-      executionApi: createExecutionApiStub({
-        artifactsByTaskId: {
-          "task-live-002": []
-        },
-        run: buildRunResource(liveRun),
-        taskDetailsByTaskId: {
-          "task-live-002": liveTasks[1]
-        },
-        tasks: liveTasks
-      }),
-      project: liveProject
-    });
-
-    expect(
-      await screen.findByRole("heading", { name: `${liveRun.runId} / TASK-LIVE-002` })
-    ).toBeInTheDocument();
-    expect(screen.getByText("No artifacts recorded for this task yet.")).toBeInTheDocument();
-    expect(screen.queryByText("Unable to load task artifacts.")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead."
-      )
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open raw artifact" })).not.toBeInTheDocument();
-  });
-
-  it("renders a distinct artifact error state for live task detail", async () => {
-    const liveRun = createLiveRunFixture();
-    const liveTasks = [
-      buildTaskResource(
-        liveRun.runId,
-        createLiveTaskFixture({
-          logicalTaskId: "TASK-LIVE-001",
-          name: "Compile execution context",
-          status: "completed",
-          taskId: "task-live-001"
-        })
-      ),
-      buildTaskResource(
-        liveRun.runId,
-        createLiveTaskFixture({
-          dependsOn: ["task-live-001"],
-          logicalTaskId: "TASK-LIVE-002",
-          name: "Run execution shell",
-          status: "active",
-          taskId: "task-live-002"
-        })
-      )
-    ];
-
-    renderRoute(`/runs/${liveRun.runId}/execution/tasks/task-live-002`, {
-      executionApi: createExecutionApiStub({
-        artifactsByTaskId: {
-          "task-live-002": new Error("artifact fetch failed")
-        },
-        run: buildRunResource(liveRun),
-        taskDetailsByTaskId: {
-          "task-live-002": liveTasks[1]
-        },
-        tasks: liveTasks
-      }),
-      project: liveProject
-    });
-
-    expect(
-      await screen.findByRole("heading", { name: `${liveRun.runId} / TASK-LIVE-002` })
-    ).toBeInTheDocument();
-    expect(screen.getByText("Unable to load task artifacts.")).toBeInTheDocument();
-    expect(screen.queryByText("No artifacts recorded for this task yet.")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "File-level review metadata is not part of the live artifact contract yet. Raw artifact links are shown instead."
-      )
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open raw artifact" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
   });
 });

@@ -177,9 +177,40 @@ The last phase(s) in the plan should address documentation. These go through the
 
 Developer documentation describes architecture, contracts, and design rationale — NOT internal implementation details. The test: if this change is reverted, does the system's architecture or contract specification change? If no, developer docs do not need updating.
 
-### Step 9: Archive the Plan
+### Step 9: Run Final Comprehensive Review
 
-When all phases are complete:
+When all planned phases are complete, do not archive immediately. First run one final comprehensive review across the entire completed work.
+
+Prepare a final review packet that includes:
+
+1. The plan path and the plan sections that describe the final intended state (`Purpose / Big Picture`, `Backward Compatibility`, `Design Decisions`, `Progress`, `Outcomes & Retrospective`, `Validation and Acceptance`, and any deferred-work references)
+2. A concise summary of all completed phases and any known deferred items
+3. The full diff or commit range covering the plan's implementation work
+4. The changed-file list, with documentation and notes files clearly identified
+5. The backward compatibility stance and any environment-specific validation caveats
+
+Launch parallel review subagents across the five standard review dimensions plus one additional final-review-only dimension:
+
+| Dimension | What the reviewer checks |
+|-----------|-------------------------|
+| **Closeout coherence** | Does the completed work, plan, docs, notes, and deferred-work record tell one truthful story? Are deleted or superseded paths still referenced as active? Is the plan actually ready to archive? |
+
+This final review is whole-plan review, not another per-phase review. It should focus on cross-phase integration, final acceptance, documentation truth, deferred-work truth, and archive readiness.
+
+If the final review comes back clean, move to Step 10.
+
+If the final review has issues, run one final targeted closeout pass via `ultrakit_implementer`. Keep that pass narrowly focused on the reported issues. Do not start another automatic final review loop after the closeout pass. Instead, verify from the closeout handoff and any delegated exploration you need that:
+
+1. the final review findings were addressed or explicitly explained,
+2. the closeout edits stayed narrowly focused on the reported issues,
+3. the required validation commands were rerun or blocker evidence was recorded,
+4. the plan, docs, and notes now reflect the final state truthfully.
+
+If final review issues remain unresolved after that closeout pass, escalate to the user instead of archiving.
+
+### Step 10: Archive the Plan
+
+When all phases are complete and the final comprehensive review is clean or verified:
 
 1. Move the plan from `.ultrakit/exec-plans/active/` to `.ultrakit/exec-plans/completed/`.
 2. Update `.ultrakit/exec-plans/active/index.md` to remove it.
@@ -201,8 +232,8 @@ If execution is interrupted mid-phase:
 1. **Do not implement or fix in the orchestrator session.** Execution work belongs to spawned `ultrakit_implementer` subagents.
 2. **Stay high-level.** Manage scope, sequencing, and handoffs. If more repository context is needed, delegate a bounded read-only exploration subagent rather than drilling into the code directly.
 3. **Wait patiently for subagents.** Once a subagent owns a phase pass, do not duplicate its work locally.
-4. **Always review.** Every phase gets exactly one review round across all five review dimensions, and every `ultrakit_reviewer` subagent uses `gpt-5.4-mini`.
-5. **At most one targeted fix pass.** If review issues remain after that pass, escalate instead of starting another review cycle.
+4. **Always review.** Every phase gets exactly one review round across all five review dimensions, and the completed plan gets one final comprehensive review before archive. Every `ultrakit_reviewer` subagent uses `gpt-5.4-mini`.
+5. **At most one targeted fix pass per review boundary.** If review issues remain after a phase fix pass or final closeout pass, escalate instead of starting another automatic review cycle.
 6. **The plan stays current.** If reality diverges from the plan, update the plan.
 7. **One phase at a time.** Unless the plan explicitly authorizes parallel execution with disjoint scope.
 8. **Finish the phase, not just the read-first pass.** A phase is not complete until implementation, validation, plan updates, review cleanup, and commit creation are done unless a concrete blocker stops progress.

@@ -3,8 +3,8 @@ import { TaskDetailWorkspace } from "../../features/execution/components/task-de
 import { useRequiredRunParams } from "./use-required-run-params";
 
 export function TaskDetailRoute() {
-  const { runId, taskId } = useRequiredRunParams();
-  const model = useTaskDetailViewModel(runId, taskId);
+  const { taskId } = useRequiredRunParams();
+  const model = useTaskDetailViewModel(taskId);
 
   return <TaskDetailWorkspace model={model} />;
 }

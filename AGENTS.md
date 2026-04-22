@@ -31,6 +31,16 @@ Until language-specific tooling is added, use these defaults:
 
 Adopt a formatter and linter with the first code scaffold and expose them through repo scripts rather than ad hoc commands.
 
+## Dependency And Reuse Guidance
+
+Do not reinvent the wheel when a well-maintained, well-supported library already solves the problem cleanly.
+
+- Prefer established libraries and platform primitives over custom one-off implementations for common concerns such as validation, parsing, state management, form handling, testing utilities, and API clients.
+- Choose dependencies deliberately: prefer libraries with active maintenance, clear documentation, broad adoption, and a stable API surface.
+- Keep the abstraction honest. Wrap a third-party library only when the wrapper clarifies a repo-specific boundary or meaningfully reduces coupling; do not add thin indirection layers without a real benefit.
+- Avoid unnecessary dependency sprawl. If a native platform capability or an already-installed library solves the need cleanly, prefer reuse over adding another package.
+- When introducing a new dependency, make sure the value is concrete: reduced complexity, better reliability, improved testability, or clearer ownership than a homegrown alternative.
+
 ## Testing Guidelines
 
 Tests are not set up yet. Add automated tests with the first runnable code and cover core user flows plus critical edge cases. Name test files `*.test.*` or `*.spec.*`. Every pull request that adds behavior should also add or update tests unless the change is documentation-only.
