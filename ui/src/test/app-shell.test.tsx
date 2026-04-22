@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
+import { resolveRunsSnapshotForProject } from "../features/runs/use-runs-index-view-model";
 import { renderRoute } from "./render-route";
 import {
   serializeProjectListItem,
@@ -490,6 +491,32 @@ function createLiveRunFixture(
 }
 
 describe("App shell", () => {
+  it("resolves a stale runs snapshot into a loading placeholder for the newly selected project", () => {
+    const staleSnapshot = {
+      errorMessage: null,
+      presentation: "live" as const,
+      projectId: "project-keystone-cloudflare",
+      runs: [
+        {
+          source: "api" as const,
+          ...createLiveRunFixture("project-keystone-cloudflare", {
+            runId: "run-104",
+            workflowInstanceId: "wf-run-104"
+          })
+        }
+      ],
+      status: "ready" as const
+    };
+
+    expect(resolveRunsSnapshotForProject(staleSnapshot, "project-alt")).toEqual({
+      errorMessage: null,
+      presentation: "live",
+      projectId: "project-alt",
+      runs: [],
+      status: "loading"
+    });
+  });
+
   it("redirects the default route to the Runs index inside the global shell", async () => {
     const scaffoldProject: CurrentProject = {
       projectId: "project-keystone-cloudflare",
@@ -514,10 +541,13 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs");
     });
+    expect(await screen.findByRole("link", { name: "run-104" })).toHaveAttribute(
+      "href",
+      "/runs/run-104"
+    );
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
-    expect(screen.getByRole("link", { name: "run-104" })).toHaveAttribute("href", "/runs/run-104");
     expect(screen.getByText("wf-run-104")).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
@@ -954,7 +984,7 @@ describe("App shell", () => {
     expect(screen.queryByRole("heading", { name: "No projects yet" })).not.toBeInTheDocument();
   });
 
-  it("switches the current project from the live sidebar selector and reloads runs", async () => {
+  it("switches the current project from the live sidebar selector without leaving stale rows actionable", async () => {
     const projects: CurrentProject[] = [
       {
         projectId: "project-keystone-cloudflare",
@@ -982,10 +1012,16 @@ describe("App shell", () => {
         workflowInstanceId: "wf-run-alt-301"
       })
     ];
+    const deferredAlternateRunsResponse = createDeferredResponse();
 
-    stubProjectListFetch(projects, {
-      "project-keystone-cloudflare": primaryRuns,
-      "project-alt": alternateRuns
+    stubProjectManagementFetch({
+      projectResponses: [() => createJsonResponse(buildProjectsResponse(projects))],
+      projectRunsByProjectId: {
+        "project-keystone-cloudflare": [
+          () => createJsonResponse(buildRunsResponse(primaryRuns))
+        ],
+        "project-alt": [() => deferredAlternateRunsResponse.promise]
+      }
     });
     renderRoute("/runs", { useBrowserProjectApi: true });
 
@@ -997,9 +1033,15 @@ describe("App shell", () => {
       }
     });
 
-    await waitFor(() => {
-      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
-    });
+    expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    expect(await screen.findByRole("heading", { name: "Loading runs" })).toBeInTheDocument();
+    expect(screen.getByText("Keystone is loading runs for Alt Project.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
+
+    deferredAlternateRunsResponse.resolve(
+      createJsonResponse(buildRunsResponse(alternateRuns))
+    );
+
     expect(await screen.findByText("run-alt-301")).toBeInTheDocument();
     expect(screen.queryByText("run-104")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");

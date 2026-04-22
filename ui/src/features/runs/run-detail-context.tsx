@@ -381,6 +381,24 @@ export function RunDetailProvider({
     return isMountedRef.current && requestIdRef.current === requestId;
   }
 
+  function setRunDetailFailure(error: unknown, requestId: number) {
+    if (!isCurrentRunDetailRequest(requestId)) {
+      return false;
+    }
+
+    setValue((current) => ({
+      ...current,
+      meta: {
+        errorMessage: getErrorMessage(error, "Unable to load this run."),
+        runId,
+        status: isNotFoundError(error) ? "not_found" : "error"
+      },
+      state: buildEmptyRunDetailState()
+    }));
+
+    return true;
+  }
+
   function seedAcceptedCompileState(run: RunResource) {
     setValue((current) => {
       if (current.meta.status !== "ready") {
@@ -412,7 +430,22 @@ export function RunDetailProvider({
       };
     }
 
-    const latestSnapshot = await fetchRunDetailSnapshot(api, runId);
+    let latestSnapshot: LoadedRunDetailSnapshot;
+
+    try {
+      latestSnapshot = await fetchRunDetailSnapshot(api, runId);
+    } catch (error) {
+      const applied = setRunDetailFailure(error, requestId);
+
+      if (!applied) {
+        return {
+          cancelled: true,
+          executionAvailable: false
+        };
+      }
+
+      throw error;
+    }
 
     if (!isCurrentRunDetailRequest(requestId)) {
       return {
@@ -444,7 +477,11 @@ export function RunDetailProvider({
     const existingRequest = refreshRunDetailRequestRef.current;
 
     if (existingRequest) {
-      await existingRequest;
+      try {
+        await existingRequest;
+      } catch {
+        // The provider already translates refresh failures into the shared error state.
+      }
       return;
     }
 
@@ -453,6 +490,8 @@ export function RunDetailProvider({
 
     try {
       await refreshRequest;
+    } catch {
+      // The provider already translates refresh failures into the shared error state.
     } finally {
       if (refreshRunDetailRequestRef.current === refreshRequest) {
         refreshRunDetailRequestRef.current = null;
@@ -485,19 +524,7 @@ export function RunDetailProvider({
         requestId
       });
     } catch (error) {
-      if (requestIdRef.current !== requestId) {
-        return;
-      }
-
-      setValue((current) => ({
-        ...current,
-        meta: {
-          errorMessage: getErrorMessage(error, "Unable to load this run."),
-          runId,
-          status: isNotFoundError(error) ? "not_found" : "error"
-        },
-        state: buildEmptyRunDetailState()
-      }));
+      setRunDetailFailure(error, requestId);
     }
   }
 

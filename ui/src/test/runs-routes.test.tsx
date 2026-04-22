@@ -1971,6 +1971,55 @@ describe("Run routes", () => {
     ).toBeInTheDocument();
   });
 
+  it("replaces stale ready detail with the shared error state when a refresh retry fails", async () => {
+    const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
+      edges: [],
+      nodes: [],
+      summary: {
+        activeTasks: 0,
+        cancelledTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        pendingTasks: 0,
+        readyTasks: 0,
+        totalTasks: 0
+      }
+    };
+    const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
+    let workflowCallCount = 0;
+    const getRunWorkflow = vi.fn(async () => {
+      workflowCallCount += 1;
+
+      if (workflowCallCount === 1) {
+        return emptyWorkflow;
+      }
+
+      throw new Error("Run detail refresh failed.");
+    });
+    const listRunTasks = vi.fn(async () => []);
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getRunWorkflow,
+      listRunTasks
+    };
+
+    renderRunRoute("/runs/run-107/execution-plan", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh run" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh run" }));
+
+    expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expect(screen.getByText("Run detail refresh failed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Refresh run" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Compile was accepted for this run. Keystone is waiting for the live execution graph to become available."
+      )
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps terminal run compile messaging aligned with the current run status", async () => {
     const baseRunApi = createStaticRunManagementApi(cloneRunFixtures());
     const getRun = vi.fn(async (runId: string) => {

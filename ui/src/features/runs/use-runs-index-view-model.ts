@@ -42,6 +42,7 @@ interface ScaffoldRunRowViewModel {
 interface RunsSnapshot {
   errorMessage: string | null;
   presentation: "live" | "scaffold";
+  projectId: string | null;
   runs: ProjectRunRecord[];
   status: "loading" | "ready" | "empty" | "error";
 }
@@ -93,6 +94,23 @@ function normalizeScaffoldRuns(runs: ScaffoldProjectRunRecord[]): ScaffoldRunRow
   }));
 }
 
+export function resolveRunsSnapshotForProject(
+  snapshot: RunsSnapshot,
+  projectId: string | null
+): RunsSnapshot {
+  if (!projectId || snapshot.projectId === projectId) {
+    return snapshot;
+  }
+
+  return {
+    errorMessage: null,
+    presentation: "live",
+    projectId,
+    runs: [],
+    status: "loading"
+  };
+}
+
 export function useRunsIndexViewModel(): RunsIndexViewModel {
   const api = useProjectManagementApi();
   const runApi = useRunManagementApi();
@@ -104,6 +122,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
   const [snapshot, setSnapshot] = useState<RunsSnapshot>({
     errorMessage: null,
     presentation: "live",
+    projectId: currentProject?.projectId ?? null,
     runs: [],
     status: currentProject ? "loading" : "empty"
   });
@@ -122,6 +141,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
     setSnapshot({
       errorMessage: null,
       presentation: "live",
+      projectId,
       runs: [],
       status: "loading"
     });
@@ -138,6 +158,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
       setSnapshot({
         errorMessage: null,
         presentation: firstRun?.source === "scaffold" ? "scaffold" : "live",
+        projectId,
         runs,
         status: runs.length > 0 ? "ready" : "empty"
       });
@@ -149,6 +170,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
       setSnapshot({
         errorMessage: getRunsErrorMessage(error),
         presentation: "live",
+        projectId,
         runs: [],
         status: "error"
       });
@@ -223,6 +245,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
       setSnapshot({
         errorMessage: null,
         presentation: "live",
+        projectId: null,
         runs: [],
         status: "empty"
       });
@@ -251,7 +274,9 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
     };
   }
 
-  if (snapshot.status === "loading") {
+  const currentSnapshot = resolveRunsSnapshotForProject(snapshot, currentProject.projectId);
+
+  if (currentSnapshot.status === "loading") {
     return {
       canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
@@ -270,12 +295,12 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
     };
   }
 
-  if (snapshot.status === "error") {
+  if (currentSnapshot.status === "error") {
     return {
       canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
         heading: "Unable to load runs",
-        message: snapshot.errorMessage ?? "Keystone could not load project runs."
+        message: currentSnapshot.errorMessage ?? "Keystone could not load project runs."
       },
       createRun,
       createRunErrorMessage: createRunState.errorMessage,
@@ -289,7 +314,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
     };
   }
 
-  if (snapshot.status === "empty") {
+  if (currentSnapshot.status === "empty") {
     return {
       canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
@@ -314,15 +339,15 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
     createRunErrorMessage: createRunState.errorMessage,
     isCreatingRun: createRunState.status === "submitting",
     liveRuns:
-      snapshot.presentation === "live"
-        ? normalizeLiveRuns(snapshot.runs as ApiProjectRunRecord[])
+      currentSnapshot.presentation === "live"
+        ? normalizeLiveRuns(currentSnapshot.runs as ApiProjectRunRecord[])
         : [],
     retry() {
       void loadRuns(currentProject.projectId);
     },
     scaffoldRuns:
-      snapshot.presentation === "scaffold"
-        ? normalizeScaffoldRuns(snapshot.runs as ScaffoldProjectRunRecord[])
+      currentSnapshot.presentation === "scaffold"
+        ? normalizeScaffoldRuns(currentSnapshot.runs as ScaffoldProjectRunRecord[])
         : [],
     title: "Runs"
   };

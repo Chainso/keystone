@@ -148,6 +148,11 @@ Allowed internal change:
   **Decision:** Keep Phase 2 closed only after stabilizing the documentation hook order and adding direct-mount URL-state plus pending-save guard coverage.  
   **Rationale:** `/documentation` stays mounted while the shell project selector changes projects, so the previous `useDocumentationViewModel` early returns could change hook order between scaffold-backed and compatibility renders. The original tests also proved click/back flows but not direct deep-link hydration or the in-flight save navigation path, so the phase needed a targeted fix pass and a full gate rerun to become credible.
 
+- **Date:** 2026-04-21
+  **Phase:** Final closeout fix pass
+  **Decision:** Keep the plan open for one narrow whole-plan review closeout that makes the runs index snapshot project-aware and routes ready-state refresh failures through the shared run-detail error state before archive.
+  **Rationale:** The final whole-plan review found two live correctness gaps that Phase 5 had not closed: the `Runs` index could still expose stale actionable rows for one project-switch render, and ready-state refresh retries could reject without moving the provider off stale ready data.
+
 ## Progress
 
 - [x] 2026-04-21 Installed workspace dependencies with `npm install`.
@@ -168,6 +173,7 @@ Allowed internal change:
 - [x] Phase 4 complete: simplify the runs/planning component hierarchy and supporting utilities, with fix-pass revalidation.
 - [x] 2026-04-21 Completed the Phase 5 closeout pass, reconciled README and project notes with the live Workstreams plus scaffold-backed Documentation boundary, reran the final validation matrix, and recorded the sandbox build blocker exactly.
 - [x] Phase 5 complete: update durable docs/notes, rerun final validation, and prepare the plan for execution review.
+- [x] 2026-04-21 Ran the final whole-plan closeout pass, made `Runs` snapshots project-aware, translated ready-state refresh failures into the shared run-detail error path, added targeted regression coverage, and revalidated the requested review gate.
 
 ## Surprises & Discoveries
 
@@ -194,6 +200,8 @@ Allowed internal change:
 - The only Phase 4 regression surfaced immediately in the targeted gate: the first helper version returned generic `label` / `tone` fields while the surrounding run and execution view models still expected `statusLabel` / `statusTone`. Aligning the helper contract and letting `StatusPill` accept an explicit tone resolved the failure without widening the phase.
 - `runPlanningPhaseOrder` on its own was not enough to keep the live run seams aligned. The loader order and default-phase fallback were still duplicated until `run-planning-config.ts` also owned the reusable default-phase helper and record builder.
 - The top-level `README.md` had drifted behind the shipped UI boundary: it still described `Workstreams` as scaffold-backed and grouped it with `Documentation` as a live-data non-goal even though `Workstreams` already runs against the project tasks API.
+- The final whole-plan review found that clearing `snapshot.runs` inside `useEffect` was not enough for the `Runs` index. The newly selected project could still render one committed frame of the previous project's rows, so the view model had to treat `snapshot.projectId !== currentProject.projectId` as an immediate loading state.
+- The run-detail provider already had the correct top-level error surface, but ready-state refreshes bypassed it by returning the raw refresh promise. Closing the review finding only required centralizing refresh failure handling inside the provider and letting retry callers resolve after that state transition.
 
 ## Outcomes & Retrospective
 
@@ -242,6 +250,9 @@ Phase 5 outcome on 2026-04-21:
 - `.ultrakit/notes.md` keeps the sandbox build limitation active but updates it to the reproduced Wrangler-log and Docker-CLI failure evidence from the final validation pass; duplicate UI notes were also collapsed.
 - The final targeted UI gate passed with 4 Vitest files and 99 tests plus clean UI ESLint and UI TypeScript checks.
 - The final `rtk npm run build` rerun did not reproduce the earlier sandbox success, so the plan now records that exact host/sandbox blocker instead of claiming a green end-to-end build.
+- The final closeout pass makes `Runs` snapshot selection project-aware, so the route hides the previous project's actionable rows immediately on sidebar switch and shows the new project's loading placeholder until its run list resolves.
+- `RunDetailProvider` now translates ready-state refresh failures into the existing top-level error state, which removes stale ready data from the screen and closes the retry-path unhandled-rejection gap.
+- The final review gate re-passed with `ui/src/test/app-shell.test.tsx` plus `ui/src/test/runs-routes.test.tsx` (55 tests), along with clean UI ESLint and UI TypeScript checks.
 
 ## Context and Orientation
 
@@ -569,7 +580,7 @@ Important interfaces and seams that should still exist after this plan:
 
 ### Phase Handoff
 
-- **Status:** Complete (implemented on 2026-04-21 with final validation recorded on 2026-04-21)
+- **Status:** Complete (implemented on 2026-04-21 with final validation recorded on 2026-04-21; final closeout fix pass revalidated on 2026-04-21)
 - **Goal:** Reconcile durable docs/notes with the actual execution outcomes and close the plan with final validation evidence.
 - **Scope Boundary:** In scope: UI-facing durable docs or notes touched by the finished work, final validation, and plan-truth updates. Out of scope: fresh feature work beyond what phases 1-4 already delivered.
 - **Read First:**
@@ -593,5 +604,5 @@ Important interfaces and seams that should still exist after this plan:
 - **Deliverables:** Truthful docs/notes, final validation record, and archive-ready plan state.
 - **Commit Expectation:** `Document UI composition cleanup outcomes`
 - **Known Constraints / Baseline Failures:** Only update durable notes when the validation result is actually reproduced at the end of the plan; do not rewrite notes based on a single stale assumption.
-- **Completion Notes:** `README.md` now documents `Workstreams` as a live project-tasks surface while leaving `Documentation` as the explicit scaffold-backed compatibility surface, and `.ultrakit/notes.md` now keeps the build limitation active with the reproduced Wrangler-log plus Docker-CLI failure details from the final validation rerun. The living plan sections now reflect the current feature boundaries, the final targeted UI gate passed with 4 files and 99 tests plus clean UI lint/typecheck, and the final `rtk npm run build` result is recorded truthfully as a sandbox/host blocker rather than a reproduced pass.
-- **Next Starter Context:** This plan is ready for the orchestrator's final comprehensive review. Do not archive it until that review confirms the closeout story is coherent across the plan, `README.md`, and `.ultrakit/notes.md`. `package-lock.json` remains unrelated install fallout and was not touched in this phase.
+- **Completion Notes:** `README.md` now documents `Workstreams` as a live project-tasks surface while leaving `Documentation` as the explicit scaffold-backed compatibility surface, and `.ultrakit/notes.md` now keeps the build limitation active with the reproduced Wrangler-log plus Docker-CLI failure details from the final validation rerun. The living plan sections now reflect the current feature boundaries, the final targeted UI gate passed with 4 files and 99 tests plus clean UI lint/typecheck, and the final `rtk npm run build` result is recorded truthfully as a sandbox/host blocker rather than a reproduced pass. The final closeout pass then made `ui/src/features/runs/use-runs-index-view-model.ts` treat mismatched project snapshots as loading, routed ready-state refresh failures in `RunDetailProvider` through the existing provider error state, added targeted regression coverage in `ui/src/test/app-shell.test.tsx` and `ui/src/test/runs-routes.test.tsx`, and re-passed the requested review gate with those 2 Vitest files plus clean UI lint/typecheck.
+- **Next Starter Context:** This plan is ready for archive if the orchestrator verification agrees that the final review findings are closed and the overall closeout story remains coherent across the plan, `README.md`, and `.ultrakit/notes.md`. `package-lock.json` remains unrelated install fallout and was not touched in this phase.
