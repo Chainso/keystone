@@ -6,6 +6,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 
 | Plan | Completed | Summary |
 |------|-----------|---------|
+| [keystone-think-live-dag-generalization](./keystone-think-live-dag-generalization.md) | 2026-04-21 | Generalized single-target `think_live` DAG execution, made the public proof DAG-aware, updated durable docs, and recorded the remaining host-local live-proof blocker. |
 | [keystone-ui-composition-bug-fixes](./keystone-ui-composition-bug-fixes.md) | 2026-04-21 | Stabilized the UI harness, fixed navigation/state bugs, unified project configuration, simplified run planning composition, and documented the final validation/build constraints. |
 | [keystone-target-model-dead-surface-cleanup](./keystone-target-model-dead-surface-cleanup.md) | 2026-04-21 | Removed dead backend target-model leftovers, restored the durable handoff docs, closed the final review gaps, and archived the cleanup plan. |
 | [keystone-ui-workstreams-live-cutover](./keystone-ui-workstreams-live-cutover.md) | 2026-04-21 | Documented the live Workstreams and run-execution cutover, classified the broad validation baseline, and archived the completed plan. |
