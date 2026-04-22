@@ -7,6 +7,7 @@ import {
 } from "../../src/lib/db/client";
 import {
   createArtifactRef,
+  findArtifactRefByObjectKey,
   getArtifactRef,
   getArtifactStorageUri
 } from "../../src/lib/db/artifacts";
@@ -772,6 +773,37 @@ describeIfDatabase("database repositories", () => {
         contentType: "text/markdown"
       })
     ).rejects.toThrow(new RegExp(`project ${project.projectId} was not found for tenant`, "i"));
+  });
+
+  it("rejects stale artifact kinds before persisting artifact refs", async () => {
+    const project = await createProject(client, {
+      tenantId,
+      config: buildProjectConfig(`artifact-kind-guard-${crypto.randomUUID()}`)
+    });
+    const { runId } = await createRunFixture(project.projectId);
+    const objectKey = `tenants/${tenantId}/runs/${runId}/artifacts/release-pack.json`;
+
+    await expect(
+      createArtifactRef(client, {
+        tenantId,
+        projectId: project.projectId,
+        runId,
+        artifactKind: "release_pack" as never,
+        storageBackend: "r2",
+        bucket: "keystone-artifacts-dev",
+        objectKey,
+        contentType: "application/json"
+      })
+    ).rejects.toThrow(/artifact kind release_pack is not supported by the current model/i);
+
+    const persistedArtifact = await findArtifactRefByObjectKey(client, {
+      tenantId,
+      bucket: "keystone-artifacts-dev",
+      objectKey,
+      runId
+    });
+
+    expect(persistedArtifact).toBeUndefined();
   });
 
   it("rejects invalid compile provenance revisions", async () => {

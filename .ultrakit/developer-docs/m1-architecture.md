@@ -7,7 +7,7 @@ Keystone is one TypeScript Worker project with these backend responsibilities:
 - `src/http/`: Hono API surface for the current `v1` project, document, run, task, and artifact resources
 - `src/workflows/RunWorkflow.ts`: run orchestration from compile through finalization
 - `src/workflows/TaskWorkflow.ts`: task execution inside the run sandbox
-- `src/durable-objects/TaskSessionDO.ts`: task-session bridge that materializes task worktrees inside the shared run sandbox
+- `src/durable-objects/TaskSessionDO.ts`: internal task-session bridge that materializes task worktrees inside the shared run sandbox
 - `src/lib/db/`: operational persistence for projects, documents, document revisions, runs, run tasks, run task dependencies, and artifact refs
 - `src/lib/artifacts/`: deterministic R2 keying and artifact storage helpers
 - `src/keystone/`: compile, task loading, and finalization logic
@@ -34,7 +34,7 @@ The current UI is no longer scaffold-only for project management:
 The current live/scaffold split is still intentional:
 
 - `Documentation` remains scaffold-backed and shows an explicit compatibility state for non-scaffold live projects
-- project documents, release/evidence/integration content, and broader destination live-data cutovers are still out of scope for the current UI slice
+- documentation destination content, release/evidence/integration content, and broader destination live-data cutovers are still out of scope for the current UI slice
 
 ## Authoritative Persistence
 
@@ -57,10 +57,11 @@ R2 stores immutable blobs. Postgres stores identity, ownership, revision history
 
 Removed from the core architecture:
 
-- legacy hard-typed run-package resources
+- legacy hard-typed run-package / decision-package resources
 - legacy approval gating
 - persisted run events
 - coordinator-driven live fanout
+- session/event-derived product state
 - workspace binding tables
 - task execution as a separate table
 
@@ -95,6 +96,8 @@ The current operator-facing backend surface is:
 - `PATCH /v1/projects/:projectId`
 - `GET /v1/projects/:projectId/documents`
 - `POST /v1/projects/:projectId/documents`
+- `GET /v1/projects/:projectId/documents/:documentId`
+- `POST /v1/projects/:projectId/documents/:documentId/revisions`
 - `GET /v1/projects/:projectId/runs`
 - `GET /v1/projects/:projectId/tasks`
 - `POST /v1/projects/:projectId/runs`
@@ -102,12 +105,13 @@ The current operator-facing backend surface is:
 - `POST /v1/runs/:runId/compile`
 - `GET /v1/runs/:runId/documents`
 - `POST /v1/runs/:runId/documents`
+- `GET /v1/runs/:runId/documents/:documentId`
 - `GET /v1/runs/:runId/documents/:documentId/revisions/:documentRevisionId`
+- `POST /v1/runs/:runId/documents/:documentId/revisions`
 - `GET /v1/runs/:runId/workflow`
 - `GET /v1/runs/:runId/tasks`
 - `GET /v1/runs/:runId/tasks/:taskId/artifacts`
 - `GET /v1/runs/:runId/tasks/:taskId`
-- `GET /v1/runs/:runId/tasks/:taskId/artifacts`
 - `GET /v1/artifacts/:artifactId`
 - `GET /v1/artifacts/:artifactId/content`
 
@@ -152,7 +156,10 @@ Use R2 for:
 - `task_handoff`
 - `task_log`
 - `run_note`
+- `staged_output`
 - `run_summary`
+
+These are the only live artifact families. Task turns can mint only `run_note` and `staged_output`; scripted execution still emits `task_log`; finalization keeps `run_summary` at the stable object key `release/run-summary.json`.
 
 Artifact refs should always capture real object identity:
 

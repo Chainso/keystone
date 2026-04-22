@@ -52,20 +52,20 @@ New entries should follow this format:
 
 1. **ID:** `TD-2026-04-18-004`
 2. **Date Added:** `2026-04-18`
-3. **Area:** `UI-first API scaffold backends`
-4. **Description:** The UI-first contract now exposes `ProjectDocument`, first-class `DecisionPackage` detail/list surfaces, operator steering, `EvidenceBundle`, `IntegrationRecord`, and `Release`, but several of those routes are still typed stubs or structured `not_implemented` writes rather than real persisted behavior.
-5. **Impact:** The UI can wire against the stable routes and types today, but those flows cannot yet provide real document collections, durable operator messages, evidence bundling, integration records, or release orchestration.
-6. **Owner:** `keystone-ui-first-api-scaffold`
-7. **Proposed Fix:** Add the missing persistence/projection layers and delivery behavior behind the frozen routes, starting with durable operator-message delivery and first-class decision-package/document collections.
-8. **Target Window:** `next UI/backend feature implementation cycle`
-9. **Status:** `open`
+3. **Area:** `Retired UI-first scaffold surfaces`
+4. **Description:** Historical note: the old UI-first scaffold used to advertise `DecisionPackage`, `EvidenceBundle`, `IntegrationRecord`, and `Release` families before the target-model cleanup removed those dead surfaces from the current backend and contributor docs on 2026-04-21.
+5. **Impact:** Contributors previously could mistake the retired scaffold vocabulary for active backend work.
+6. **Owner:** `keystone-target-model-dead-surface-cleanup`
+7. **Proposed Fix:** Keep the current project/document/run/task/artifact-first docs and tests aligned so the retired DecisionPackage / Evidence / Integration / Release family does not reappear as active debt.
+8. **Target Window:** `next docs/model audit if drift returns`
+9. **Status:** `closed (2026-04-21)`
 
 1. **ID:** `TD-2026-04-20-005`
 2. **Date Added:** `2026-04-20`
 3. **Area:** `Target-model developer docs`
-4. **Description:** `README.md`, `.ultrakit/developer-docs/README.md`, and the archived target-model migration plan still reference `keystone-target-model-handoff.md`, but that file is not checked into the repo.
-5. **Impact:** Contributors hit a broken source-of-truth link when changing persistence, API, run orchestration, or document behavior, which makes the final target-model guidance harder to discover.
+4. **Description:** Historical note: `README.md`, `.ultrakit/developer-docs/README.md`, and the archived target-model migration plan used to reference `keystone-target-model-handoff.md` before the file was restored on 2026-04-21.
+5. **Impact:** Contributors previously hit a broken source-of-truth link when changing persistence, API, run orchestration, or document behavior.
 6. **Owner:** `keystone-target-model-migration`
-7. **Proposed Fix:** Either restore a durable `keystone-target-model-handoff.md` document or replace those references with the current architecture docs and archived migration plan.
+7. **Proposed Fix:** Restored `.ultrakit/developer-docs/keystone-target-model-handoff.md` and kept the current contributor-facing indexes pointed at it.
 8. **Target Window:** `next docs cleanup cycle`
-9. **Status:** `open`
+9. **Status:** `closed (2026-04-21)`

@@ -1,3 +1,4 @@
+import type { AgentRuntimeArtifactKind } from "../lib/artifacts/model";
 import type { AgentRuntimeKind } from "./contracts";
 
 export const agentRoleValues = ["implementer"] as const;
@@ -24,7 +25,7 @@ export const DEFAULT_AGENT_FILESYSTEM_LAYOUT: AgentFilesystemLayout = {
 
 export interface AgentRuntimeArtifact {
   path: string;
-  kind: string;
+  kind: AgentRuntimeArtifactKind;
   contentType?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
 }

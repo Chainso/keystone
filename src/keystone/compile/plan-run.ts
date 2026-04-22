@@ -1,11 +1,12 @@
 import type { DatabaseClient } from "../../lib/db/client";
 import { createArtifactRef, deleteArtifactRef, findArtifactRefByObjectKey } from "../../lib/db/artifacts";
-import { persistCompiledRunGraph, updateRunRecord } from "../../lib/db/runs";
+import { getRunRecord, persistCompiledRunGraph, updateRunRecord } from "../../lib/db/runs";
+import type { ArtifactKind } from "../../lib/artifacts/model";
 import {
   runPlanArtifactKey,
   taskHandoffArtifactKey
 } from "../../lib/artifacts/keys";
-import { deleteArtifactObject, putArtifactJson } from "../../lib/artifacts/r2";
+import { deleteArtifactObject, getArtifactText, putArtifactJson } from "../../lib/artifacts/r2";
 import { createChatCompletion, parseStructuredChatCompletion } from "../../lib/llm/chat-completions";
 import type { WorkerBindings } from "../../env";
 import {
@@ -47,13 +48,25 @@ export interface CompileRunPlanResult {
   taskHandoffArtifactRefs: Array<Awaited<ReturnType<typeof createArtifactRef>>>;
 }
 
+interface CompiledPlanArtifactWrite {
+  artifactKind: ArtifactKind;
+  objectKey: string;
+  runTaskId?: string | null | undefined;
+  value: Record<string, unknown>;
+}
+
+interface PreviousCompiledPlanState {
+  plan: CompiledRunPlan;
+  compiledAt: Date | null;
+}
+
 type CompileMode = "fixture" | "live";
 
 const compiledRunPlanResponseSchema = compiledRunPlanSchema.omit({
   sourceRevisionIds: true
 });
 
-function requireArtifactRef<T>(artifactRef: T | undefined, kind: string): T {
+function requireArtifactRef<T>(artifactRef: T | undefined, kind: ArtifactKind): T {
   if (!artifactRef) {
     throw new Error(`Artifact ref creation returned no row for ${kind}.`);
   }
@@ -84,6 +97,7 @@ async function persistCompiledPlanGraph(
     runId: string;
     plan: CompiledRunPlan;
     sourceRevisionIds: CompiledRunPlanSourceRevisionIds;
+    compiledAt?: Date | null | undefined;
   }
 ) {
   const persistedGraph = await persistCompiledRunGraph(client, {
@@ -92,6 +106,7 @@ async function persistCompiledPlanGraph(
     compiledSpecRevisionId: input.sourceRevisionIds.specification,
     compiledArchitectureRevisionId: input.sourceRevisionIds.architecture,
     compiledExecutionPlanRevisionId: input.sourceRevisionIds.executionPlan,
+    compiledAt: input.compiledAt,
     tasks: input.plan.tasks.map((task) => ({
       taskId: task.taskId,
       runTaskId: task.runTaskId,
@@ -211,7 +226,7 @@ async function writeJsonArtifact(
     runId: string;
     runTaskId?: string | null | undefined;
     key: string;
-    kind: string;
+    kind: ArtifactKind;
     value: Record<string, unknown>;
   }
 ) {
@@ -250,25 +265,123 @@ async function writeJsonArtifact(
   return insertedArtifactRef;
 }
 
-async function rollbackCompiledPlanPersistence(input: {
+function buildCompiledPlanArtifactWrites(input: {
+  tenantId: string;
+  runId: string;
+  plan: CompiledRunPlan;
+}): CompiledPlanArtifactWrite[] {
+  return [
+    {
+      artifactKind: "run_plan",
+      objectKey: runPlanArtifactKey(input.tenantId, input.runId),
+      value: input.plan
+    },
+    ...input.plan.tasks.map((task) => {
+      if (!task.runTaskId) {
+        throw new Error(`Compiled plan task ${task.taskId} is missing its persisted runTaskId.`);
+      }
+
+      return {
+        artifactKind: "task_handoff" as const,
+        runTaskId: task.runTaskId,
+        objectKey: taskHandoffArtifactKey(input.tenantId, input.runId, task.runTaskId),
+        value: {
+          runId: input.runId,
+          runTaskId: task.runTaskId,
+          sourceRevisionIds: input.plan.sourceRevisionIds,
+          task
+        }
+      };
+    })
+  ];
+}
+
+async function loadExistingCompiledPlanState(input: {
   env: WorkerBindings;
   client: DatabaseClient;
   tenantId: string;
   runId: string;
-  plan: CompiledRunPlan;
-}) {
-  const artifactKeys = [
-    {
-      artifactKind: "run_plan",
-      objectKey: runPlanArtifactKey(input.tenantId, input.runId)
-    },
-    ...input.plan.tasks.map((task) => ({
-      artifactKind: "task_handoff",
-      objectKey: taskHandoffArtifactKey(input.tenantId, input.runId, task.runTaskId ?? task.taskId)
-    }))
-  ];
+}): Promise<PreviousCompiledPlanState | null> {
+  const objectKey = runPlanArtifactKey(input.tenantId, input.runId);
+  const artifactText = await getArtifactText(input.env.ARTIFACTS_BUCKET, objectKey);
 
-  for (const { artifactKind, objectKey } of artifactKeys) {
+  if (!artifactText) {
+    return null;
+  }
+
+  const existingRun = await getRunRecord(input.client, {
+    tenantId: input.tenantId,
+    runId: input.runId
+  });
+  const existingPlan = compiledRunPlanSchema.parse(JSON.parse(artifactText));
+
+  assertCompiledPlanIsInternallyConsistent(existingPlan, "Existing compiled plan snapshot");
+
+  return {
+    plan: existingPlan,
+    compiledAt: existingRun?.compiledAt ?? null
+  };
+}
+
+async function restoreCompiledPlanPersistence(input: {
+  env: WorkerBindings;
+  client: DatabaseClient;
+  tenantId: string;
+  projectId: string;
+  runId: string;
+  previousState: PreviousCompiledPlanState;
+}) {
+  const restoredPlan = await persistCompiledPlanGraph(input.client, {
+    tenantId: input.tenantId,
+    runId: input.runId,
+    plan: input.previousState.plan,
+    sourceRevisionIds: input.previousState.plan.sourceRevisionIds,
+    compiledAt: input.previousState.compiledAt ?? undefined
+  });
+  const restoredArtifactWrites = buildCompiledPlanArtifactWrites({
+    tenantId: input.tenantId,
+    runId: input.runId,
+    plan: restoredPlan
+  });
+
+  for (const artifactWrite of restoredArtifactWrites) {
+    await writeJsonArtifact({
+      env: input.env,
+      client: input.client,
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      runId: input.runId,
+      runTaskId: artifactWrite.runTaskId,
+      key: artifactWrite.objectKey,
+      kind: artifactWrite.artifactKind,
+      value: artifactWrite.value
+    });
+  }
+}
+
+async function rollbackCompiledPlanPersistence(input: {
+  env: WorkerBindings;
+  client: DatabaseClient;
+  tenantId: string;
+  projectId: string;
+  runId: string;
+  writtenArtifacts: CompiledPlanArtifactWrite[];
+  previousState: PreviousCompiledPlanState | null;
+}) {
+  const retainedObjectKeys = new Set(
+    input.previousState
+      ? buildCompiledPlanArtifactWrites({
+          tenantId: input.tenantId,
+          runId: input.runId,
+          plan: input.previousState.plan
+        }).map((artifactWrite) => artifactWrite.objectKey)
+      : []
+  );
+  const deletableArtifacts = input.writtenArtifacts.filter(
+    (artifactWrite) => !retainedObjectKeys.has(artifactWrite.objectKey)
+  );
+
+  for (const { artifactKind, objectKey } of deletableArtifacts) {
     try {
       const artifactRef = await findArtifactRefByObjectKey(input.client, {
         tenantId: input.tenantId,
@@ -307,6 +420,19 @@ async function rollbackCompiledPlanPersistence(input: {
     }
   }
 
+  if (input.previousState) {
+    await restoreCompiledPlanPersistence({
+      env: input.env,
+      client: input.client,
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      runId: input.runId,
+      previousState: input.previousState
+    });
+
+    return;
+  }
+
   await persistCompiledRunGraph(input.client, {
     tenantId: input.tenantId,
     runId: input.runId,
@@ -321,9 +447,15 @@ async function rollbackCompiledPlanPersistence(input: {
 export async function compileRunPlan(input: CompileRunPlanInput): Promise<CompileRunPlanResult> {
   const planningDocuments = compilePlanningDocumentsSchema.parse(input.planningDocuments);
   const sourceRevisionIds = buildSourceRevisionIds(planningDocuments);
+  const previousState = await loadExistingCompiledPlanState({
+    env: input.env,
+    client: input.client,
+    tenantId: input.tenantId,
+    runId: input.runId
+  });
   const compileMode: CompileMode = "live";
   let parsedPlan: CompiledRunPlan | null = null;
-  let persistedPlan: CompiledRunPlan | null = null;
+  const writtenArtifacts: CompiledPlanArtifactWrite[] = [];
 
   try {
     const completion = await createChatCompletion({
@@ -343,43 +475,33 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
       plan: parsedPlan,
       sourceRevisionIds
     });
-    persistedPlan = plan;
-    const planArtifactRef = await writeJsonArtifact({
-      env: input.env,
-      client: input.client,
+    const artifactWrites = buildCompiledPlanArtifactWrites({
       tenantId: input.tenantId,
-      projectId: input.projectId,
       runId: input.runId,
-      key: runPlanArtifactKey(input.tenantId, input.runId),
-      kind: "run_plan",
-      value: plan
+      plan
     });
+    const artifactRefs = [];
 
-    const taskHandoffArtifactRefs = [];
-
-    for (const task of plan.tasks) {
-      if (!task.runTaskId) {
-        throw new Error(`Compiled plan task ${task.taskId} is missing its persisted runTaskId.`);
-      }
-
-      const handoffArtifactRef = await writeJsonArtifact({
+    for (const artifactWrite of artifactWrites) {
+      const artifactRef = await writeJsonArtifact({
         env: input.env,
         client: input.client,
         tenantId: input.tenantId,
         projectId: input.projectId,
         runId: input.runId,
-        runTaskId: task.runTaskId,
-        key: taskHandoffArtifactKey(input.tenantId, input.runId, task.runTaskId),
-        kind: "task_handoff",
-        value: {
-          runId: input.runId,
-          runTaskId: task.runTaskId,
-          sourceRevisionIds: plan.sourceRevisionIds,
-          task
-        }
+        runTaskId: artifactWrite.runTaskId,
+        key: artifactWrite.objectKey,
+        kind: artifactWrite.artifactKind,
+        value: artifactWrite.value
       });
 
-      taskHandoffArtifactRefs.push(handoffArtifactRef);
+      writtenArtifacts.push(artifactWrite);
+      artifactRefs.push(artifactRef);
+    }
+    const [planArtifactRef, ...taskHandoffArtifactRefs] = artifactRefs;
+
+    if (!planArtifactRef) {
+      throw new Error("Artifact ref creation returned no row for run_plan.");
     }
 
     await updateRunRecord(input.client, {
@@ -404,8 +526,10 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
           env: input.env,
           client: input.client,
           tenantId: input.tenantId,
+          projectId: input.projectId,
           runId: input.runId,
-          plan: persistedPlan ?? parsedPlan
+          writtenArtifacts,
+          previousState
         });
       } catch (rollbackError) {
         console.warn("Failed to roll back compiled plan persistence after live compile error", {
@@ -425,9 +549,15 @@ export async function compileDemoFixtureRunPlan(
 ): Promise<CompileRunPlanResult> {
   const planningDocuments = compilePlanningDocumentsSchema.parse(input.planningDocuments);
   const sourceRevisionIds = buildSourceRevisionIds(planningDocuments);
+  const previousState = await loadExistingCompiledPlanState({
+    env: input.env,
+    client: input.client,
+    tenantId: input.tenantId,
+    runId: input.runId
+  });
   const compileMode: CompileMode = "fixture";
   const parsedPlan = buildDemoFixtureCompiledPlan(planningDocuments);
-  let persistedPlan: CompiledRunPlan | null = null;
+  const writtenArtifacts: CompiledPlanArtifactWrite[] = [];
   const completion = {
     id: `fixture-compile-${input.runId}`,
     model: "fixture-compile",
@@ -446,43 +576,33 @@ export async function compileDemoFixtureRunPlan(
       plan: parsedPlan,
       sourceRevisionIds
     });
-    persistedPlan = plan;
-    const planArtifactRef = await writeJsonArtifact({
-      env: input.env,
-      client: input.client,
+    const artifactWrites = buildCompiledPlanArtifactWrites({
       tenantId: input.tenantId,
-      projectId: input.projectId,
       runId: input.runId,
-      key: runPlanArtifactKey(input.tenantId, input.runId),
-      kind: "run_plan",
-      value: plan
+      plan
     });
+    const artifactRefs = [];
 
-    const taskHandoffArtifactRefs = [];
-
-    for (const task of plan.tasks) {
-      if (!task.runTaskId) {
-        throw new Error(`Compiled plan task ${task.taskId} is missing its persisted runTaskId.`);
-      }
-
-      const handoffArtifactRef = await writeJsonArtifact({
+    for (const artifactWrite of artifactWrites) {
+      const artifactRef = await writeJsonArtifact({
         env: input.env,
         client: input.client,
         tenantId: input.tenantId,
         projectId: input.projectId,
         runId: input.runId,
-        runTaskId: task.runTaskId,
-        key: taskHandoffArtifactKey(input.tenantId, input.runId, task.runTaskId),
-        kind: "task_handoff",
-        value: {
-          runId: input.runId,
-          runTaskId: task.runTaskId,
-          sourceRevisionIds: plan.sourceRevisionIds,
-          task
-        }
+        runTaskId: artifactWrite.runTaskId,
+        key: artifactWrite.objectKey,
+        kind: artifactWrite.artifactKind,
+        value: artifactWrite.value
       });
 
-      taskHandoffArtifactRefs.push(handoffArtifactRef);
+      writtenArtifacts.push(artifactWrite);
+      artifactRefs.push(artifactRef);
+    }
+    const [planArtifactRef, ...taskHandoffArtifactRefs] = artifactRefs;
+
+    if (!planArtifactRef) {
+      throw new Error("Artifact ref creation returned no row for run_plan.");
     }
 
     await updateRunRecord(input.client, {
@@ -506,8 +626,10 @@ export async function compileDemoFixtureRunPlan(
         env: input.env,
         client: input.client,
         tenantId: input.tenantId,
+        projectId: input.projectId,
         runId: input.runId,
-        plan: persistedPlan ?? parsedPlan
+        writtenArtifacts,
+        previousState
       });
     } catch (rollbackError) {
       console.warn("Failed to roll back compiled plan persistence after fixture compile error", {

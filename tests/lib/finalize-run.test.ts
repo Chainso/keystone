@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { runSummaryArtifactKey } from "../../src/lib/artifacts/keys";
+
 const mocked = vi.hoisted(() => {
   const state = {
     artifactRefs: [] as Array<Record<string, unknown>>,
@@ -183,9 +185,14 @@ describe("finalizeRun", () => {
         runId: "run-123",
         artifactKind: "run_summary",
         bucket: "keystone-artifacts-dev",
-        objectKey: "tenants/tenant-fixture/runs/run-123/release/run-summary.json"
+        objectKey: runSummaryArtifactKey("tenant-fixture", "run-123")
       })
     );
+    expect(mocked.state.jsonWrites).toEqual([
+      expect.objectContaining({
+        key: runSummaryArtifactKey("tenant-fixture", "run-123")
+      })
+    ]);
   });
 
   it("reuses an existing deterministic run-summary artifact ref on retry", async () => {
@@ -197,7 +204,7 @@ describe("finalizeRun", () => {
       artifactKind: "run_summary",
       storageBackend: "r2",
       bucket: "keystone-artifacts-dev",
-      objectKey: "tenants/tenant-fixture/runs/run-123/release/run-summary.json",
+      objectKey: runSummaryArtifactKey("tenant-fixture", "run-123"),
       objectVersion: null,
       etag: "etag-run-summary",
       contentType: "application/json; charset=utf-8",
@@ -245,7 +252,7 @@ describe("finalizeRun", () => {
     );
     expect(mocked.deleteArtifactObject).toHaveBeenCalledWith(
       expect.anything(),
-      "tenants/tenant-fixture/runs/run-123/release/run-summary.json"
+      runSummaryArtifactKey("tenant-fixture", "run-123")
     );
   });
 });

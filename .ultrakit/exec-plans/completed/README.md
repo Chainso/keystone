@@ -7,6 +7,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 | Plan | Completed | Summary |
 |------|-----------|---------|
 | [keystone-ui-composition-bug-fixes](./keystone-ui-composition-bug-fixes.md) | 2026-04-21 | Stabilized the UI harness, fixed navigation/state bugs, unified project configuration, simplified run planning composition, and documented the final validation/build constraints. |
+| [keystone-target-model-dead-surface-cleanup](./keystone-target-model-dead-surface-cleanup.md) | 2026-04-21 | Removed dead backend target-model leftovers, restored the durable handoff docs, closed the final review gaps, and archived the cleanup plan. |
 | [keystone-ui-workstreams-live-cutover](./keystone-ui-workstreams-live-cutover.md) | 2026-04-21 | Documented the live Workstreams and run-execution cutover, classified the broad validation baseline, and archived the completed plan. |
 | [keystone-ui-runs-pages-live-cutover](./keystone-ui-runs-pages-live-cutover.md) | 2026-04-21 | Delivered the live Runs workspace end to end: real run creation, planning authoring, explicit compile, execution/task review, truthful docs, broad validation recording, and final archive closure. |
 | [keystone-ui-project-management-live-wiring](./keystone-ui-project-management-live-wiring.md) | 2026-04-20 | Delivered the live UI project-management loop, documented the final live/scaffold split and local dev auth headers, reran broad validation, and archived the completed plan. |

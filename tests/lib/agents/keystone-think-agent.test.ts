@@ -97,12 +97,7 @@ const mocked = vi.hoisted(() => {
     ensureThinkRpcInitialization: vi.fn(async () => undefined),
     ensureSandboxSession: vi.fn(async () => ({
       session: state.session
-    })),
-    getSessionRecord: vi.fn(async () => ({
-      status: "ready",
-      metadata: {}
-    })),
-    updateSessionStatus: vi.fn(async () => undefined)
+    }))
   };
 
   return {
@@ -141,11 +136,6 @@ vi.mock("../../../src/keystone/agents/base/think-rpc", () => ({
 
 vi.mock("../../../src/lib/sandbox/client", () => ({
   ensureSandboxSession: mocked.state.ensureSandboxSession
-}));
-
-vi.mock("../../../src/lib/db/runs", () => ({
-  getSessionRecord: mocked.state.getSessionRecord,
-  updateSessionStatus: mocked.state.updateSessionStatus
 }));
 
 const { KeystoneThinkAgent } = await import("../../../src/keystone/agents/base/KeystoneThinkAgent");
