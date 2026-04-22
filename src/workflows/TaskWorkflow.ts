@@ -983,22 +983,30 @@ function resolveThinkTurnInput(
   handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>,
   executionEngine: ExecutionEngine
 ) {
+  void handoff;
+
+  if (executionEngine === "think_live") {
+    if (projectExecution.compileRepo) {
+      return {};
+    }
+
+    throw new NonRetryableError(
+      "The live Think runtime currently supports only projects that resolve to exactly one compile target."
+    );
+  }
+
   if (
     projectExecution.components.length === 1 &&
     projectExecution.components[0]?.type === "inline" &&
     projectExecution.components[0].repoUrl === "fixture://demo-target"
   ) {
-    if (executionEngine === "think_live") {
-      return {};
-    }
-
     return {
       mockModelPlan: createThinkSmokePlan()
     };
   }
 
   throw new NonRetryableError(
-    "The Think runtime currently supports only fixture-scoped compiled demo handoffs."
+    "The mock Think runtime currently supports only fixture-scoped compiled demo handoffs."
   );
 }
 

@@ -405,6 +405,63 @@ type RunImplementerTurnCall = {
   mockModelPlan?: unknown[] | undefined;
 };
 
+type WorkflowProjectSummary = {
+  projectId: string;
+  projectKey: string;
+  displayName: string;
+};
+
+const fixtureProjectSummary: WorkflowProjectSummary = {
+  projectId: "project-fixture",
+  projectKey: "fixture-demo-project",
+  displayName: "Fixture Demo Project"
+};
+
+function createSingleTargetProjectRecord() {
+  return {
+    tenantId: "tenant-fixture",
+    projectId: "project-live",
+    projectKey: "acme-live-project",
+    displayName: "Acme Live Project",
+    description: "Single-target project for live Think execution.",
+    ruleSet: {
+      reviewInstructions: ["Summarize the implementation outcome."],
+      testInstructions: ["Run the Acme app tests before handoff."]
+    },
+    components: [
+      {
+        componentKey: "repo",
+        displayName: "Acme App",
+        kind: "git_repository",
+        config: {
+          localPath: "./projects/acme-app",
+          ref: "main"
+        },
+        ruleOverride: {
+          reviewInstructions: ["Focus on Acme app code paths."],
+          testInstructions: ["Run Acme app checks first."]
+        }
+      }
+    ],
+    envVars: [
+      {
+        name: "KEYSTONE_PROJECT_MODE",
+        value: "live"
+      }
+    ],
+    createdAt: new Date("2026-04-20T00:00:00.000Z"),
+    updatedAt: new Date("2026-04-20T00:00:00.000Z")
+  };
+}
+
+function toProjectSummary(project: WorkflowProjectSummary): WorkflowProjectSummary {
+  return {
+    projectId: project.projectId,
+    projectKey: project.projectKey,
+    displayName: project.displayName
+  };
+}
+
 function createStep() {
   return {
     do: vi.fn(async (_name: string, configOrCallback: unknown, maybeCallback?: unknown) => {
@@ -422,7 +479,10 @@ function createStep() {
   };
 }
 
-function createWorkflowEvent(executionEngine: "think_live" | "think_mock") {
+function createWorkflowEvent(
+  executionEngine: "think_live" | "think_mock",
+  project: WorkflowProjectSummary = fixtureProjectSummary
+) {
   return {
     payload: {
       tenantId: "tenant-fixture",
@@ -432,11 +492,7 @@ function createWorkflowEvent(executionEngine: "think_live" | "think_mock") {
       runTaskId: mocked.handoff.runTaskId,
       executionEngine,
       preserveSandbox: false,
-      project: {
-        projectId: "project-fixture",
-        projectKey: "fixture-demo-project",
-        displayName: "Fixture Demo Project"
-      }
+      project
     }
   };
 }
@@ -676,6 +732,73 @@ describe("TaskWorkflow Think runtime", () => {
     expect(call?.mockModelPlan).toHaveLength(2);
   });
 
+  it("runs a live compiled handoff for a non-fixture single-target project", async () => {
+    const project = createSingleTargetProjectRecord();
+    mocked.getProject.mockResolvedValueOnce(project);
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+    const result = await workflow.run(
+      createWorkflowEvent("think_live", toProjectSummary(project)) as never,
+      step as never
+    );
+    const calls =
+      mocked.runImplementerTurn.mock.calls as unknown as Array<[RunImplementerTurnCall]>;
+    const call = calls[0]?.[0];
+
+    expect(mocked.taskSession.ensureWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        components: [
+          expect.objectContaining({
+            type: "git",
+            repoUrl: "./projects/acme-app"
+          })
+        ],
+        env: {
+          KEYSTONE_PROJECT_MODE: "live"
+        }
+      })
+    );
+    expect(call?.prompt).toContain("Project: Acme Live Project (acme-live-project)");
+    expect(call?.agentBridge.environment).toEqual({
+      KEYSTONE_PROJECT_MODE: "live"
+    });
+    expect(call?.mockModelPlan).toBeUndefined();
+    expect(result).toMatchObject({
+      runTaskId: "run-task-123",
+      processStatus: "completed",
+      exitCode: 0,
+      workflowStatus: "complete"
+    });
+  });
+
+  it("keeps think/mock fixture-only outside the demo target", async () => {
+    const project = createSingleTargetProjectRecord();
+    mocked.getProject.mockResolvedValueOnce(project);
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+
+    await expect(
+      workflow.run(
+        createWorkflowEvent("think_mock", toProjectSummary(project)) as never,
+        step as never
+      )
+    ).rejects.toThrow(/mock Think runtime currently supports only fixture-scoped/i);
+
+    expect(mocked.runImplementerTurn).not.toHaveBeenCalled();
+    expect(mocked.runTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: "run-task-123",
+        status: "failed",
+        conversationAgentClass: "KeystoneThinkAgent",
+        conversationAgentName: "tenant:tenant-fixture:run:run-123:task:task-session-run-task-123",
+        startedAt: expect.any(Date),
+        endedAt: expect.any(Date)
+      })
+    ]);
+  });
+
   it("marks the authoritative task failed when Think returns a non-success outcome", async () => {
     mocked.runImplementerTurn.mockResolvedValueOnce({
       outcome: "cancelled",
@@ -730,14 +853,22 @@ describe("TaskWorkflow Think runtime", () => {
     expect(mocked.taskSession.teardown).toHaveBeenCalledTimes(1);
   });
 
-  it("allows dependent live handoffs on the fixture-scoped path", async () => {
+  it("allows dependent live handoffs on non-fixture single-target projects", async () => {
+    const project = createSingleTargetProjectRecord();
+    mocked.getProject.mockResolvedValueOnce(project);
     mocked.handoff.task.dependsOn = ["task-other"];
     mocked.loadTaskHandoffArtifact.mockResolvedValue(JSON.parse(JSON.stringify(mocked.handoff)));
 
     const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
     const step = createStep();
 
-    const result = await workflow.run(createWorkflowEvent("think_live") as never, step as never);
+    const result = await workflow.run(
+      createWorkflowEvent("think_live", toProjectSummary(project)) as never,
+      step as never
+    );
+    const calls =
+      mocked.runImplementerTurn.mock.calls as unknown as Array<[RunImplementerTurnCall]>;
+    const call = calls[0]?.[0];
 
     expect(mocked.runTasks).toEqual([
       expect.objectContaining({
@@ -750,6 +881,8 @@ describe("TaskWorkflow Think runtime", () => {
       })
     ]);
     expect(mocked.taskSession.teardown).toHaveBeenCalledTimes(1);
+    expect(call?.prompt).toContain("Depends on: task-other");
+    expect(call?.mockModelPlan).toBeUndefined();
     expect(result).toMatchObject({
       runTaskId: "run-task-123",
       processStatus: "completed",
