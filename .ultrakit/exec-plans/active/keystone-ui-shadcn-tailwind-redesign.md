@@ -220,6 +220,11 @@ Baseline compatibility facts already captured:
   **Decision:** Validated the bootstrap with `npm install`, `build:ui`, and the targeted UI route tests, then re-ran `typecheck` and `lint` to classify results back to the known repo baseline.
   **Rationale:** The phase handoff requires proving the new foundation works while distinguishing regressions from pre-existing repo-wide failures.
 
+- **Date:** 2026-04-21
+  **Phase:** Phase 1
+  **Decision:** Ran the one allowed targeted fix pass after review, restoring the minimum real Tailwind/shadcn stylesheet foundation in `ui/src/app/styles.css` and clearing the dropdown/sidebar regressions without pulling broader theme migration into Phase 1.
+  **Rationale:** The generated shadcn primitives already depended on Tailwind utilities, so Phase 1 needed the entrypoint, animation import, and semantic token bridge to be truthful while still deferring centralized theming and dark-mode ownership to Phase 2.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -229,6 +234,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-21 Active plan rewritten into a more prescriptive execution document.
 - [x] 2026-04-21 User approved execution to begin with Phase 1.
 - [x] 2026-04-21 Phase 1 completed: dependency install and build bootstrap.
+- [x] 2026-04-21 Phase 1 targeted fix pass completed: Tailwind/shadcn bootstrap made real, and the review findings were cleared.
 - [x] Phase 1: dependency install and build bootstrap.
 - [ ] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [ ] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -255,7 +261,7 @@ Baseline compatibility facts already captured:
 - `tests/http/app.test.ts` still expects the task conversation route to be missing, which confirms that conversation transport is a real implementation phase and not a styling concern.
 - The current task artifact seam is unified diff text, which materially affects the diff-library decision.
 - The current shadcn registry does not ship a standalone `data-table` UI component for this stack. It ships a `data-table-demo` example plus the guide built on `Table` and `@tanstack/react-table`, so Phase 1 should seed the required primitives and keep feature-owned TanStack composition out of scope until the Phase 3 Keystone wrapper.
-- `shadcn add` mutates `ui/src/app/styles.css` to append sidebar token variables and a Tailwind `@theme inline` block. Those edits are functional for later phases but were reverted in Phase 1 to keep token ownership and visible theme changes inside Phase 2.
+- Phase 1 can defer the broader token migration, but it cannot leave `ui/src/app/styles.css` as legacy-only CSS. The real bootstrap minimum is `@import "tailwindcss"`, `@import "tw-animate-css"`, and a small semantic token bridge from the current palette into the shadcn variables already referenced by the generated primitives. The full token takeover, persisted theme model, and Radix bootstrap exit still belong to Phase 2.
 - On this host, `npm run build` still needs a host shell because Wrangler and Docker hit sandbox write constraints after `vite build` succeeds.
 
 ## Outcomes & Retrospective
@@ -273,7 +279,8 @@ Phase 1 outcome on 2026-04-21:
 - Vite, TypeScript, and Vitest now share the `@/* -> ui/src/*` alias contract
 - `components.json`, `ui/src/lib/utils.ts`, and the initial shadcn seed components now exist under repo-owned paths without changing visible product surfaces or removing the current Radix bootstrap
 - the shadcn data-table path is prepared through `@tanstack/react-table` plus the seeded table/form/menu primitives, while actual Keystone table wrappers remain deferred to Phase 3
-- `rtk npm run build:ui` and the targeted UI route tests pass, while `typecheck` and `lint` remain at the known repo baseline failures
+- the review-triggered fix pass made the bootstrap honest by activating Tailwind and `tw-animate-css` in `ui/src/app/styles.css`, bridging the current palette into the minimal semantic token set the seeded primitives need, and correcting the Phase 1 dropdown/sidebar regressions without starting the broader Phase 2 theme migration
+- `rtk npm run build:ui`, the targeted UI route tests, and `rtk npx tsc --noEmit -p tsconfig.ui.json` now pass; `rtk npm run typecheck` still ends at the known repo baseline failures
 
 ## Context and Orientation
 
@@ -498,18 +505,18 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-21.
+- **Status:** Complete on 2026-04-21 after targeted fix pass.
 - **Goal:** Install the approved dependency families and wire the repo bootstrap needed for Tailwind, shadcn, Plate, assistant-ui, and the shadcn data-table path without changing product surfaces yet.
-- **Scope Boundary:** In scope are `package.json`, lockfile changes, Vite/TS/Vitest alias wiring, `components.json`, `ui/src/lib/utils.ts`, and the initial shadcn seed set. Out of scope are token migration, direct-Radix removal, wrapper creation, Plate UI generation, and any destination rewrite.
+- **Scope Boundary:** In scope are `package.json`, lockfile changes, Vite/TS/Vitest alias wiring, `components.json`, `ui/src/lib/utils.ts`, the initial shadcn seed set, and the minimal `ui/src/app/styles.css` wiring needed to make those generated primitives actually usable. Out of scope are the broader token migration, direct-Radix removal, wrapper creation, Plate UI generation, and any destination rewrite.
 - **Read First:** `package.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.ui.json`, `vitest.config.ts`, `ui/src/main.tsx`, `ui/AGENTS.md`.
-- **Files Expected To Change:** `package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.ui.json`, `vitest.config.ts`, `components.json`, `ui/src/lib/utils.ts`, `ui/src/components/ui/*`.
-- **Validation:** `rtk npm install`; `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`; `rtk npm run typecheck`; `rtk npm run lint`.
+- **Files Expected To Change:** `package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.ui.json`, `vitest.config.ts`, `components.json`, `ui/src/lib/utils.ts`, `ui/src/app/styles.css`, `ui/src/components/ui/*`.
+- **Validation:** `rtk npm install`; `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`; `rtk npx tsc --noEmit -p tsconfig.ui.json`; `rtk npm run typecheck`; `rtk npm run lint`.
 - **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
 - **Deliverables:** all known dependencies are installed, aliasing is consistent across build/test/typecheck, shadcn bootstrap files exist, the initial primitive seed set is generated, and the table bootstrap path is ready for Phase 3 to wrap the shadcn data-table pattern rather than raw TanStack usage.
 - **Commit Expectation:** `bootstrap ui dependency and build foundation`
 - **Known Constraints / Baseline Failures:** lint and typecheck already fail outside this phase; `build` remains host-constrained after `vite build`.
-- **Completion Notes:** Installed the locked dependency families plus shadcn-required runtime packages (`cmdk`, `radix-ui`, `react-resizable-panels`), added consistent `@/* -> ui/src/*` alias wiring, created `components.json` and `ui/src/lib/utils.ts`, and generated the initial shadcn seed set under `ui/src/components/ui/*`. The current shadcn registry only exposes a `data-table-demo` example, so the Phase 1 table path is the official guide pattern: `@tanstack/react-table` plus seeded table/form/menu primitives, with no feature-owned TanStack composition introduced yet. The CLI's stylesheet token injection was intentionally reverted so theme/token ownership stays in Phase 2.
-- **Next Starter Context:** Phase 2 should start from the generated shadcn primitives already on disk and can safely take over `ui/src/app/styles.css`, token definition, dark-mode variant wiring, and Radix bootstrap removal. Do not regenerate the seed set; build on the existing `components.json` contract and keep the visible surface change limited to the centralized theme transition.
+- **Completion Notes:** Installed the locked dependency families plus shadcn-required runtime packages (`cmdk`, `radix-ui`, `react-resizable-panels`), added consistent `@/* -> ui/src/*` alias wiring, created `components.json` and `ui/src/lib/utils.ts`, and generated the initial shadcn seed set under `ui/src/components/ui/*`. The current shadcn registry only exposes a `data-table-demo` example, so the Phase 1 table path is the official guide pattern: `@tanstack/react-table` plus seeded table/form/menu primitives, with no feature-owned TanStack composition introduced yet. The targeted fix pass completed the minimum truthful stylesheet foundation in `ui/src/app/styles.css` by turning on Tailwind output, importing `tw-animate-css`, and aliasing the current palette into the semantic tokens that the generated primitives already reference, while still leaving the broader theme-system takeover to Phase 2. The same fix pass also removed the `DropdownMenuCheckboxItem` `exactOptionalPropertyTypes` regression and made mobile `Sidebar` prop forwarding match desktop behavior.
+- **Next Starter Context:** Phase 2 should start from the generated shadcn primitives and the now-live Tailwind entrypoint already on disk, then take over `ui/src/app/styles.css` for the final token model, dark-mode variant ownership, persisted theme wiring, and Radix bootstrap removal. Do not regenerate the seed set; build on the existing `components.json` contract and replace the temporary semantic-token bridge with the centralized theme system.
 
 ### Phase 2: Theme Tokens, Root Theme Provider, And Direct-Radix Exit
 
