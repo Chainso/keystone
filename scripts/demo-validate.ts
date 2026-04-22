@@ -79,10 +79,6 @@ export function resolveBaseUrl(persistedState?: PersistedDemoState) {
   );
 }
 
-export function resolveExecutionEngine() {
-  return getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "think_live";
-}
-
 function resolveActualExecutionEngine(summary: RunSummary): ExecutionEngine {
   const detail = requireDataObject(summary as Record<string, unknown>, "Run detail");
   const executionEngine = detail.executionEngine;
@@ -99,8 +95,7 @@ function resolveActualExecutionEngine(summary: RunSummary): ExecutionEngine {
 }
 
 export function resolveValidatedRunContract(
-  summary: RunSummary,
-  _requestedExecutionEngine: string
+  summary: RunSummary
 ): DemoValidationContract {
   const executionEngine = resolveActualExecutionEngine(summary);
 
@@ -228,6 +223,56 @@ function requireWellFormedWorkflowGraph(
       );
     }
   }
+
+  const remainingIncomingEdges = new Map<string, number>();
+  const childTaskIdsByParent = new Map<string, string[]>();
+
+  for (const node of nodes) {
+    remainingIncomingEdges.set(node.taskId, 0);
+    childTaskIdsByParent.set(node.taskId, []);
+  }
+
+  for (const edge of edges) {
+    remainingIncomingEdges.set(
+      edge.toTaskId,
+      (remainingIncomingEdges.get(edge.toTaskId) ?? 0) + 1
+    );
+    childTaskIdsByParent.get(edge.fromTaskId)?.push(edge.toTaskId);
+  }
+
+  const readyTaskIds = nodes
+    .map((node) => node.taskId)
+    .filter((taskId) => (remainingIncomingEdges.get(taskId) ?? 0) === 0);
+  let visitedTasks = 0;
+
+  while (readyTaskIds.length > 0) {
+    const taskId = readyTaskIds.shift();
+
+    if (!taskId) {
+      continue;
+    }
+
+    visitedTasks += 1;
+
+    for (const childTaskId of childTaskIdsByParent.get(taskId) ?? []) {
+      const remainingEdges = (remainingIncomingEdges.get(childTaskId) ?? 0) - 1;
+      remainingIncomingEdges.set(childTaskId, remainingEdges);
+
+      if (remainingEdges === 0) {
+        readyTaskIds.push(childTaskId);
+      }
+    }
+  }
+
+  if (visitedTasks !== nodes.length) {
+    const cyclicTaskIds = nodes
+      .map((node) => node.taskId)
+      .filter((taskId) => (remainingIncomingEdges.get(taskId) ?? 0) > 0);
+
+    throw new Error(
+      `Run workflow graph must be acyclic; cycle detected among tasks ${cyclicTaskIds.join(", ")}.`
+    );
+  }
 }
 
 function summarizeDagProof(workflowGraph: Record<string, unknown>): DemoDagProof {
@@ -277,7 +322,6 @@ export async function main() {
   const persistedState = await readDemoState();
   const runId = explicitRunId ?? persistedState?.runId;
   const baseUrl = explicitBaseUrl ?? resolveBaseUrl(persistedState);
-  const requestedExecutionEngine = resolveExecutionEngine();
 
   if (!runId) {
     throw new Error("Provide --run-id=<id>, set KEYSTONE_RUN_ID, or run demo:run first.");
@@ -285,10 +329,7 @@ export async function main() {
 
   const summary = await fetchRunDetail(baseUrl, runId);
   const detail = requireDataObject(summary as Record<string, unknown>, "Run detail");
-  const { executionEngine, demoContract } = resolveValidatedRunContract(
-    summary,
-    requestedExecutionEngine
-  );
+  const { executionEngine, demoContract } = resolveValidatedRunContract(summary);
   const tasks = await fetchRunTasks(baseUrl, runId);
   const workflowGraph = await fetchRunWorkflowGraph(baseUrl, runId);
   const tasksData = requireDataObject(tasks, "Run task list");

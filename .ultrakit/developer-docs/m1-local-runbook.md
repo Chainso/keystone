@@ -97,7 +97,7 @@ Expected proof:
 - run status reaches `archived`
 - compile provenance is present
 - at least one task exists
-- public `scripted` and `think_live` proofs expose a well-formed workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
+- public `scripted` and `think_live` proofs expose a well-formed acyclic workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
 - the public workflow/task surfaces match the broader DAG scheduler contract; the dedicated workflow and repository tests cover the `active + ready` poll behavior directly
 - Think runs expose task conversation locators
 

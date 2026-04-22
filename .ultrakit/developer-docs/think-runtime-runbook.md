@@ -90,7 +90,7 @@ When one of these pairs archives successfully, it proves:
 - runs archive successfully
 - compile provenance is recorded on the run
 - tasks are materialized from the compiled DAG
-- public `scripted` and `think_live` proofs expose a well-formed workflow graph with at least three tasks, at least two roots, and at least one dependency edge
+- public `scripted` and `think_live` proofs expose a well-formed acyclic workflow graph with at least three tasks, at least two roots, and at least one dependency edge
 - the public workflow/task surfaces are consistent with the broader DAG scheduler contract; the dedicated workflow and repository tests cover the `active + ready` poll behavior directly
 - Think execution exposes task conversation locators on `run_tasks`
 
@@ -136,7 +136,7 @@ It also verifies:
 - run status is `archived`
 - compile provenance is present
 - at least one task exists
-- for `scripted` and `think_live`, the workflow graph is well formed and shows at least three tasks, at least two roots, and at least one dependency edge
+- for `scripted` and `think_live`, the workflow graph is well formed, acyclic, and shows at least three tasks, at least two roots, and at least one dependency edge
 - Think runs expose at least one task conversation locator
 
 ## Current Host-Local Live-Proof Caveat

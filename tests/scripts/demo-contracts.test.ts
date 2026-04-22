@@ -1764,6 +1764,498 @@ describe("demo scripts", () => {
     }
   });
 
+  it("demo:validate rejects cyclic workflow graphs", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-cycle") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-cycle",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-cycle",
+                architectureRevisionId: "arch-rev-cycle",
+                executionPlanRevisionId: "plan-rev-cycle"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-cycle/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-cycle/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: ["task-c"]
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-c",
+                  toTaskId: "task-a"
+                },
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-b"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-cycle",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/must be acyclic/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects duplicate workflow graph nodes", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-duplicate-node") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-duplicate-node",
+              status: "archived",
+              executionEngine: "scripted",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-duplicate",
+                architectureRevisionId: "arch-rev-duplicate",
+                executionPlanRevisionId: "plan-rev-duplicate"
+              }
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-duplicate-node/tasks"
+      ) {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-duplicate-node/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-a",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-duplicate-node",
+            executionEngine: "scripted"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/duplicate node task-a/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects workflow edges the child node does not declare", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-child-edge-mismatch"
+      ) {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-child-edge-mismatch",
+              status: "archived",
+              executionEngine: "scripted",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-child-edge",
+                architectureRevisionId: "arch-rev-child-edge",
+                executionPlanRevisionId: "plan-rev-child-edge"
+              }
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-child-edge-mismatch/tasks"
+      ) {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-child-edge-mismatch/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-c"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-child-edge-mismatch",
+            executionEngine: "scripted"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/not declared by the child node/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects archived runs that omit compile provenance", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-missing-compiled-from"
+      ) {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-missing-compiled-from",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: null
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-missing-compiled-from/tasks"
+      ) {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-missing-compiled-from/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-a", "task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-c"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-missing-compiled-from",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/record compile provenance/);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("demo:validate fails closed when run detail omits a valid execution engine", async () => {
     const statePath = await createTempStatePath();
     const server = await startStubServer((request) => {

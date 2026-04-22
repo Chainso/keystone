@@ -182,7 +182,7 @@ The current shipped runtime and proof contract is:
 - the zero-argument `demo:run` helper intentionally stays on `scripted` until a fresh host-local live proof archives reliably again
 - `think_live` can execute any single-target project-backed compiled DAG that reaches `TaskWorkflow`
 - `RunWorkflow` fans out the union of `active` and `ready` tasks on each scheduler poll, so newly unblocked work can launch while unrelated branches stay active
-- `demo:validate` now fails closed if run detail is malformed and, for public `scripted` or `think_live` proofs, requires a well-formed workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
+- `demo:validate` now fails closed if run detail is malformed and, for public `scripted` or `think_live` proofs, requires a well-formed acyclic workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
 - Think runs still must expose task conversation locators on `run_tasks`
 
 Current limits and caveats:
