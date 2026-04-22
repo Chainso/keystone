@@ -270,6 +270,11 @@ Baseline compatibility facts already captured:
   **Decision:** Ran the one allowed targeted fix pass to restore the sidebar project-summary fallback for blank descriptions and to strengthen shell tests around the reserved footer toggle slot plus nested run-detail workspace chrome.
   **Rationale:** Review found that the project-management layer normalizes missing descriptions to `""`, and the initial Phase 4 assertions proved only toggle existence rather than the required footer placement and run-detail shell-chrome contract.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 5
+  **Decision:** Moved the `Runs` destination rendering into a feature-owned workspace component, reframed the index around shared workspace wrappers, and rebuilt the run-detail header/top rail/state chrome with a back-link, metadata chips, and stage summaries while leaving route semantics and inner planning/execution workspaces unchanged.
+  **Rationale:** Phase 5 needed the visible runs shell to migrate into the new workspace system without pushing destination rendering back into `ui/src/routes/` or inventing backend data that the current runs collection does not expose.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -287,11 +292,12 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 3 targeted fix pass completed: `EntityTable` now exposes explicit row activation, generic table styling no longer uses `runs-*` naming, and activation-suppression behavior is covered in the targeted UI tests.
 - [x] 2026-04-22 Phase 4 completed: the persistent shell now uses wrapper-backed sidebar panels, route-aware stage chrome, and the footer-owned theme toggle slot without pushing destination-specific behavior into the shell.
 - [x] 2026-04-22 Phase 4 targeted fix pass completed: blank project descriptions now fall back to stable sidebar copy, and shell coverage now proves the footer-owned theme toggle slot plus nested run-detail workspace-location chrome.
+- [x] 2026-04-22 Phase 5 completed: the `Runs` index now lives in the workspace system, and the run-detail frame now exposes the migrated header, top rail, and state chrome without changing route semantics.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
 - [x] Phase 4: global shell and project-scoped chrome.
-- [ ] Phase 5: runs index and run-detail structural frame.
+- [x] Phase 5: runs index and run-detail structural frame.
 - [ ] Phase 6: planning workspace and Plate planning documents.
 - [ ] Phase 7: execution DAG workspace.
 - [ ] Phase 8: task detail review workspace.
@@ -321,6 +327,7 @@ Baseline compatibility facts already captured:
 - A later read-only verification report claimed the "Write first revision" route flow could not find the `Document title` textbox in `ui/src/test/runs-routes.test.tsx`, but rerunning the exact Phase 2 target command plus five isolated reruns of that specific test on HEAD `8b48028` all passed, so the reported failure is currently classified as non-reproducible validation drift rather than a checked-in Phase 2 regression.
 - The new wrapper layer still swaps between empty-state and table/document bodies in several destinations, so UI tests that hold onto a `findByRole(...)` element handle across filter or editor-state transitions can fail even though the next DOM has rendered correctly. Stable assertions need to re-query after the awaited render point.
 - Phase 3's initial `EntityTable` seam was still too DOM-shaped: reusable row activation needs to be expressed as an explicit row-level callback owned by the wrapper, not by asking feature callers to scrape the first rendered `a[href]` out of table cells.
+- The live `/v1/projects/:projectId/runs` payload still exposes workflow instance, execution engine, status, and timestamps, but not per-run planning-step progress or authored summaries. Phase 5 therefore keeps the live runs index honest with coarse `Planning` vs `Execution` stage framing plus workflow/engine detail, while the sidebar guide carries the stable four-stage product vocabulary.
 
 ## Outcomes & Retrospective
 
@@ -368,6 +375,13 @@ Phase 4 outcome on 2026-04-22:
 - the targeted fix pass closed the remaining shell regressions by treating blank project descriptions like missing sidebar summary data and by proving, through focused tests, that the theme toggle stays in the reserved sidebar footer slot and that nested `/runs/:id/specification` routes still render the workspace-location chrome
 - global navigation and project actions stay stable against the workspace spec, but the shell markup now keeps destination summaries out of link accessible names and avoids duplicating stage-state headings like `Loading projects`
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 4 implementation and fix pass; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 5 outcome on 2026-04-22:
+
+- the `Runs` landing surface now renders through `ui/src/features/runs/components/runs-index-workspace.tsx`, keeping `ui/src/routes/runs/runs-index-route.tsx` thin while moving the visible index composition under the runs feature
+- the runs index now uses the shared workspace page/panel/table vocabulary for both the main table and the right-hand guide, and the live table stays honest to current backend data by showing workflow/engine detail plus a coarse `Planning` vs `Execution` stage instead of inventing missing per-run summaries
+- run detail now has one coherent outer frame across ready/loading/error states: a `Back to runs` affordance, run metadata chips, the stable four-stage top rail with summaries, and unchanged route semantics for nested planning, execution, and task paths
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 5 implementation; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
 
@@ -660,7 +674,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Pending approval.
+- **Status:** Complete on 2026-04-22.
 - **Goal:** Migrate the `Runs` landing surface and the run-detail frame into the new workspace system.
 - **Scope Boundary:** In scope are the runs index, run header, top rail, and run-detail shell. Out of scope are planning document cutover, execution DAG redesign, and live chat transport.
 - **Read First:** `design/workspace-spec.md`, `ui/src/routes/router.tsx`, `ui/src/routes/runs/run-detail-layout.tsx`, `ui/src/features/runs/components/*`.
@@ -670,7 +684,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** the `Runs` destination and run-detail shell are visually migrated without changing route semantics.
 - **Commit Expectation:** `migrate runs index and run frame`
 - **Known Constraints / Baseline Failures:** keep product nouns and run phase order stable.
-- **Next Starter Context:** the planning and execution interiors may still be mixed old/new after this phase, but the run shell should already be coherent.
+- **Completion Notes:** Moved the `Runs` landing surface into `ui/src/features/runs/components/runs-index-workspace.tsx`, keeping the route file thin while framing the index with shared workspace page/panel/table primitives plus a right-hand run-workspace guide. The live runs table now stays honest to the current `/v1/projects/:projectId/runs` payload by surfacing workflow/engine detail and a coarse `Planning` vs `Execution` stage, while scaffold rows keep their seeded summary/stage fields. The run-detail frame now exposes a coherent outer shell across ready and state fallbacks: `Back to runs`, run metadata chips, a summary-bearing four-stage rail, and unchanged nested route semantics for planning, execution, and task detail. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 6 should treat the Phase 5 runs index and run-detail shell as stable outer chrome. Focus only on swapping the planning interiors to the shared split workspace with Plate-backed document surfaces; do not reopen the run header, stage rail, or index framing unless a small supporting seam is truly required for the document cutover.
 
 ### Phase 6: Planning Workspace And Plate Planning Documents
 

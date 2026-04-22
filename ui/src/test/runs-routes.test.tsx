@@ -1275,6 +1275,19 @@ describe("Run routes", () => {
     expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
   });
 
+  it("renders the run workspace frame with back-link, metadata, and stage summaries", async () => {
+    renderRunRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
+    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
+    expect(screen.getByText("Engine Think Live")).toBeInTheDocument();
+    const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
+
+    expect(within(phaseNavigation).getByText("Agent chat plus the living product spec.")).toBeInTheDocument();
+    expect(within(phaseNavigation).getByText("Workflow DAG first, then task detail.")).toBeInTheDocument();
+  });
+
   it("renders the loading state before the live run provider resolves", async () => {
     const deferredRun = createDeferred<StaticRunDetailRecord["run"]>();
     const runApi = createRunApi({

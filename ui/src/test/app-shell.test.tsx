@@ -810,7 +810,12 @@ describe("App shell", () => {
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expectWorkspaceLocation("Keystone Cloudflare", "Runs");
-    expect(screen.getByText("wf-run-104")).toBeInTheDocument();
+    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Open a row to move through the four-stage run workspace without leaving the selected project."
+      )
+    ).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
     expectShellLinkTarget("Workstreams", "/workstreams");
