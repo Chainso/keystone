@@ -1,6 +1,16 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "vitest/config";
 
+const uiSrcRoot = fileURLToPath(new URL("./ui/src", import.meta.url));
+
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@": resolve(uiSrcRoot)
+    }
+  },
   test: {
     projects: [
       {
