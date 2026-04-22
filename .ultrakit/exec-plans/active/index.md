@@ -6,10 +6,6 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 ## Active Plans
 
-There are currently no active plans.
-
-Add active plans in priority order using this format:
-
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
-| [plan-name](./plan-name.md) | In Progress | - | YYYY-MM-DD |
+| [keystone-target-model-dead-surface-cleanup](./keystone-target-model-dead-surface-cleanup.md) | In Progress | Codex | 2026-04-21 |

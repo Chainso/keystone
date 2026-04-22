@@ -754,10 +754,6 @@ vi.mock("../../src/lib/artifacts/r2", async () => {
   };
 });
 
-vi.mock("../../src/http/handlers/ws", () => ({
-  runWebSocketHandler: vi.fn()
-}));
-
 vi.mock("../../src/http/handlers/dev-compile", () => ({
   runCompileSmokeHandler: vi.fn()
 }));
