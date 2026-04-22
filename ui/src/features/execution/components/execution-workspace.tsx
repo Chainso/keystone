@@ -237,6 +237,7 @@ function ExecutionGraphBoard({
           {model.nodes.map((node) => {
             const nodePosition = getExecutionNodePosition(node);
             const nodeStyle: CSSProperties = {
+              height: `${executionGraphLayout.nodeHeight}px`,
               left: `${nodePosition.left}px`,
               top: `${nodePosition.top}px`,
               width: `${executionGraphLayout.nodeWidth}px`
@@ -260,7 +261,7 @@ function ExecutionGraphBoard({
                 <span className="execution-graph-node-label">{node.taskId}</span>
                 <span className="execution-graph-node-title">{node.title}</span>
                 <span className="execution-graph-node-status">{node.statusLabel}</span>
-                <span className="document-name">{node.footnote}</span>
+                <span className="document-name execution-graph-node-footnote">{node.footnote}</span>
               </button>
             );
           })}
@@ -268,7 +269,7 @@ function ExecutionGraphBoard({
       </div>
 
       <p className="execution-board-note">
-        Select a task node to inspect its current handoff, then open task detail when you need the task-scoped review surface.
+        Select a task node to inspect its current handoff, then open task detail when the live task record is ready.
       </p>
       <p className="execution-board-note">
         Columns track dependency steps, and parallel tasks remain grouped in the same step.
@@ -390,16 +391,26 @@ export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) 
                   </p>
                   <p className="execution-selection-metric">{selectedTask.activityLabel}</p>
                   <p className="execution-selection-metric">
-                    {selectedTask.conversationAttached ? "Conversation attached" : "Conversation not attached"}
+                    {selectedTask.taskRecordReady
+                      ? selectedTask.conversationAttached
+                        ? "Conversation locator attached"
+                        : "Conversation locator not attached"
+                      : "Task record is still materializing"}
                   </p>
                 </div>
 
                 <DocumentFrameSummary>{selectedTask.handoffSummary}</DocumentFrameSummary>
 
                 <div className="shell-state-actions">
-                  <Link to={selectedTask.detailPath} className="ghost-button">
-                    Open task detail
-                  </Link>
+                  {selectedTask.detailPath ? (
+                    <Link to={selectedTask.detailPath} className="ghost-button">
+                      Open task detail
+                    </Link>
+                  ) : (
+                    <button type="button" className="ghost-button" disabled>
+                      Task detail is loading
+                    </button>
+                  )}
                 </div>
               </section>
 

@@ -20,6 +20,7 @@ interface ExecutionTaskRecord {
   startedAt: string | null;
   status: string;
   taskId: string;
+  taskRecordReady: boolean;
   updatedAt: string | null;
 }
 
@@ -44,7 +45,7 @@ const executionSummaryGroupDefinitions: Array<{
     tone: "active"
   },
   {
-    description: "Tasks that can open immediately when you need to inspect the next handoff.",
+    description: "Tasks whose current handoff is ready to inspect next.",
     id: "ready",
     label: "Ready next",
     tone: "queued"
@@ -62,7 +63,7 @@ const executionSummaryGroupDefinitions: Array<{
     tone: "blocked"
   },
   {
-    description: "Finished work that can already hand off into task detail for review.",
+    description: "Finished work that can already open in task detail.",
     id: "completed",
     label: "Completed",
     tone: "complete"
@@ -115,7 +116,7 @@ export interface ExecutionNodeViewModel {
   dependsOn: TaskDependencyViewModel[];
   dependencyCount: number;
   description: string;
-  detailPath: string;
+  detailPath: string | null;
   downstreamTasks: TaskDependencyViewModel[];
   footnote: string;
   graphColumn: number;
@@ -125,6 +126,7 @@ export interface ExecutionNodeViewModel {
   statusLabel: string;
   statusTone: StatusTone;
   taskId: string;
+  taskRecordReady: boolean;
   title: string;
 }
 
@@ -388,15 +390,19 @@ function buildExecutionNodeFootnote(task: ExecutionTaskRecord, input: {
 }
 
 function buildExecutionHandoffSummary(task: ExecutionTaskRecord, unresolvedDependencyCount: number) {
+  if (!task.taskRecordReady) {
+    return "Task detail is still waiting on the live task record for this workflow node.";
+  }
+
   if (unresolvedDependencyCount > 0) {
-    return `This task is still waiting on ${unresolvedDependencyCount} prerequisite${unresolvedDependencyCount === 1 ? "" : "s"}.`;
+    return `This task is still waiting on ${unresolvedDependencyCount} prerequisite${unresolvedDependencyCount === 1 ? "" : "s"}, but task detail is already available from the current run task record.`;
   }
 
   if (task.conversation) {
-    return "Task detail already has a conversation locator and the current review surface.";
+    return "Task detail is ready for this task, and a conversation locator is already attached.";
   }
 
-  return "Task detail keeps the current artifact and review surface while the live chat cutover remains out of scope for this phase.";
+  return "Task detail is ready for this task from the current run task record.";
 }
 
 function buildExecutionSummary(totalTasks: number, columnCount: number) {
@@ -464,6 +470,7 @@ function buildExecutionTaskRecords(tasks: ReadyRunTasks, workflowNodes: Workflow
         startedAt: task.startedAt,
         status: task.status,
         taskId: task.taskId,
+        taskRecordReady: true,
         updatedAt: task.updatedAt
       };
     }
@@ -478,6 +485,7 @@ function buildExecutionTaskRecords(tasks: ReadyRunTasks, workflowNodes: Workflow
       startedAt: null,
       status: workflowNode.status,
       taskId: workflowNode.taskId,
+      taskRecordReady: false,
       updatedAt: null
     };
   });
@@ -497,6 +505,7 @@ function buildExecutionTaskRecords(tasks: ReadyRunTasks, workflowNodes: Workflow
       startedAt: task.startedAt,
       status: task.status,
       taskId: task.taskId,
+      taskRecordReady: true,
       updatedAt: task.updatedAt
     });
   }
@@ -571,7 +580,7 @@ function buildExecutionGraph(tasks: ExecutionTaskRecord[], runId: string) {
           dependsOn,
           dependencyCount: task.dependsOn.length,
           description: task.description,
-          detailPath: buildRunTaskPath(runId, task.taskId),
+          detailPath: task.taskRecordReady ? buildRunTaskPath(runId, task.taskId) : null,
           downstreamTasks,
           footnote: buildExecutionNodeFootnote(task, {
             downstreamCount: downstreamTasks.length,
@@ -583,6 +592,7 @@ function buildExecutionGraph(tasks: ExecutionTaskRecord[], runId: string) {
           logicalTaskId: task.logicalTaskId,
           ...getTaskStatusPresentation(task.status),
           taskId: task.taskId,
+          taskRecordReady: task.taskRecordReady,
           title: task.name
         }
       ];
@@ -693,6 +703,7 @@ export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
   const run = state.run!;
   const backPath = buildRunPhasePath(run.runId, "execution");
   const task = state.tasks.find((candidate) => candidate.taskId === taskId) ?? null;
+  const workflowNode = state.workflow?.nodes.find((candidate) => candidate.taskId === taskId) ?? null;
   const taskArtifacts = state.taskArtifacts[taskId];
   const tasksById = new Map(state.tasks.map((candidate) => [candidate.taskId, candidate]));
   const downstreamByTaskId = buildTaskRelationshipMap(state.tasks);
@@ -718,6 +729,16 @@ export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
   }
 
   if (!task) {
+    if (workflowNode) {
+      return {
+        backPath,
+        message: `Task ${taskId} is still materializing for run ${run.runId}. Return to the DAG and wait for the live task record.`,
+        runDisplayId: run.runId,
+        state: "unavailable",
+        taskDisplayId: taskId
+      };
+    }
+
     return {
       backPath,
       message: `Task ${taskId} was not found for run ${run.runId}.`,

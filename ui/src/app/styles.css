@@ -1107,10 +1107,9 @@ pre {
 
 .execution-graph-node {
   position: absolute;
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 0.45rem;
-  min-height: 8.25rem;
   padding: 0.95rem 1rem;
   border: 1px solid var(--border-strong);
   border-radius: 1rem;
@@ -1118,6 +1117,7 @@ pre {
     linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 72%, transparent), transparent 70%),
     var(--surface-panel);
   color: var(--text-primary);
+  overflow: hidden;
   text-align: left;
   transition:
     border-color 140ms ease,
@@ -1175,9 +1175,13 @@ pre {
 
 .execution-graph-node-title {
   margin: 0;
+  display: -webkit-box;
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.35;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .execution-graph-node-status {
@@ -1185,6 +1189,17 @@ pre {
   font-size: 0.84rem;
   font-weight: 600;
   line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.execution-graph-node-footnote {
+  display: -webkit-box;
+  margin-top: auto;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .execution-summary-group {

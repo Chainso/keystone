@@ -295,6 +295,11 @@ Baseline compatibility facts already captured:
   **Decision:** Rebuilt `Execution` around a graph-first workspace that renders the live workflow as dependency-step DAG columns with selectable nodes, workflow status groups, and a selected-task inspector that hands off explicitly into task detail, while also letting the DAG appear as soon as workflow nodes materialize even if task rows lag briefly behind.
   **Rationale:** Phase 7 needed the execution default view to feel like an active workflow workspace rather than a link list, and the live route suite showed that `/workflow` can become ready before `/tasks`, so the graph could not remain blocked on richer task metadata.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 7 targeted fix pass
+  **Decision:** Tightened the workflow-first handoff by tracking task-record readiness separately from workflow-node readiness, disabling task-detail entry until the run-task row exists, clamping node cards to the fixed graph geometry, and extending route coverage across lagging and branching DAG states.
+  **Rationale:** Review found that the first Phase 7 cut could over-promise task detail during the workflow-before-tasks lag window, leaked Phase 8 review/chat wording into visible execution copy, and allowed graph cards to outgrow the layout math that positions nodes and edges.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -317,6 +322,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 6 completed: planning phases now use the shared split workspace with repo-owned Plate document rendering, canonical markdown source flows, and live preview-backed create/save/discard states.
 - [x] 2026-04-22 Phase 6 targeted fix pass completed: planning saves now persist the authored markdown source directly, title-only edits compare against the persisted save draft instead of raw editor state, and route coverage now asserts both rendered markdown structure and exact revision-save POST bodies.
 - [x] 2026-04-22 Phase 7 completed: execution now defaults to a graph-first workspace with dependency-step DAG rendering, workflow status groups, selected-task inspection, and an explicit task-detail handoff.
+- [x] 2026-04-22 Phase 7 targeted fix pass completed: execution handoff copy is now task-detail scoped, workflow-only nodes no longer over-promise task detail before task rows materialize, DAG cards are height-clamped to the fixed canvas math, and the targeted route suite now covers lagging plus branching workflows.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -355,6 +361,7 @@ Baseline compatibility facts already captured:
 - Plate-backed planning documents change both heading and list semantics in the DOM: document markdown headings can legitimately duplicate panel titles, and rendered list text no longer includes literal markdown markers like `- `. Route tests need to assert against the named document regions and rendered sentence content rather than raw markdown text nodes.
 - Plate's current markdown deserialize/serialize path is not safe as a Phase 6 persistence boundary for common authored forms like task lists and strikethrough. For this slice, Plate should render markdown source, but save/export must stay on the authored markdown string path.
 - The live run-detail refresh can surface a non-empty workflow graph before the task collection catches up. Phase 7 therefore has to project the DAG from workflow nodes first and enrich it with task-row metadata opportunistically instead of treating an empty task list as proof that execution is still unavailable.
+- The workflow-first lag window also needs an explicit task-record-readiness seam on both the DAG inspector and the task route. A workflow node is not yet an honest task-detail target until the corresponding `run_tasks` row has materialized.
 
 ## Outcomes & Retrospective
 
@@ -423,9 +430,10 @@ Phase 6 outcome on 2026-04-22:
 Phase 7 outcome on 2026-04-22:
 
 - `Execution` now opens into a graph-first workspace instead of the old depth-row link list: the main panel renders the workflow DAG as dependency-step columns with live connector paths, node status emphasis, and explicit selection that keeps the operator in the DAG until they choose to open task detail
-- the right rail now acts as the execution handoff surface for this phase: workflow status groups expose actionable task buckets, the selected-task inspector shows live description/dependency/downstream/conversation facts, and `Open task detail` hands the operator into the existing task route without pulling the Phase 8 chat/review redesign forward
+- the right rail now acts as the execution handoff surface for this phase: workflow status groups expose actionable task buckets, the selected-task inspector shows live description/dependency/downstream/conversation facts, and task detail only opens once the live task record is actually ready
 - the DAG can now render from `/v1/runs/:runId/workflow` as soon as workflow nodes exist, even if `/v1/runs/:runId/tasks` is still catching up after compile; task metadata opportunistically enriches the graph when present, but the default execution workspace no longer blocks on richer task rows just to show the live graph
-- targeted route coverage now asserts the graph summary, workflow status groups, DAG selection changes, ready-task default selection, and the delayed-materialization path after compile, matching the Phase 7 execution-workspace contract
+- the targeted fix pass kept the graph workflow-first while making the handoff honest: workflow-only nodes now stay selectable but show a disabled waiting state instead of a bogus open link, direct task routes stay in a materializing state while the task row lags, and graph cards are height-clamped so long titles/footnotes cannot drift off the fixed connector geometry
+- targeted route coverage now asserts the graph summary, workflow status groups, DAG selection changes, ready-task default selection, the workflow-before-tasks lag window, branching DAG navigation, and the delayed-materialization path after compile, matching the final Phase 7 execution-workspace contract
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx` pass on the Phase 7 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
@@ -753,7 +761,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
 - **Goal:** Rebuild the execution default workspace around the workflow graph and graph-to-task handoff.
 - **Scope Boundary:** In scope are graph presentation, node emphasis/state, summary groups, selection behavior, and task-detail navigation handoff. Out of scope are task chat and review sidebar cutover.
 - **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/features/execution/components/execution-workspace.tsx`, `ui/src/features/execution/use-execution-view-model.ts`.
@@ -763,8 +771,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** the execution default view reads as an active workflow workspace and hands off cleanly into task detail.
 - **Commit Expectation:** `redesign execution dag workspace`
 - **Known Constraints / Baseline Failures:** execution must still default to the DAG and use current workflow/task data truth.
-- **Completion Notes:** Rebuilt `ui/src/features/execution/components/execution-workspace.tsx` around a graph-first execution board: the main panel now renders dependency-step workflow columns with live connector paths, status-emphasized selectable nodes, and explicit graph-only selection state, while the right rail now exposes workflow status groups plus a selected-task inspector with dependency/downstream facts and an explicit `Open task detail` handoff. `ui/src/features/execution/use-execution-view-model.ts` now projects the execution board from live workflow nodes first and enriches it with task metadata when available, so the DAG can appear as soon as `/v1/runs/:runId/workflow` materializes even if `/v1/runs/:runId/tasks` is still catching up after compile. Targeted route coverage now proves the graph summary, workflow status groups, selection changes, ready-task defaulting, and delayed-materialization behavior. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
-- **Next Starter Context:** Phase 8 should treat the Phase 7 DAG workspace as stable. Keep the graph canvas, workflow status groups, selected-task inspector, workflow-first fallback when task rows lag, and explicit `Open task detail` handoff intact; focus on replacing the current task route internals with the real conversation/review workspace rather than reopening the default execution board.
+- **Completion Notes:** Rebuilt `ui/src/features/execution/components/execution-workspace.tsx` around a graph-first execution board: the main panel now renders dependency-step workflow columns with live connector paths, status-emphasized selectable nodes, and explicit graph-only selection state, while the right rail now exposes workflow status groups plus a selected-task inspector with dependency/downstream facts and the task-detail handoff. `ui/src/features/execution/use-execution-view-model.ts` now projects the execution board from live workflow nodes first and enriches it with task metadata when available, so the DAG can appear as soon as `/v1/runs/:runId/workflow` materializes even if `/v1/runs/:runId/tasks` is still catching up after compile. The targeted fix pass then made that workflow-first seam truthful by tracking task-record readiness separately from workflow-node readiness, disabling task-detail entry until the run-task row exists, keeping direct lagging task routes in a materializing state, replacing Phase 8 review/chat wording with task-detail-only copy, and clamping DAG cards to the fixed node geometry used by the layout math. Targeted route coverage now proves the graph summary, workflow status groups, selection changes, ready-task defaulting, lagging workflow-node behavior, branching DAG navigation, and delayed-materialization behavior. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
+- **Next Starter Context:** Phase 8 should treat the Phase 7 DAG workspace as stable. Keep the graph canvas, workflow status groups, selected-task inspector, workflow-first fallback when task rows lag, the disabled waiting state for workflow-only nodes, and the fixed node-card geometry intact; focus on replacing the current task route internals with the real conversation/review workspace rather than reopening the default execution board.
 
 ### Phase 8: Task Detail Review Workspace
 

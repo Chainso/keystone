@@ -677,6 +677,194 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
         }
       }
     })
+  },
+  "run-110": {
+    ...createRunFixture("run-110", {
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-110-architecture-v1",
+          compiledAt: "2026-04-20T13:20:00.000Z",
+          executionPlanRevisionId: "run-110-execution-plan-v1",
+          specificationRevisionId: "run-110-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "scripted",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-110",
+        startedAt: "2026-04-20T13:21:00.000Z",
+        status: "active",
+        workflowInstanceId: "wf-run-110"
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Build the shared execution plan foundation.",
+          endedAt: "2026-04-20T13:23:00.000Z",
+          logicalTaskId: "TASK-110",
+          name: "Execution plan foundation",
+          runId: "run-110",
+          startedAt: "2026-04-20T13:21:30.000Z",
+          status: "completed",
+          taskId: "task-110-foundation",
+          updatedAt: "2026-04-20T13:23:00.000Z"
+        },
+        {
+          conversation: {
+            agentClass: "KeystoneThinkAgent",
+            agentName: "tenant:tenant-dev-local:run:run-110:task:task-110-ui"
+          },
+          dependsOn: ["task-110-foundation"],
+          description: "Apply the workflow-first execution workspace in the UI shell.",
+          endedAt: null,
+          logicalTaskId: "TASK-111",
+          name: "Workflow-first UI cutover",
+          runId: "run-110",
+          startedAt: "2026-04-20T13:24:00.000Z",
+          status: "active",
+          taskId: "task-110-ui",
+          updatedAt: "2026-04-20T13:24:00.000Z"
+        },
+        {
+          conversation: null,
+          dependsOn: ["task-110-foundation"],
+          description: "Wire the run routes and data seams for the branching DAG state.",
+          endedAt: null,
+          logicalTaskId: "TASK-112",
+          name: "API route wiring",
+          runId: "run-110",
+          startedAt: null,
+          status: "ready",
+          taskId: "task-110-api",
+          updatedAt: "2026-04-20T13:24:00.000Z"
+        },
+        {
+          conversation: null,
+          dependsOn: ["task-110-ui", "task-110-api"],
+          description: "Validate the merged execution changes before release.",
+          endedAt: null,
+          logicalTaskId: "TASK-113",
+          name: "Validation sweep",
+          runId: "run-110",
+          startedAt: null,
+          status: "pending",
+          taskId: "task-110-verify",
+          updatedAt: "2026-04-20T13:25:00.000Z"
+        }
+      ],
+      workflow: {
+        edges: [
+          { fromTaskId: "task-110-foundation", toTaskId: "task-110-ui" },
+          { fromTaskId: "task-110-foundation", toTaskId: "task-110-api" },
+          { fromTaskId: "task-110-ui", toTaskId: "task-110-verify" },
+          { fromTaskId: "task-110-api", toTaskId: "task-110-verify" }
+        ],
+        nodes: [
+          {
+            dependsOn: [],
+            name: "Execution plan foundation",
+            status: "completed",
+            taskId: "task-110-foundation"
+          },
+          {
+            dependsOn: ["task-110-foundation"],
+            name: "Workflow-first UI cutover",
+            status: "active",
+            taskId: "task-110-ui"
+          },
+          {
+            dependsOn: ["task-110-foundation"],
+            name: "API route wiring",
+            status: "ready",
+            taskId: "task-110-api"
+          },
+          {
+            dependsOn: ["task-110-ui", "task-110-api"],
+            name: "Validation sweep",
+            status: "pending",
+            taskId: "task-110-verify"
+          }
+        ],
+        summary: {
+          activeTasks: 1,
+          cancelledTasks: 0,
+          completedTasks: 1,
+          failedTasks: 0,
+          pendingTasks: 1,
+          readyTasks: 1,
+          totalTasks: 4
+        }
+      }
+    })
+  },
+  "run-111": {
+    ...createRunFixture("run-111", {
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-111-architecture-v1",
+          compiledAt: "2026-04-20T13:26:00.000Z",
+          executionPlanRevisionId: "run-111-execution-plan-v1",
+          specificationRevisionId: "run-111-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "think_live",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-111",
+        startedAt: "2026-04-20T13:26:30.000Z",
+        status: "active",
+        workflowInstanceId: "wf-run-111"
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Materialize the first task row from the compiled workflow.",
+          endedAt: "2026-04-20T13:27:30.000Z",
+          logicalTaskId: "TASK-120",
+          name: "Foundation bootstrap",
+          runId: "run-111",
+          startedAt: "2026-04-20T13:26:45.000Z",
+          status: "completed",
+          taskId: "task-111-foundation",
+          updatedAt: "2026-04-20T13:27:30.000Z"
+        }
+      ],
+      workflow: {
+        edges: [
+          { fromTaskId: "task-111-foundation", toTaskId: "task-111-ui" },
+          { fromTaskId: "task-111-foundation", toTaskId: "task-111-api" }
+        ],
+        nodes: [
+          {
+            dependsOn: [],
+            name: "Foundation bootstrap",
+            status: "completed",
+            taskId: "task-111-foundation"
+          },
+          {
+            dependsOn: ["task-111-foundation"],
+            name: "Lagging UI task row",
+            status: "active",
+            taskId: "task-111-ui"
+          },
+          {
+            dependsOn: ["task-111-foundation"],
+            name: "Lagging API task row",
+            status: "ready",
+            taskId: "task-111-api"
+          }
+        ],
+        summary: {
+          activeTasks: 1,
+          cancelledTasks: 0,
+          completedTasks: 1,
+          failedTasks: 0,
+          pendingTasks: 0,
+          readyTasks: 1,
+          totalTasks: 3
+        }
+      }
+    })
   }
 };
 
@@ -2510,7 +2698,7 @@ describe("Run routes", () => {
     );
     expect(
       screen.getByText(
-        "Columns track dependency steps, and parallel tasks remain grouped in the same step."
+        "Select a task node to inspect its current handoff, then open task detail when the live task record is ready."
       )
     ).toBeInTheDocument();
   });
@@ -2535,6 +2723,77 @@ describe("Run routes", () => {
         name: /Architecture decisions/i
       })
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps the task-detail handoff honest while workflow nodes are ahead of task rows", async () => {
+    renderRunRoute("/runs/run-111/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(screen.getAllByText("Task metadata is still loading from the live task list.").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Task detail is still waiting on the live task record for this workflow node.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open task detail" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Task detail is loading" })).toBeDisabled();
+    expect(screen.getByText("Task record is still materializing")).toBeInTheDocument();
+
+    const selectedTaskPanel = screen.getByRole("heading", { name: "Selected task" }).closest("section");
+
+    expect(selectedTaskPanel).toBeTruthy();
+    fireEvent.click(
+      within(selectedTaskPanel as HTMLElement).getByRole("button", {
+        name: /Foundation bootstrap/i
+      })
+    );
+
+    expect(screen.getByText("Materialize the first task row from the compiled workflow.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
+      "href",
+      "/runs/run-111/execution/tasks/task-111-foundation"
+    );
+    expect(screen.getByText("Task detail is ready for this task from the current run task record.")).toBeInTheDocument();
+  });
+
+  it("renders branching DAG steps and supports right-rail task selection across the branch", async () => {
+    renderRunRoute("/runs/run-110/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Execution summary")).toHaveTextContent(
+      "4 tasks across 3 dependency steps"
+    );
+    expect(screen.getByText("2 parallel tasks in this step")).toBeInTheDocument();
+    expect(screen.getByText("Apply the workflow-first execution workspace in the UI shell.")).toBeInTheDocument();
+
+    const workflowStatusPanel = screen.getByRole("heading", { name: "Workflow status" }).closest("section");
+
+    expect(workflowStatusPanel).toBeTruthy();
+    fireEvent.click(
+      within(workflowStatusPanel as HTMLElement).getByRole("button", {
+        name: /Validation sweep/i
+      })
+    );
+
+    expect(screen.getByText("Validate the merged execution changes before release.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This task is still waiting on 2 prerequisites, but task detail is already available from the current run task record."
+      )
+    ).toBeInTheDocument();
+
+    const selectedTaskPanel = screen.getByRole("heading", { name: "Selected task" }).closest("section");
+
+    expect(selectedTaskPanel).toBeTruthy();
+    fireEvent.click(
+      within(selectedTaskPanel as HTMLElement).getByRole("button", {
+        name: /API route wiring/i
+      })
+    );
+
+    expect(screen.getByText("Wire the run routes and data seams for the branching DAG state.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
+      "href",
+      "/runs/run-110/execution/tasks/task-110-api"
+    );
   });
 
   it("defaults the execution inspector to the ready task when no work is active", async () => {
@@ -2632,6 +2891,19 @@ describe("Run routes", () => {
     expect(await screen.findByText("Unable to load task artifacts")).toBeInTheDocument();
     expect(screen.getByText("Artifact load failed.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("keeps a lagging workflow task route in a truthful materializing state", async () => {
+    renderRunRoute("/runs/run-111/execution/tasks/task-111-ui");
+
+    expect(await screen.findByRole("heading", { name: "run-111 / task-111-ui" })).toBeInTheDocument();
+    expect(screen.getByText("Execution unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Task task-111-ui is still materializing for run run-111. Return to the DAG and wait for the live task record."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Task not found")).not.toBeInTheDocument();
   });
 
   it("surfaces an invalid task route as a truthful not-found state", async () => {
