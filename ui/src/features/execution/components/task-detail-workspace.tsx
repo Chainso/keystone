@@ -203,7 +203,9 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
             <div>
               <h2 className="workspace-panel-title">Task conversation</h2>
             </div>
-            {model.state === "ready" ? <StatusPill label={model.status} /> : null}
+            {model.state === "ready" ? (
+              <StatusPill label={model.statusLabel} tone={model.statusTone} />
+            ) : null}
           </header>
 
           {model.state === "ready" ? (

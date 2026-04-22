@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { StatusPill } from "../../../shared/layout/status-pill";
 import { RunPhaseStepper } from "./run-phase-stepper";
@@ -7,7 +7,8 @@ import type { RunPhaseStepViewModel } from "../use-run-view-model";
 interface RunDetailScaffoldProps {
   displayId: string;
   summary: string;
-  status: string;
+  statusLabel: string;
+  statusTone: ComponentProps<typeof StatusPill>["tone"];
   updatedLabel: string;
   phaseSteps: RunPhaseStepViewModel[];
   children: ReactNode;
@@ -16,7 +17,8 @@ interface RunDetailScaffoldProps {
 export function RunDetailScaffold({
   displayId,
   summary,
-  status,
+  statusLabel,
+  statusTone,
   updatedLabel,
   phaseSteps,
   children
@@ -30,7 +32,7 @@ export function RunDetailScaffold({
         </div>
 
         <div className="filter-chip-row">
-          <StatusPill label={status} />
+          <StatusPill label={statusLabel} tone={statusTone} />
           <p className="document-name">{updatedLabel}</p>
         </div>
       </header>

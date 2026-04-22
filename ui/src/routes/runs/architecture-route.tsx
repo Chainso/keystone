@@ -1,8 +1,8 @@
 import { useRunPlanningPhaseViewModel } from "../../features/runs/use-run-view-model";
-import { ArchitectureWorkspace } from "../../features/runs/components/architecture-workspace";
+import { PlanningWorkspaceFrame } from "../../features/runs/components/planning-workspace";
 
 export function ArchitectureRoute() {
   const model = useRunPlanningPhaseViewModel("architecture");
 
-  return <ArchitectureWorkspace {...model} />;
+  return <PlanningWorkspaceFrame {...model} />;
 }

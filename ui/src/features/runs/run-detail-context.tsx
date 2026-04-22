@@ -22,8 +22,9 @@ import {
   RunManagementApiError,
   type RunManagementApi
 } from "./run-management-api";
-
-type RunPlanningPhaseId = "specification" | "architecture" | "execution-plan";
+import { hasCompiledWorkflowData } from "./run-execution-state";
+import { canonicalDocumentPathByPhase } from "./run-planning-config";
+import type { RunPlanningPhaseId } from "./run-types";
 
 interface RunPlanningDocumentBaseState {
   document: DocumentResource | null;
@@ -107,12 +108,6 @@ const planningPhaseDocumentKind: Record<RunPlanningPhaseId, DocumentResource["ki
   specification: "specification",
   architecture: "architecture",
   "execution-plan": "execution_plan"
-};
-
-const planningPhaseDocumentPath: Record<RunPlanningPhaseId, string> = {
-  specification: "specification",
-  architecture: "architecture",
-  "execution-plan": "execution-plan"
 };
 
 function buildEmptyPlanningDocumentState(
@@ -247,13 +242,6 @@ async function loadPlanningDocumentStates(
   );
 
   return Object.fromEntries(states) as Record<RunPlanningPhaseId, RunPlanningDocumentState>;
-}
-
-function hasCompiledWorkflowData(input: {
-  run: RunResource;
-  workflow: WorkflowGraphResource;
-}) {
-  return input.run.compiledFrom !== null && input.workflow.summary.totalTasks > 0;
 }
 
 async function fetchRunDetailSnapshot(api: RunManagementApi, runId: string): Promise<LoadedRunDetailSnapshot> {
@@ -433,7 +421,7 @@ export function RunDetailProvider({
     }
 
     const executionAvailable = hasCompiledWorkflowData({
-      run: latestSnapshot.run,
+      compiledFrom: latestSnapshot.run.compiledFrom,
       workflow: latestSnapshot.workflow
     });
     const applied = setRunDetailSnapshot(latestSnapshot, {
@@ -562,7 +550,7 @@ export function RunDetailProvider({
       try {
         const createdDocument = await api.createRunDocument(runId, {
           kind: planningPhaseDocumentKind[phaseId],
-          path: planningPhaseDocumentPath[phaseId]
+          path: canonicalDocumentPathByPhase[phaseId]
         });
 
         setPlanningDocumentState(phaseId, {

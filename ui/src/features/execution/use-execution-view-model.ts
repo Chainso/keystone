@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
 
 import { buildRunPhasePath, buildRunTaskPath } from "../../shared/navigation/run-phases";
-import { useRunDetail } from "../runs/run-detail-context";
-
-type ConversationLocator = {
-  agentClass: string;
-  agentName: string;
-};
+import type { StatusTone } from "../../shared/layout/status-pill";
+import { getTaskStatusPresentation } from "../runs/run-status";
+import type { ConversationLocator } from "../runs/run-types";
+import { useReadyRunDetail } from "../runs/use-ready-run-detail";
 
 export interface ExecutionNodeViewModel {
   detailPath: string;
   dependencyCount: number;
-  status: string;
+  statusLabel: string;
+  statusTone: StatusTone;
   taskId: string;
   title: string;
 }
@@ -74,7 +73,8 @@ export interface TaskDetailReadyViewModel {
   downstreamTasks: TaskDependencyViewModel[];
   runDisplayId: string;
   state: "ready";
-  status: string;
+  statusLabel: string;
+  statusTone: StatusTone;
   taskDisplayId: string;
   title: string;
 }
@@ -105,16 +105,6 @@ function formatByteSize(sizeBytes: number | null) {
   }
 
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function useReadyRunDetail() {
-  const runDetail = useRunDetail();
-
-  if (runDetail.meta.status !== "ready" || !runDetail.state.run || !runDetail.state.workflow) {
-    throw new Error("Execution view models require a ready RunDetailProvider.");
-  }
-
-  return runDetail;
 }
 
 function groupTasksByDepth(tasks: ReturnType<typeof useReadyRunDetail>["state"]["tasks"]) {
@@ -175,7 +165,7 @@ function buildExecutionRows(
       tasks: rowTasks.map((task) => ({
         detailPath: buildRunTaskPath(runId, task.taskId),
         dependencyCount: task.dependsOn.length,
-        status: task.status,
+        ...getTaskStatusPresentation(task.status),
         taskId: task.taskId,
         title: task.name
       }))
@@ -364,7 +354,7 @@ export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
     downstreamTasks,
     runDisplayId: run.runId,
     state: "ready",
-    status: task.status,
+    ...getTaskStatusPresentation(task.status),
     taskDisplayId: task.taskId,
     title: task.name
   };

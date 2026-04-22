@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
-import { formatUtcTimestamp } from "../../shared/formatting/date";
 import { buildRunPath } from "../../shared/navigation/run-phases";
 import {
   useProjectManagement,
   useProjectManagementApi
 } from "../projects/project-context";
 import { useRunManagementApi } from "./run-detail-context";
+import { buildRunActivityLabel, getRunStatusPresentation } from "./run-status";
+import type { StatusTone } from "../../shared/layout/status-pill";
 import type {
   ApiProjectRunRecord,
   ProjectRunRecord,
@@ -23,7 +24,8 @@ interface LiveRunRowViewModel {
   executionEngine: string;
   latestActivityLabel: string;
   runId: string;
-  status: string;
+  statusLabel: string;
+  statusTone: StatusTone;
   workflowInstanceId: string;
 }
 
@@ -56,22 +58,6 @@ export interface RunsIndexViewModel {
   title: string;
 }
 
-function buildLiveRunActivityLabel(run: ApiProjectRunRecord) {
-  if (run.endedAt) {
-    return `Ended ${formatUtcTimestamp(run.endedAt)}`;
-  }
-
-  if (run.startedAt) {
-    return `Started ${formatUtcTimestamp(run.startedAt)}`;
-  }
-
-  if (run.compiledFrom) {
-    return `Compiled ${formatUtcTimestamp(run.compiledFrom.compiledAt)}`;
-  }
-
-  return "No recorded activity yet";
-}
-
 function getRunsErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -84,9 +70,13 @@ function normalizeLiveRuns(runs: ApiProjectRunRecord[]): LiveRunRowViewModel[] {
   return runs.map((run) => ({
     detailPath: buildRunPath(run.runId),
     executionEngine: run.executionEngine,
-    latestActivityLabel: buildLiveRunActivityLabel(run),
+    latestActivityLabel: buildRunActivityLabel({
+      compiledAt: run.compiledFrom?.compiledAt ?? null,
+      endedAt: run.endedAt,
+      startedAt: run.startedAt
+    }),
     runId: run.runId,
-    status: run.status,
+    ...getRunStatusPresentation(run.status),
     workflowInstanceId: run.workflowInstanceId
   }));
 }
