@@ -98,7 +98,7 @@ Expected proof:
 - compile provenance is present
 - at least one task exists
 - public `scripted` and `think_live` proofs expose a well-formed workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
-- the scheduler fans out the union of `active` and `ready` tasks without collapsing the DAG back to a serialized single-root launch
+- the public workflow/task surfaces match the broader DAG scheduler contract; the dedicated workflow and repository tests cover the `active + ready` poll behavior directly
 - Think runs expose task conversation locators
 
 The helper/runtime split matters here:
@@ -135,14 +135,14 @@ KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run
 KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate
 ```
 
-Sandbox inspection after a live Think run:
+Explicit live Think helper:
 
 ```bash
 npm run demo:run:think-live
-KEYSTONE_EXECUTION_ENGINE=think_live npm run sandbox:shell
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate
 ```
 
-The latest host-local live proof evidence on 2026-04-21 is mixed: a healthy `/v1/health` response was followed by `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run` failing with `Expected archived run, received failed.`, and a later recheck on `127.0.0.1:8787` could not connect at all. Treat the explicit live helper as the truthful contract surface, but do not assume this machine will always produce a fresh archived live proof without additional environment repair.
+`demo:run:think-live` is only the explicit live-engine wrapper for `demo:run`; it does not wire the internal `preserveSandbox` path through the public helper/API contract. The latest host-local live proof evidence on 2026-04-21 is mixed: a healthy `/v1/health` response was followed by `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run` failing with `Expected archived run, received failed.`, and a later recheck on `127.0.0.1:8787` could not connect at all. Treat the explicit live helper as the truthful contract surface, but do not assume this machine will always produce a fresh archived live proof without additional environment repair.
 
 ## Manual API Flow
 

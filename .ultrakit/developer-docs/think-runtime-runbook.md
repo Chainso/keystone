@@ -91,7 +91,7 @@ When one of these pairs archives successfully, it proves:
 - compile provenance is recorded on the run
 - tasks are materialized from the compiled DAG
 - public `scripted` and `think_live` proofs expose a well-formed workflow graph with at least three tasks, at least two roots, and at least one dependency edge
-- `RunWorkflow` fans out the union of `active` and `ready` tasks while preserving dependency semantics
+- the public workflow/task surfaces are consistent with the broader DAG scheduler contract; the dedicated workflow and repository tests cover the `active + ready` poll behavior directly
 - Think execution exposes task conversation locators on `run_tasks`
 
 The runtime/helper split is intentional:
@@ -100,16 +100,16 @@ The runtime/helper split is intentional:
 - only the zero-argument `demo:run` helper stays on `scripted`
 - `think_mock` remains the deterministic fixture-scoped path
 
-## Inspection-Oriented Live Run
+## Explicit Live Think Helper
 
-For a live-model Think turn that preserves the sandbox for inspection:
+Use the explicit live helper pair when you want the live engine path without changing the zero-argument `demo:run` default:
 
 ```bash
 npm run demo:run:think-live
-KEYSTONE_EXECUTION_ENGINE=think_live npm run sandbox:shell
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate
 ```
 
-This uses the same document-first contract as the normal live pair, but keeps the run sandbox available after completion.
+`demo:run:think-live` is a convenience wrapper for `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run`. The public helper/API contract does not expose `preserveSandbox`, so do not treat it as a guaranteed post-completion sandbox-inspection path.
 
 ## Manual Validation Notes
 
