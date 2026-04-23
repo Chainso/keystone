@@ -86,6 +86,8 @@ Compile requires all three run planning documents:
 - `architecture`
 - `execution_plan`
 
+Compile is document-first: it turns those three documents into the persisted execution DAG and does not select or inspect a primary repo from project config.
+
 ## Public API Shape
 
 The current operator-facing backend surface is:
@@ -179,6 +181,8 @@ Artifact refs should always capture real object identity:
   - `scripted`
   - `think_mock`
   - `think_live`
+- `think_live` is the intended multi-component execution path
+- `scripted` remains a conservative single-component validation seam
 - `git_url` project components are accepted by default
 
 ## What Should Not Return

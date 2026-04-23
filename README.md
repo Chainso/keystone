@@ -143,9 +143,11 @@ npm run demo:ensure-project
 
 Run that only after Wrangler dev is already serving the local API. `demo:run` already calls the same helper automatically before it posts the run.
 
-Current limitation:
+Current execution split:
 
-- project-backed compile still requires exactly one unambiguous executable component; multi-component compile-target selection is deferred until a real product concept exists
+- compile is document-first and no longer requires a project-level compile-target selector
+- `think_live` is the intended multi-component execution path
+- `scripted` remains intentionally conservative and supports only single-component projects
 
 ## Demo Flow
 
@@ -180,14 +182,15 @@ The current shipped runtime and proof contract is:
 
 - omitting `executionEngine` on project-backed run creation defaults the API/runtime path to `think_live`
 - the zero-argument `demo:run` helper intentionally stays on `scripted` until a fresh host-local live proof archives reliably again
-- `think_live` can execute any single-target project-backed compiled DAG that reaches `TaskWorkflow`
+- `think_live` can execute project-backed compiled DAGs against the full materialized project workspace, including multi-component projects
 - `RunWorkflow` fans out the union of `active` and `ready` tasks on each scheduler poll, so newly unblocked work can launch while unrelated branches stay active
 - `demo:validate` now fails closed if run detail is malformed and, for public `scripted` or `think_live` proofs, requires a well-formed acyclic workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
 - Think runs still must expose task conversation locators on `run_tasks`
 
 Current limits and caveats:
 
-- project-backed compile still requires exactly one unambiguous executable component; multi-component compile-target selection is deferred until a real product concept exists
+- compile is document-first and no longer requires a project-level compile target
+- `scripted` still supports only single-component projects and fails fast for multi-component workspaces; use `think_live` for multi-component execution
 - compile still expects the run `specification`, `architecture`, and `execution_plan` documents before execution
 - the latest host-local live-proof evidence on 2026-04-21 reached the local Worker, then `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run` failed with `Expected archived run, received failed.` and the latest run row showed `executionEngine: "think_live"`, `status: "failed"`, and `compiledFrom: null`; later that day `curl -i http://127.0.0.1:8787/v1/health` could not connect, so no fresher local archived proof is recorded yet
 
@@ -226,7 +229,7 @@ KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate -- --run-id=<run-id-f
 The current Think path preserves a few intentional boundaries:
 
 - `think_mock` remains the deterministic fixture-scoped validation path
-- `think_live` means live compile plus compiled Think task execution for single-target project-backed runs
+- `think_live` means live compile plus compiled Think task execution against the full project workspace, including multi-component projects
 - the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
 - final run success is anchored on a `run_summary` artifact and an archived run row
 

@@ -418,6 +418,13 @@ describe("TaskWorkflow scripted runtime", () => {
     const step = createStep();
     const result = await workflow.run(createWorkflowEvent() as never, step as never);
 
+    expect(mocked.taskSession.startProcess).toHaveBeenCalledWith({
+      command: "npm test",
+      cwd: "/workspace/runs/run-123/tasks/task-live-implementation-run-task/code/repo",
+      env: {
+        KEYSTONE_FIXTURE_PROJECT: "1"
+      }
+    });
     expect(mocked.getTaskSessionStub).toHaveBeenCalledWith(
       expect.anything(),
       "tenant-fixture",
@@ -455,6 +462,150 @@ describe("TaskWorkflow scripted runtime", () => {
       exitCode: 0,
       workflowStatus: "complete"
     });
+  });
+
+  it("rejects scripted execution for multi-component projects instead of running from the shared task root", async () => {
+    mocked.getProject.mockResolvedValueOnce({
+      tenantId: "tenant-fixture",
+      projectId: "project-multi-target",
+      projectKey: "acme-multi-target-project",
+      displayName: "Acme Multi-Target Project",
+      description: "Two-component scripted project.",
+      ruleSet: {
+        reviewInstructions: [],
+        testInstructions: []
+      },
+      components: [
+        {
+          componentKey: "web",
+          displayName: "Acme Web",
+          kind: "git_repository",
+          config: {
+            localPath: "./projects/acme-web",
+            ref: "main"
+          },
+          ruleOverride: null
+        },
+        {
+          componentKey: "worker",
+          displayName: "Acme Worker",
+          kind: "git_repository",
+          config: {
+            localPath: "./projects/acme-worker",
+            ref: "main"
+          },
+          ruleOverride: null
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_PROJECT_MODE",
+          value: "multi-target"
+        }
+      ],
+      createdAt: new Date("2026-04-20T00:00:00.000Z"),
+      updatedAt: new Date("2026-04-20T00:00:00.000Z")
+    });
+    mocked.taskSession.ensureWorkspace.mockResolvedValueOnce({
+      sandboxId: "sandbox-123",
+      workspace: {
+        workspaceId: "workspace-run-123",
+        strategy: "worktree",
+        defaultComponentKey: "web",
+        repoUrl: "./projects/acme-web",
+        repoRef: "main",
+        baseRef: "main",
+        workspaceRoot: "/workspace/runs/run-123",
+        workspaceTargetPath: "/workspace/runs/run-123/tasks/task-live-implementation-run-task",
+        codeRoot: "/workspace/runs/run-123/tasks/task-live-implementation-run-task/code",
+        defaultCwd: "/workspace/runs/run-123/tasks/task-live-implementation-run-task/code",
+        repositoryPath: "/workspace/runs/run-123/repositories/web",
+        worktreePath: "/workspace/runs/run-123/tasks/task-live-implementation-run-task/code/web",
+        branchName: "keystone/task-live-implementation-run-task",
+        headSha: "abc123",
+        components: [
+          {
+            componentKey: "web",
+            worktreePath: "/workspace/runs/run-123/tasks/task-live-implementation-run-task/code/web",
+            branchName: "keystone/task-live-implementation-run-task",
+            baseRef: "main",
+            repoUrl: "./projects/acme-web",
+            repoRef: "main",
+            repositoryPath: "/workspace/runs/run-123/repositories/web",
+            headSha: "abc123"
+          },
+          {
+            componentKey: "worker",
+            worktreePath: "/workspace/runs/run-123/tasks/task-live-implementation-run-task/code/worker",
+            branchName: "keystone/task-live-implementation-run-task",
+            baseRef: "main",
+            repoUrl: "./projects/acme-worker",
+            repoRef: "main",
+            repositoryPath: "/workspace/runs/run-123/repositories/worker",
+            headSha: "def456"
+          }
+        ],
+        agentBridge: {
+          layout: {
+            workspaceRoot: "/workspace",
+            artifactsInRoot: "/artifacts/in",
+            artifactsOutRoot: "/artifacts/out",
+            keystoneRoot: "/keystone"
+          },
+          targets: {
+            workspaceRoot: "/workspace/runs/run-123/tasks/task-live-implementation-run-task",
+            artifactsInRoot: "/artifacts/in",
+            artifactsOutRoot: "/artifacts/out",
+            keystoneRoot: "/keystone"
+          },
+          readOnlyRoots: ["/artifacts/in", "/keystone"],
+          writableRoots: ["/workspace", "/artifacts/out"],
+          environment: {
+            KEYSTONE_PROJECT_MODE: "multi-target"
+          },
+          controlFiles: {
+            session: "/keystone/session.json",
+            filesystem: "/keystone/filesystem.json",
+            artifacts: "/keystone/artifacts.json"
+          },
+          projectedArtifacts: []
+        }
+      }
+    } as never);
+
+    const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
+    const step = createStep();
+
+    await expect(workflow.run(createWorkflowEvent() as never, step as never)).rejects.toThrow(
+      /scripted execution engine currently supports only projects with exactly one materialized component/i
+    );
+
+    expect(mocked.taskSession.ensureWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        components: [
+          expect.objectContaining({
+            componentKey: "web",
+            repoUrl: "./projects/acme-web"
+          }),
+          expect.objectContaining({
+            componentKey: "worker",
+            repoUrl: "./projects/acme-worker"
+          })
+        ],
+        env: {
+          KEYSTONE_PROJECT_MODE: "multi-target"
+        }
+      })
+    );
+    expect(mocked.taskSession.startProcess).not.toHaveBeenCalled();
+    expect(mocked.runTasks).toEqual([
+      expect.objectContaining({
+        runTaskId: "run-task-123",
+        status: "failed",
+        startedAt: expect.any(Date),
+        endedAt: expect.any(Date)
+      })
+    ]);
   });
 
   it("persists an empty task-log artifact when live logs are unavailable", async () => {

@@ -461,7 +461,7 @@ function createMultiTargetProjectRecord(): StoredProject {
     projectId: "project-multi-target",
     projectKey: "acme-multi-target-project",
     displayName: "Acme Multi-Target Project",
-    description: "Two-target project that requires explicit compile selection.",
+    description: "Two-component project for multi-component Think execution.",
     ruleSet: {
       reviewInstructions: ["Summarize the implementation outcome."],
       testInstructions: ["Run the Acme app tests before handoff."]
@@ -846,19 +846,19 @@ describe("TaskWorkflow Think runtime", () => {
     ]);
   });
 
-  it("rejects think/live for non-fixture projects without a single compile target", async () => {
+  it("runs think/live against the full workspace for multi-component projects", async () => {
     const project = createMultiTargetProjectRecord();
     mocked.getProject.mockResolvedValueOnce(project);
 
     const workflow = new TaskWorkflow({} as ExecutionContext, createEnv() as never);
     const step = createStep();
-
-    await expect(
-      workflow.run(
-        createWorkflowEvent("think_live", toProjectSummary(project)) as never,
-        step as never
-      )
-    ).rejects.toThrow(/live Think runtime currently supports only projects that resolve to exactly one compile target/i);
+    const result = await workflow.run(
+      createWorkflowEvent("think_live", toProjectSummary(project)) as never,
+      step as never
+    );
+    const calls =
+      mocked.runImplementerTurn.mock.calls as unknown as Array<[RunImplementerTurnCall]>;
+    const call = calls[0]?.[0];
 
     expect(mocked.taskSession.ensureWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -877,17 +877,26 @@ describe("TaskWorkflow Think runtime", () => {
         }
       })
     );
-    expect(mocked.runImplementerTurn).not.toHaveBeenCalled();
+    expect(call?.prompt).toContain("Project: Acme Multi-Target Project (acme-multi-target-project)");
+    expect(call?.prompt).toContain(
+      "create a git commit in each changed component repo/worktree"
+    );
     expect(mocked.runTasks).toEqual([
       expect.objectContaining({
         runTaskId: "run-task-123",
-        status: "failed",
+        status: "completed",
         conversationAgentClass: "KeystoneThinkAgent",
         conversationAgentName: "tenant:tenant-fixture:run:run-123:task:task-session-run-task-123",
         startedAt: expect.any(Date),
         endedAt: expect.any(Date)
       })
     ]);
+    expect(result).toMatchObject({
+      runTaskId: "run-task-123",
+      processStatus: "completed",
+      exitCode: 0,
+      workflowStatus: "complete"
+    });
     expect(mocked.taskSession.teardown).toHaveBeenCalledTimes(1);
   });
 
