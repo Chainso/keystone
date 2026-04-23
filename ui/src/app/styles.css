@@ -1445,6 +1445,19 @@ pre {
   border-left: 2px solid var(--accent-line);
 }
 
+.markdown-document-surface-content .slate-hr {
+  margin: 0;
+}
+
+.markdown-document-surface-content .slate-hr > div {
+  padding: 0.35rem 0;
+}
+
+.markdown-document-surface-content .slate-hr hr {
+  border: 0;
+  border-top: 1px solid var(--border-muted);
+}
+
 .markdown-document-surface-content .slate-code_block {
   overflow-x: auto;
   padding: 0.95rem 1rem;

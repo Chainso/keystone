@@ -41,6 +41,15 @@ If you need the manual path instead, use:
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
 
+If you need unminified React errors or normal Vite dev-server behavior while still talking to the local Worker APIs, run this in a second host shell and open the printed Vite URL instead of the Wrangler asset URL:
+
+```bash
+export KEYSTONE_DEV_PROXY_TARGET="${KEYSTONE_BASE_URL:-http://127.0.0.1:8787}"
+npm run dev:ui:serve
+```
+
+`dev:ui:serve` proxies `/v1`, `/agents`, `/internal`, and `/healthz` to the local Worker so the UI can stay in true dev mode without changing the backend process.
+
 Run Wrangler from a normal host shell on this machine. Inside the Codex sandbox it still fails before listening with `uv_interface_addresses returned Unknown system error 1`.
 
 If Wrangler binds a non-default port, export it before running helper scripts:

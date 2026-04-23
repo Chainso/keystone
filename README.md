@@ -30,6 +30,7 @@ npm run test:workflows
 npm run build:ui
 npm run build
 npm run dev:ui
+npm run dev:ui:serve
 npm run dev:zellij
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
@@ -38,13 +39,15 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 `npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the workspace shell while Wrangler is already running.
 
+When you need real React development errors instead of the minified production bundle, run `npm run dev:ui:serve` in a second terminal and open the Vite URL it prints, usually `http://127.0.0.1:5173`. That serves the UI in Vite dev mode and proxies `/v1`, `/agents`, `/internal`, and `/healthz` back to the local Worker at `KEYSTONE_DEV_PROXY_TARGET` or `KEYSTONE_BASE_URL` (default `http://127.0.0.1:8787`).
+
 `npm run dev:zellij` is the checked-in helper for the standard UI scaffold workflow. After Postgres is up and `npm run db:migrate` has completed, it opens zellij with vertically split panes that run `npx localflare` and `npm run dev:ui` from repo root, then opens the local UI in the default browser once `/v1/health` responds at `http://127.0.0.1:8787`. Use it from a normal host shell, not inside the Codex sandbox, because local Worker startup on this machine still needs host execution. If you need a different browser target, export `KEYSTONE_BROWSER_URL` or `KEYSTONE_BASE_URL` first. If you want to suppress browser launch, export `KEYSTONE_OPEN_BROWSER=0`.
 
 ## UI Scaffold
 
 The current UI is a structure-first React SPA under `ui/` served through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
 
-For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manual path or do not use zellij, keep using `npm run dev` plus `npm run dev:ui` in separate terminals.
+For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manual path or do not use zellij, keep using `npm run dev` plus `npm run dev:ui` in separate terminals. If you are debugging frontend rendering issues, switch the second terminal to `npm run dev:ui:serve` and use the Vite URL instead of the Worker-served asset URL.
 
 Current UI scope:
 
@@ -57,6 +60,7 @@ Current UI scope:
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
 - planning and task detail conversations rendered through assistant-ui over the persisted Cloudflare conversation locator contract exposed at `/agents/*`
+- run planning chats now get run-scoped sandbox inspection context too: specification, architecture, and execution-plan agents can inspect `/workspace`, projected run artifacts, and project env-backed bash output while keeping distinct planning responsibilities
 - explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail review that infers changed files from text task artifacts while keeping non-diff outputs as metadata-only support records
 - live `Workstreams` loading through `GET /v1/projects/:projectId/tasks` with server-side filtering, pagination, and direct links back into `Runs > Execution`
 - workspace-style `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
@@ -90,6 +94,7 @@ Current UI boundary:
 - the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, the full `Runs` destination, and `Workstreams`
 - `Runs` is now truthful end to end for project-scoped index, run creation, planning authoring, explicit compile, execution DAG, and task artifact review
 - planning and task panes now reconnect through persisted locators and render assistant-ui surfaces over the Cloudflare agent transport exposed at `/agents/*`
+- planning chats now reuse the shared run sandbox via deterministic planning-session ids, so the planning agents can ground their guidance in the current repository and run artifacts instead of acting as chat-only assistants
 - `Workstreams` now follows the selected project through the real project-tasks API with server-backed filter and pagination state
 - `Documentation` still relies on scaffold-backed selectors, renders through the shared Plate viewer, and keeps its explicit compatibility state for non-scaffold live projects
 - documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree

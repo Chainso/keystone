@@ -31,6 +31,7 @@ The current UI is no longer scaffold-only for project management:
 - `Execution Plan` now exposes the explicit `Compile run` action through `POST /v1/runs/:runId/compile`, seeds compile provenance into the live run state immediately after acceptance, and routes into `Execution`, where the UI keeps refreshing until the live workflow graph is available
 - task detail now uses the task conversation plus code-review split: changed files are inferred from text `run_note` and `staged_output` artifacts loaded through the authenticated run API seam when their content parses as unified diff, while the remaining task artifacts stay metadata-only support records in that pane
 - planning and task panes now reconnect from their persisted `conversation` locators and render visible assistant-ui chat surfaces over the Cloudflare `useAgent` / `useAgentChat` bridge, without introducing a second conversation store in Keystone
+- run planning chats now also attach to the shared run sandbox through deterministic planning-session ids, so specification, architecture, and execution-plan agents can inspect the project workspace and projected run artifacts while keeping their responsibilities distinct
 - the planning pages keep explicit empty, error, viewer, and editor states in the shared split layout instead of falling back to scaffold placeholders
 
 The current live/scaffold split is still intentional:
@@ -89,6 +90,12 @@ Compile requires all three run planning documents:
 - `execution_plan`
 
 Compile is document-first: it turns those three documents into the persisted execution DAG and does not select or inspect a primary repo from project config.
+
+The planning responsibilities are intentionally split:
+
+- `Specification` resolves user-visible scope, constraints, edge cases, and acceptance criteria
+- `Architecture` resolves technical design decisions and implementation seams
+- `Execution Plan` resolves the small task graph that compile turns into `run_plan`, `task_handoff`, `run_tasks`, and `run_task_dependencies`
 
 ## Public API Shape
 

@@ -7,7 +7,7 @@ This document covers the current Think-backed execution slice in Keystone.
 It describes:
 
 - how `think_mock` and `think_live` fit into the target model
-- how task workspaces are exposed to Think agents
+- how planning and task workspaces are exposed to Think agents
 - where conversation history lives
 - which parts of execution remain authoritative in Keystone itself
 
@@ -78,6 +78,24 @@ Important rules:
 - task rematerialization excludes the current task's own prior artifacts from `/artifacts/in`
 
 `TaskSessionDO` is internal execution plumbing, not a product-level return to session-centric state.
+
+## Planning Agent Path
+
+Run-scoped planning documents now reuse the same run sandbox boundary through deterministic planning-session ids derived from the planning document path.
+
+Current planning-agent behavior:
+
+- `PlanningDocumentAgent` materializes the project workspace through the existing `TaskSessionDO` sandbox bridge instead of running as a plain chat-only agent
+- planning chats can inspect the run-scoped project workspace under `/workspace`
+- current run artifacts and planning revisions are projected under `/artifacts/in`
+- planning bash commands inherit the same project environment variables that task execution receives
+- planning chat remains an inspection and decision-making surface; authoritative run/task state is still persisted by Keystone, not by Think history
+
+The planning-agent prompts are intentionally distinct:
+
+- `specification` focuses on scope, behavior, constraints, and acceptance criteria
+- `architecture` focuses on technical design, boundaries, tradeoffs, and validation seams
+- `execution-plan` focuses on turning the approved inputs into a small executable task DAG that compile can recover faithfully
 
 ## Think Implementer Path
 
