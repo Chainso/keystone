@@ -350,6 +350,11 @@ Baseline compatibility facts already captured:
   **Decision:** Added a line-aware markdown projection for scaffold `contentLines[]` data and tightened the focused destination tests around named navigation/document regions before rerunning the locked validation commands.
   **Rationale:** The scaffold documentation source is not stored as canonical markdown, and Plate changes heading/list DOM semantics, so the phase needed a truthful projection seam plus region-scoped assertions rather than brittle raw-text assumptions.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 11 targeted fix pass
+  **Decision:** Added a focused `DocumentationRoute` harness over `ResourceModelProvider` so the real `useDocumentationViewModel` -> `PlateMarkdownDocument` chain is exercised with custom scaffold `contentLines[]`, and expanded the markdown-projection assertions to cover headings, blank lines, ordered lists, blockquotes, fenced code, and tables.
+  **Rationale:** Review found that Phase 11's coverage proved the direct workspace fixture and one simple list path, but it did not yet force the real route/view-model seam or the important non-list projection branches that keep the scaffold-backed Plate surface honest.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -380,6 +385,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 10 completed: `New project` and `Project settings` now share the redesigned shell, section framing, component cards, and configuration form language while preserving deep links, direct create/save actions, and provider-owned payload truth.
 - [x] 2026-04-22 Phase 10 targeted fix pass completed: source-mode cards now expose visible keyboard focus, shared form/list descriptions are wired to their controls, and live settings waits for the real selected project while focused shell tests prove the metadata plus non-ready branches.
 - [x] 2026-04-22 Phase 11 completed: `Documentation` now uses the workspace header language, grouped category navigation, and a shared Plate document viewer while preserving the exact scaffold-backed compatibility gate and non-live-project honesty.
+- [x] 2026-04-22 Phase 11 targeted fix pass completed: documentation tests now drive the real `useDocumentationViewModel` -> `PlateMarkdownDocument` seam through the route layer, and `contentLines[] -> markdown` coverage now proves headings, blank lines, ordered lists, blockquotes, fenced code, and tables.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -425,6 +431,7 @@ Baseline compatibility facts already captured:
 - When project-configuration cards add explanatory copy inside radio-label containers, Testing Library's exact-name `radio` queries will include that copy unless it is marked `aria-hidden`. Keep the `Local path` / `Git URL` radios' accessible names exact because the route suite depends on that contract.
 - `useCurrentProject()` is still a compatibility helper, not a safe live-settings authority. On `/settings`, the shared shell can legitimately remain at `Loading projects` until project-management resolves the selected project, and only then should the project-configuration shell begin its own selected-project loading state.
 - Project-scoped documentation scaffold data still arrives as `contentLines[]`, not canonical markdown. Plate-backed documentation therefore needs a small projection seam that preserves list blocks and blank-line truth before rendering, and the route tests should keep asserting against the named document region rather than raw text-node shape.
+- `useCurrentProject()` also falls back cleanly to the resource-model provider when no project-management context is mounted, which makes it possible to exercise the real `DocumentationRoute` and `useDocumentationViewModel` chain against a custom scaffold dataset in focused tests without adding a new runtime seam.
 
 ## Outcomes & Retrospective
 
@@ -530,7 +537,7 @@ Phase 11 outcome on 2026-04-22:
 - the current document body now renders through `ui/src/components/editor/plate-markdown-document.tsx`, so project documentation uses the same Plate-backed markdown surface as planning while the route layer stays thin and the scaffold dataset remains the only truth source
 - Phase 11 kept the compatibility contract exact: only scaffold-backed selected projects get documentation content, while non-scaffold live projects still show the explicit compatibility state instead of a fake empty or live document view
 - the new line-aware `contentLines[] -> markdown` projection preserves paragraph spacing plus list/heading structure before handing scaffold content to Plate, which keeps the documentation surface truthful without claiming a live markdown backend now exists
-- focused destination coverage now asserts the documentation metadata/header contract, category navigation semantics, stable deep-link/canonicalization behavior, compatibility mode, and one Plate list-render path through the shared document region
+- the targeted fix pass strengthened documentation coverage so the real `DocumentationRoute` now exercises `useDocumentationViewModel` through `PlateMarkdownDocument` with heading, ordered-list, and blockquote semantics from scaffold `contentLines[]`, while the projection tests also cover blank-line handling plus fenced-code and table joins
 - `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 11 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
 
 ## Context and Orientation
@@ -936,7 +943,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** project-scoped documentation uses the same document language as planning while preserving scaffold-backed truth where the backend is not live.
 - **Commit Expectation:** `migrate documentation destination to plate`
 - **Known Constraints / Baseline Failures:** do not fake live documentation for non-scaffold projects.
-- **Completion Notes:** `ui/src/features/documentation/components/documentation-workspace.tsx` now presents `Documentation` through the shared workspace-page header, grouped category navigation, stable metadata chips, and a calmer current-document panel while keeping the route layer thin. `ui/src/features/documentation/use-documentation-view-model.ts` still owns the selected-project lookup, `?document=` canonicalization, and exact scaffold-compatibility branch, but now also projects scaffold `contentLines[]` into line-aware markdown so headings, lists, and paragraph spacing remain truthful when rendered through `PlateMarkdownDocument`. `ui/src/app/styles.css` adds the documentation header/navigation styling needed for the redesigned destination, and `ui/src/test/destination-scaffolds.test.tsx` now asserts the new metadata/navigation contracts, the named document region, compatibility behavior, canonicalization, and one focused Plate list-render path. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`.
+- **Completion Notes:** `ui/src/features/documentation/components/documentation-workspace.tsx` now presents `Documentation` through the shared workspace-page header, grouped category navigation, stable metadata chips, and a calmer current-document panel while keeping the route layer thin. `ui/src/features/documentation/use-documentation-view-model.ts` still owns the selected-project lookup, `?document=` canonicalization, and exact scaffold-compatibility branch, but now also projects scaffold `contentLines[]` into line-aware markdown so headings, lists, and paragraph spacing remain truthful when rendered through `PlateMarkdownDocument`. `ui/src/app/styles.css` adds the documentation header/navigation styling needed for the redesigned destination, and `ui/src/test/destination-scaffolds.test.tsx` now asserts the new metadata/navigation contracts, the named document region, compatibility behavior, canonicalization, one focused direct Plate list-render path, the real `DocumentationRoute` -> `useDocumentationViewModel` -> `PlateMarkdownDocument` seam, and richer markdown-projection branches covering headings, blank lines, ordered lists, blockquotes, fenced code, and tables. Validation passed again with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`.
 - **Next Starter Context:** Phase 12 should treat the Documentation destination as stable. Keep the exact scaffold-backed compatibility gate, grouped category navigation, and `contentLines[] -> markdown` projection intact while adding planning/task conversation-locator truth plus Cloudflare binding; do not reopen documentation backend promises or chat UI in that phase.
 
 ### Phase 12: Planning Locator Completion And Cloudflare Conversation Binding

@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../components/workspace/entity-table";
 import { DocumentationWorkspace } from "../features/documentation/components/documentation-workspace";
@@ -18,6 +18,10 @@ import {
   buildEmptyState,
   resolveTaskDisplayId
 } from "../features/workstreams/use-workstreams-view-model";
+import { ResourceModelProvider } from "../features/resource-model/context";
+import { uiScaffoldDataset } from "../features/resource-model/scaffold-dataset";
+import type { ResourceModelDataset } from "../features/resource-model/types";
+import { DocumentationRoute } from "../routes/documentation/documentation-route";
 import { renderRoute } from "./render-route";
 import {
   type ProjectTaskFilter,
@@ -247,6 +251,42 @@ function expectWorkstreamsSummary(labels: string[]) {
 
 function getProjectSelector() {
   return screen.getByRole("combobox", { name: "Project" });
+}
+
+function createDocumentationDataset(input: {
+  contentLines: string[];
+  documentId?: string;
+  viewerTitle?: string;
+}) {
+  return {
+    ...uiScaffoldDataset,
+    documentRevisions: uiScaffoldDataset.documentRevisions.map((revision) => {
+      if (revision.documentId !== (input.documentId ?? "project-open-questions")) {
+        return revision;
+      }
+
+      return {
+        ...revision,
+        contentLines: input.contentLines,
+        ...(input.viewerTitle ? { viewerTitle: input.viewerTitle } : {})
+      };
+    })
+  } satisfies ResourceModelDataset;
+}
+
+function renderDocumentationRouteHarness(input: {
+  dataset: ResourceModelDataset;
+  initialEntry?: string;
+}) {
+  return render(
+    <ResourceModelProvider dataset={input.dataset}>
+      <MemoryRouter initialEntries={[input.initialEntry ?? "/documentation"]}>
+        <Routes>
+          <Route path="/documentation" element={<DocumentationRoute />} />
+        </Routes>
+      </MemoryRouter>
+    </ResourceModelProvider>
+  );
 }
 
 function buildProjectsResponse(projects: CurrentProject[]) {
@@ -917,6 +957,85 @@ describe("Destination scaffolds", () => {
         .getAllByRole("listitem")
         .map((item) => item.textContent?.trim())
     ).toEqual(["Preserve scaffold truth", "Keep list structure"]);
+  });
+
+  it("exercises the real documentation route and view-model wiring through Plate markdown structure", async () => {
+    renderDocumentationRouteHarness({
+      dataset: createDocumentationDataset({
+        contentLines: [
+          "# Decisions pending",
+          "Documentation stays scaffold-backed until project APIs are live.",
+          "",
+          "1. Preserve the compatibility gate",
+          "2. Keep category navigation grouped",
+          "",
+          "> Use the shared Plate viewer instead of a line-by-line scaffold renderer."
+        ]
+      }),
+      initialEntry: "/documentation?document=project-open-questions"
+    });
+
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
+
+    const documentationRegion = screen.getByRole("region", {
+      name: "Documentation document"
+    });
+    const blockquote = documentationRegion.querySelector("blockquote");
+
+    expect(within(documentationRegion).getByRole("heading", { name: "Decisions pending" })).toBeInTheDocument();
+    expect(
+      within(documentationRegion).getByText(
+        "Documentation stays scaffold-backed until project APIs are live."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(documentationRegion)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent?.trim())
+    ).toEqual([
+      "Preserve the compatibility gate",
+      "Keep category navigation grouped"
+    ]);
+    expect(blockquote).not.toBeNull();
+    expect(
+      within(blockquote as HTMLElement).getByText(
+        "Use the shared Plate viewer instead of a line-by-line scaffold renderer."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("builds markdown with heading, blank-line, ordered-list, and blockquote boundaries preserved", () => {
+    expect(
+      buildDocumentationMarkdown([
+        "# Decisions pending",
+        "Documentation stays scaffold-backed until project APIs are live.",
+        "",
+        "1. Preserve the compatibility gate",
+        "2. Keep category navigation grouped",
+        "",
+        "> Use the shared Plate viewer instead of a line-by-line scaffold renderer.",
+        "Close the route on the same project scope."
+      ])
+    ).toBe(
+      "# Decisions pending\nDocumentation stays scaffold-backed until project APIs are live.\n\n1. Preserve the compatibility gate\n2. Keep category navigation grouped\n\n> Use the shared Plate viewer instead of a line-by-line scaffold renderer.\n\nClose the route on the same project scope."
+    );
+  });
+
+  it("builds markdown with fenced code blocks and tables using single-line joins inside each block", () => {
+    expect(
+      buildDocumentationMarkdown([
+        "```ts",
+        'const mode = "scaffold";',
+        "```",
+        "",
+        "| Destination | Scope |",
+        "| --- | --- |",
+        "| Documentation | Project |"
+      ])
+    ).toBe(
+      '```ts\nconst mode = "scaffold";\n```\n\n| Destination | Scope |\n| --- | --- |\n| Documentation | Project |'
+    );
   });
 
   it("renders the canonical workstreams rows with the default Active filter and runId column", async () => {
