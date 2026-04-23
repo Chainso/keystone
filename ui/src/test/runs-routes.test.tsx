@@ -37,6 +37,72 @@ function defaultCloudflareChatMock() {
   };
 }
 
+function createConversationMessage(
+  id: string,
+  role: UIMessage["role"],
+  parts: UIMessage["parts"]
+): UIMessage {
+  return {
+    id,
+    parts,
+    role
+  };
+}
+
+function createAssistantTranscriptMessages(): UIMessage[] {
+  return [
+    createConversationMessage("planning-user-1", "user", [
+      {
+        text: "Summarize the current planning state.",
+        type: "text"
+      }
+    ]),
+    createConversationMessage("planning-assistant-1", "assistant", [
+      {
+        text: "### Transcript summary\n- Keep Cloudflare as the conversation authority.\n- Render tool outcomes truthfully.\n",
+        type: "text"
+      },
+      {
+        data: {
+          activeTasks: 1,
+          updatedFiles: 2
+        },
+        type: "data-execution-metrics"
+      },
+      {
+        errorText: "Host shell unavailable.",
+        input: {
+          cmd: "rtk npm run build:ui"
+        },
+        state: "output-error",
+        toolCallId: "tool-error-1",
+        toolName: "run_command",
+        type: "dynamic-tool"
+      },
+      {
+        approval: {
+          approved: false,
+          id: "approval-denied-1",
+          reason: "User rejected host access."
+        },
+        input: {
+          cmd: "wrangler dev"
+        },
+        state: "output-denied",
+        toolCallId: "tool-denied-1",
+        toolName: "request_host_access",
+        type: "dynamic-tool"
+      },
+      {
+        filename: "plan.diff",
+        mediaType: "text/plain",
+        type: "file",
+        url: "https://example.com/plan.diff"
+      }
+    ])
+  ];
+}
+
 const cloudflareConversationMocks = vi.hoisted(() => ({
   useAgent: vi.fn((options: { agent: string; name?: string; query?: Record<string, string> }) => ({
     addEventListener: vi.fn(),
@@ -1849,6 +1915,80 @@ describe("Run routes", () => {
     expect(planningChatBinding?.credentials).toBe("same-origin");
   });
 
+  it("renders the unavailable planning conversation surface when no locator is attached", async () => {
+    renderRunRoute("/runs/run-105/architecture", createStaticRunManagementApi(cloneRunFixtures()));
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+    expect(screen.getByText("No planning conversation attached")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Create or attach a planning conversation before sending messages from this document."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Conversation unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByText("Conversation input becomes available after a locator is attached.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    expect(cloudflareConversationMocks.useAgent).not.toHaveBeenCalled();
+    expect(cloudflareConversationMocks.useAgentChat).not.toHaveBeenCalled();
+  });
+
+  it("renders non-empty planning transcripts with markdown and structured tool outcomes", async () => {
+    const sendMessage = vi.fn();
+    cloudflareConversationMocks.useAgentChat.mockImplementation(() =>
+      createCloudflareChatMock({
+        error: new Error("Cloudflare stream lost."),
+        messages: createAssistantTranscriptMessages(),
+        sendMessage,
+        status: "error" as const
+      })
+    );
+
+    renderRunRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Cloudflare stream lost.");
+    expect(screen.getByRole("heading", { name: "Transcript summary" })).toBeInTheDocument();
+    expect(
+      screen.getByText((content) =>
+        content.includes("Keep Cloudflare as the conversation authority.")
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Summarize the current planning state.")).toBeInTheDocument();
+    expect(screen.getByText(/execution metrics/i)).toBeInTheDocument();
+    expect(screen.getByText("plan.diff")).toBeInTheDocument();
+    expect(screen.getByText("run_command")).toBeInTheDocument();
+    expect(screen.getByText("request_host_access")).toBeInTheDocument();
+    expect(screen.getAllByText("Outcome")).toHaveLength(2);
+    expect(
+      screen.getByText((content) => content.includes("Host shell unavailable."))
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((content) => content.includes("User rejected host access."))
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Continue the planning conversation with Keystone."), {
+      target: {
+        value: "Continue from the persisted transcript."
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith({
+        parts: [
+          {
+            text: "Continue from the persisted transcript.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      });
+    });
+  });
+
   it("loads the current specification revision, preserves source markdown in the save payload, and stays on-route", async () => {
     const { fetchMock, requestLog } = createBrowserRunFetch();
     const { router } = renderRoute("/runs/run-104/specification");
@@ -3101,6 +3241,20 @@ describe("Run routes", () => {
 
     expectConversationBindingHeaders(taskChatBinding?.headers, browserAuth);
     expect(taskChatBinding?.credentials).toBe("same-origin");
+  });
+
+  it("shows live task loading state while a Cloudflare turn is still in flight", async () => {
+    cloudflareConversationMocks.useAgentChat.mockImplementation(() =>
+      createCloudflareChatMock({
+        status: "submitted" as const
+      })
+    );
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032");
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(screen.getByText("Streaming live")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
   });
 
   it("keeps non-diff review candidates as supporting metadata when no unified diff can be parsed", async () => {

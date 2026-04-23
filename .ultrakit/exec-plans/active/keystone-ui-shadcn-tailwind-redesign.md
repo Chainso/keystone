@@ -375,6 +375,11 @@ Baseline compatibility facts already captured:
   **Decision:** Replaced the placeholder planning and task conversation panes with assistant-ui surfaces backed by the Phase 12 Cloudflare binding seam, removed the fake synthesized task chat timeline, and tightened the focused route tests around the real composer and empty-state contract.
   **Rationale:** Phase 13 needed to make the visible chat panes truthful without introducing a second message store or reopening the resource-identity and transport work that Phase 12 already completed.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 13 targeted fix pass
+  **Decision:** Kept the assistant-ui tool renderer's converted fallback result whenever Cloudflare's helper exposes no `output` for failed or denied tool calls, and expanded the focused route suite to cover unavailable, loading, error, composer-send, and non-empty transcript rendering through the real bridge.
+  **Rationale:** Review found that failed and denied tool outcomes collapsed to empty cards because `getToolOutput()` only returns payloads for `output-available`, and the Phase 13 route coverage had not yet exercised the non-empty assistant transcript or the representative non-ready assistant-ui branches.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -409,6 +414,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 12 completed: planning locators now auto-provision/backfill, `/agents/*` is bound through the Worker, and placeholder planning/task panes attach to persisted Cloudflare agent instances without a visible chat cutover.
 - [x] 2026-04-22 Phase 12 targeted fix pass completed: run-planning locators are now canonical on create and lazy normalization, query-param dev auth is limited to `/agents/*`, and focused HTTP/UI coverage now proves the real provisioning plus placeholder-framed browser binding contract.
 - [x] 2026-04-22 Phase 13 completed: planning and task panes now render assistant-ui chat surfaces over the persisted Cloudflare conversation binding, task-detail no longer synthesizes a fake chat timeline, and the focused route suite proves the new visible conversation contract.
+- [x] 2026-04-22 Phase 13 targeted fix pass completed: failed and denied tool cards now render their available reason/details instead of an empty outcome, and the focused route suite now covers unavailable/loading/error/composer branches plus a non-empty assistant transcript with markdown and structured parts.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -458,6 +464,7 @@ Baseline compatibility facts already captured:
 - Cloudflare agent hooks were not enough on their own: the Worker also needed a real `/agents/*` handler and Wrangler `run_worker_first` coverage for `/agents/*`, otherwise the browser binding layer would attach to locators that could never reach the Worker transport.
 - The original Phase 12 HTTP create-path test was still mocking `createDocument`, which hid both the real locator-authority behavior and the repository fixture defaults that the route serializer expects. The targeted fix pass needed the fixture-backed insert path to exercise actual provisioning.
 - assistant-ui's thread viewport behavior needs `ResizeObserver`, `scrollIntoView`, and `scrollTo` shims in jsdom-focused route tests, and the tool-card bridge must tolerate transient original-message entries that do not yet carry a `parts[]` array during reconciliation.
+- `getToolOutput()` from `@cloudflare/ai-chat/react` only returns a payload for `output-available`. Failed and denied tool cards have to preserve the converter-provided fallback result if they want to render Cloudflare's error or rejection details.
 
 ## Outcomes & Retrospective
 
@@ -582,7 +589,8 @@ Phase 13 outcome on 2026-04-22:
 - `ui/src/features/conversations/assistant-chat-surface.tsx` and `assistant-message-converter.tsx` now provide the thin `AssistantRuntimeProvider` plus `useExternalStoreRuntime` bridge that maps Cloudflare `UIMessage[]` into assistant-ui thread messages, handles markdown rendering, composer send/stop state, error banners, attachments, copy actions, and tool-call cards without introducing a second persistence model
 - the fake synthesized task chat timeline is gone from `use-execution-view-model.ts`, so task detail now relies on the real Cloudflare-backed message history instead of mixed placeholder metadata
 - targeted route coverage now proves the new planning/task visible contract through empty-state copy, composer presence, and the continued Cloudflare `useAgent` plus `useAgentChat` binding assertions, while shared jsdom test setup now includes the assistant-ui-required viewport shims
-- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts` pass on the Phase 13 implementation; no durable developer-doc update was required because the runtime authority and persisted conversation contract from Phase 12 did not change
+- the targeted fix pass kept Cloudflare as the only conversation authority while making failed and denied tool cards fall back to their converted assistant-ui result, and it extended the focused route suite to cover unavailable/loading/error/composer branches plus a non-empty transcript with markdown and structured parts
+- `rtk npm run build:ui`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx`, and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts` pass on the fix-pass head; no durable developer-doc update was required because the runtime authority and persisted conversation contract from Phase 12 did not change
 
 ## Context and Orientation
 
@@ -1011,7 +1019,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22.
 - **Goal:** Replace the placeholder planning and task conversation frames with assistant-ui chat surfaces backed by the Cloudflare binding from Phase 12.
 - **Scope Boundary:** In scope are conversation rendering, composer behavior, streaming state, empty/error states, markdown rendering, actions, human-approval affordances, and selected interactables that are backed by real state. Out of scope are runtime persistence changes, thread-list product models, or a second tool authority.
 - **Read First:** `ui/src/features/conversations/*`, `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `.ultrakit/developer-docs/think-runtime-architecture.md`, assistant-ui runtime docs.
@@ -1021,8 +1029,8 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 - **Deliverables:** planning and task conversation panes use assistant-ui components over an `ExternalStoreRuntime`-style bridge to Cloudflare message state, while preserving Keystone’s existing planning/task product model.
 - **Commit Expectation:** `cut planning and task chat to assistant ui`
 - **Known Constraints / Baseline Failures:** Cloudflare remains the persistence authority; no `@assistant-ui/react-ai-sdk`; no Assistant Cloud; interactables must not introduce in-memory-only product state.
-- **Completion Notes:** Added `ui/src/features/conversations/assistant-chat-surface.tsx` and `assistant-message-converter.tsx` as the thin assistant-ui bridge over the existing Cloudflare `useAgent` plus `useAgentChat` seam. Planning and task left panes now render assistant-ui thread/view/composer surfaces with markdown rendering, attachment cards, copy action, error/empty-state handling, and real streaming status while leaving the planning document pane and task review sidebar unchanged. `ui/src/features/execution/use-execution-view-model.ts` no longer synthesizes a fallback task chat timeline, so the visible task transcript depends only on the persisted Cloudflare conversation locator from Phase 12. The route suite was updated from placeholder assertions to assistant-ui surface assertions, and shared jsdom setup now shims the viewport APIs assistant-ui expects. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts`. No durable developer-doc change was needed because Cloudflare remained the persistence and runtime authority.
-- **Next Starter Context:** Phase 14 should treat the assistant-ui planning/task panes, the Phase 12 Cloudflare locator plus `/agents/*` transport contract, and the narrowed task view-model as stable. Focus only on durable docs, broad validation, and any small regression cleanup that the final suite uncovers.
+- **Completion Notes:** Added `ui/src/features/conversations/assistant-chat-surface.tsx` and `assistant-message-converter.tsx` as the thin assistant-ui bridge over the existing Cloudflare `useAgent` plus `useAgentChat` seam. Planning and task left panes now render assistant-ui thread/view/composer surfaces with markdown rendering, attachment cards, copy action, error/empty-state handling, and real streaming status while leaving the planning document pane and task review sidebar unchanged. `ui/src/features/execution/use-execution-view-model.ts` no longer synthesizes a fallback task chat timeline, so the visible task transcript depends only on the persisted Cloudflare conversation locator from Phase 12. The route suite was updated from placeholder assertions to assistant-ui surface assertions, and shared jsdom setup now shims the viewport APIs assistant-ui expects. The targeted fix pass kept the same Cloudflare transport contract while making failed and denied tool cards preserve their converted assistant-ui result whenever `getToolOutput()` is undefined, so rejection/error details now render instead of disappearing. `ui/src/test/runs-routes.test.tsx` now also covers the unavailable planning conversation branch, the submitted/loading task state, and a non-empty planning transcript with markdown, data/tool/file parts, error banners, and composer send behavior. Validation passed with `rtk npm run build:ui`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx`, and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts`. No durable developer-doc change was needed because Cloudflare remained the persistence and runtime authority.
+- **Next Starter Context:** Phase 14 should treat the assistant-ui planning/task panes, failed/denied tool outcome rendering, the Phase 12 Cloudflare locator plus `/agents/*` transport contract, and the narrowed task view-model as stable. Focus only on durable docs, broad validation, and any small regression cleanup that the final suite uncovers.
 
 ### Phase 14: Durable Docs, Regression Cleanup, And Final Validation
 

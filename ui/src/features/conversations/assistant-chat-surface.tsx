@@ -191,7 +191,7 @@ function ConversationToolPart({
   const toolState = originalPart ? getToolPartState(originalPart) : isError ? "error" : "complete";
   const approval = originalPart ? getToolApproval(originalPart) : undefined;
   const input = originalPart ? getToolInput(originalPart) : undefined;
-  const output = originalPart ? getToolOutput(originalPart) : result;
+  const output = originalPart ? getToolOutput(originalPart) ?? result : result;
   const formattedInput = formatStructuredValue(input);
   const formattedOutput = formatStructuredValue(output);
 
