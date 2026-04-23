@@ -1962,6 +1962,28 @@ describe("Run routes", () => {
     expect(within(table).getByText("Shared")).toBeInTheDocument();
   });
 
+  it("keeps the planning document preview stable when markdown includes a horizontal rule", async () => {
+    createBrowserRunFetch();
+
+    renderRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
+      target: {
+        value: "# Specification\n\nBefore divider\n\n---\n\nAfter divider\n"
+      }
+    });
+
+    const previewRegion = screen.getByRole("region", {
+      name: "Document preview"
+    });
+
+    expect(within(previewRegion).getByRole("separator")).toBeInTheDocument();
+    expect(within(previewRegion).getByText("After divider")).toBeInTheDocument();
+  });
+
   it("binds a planning page to the persisted Cloudflare conversation locator", async () => {
     const browserAuth = {
       token: "browser-agent-token",
