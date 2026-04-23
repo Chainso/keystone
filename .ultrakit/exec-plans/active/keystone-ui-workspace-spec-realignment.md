@@ -112,6 +112,11 @@ Alternatives considered:
   - initial sandbox `rtk npm test` -> failed in `tests/scripts/demo-contracts.test.ts` with `listen EPERM 127.0.0.1`, so broad validation moved to a host-shell rerun.
   - `rtk npm test -- ui/src/test/runs-routes.test.tsx` -> passed after hardening one transient compile-button assertion exposed by the first host rerun.
   - final host `rtk npm test` -> passed (`35 passed | 2 skipped` test files, `325 passed | 21 skipped` tests).
+- 2026-04-22: Completed the one allowed Phase 1 targeted fix pass:
+  - removed the remaining selected-project wording from `Project settings` loading/components copy and the overview description-field helper text,
+  - removed repeated selected-project framing from visible `Workstreams` summary, empty-state, and route-guidance copy so the shell remains the owner of project context,
+  - updated the directly affected destination-scaffold assertions,
+  - reran validation: targeted `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed, sandbox `rtk npm test` hit the known `tests/scripts/demo-contracts.test.ts` `listen EPERM 127.0.0.1` blocker again, and the escalated rerun passed (`35 passed | 2 skipped` test files, `325 passed | 21 skipped` tests).
 
 ## Progress
 
@@ -121,6 +126,7 @@ Alternatives considered:
 - [x] 2026-04-22 Run a deeper parallel discovery pass with explorer subagents for shell/configuration, runs, and execution/documentation/workstreams.
 - [x] 2026-04-22 Install Plate UI source components and feature kits needed to replace the repo-owned Plate wrapper with the registry-based baseline.
 - [x] 2026-04-22 Phase 1: align destination and project-configuration framing with the workspace spec.
+- [x] 2026-04-22 Phase 1 targeted fix pass: remove the remaining selected-project wording from project configuration and Workstreams destination copy.
 - [ ] Phase 2: realign run and execution flow behavior with the workspace spec.
 - [ ] Phase 3: realign documentation model and documentation surface framing with the workspace spec.
 - [ ] Phase 4: evaluate doc / notes impact, run closeout validation, and archive the plan.
@@ -183,9 +189,10 @@ Alternatives considered:
   - Top-level `Documentation` and `Workstreams` framing now matches the workspace spec.
   - `Project settings` now shares the same overview-first tab entry behavior as `New project`.
   - Project configuration surfaces no longer repeat the selected project name in the page title, leaving the global shell as the owner of project context.
+  - The targeted fix pass removed the last selected-project phrasing from visible `Project settings` and `Workstreams` destination copy.
 - Validation:
   - `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed.
-  - `rtk npm test` passed on the host after rerunning outside the sandbox and hardening one transient `runs-routes` assertion.
+  - Fix-pass sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`; the escalated rerun passed on the host (`35 passed | 2 skipped` test files, `325 passed | 21 skipped` tests).
 
 ## Context and Orientation
 
@@ -419,10 +426,11 @@ Completion Notes:
 - `Documentation` and `Workstreams` now render the canonical destination headings from the workspace spec.
 - `/settings` now redirects to `/settings/overview`, and `Project settings` keeps a stable title instead of repeating the selected project name.
 - `New project` and `Project settings` shell summaries now frame the same tabbed configuration surface with direct create/save semantics.
+- The targeted fix pass removed the remaining selected-project wording from `Project settings` loading/components copy, the overview description helper text, and the visible `Workstreams` summary / guidance strings.
 - Updated shell/destination tests for the aligned copy and routing; additionally hardened `ui/src/test/runs-routes.test.tsx` after host broad validation exposed a transient compile-button assertion.
 
 Next Starter Context:
-- Phase 2 can assume canonical destination naming and overview-first project settings routing are in place.
+- Phase 2 can assume canonical destination naming, overview-first project settings routing, and shell-owned project framing are in place.
 - Next focus: realign the `Runs` index summary/stage presentation, the default landing behavior for `/runs/:runId`, execution/task-detail copy, and the `Execution Plan` layout without changing backend contracts.
 
 ## Phase 2 - Realign run and execution flow behavior

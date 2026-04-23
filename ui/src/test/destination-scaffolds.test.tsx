@@ -1136,13 +1136,13 @@ describe("Destination scaffolds", () => {
     await screen.findByRole("link", { name: "TASK-032" });
     expect(screen.getByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expect(
-      screen.getByText("Track running, queued, and blocked work across every run in Keystone Cloudflare.")
+      screen.getByText("Track running, queued, and blocked work across every run.")
     ).toBeInTheDocument();
     expectWorkstreamsSummary(["5 matching tasks", "25 per page"]);
     expectActiveWorkstreamFilter("Active");
     expect(
       screen.getByText(
-      "Rows open the matching task inside Runs > Execution without leaving the selected project."
+        "Rows open the matching task under Runs > Execution."
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
@@ -1453,7 +1453,7 @@ describe("Destination scaffolds", () => {
             "Show work that is ready or pending while it waits to enter execution.",
           currentProjectLabel: "Keystone Cloudflare",
           title: "Workstreams",
-          summary: "Inspect ready and pending work that is waiting to enter execution in Keystone Cloudflare.",
+          summary: "Inspect ready and pending work that is waiting to enter execution.",
           filters: [
             {
               filterId: "all",
@@ -1500,8 +1500,7 @@ describe("Destination scaffolds", () => {
           pageSizeLabel: "25 per page",
           recordSummaryLabel: "0 matching tasks",
           retry() {},
-          routeGuidance:
-            "Rows open the matching task inside Runs > Execution without leaving the selected project.",
+          routeGuidance: "Rows open the matching task under Runs > Execution.",
           setActiveFilter
         }}
       />
@@ -1529,8 +1528,7 @@ describe("Destination scaffolds", () => {
               "Show blocked work that is waiting on unresolved blockers or prerequisites.",
             currentProjectLabel: "Keystone Cloudflare",
             title: "Workstreams",
-            summary:
-              "Surface blocked work that needs intervention across every run in Keystone Cloudflare.",
+            summary: "Surface blocked work that needs intervention across every run.",
             filters: [
               {
                 filterId: "all",
@@ -1593,8 +1591,7 @@ describe("Destination scaffolds", () => {
             pageSizeLabel: "25 per page",
             recordSummaryLabel: "2 matching tasks",
             retry() {},
-            routeGuidance:
-              "Rows open the matching task inside Runs > Execution without leaving the selected project.",
+            routeGuidance: "Rows open the matching task under Runs > Execution.",
             setActiveFilter() {}
           }}
         />
@@ -1666,7 +1663,7 @@ describe("Destination scaffolds", () => {
     ).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "No active workstreams" })).toBeInTheDocument();
     expect(
-      screen.getByText("Keystone Cloudflare does not have any running, queued, or blocked tasks right now.")
+      screen.getByText("No running, queued, or blocked tasks right now.")
     ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
@@ -2198,18 +2195,17 @@ describe("Destination scaffolds", () => {
   it("covers the workstreams fallback and empty-state helpers", () => {
     expect(resolveTaskDisplayId("   ", "task-live-002")).toBe("task-live-002");
     expect(resolveTaskDisplayId("TASK-LIVE-002", "task-live-002")).toBe("TASK-LIVE-002");
-    expect(buildEmptyState("all", "Keystone Cloudflare")).toMatchObject({
+    expect(buildEmptyState("all")).toMatchObject({
       heading: "No workstreams yet",
       kind: "empty",
-      message: "Keystone Cloudflare does not have any recorded tasks yet."
+      message: "No recorded tasks yet."
     });
-    expect(buildEmptyState("active", "Keystone Cloudflare")).toMatchObject({
+    expect(buildEmptyState("active")).toMatchObject({
       heading: "No active workstreams",
       kind: "empty",
-      message:
-        "Keystone Cloudflare does not have any running, queued, or blocked tasks right now."
+      message: "No running, queued, or blocked tasks right now."
     });
-    expect(buildEmptyState("blocked", "Keystone Cloudflare")).toMatchObject({
+    expect(buildEmptyState("blocked")).toMatchObject({
       heading: "No workstreams match this filter",
       kind: "empty",
       message: "No workstreams match the blocked filter right now."
@@ -2299,7 +2295,7 @@ describe("Destination scaffolds", () => {
     expect(descriptionField).toHaveValue("Internal operator workspace for the Keystone Cloudflare project.");
     expectDescribedByText(
       descriptionField,
-      "Short operator-facing context for the selected project."
+      "Short operator-facing context shown in the sidebar and project switcher."
     );
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
