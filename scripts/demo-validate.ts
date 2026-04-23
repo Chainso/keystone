@@ -4,6 +4,10 @@ import {
   summarizeTasks,
   type DemoContract
 } from "./demo-run";
+import {
+  workflowGraphResourceSchema,
+  type WorkflowGraphResource
+} from "../src/http/api/v1/runs/contracts";
 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +26,16 @@ type DemoValidationContract = {
   executionEngine: ExecutionEngine;
   demoContract: DemoContract;
 };
+
+type DemoDagProof = {
+  totalTasks: number;
+  rootTasks: number;
+  dependentTasks: number;
+  edges: number;
+};
+
+type WorkflowGraphNode = WorkflowGraphResource["nodes"][number];
+type WorkflowGraphEdge = WorkflowGraphResource["edges"][number];
 
 function getArg(name: string) {
   const prefix = `--${name}=`;
@@ -65,10 +79,6 @@ export function resolveBaseUrl(persistedState?: PersistedDemoState) {
   );
 }
 
-export function resolveExecutionEngine() {
-  return getArg("execution-engine") ?? process.env.KEYSTONE_EXECUTION_ENGINE ?? "scripted";
-}
-
 function resolveActualExecutionEngine(summary: RunSummary): ExecutionEngine {
   const detail = requireDataObject(summary as Record<string, unknown>, "Run detail");
   const executionEngine = detail.executionEngine;
@@ -85,8 +95,7 @@ function resolveActualExecutionEngine(summary: RunSummary): ExecutionEngine {
 }
 
 export function resolveValidatedRunContract(
-  summary: RunSummary,
-  _requestedExecutionEngine: string
+  summary: RunSummary
 ): DemoValidationContract {
   const executionEngine = resolveActualExecutionEngine(summary);
 
@@ -126,13 +135,193 @@ async function fetchRunTasks(baseUrl: string, runId: string) {
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+async function fetchRunWorkflowGraph(baseUrl: string, runId: string) {
+  const response = await fetch(`${baseUrl}/v1/runs/${encodeURIComponent(runId)}/workflow`, {
+    headers: {
+      Authorization: `Bearer ${process.env.KEYSTONE_DEV_TOKEN ?? "change-me-local-token"}`,
+      "X-Keystone-Tenant-Id": process.env.KEYSTONE_DEMO_TENANT_ID ?? "tenant-dev-local"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Run workflow graph fetch failed with ${response.status}: ${await response.text()}`
+    );
+  }
+
+  return response.json() as Promise<Record<string, unknown>>;
+}
+
+function parseWorkflowGraphResource(workflowGraph: Record<string, unknown>) {
+  const detail = requireDataObject(workflowGraph, "Run workflow graph");
+  const parsed = workflowGraphResourceSchema.safeParse(detail);
+
+  if (!parsed.success) {
+    const [issue] = parsed.error.issues;
+    const path = issue?.path?.join(".") ?? "data";
+
+    throw new Error(
+      `Run workflow graph did not return a well-formed workflow_graph payload (${path}).`
+    );
+  }
+
+  return parsed.data;
+}
+
+function formatDependencyEdge(fromTaskId: string, toTaskId: string) {
+  return `${fromTaskId} -> ${toTaskId}`;
+}
+
+function requireWellFormedWorkflowGraph(
+  nodes: WorkflowGraphNode[],
+  edges: WorkflowGraphEdge[]
+) {
+  const nodeMap = new Map<string, WorkflowGraphNode>();
+
+  for (const node of nodes) {
+    if (nodeMap.has(node.taskId)) {
+      throw new Error(`Run workflow graph returned duplicate node ${node.taskId}.`);
+    }
+
+    nodeMap.set(node.taskId, node);
+  }
+
+  const dependencyEdges = new Set<string>();
+
+  for (const edge of edges) {
+    if (!nodeMap.has(edge.fromTaskId) || !nodeMap.has(edge.toTaskId)) {
+      throw new Error(
+        `Run workflow graph edge ${formatDependencyEdge(edge.fromTaskId, edge.toTaskId)} references an unknown task.`
+      );
+    }
+
+    dependencyEdges.add(`${edge.fromTaskId}->${edge.toTaskId}`);
+  }
+
+  for (const node of nodes) {
+    for (const dependencyTaskId of node.dependsOn) {
+      if (!nodeMap.has(dependencyTaskId)) {
+        throw new Error(
+          `Run workflow graph node ${node.taskId} depends on unknown task ${dependencyTaskId}.`
+        );
+      }
+
+      if (!dependencyEdges.has(`${dependencyTaskId}->${node.taskId}`)) {
+        throw new Error(
+          `Run workflow graph is missing dependency edge ${formatDependencyEdge(dependencyTaskId, node.taskId)}.`
+        );
+      }
+    }
+  }
+
+  for (const edge of edges) {
+    const childNode = nodeMap.get(edge.toTaskId);
+
+    if (!childNode?.dependsOn.includes(edge.fromTaskId)) {
+      throw new Error(
+        `Run workflow graph edge ${formatDependencyEdge(edge.fromTaskId, edge.toTaskId)} is not declared by the child node.`
+      );
+    }
+  }
+
+  const remainingIncomingEdges = new Map<string, number>();
+  const childTaskIdsByParent = new Map<string, string[]>();
+
+  for (const node of nodes) {
+    remainingIncomingEdges.set(node.taskId, 0);
+    childTaskIdsByParent.set(node.taskId, []);
+  }
+
+  for (const edge of edges) {
+    remainingIncomingEdges.set(
+      edge.toTaskId,
+      (remainingIncomingEdges.get(edge.toTaskId) ?? 0) + 1
+    );
+    childTaskIdsByParent.get(edge.fromTaskId)?.push(edge.toTaskId);
+  }
+
+  const readyTaskIds = nodes
+    .map((node) => node.taskId)
+    .filter((taskId) => (remainingIncomingEdges.get(taskId) ?? 0) === 0);
+  let visitedTasks = 0;
+
+  while (readyTaskIds.length > 0) {
+    const taskId = readyTaskIds.shift();
+
+    if (!taskId) {
+      continue;
+    }
+
+    visitedTasks += 1;
+
+    for (const childTaskId of childTaskIdsByParent.get(taskId) ?? []) {
+      const remainingEdges = (remainingIncomingEdges.get(childTaskId) ?? 0) - 1;
+      remainingIncomingEdges.set(childTaskId, remainingEdges);
+
+      if (remainingEdges === 0) {
+        readyTaskIds.push(childTaskId);
+      }
+    }
+  }
+
+  if (visitedTasks !== nodes.length) {
+    const cyclicTaskIds = nodes
+      .map((node) => node.taskId)
+      .filter((taskId) => (remainingIncomingEdges.get(taskId) ?? 0) > 0);
+
+    throw new Error(
+      `Run workflow graph must be acyclic; cycle detected among tasks ${cyclicTaskIds.join(", ")}.`
+    );
+  }
+}
+
+function summarizeDagProof(workflowGraph: Record<string, unknown>): DemoDagProof {
+  const detail = parseWorkflowGraphResource(workflowGraph);
+  const nodes = detail.nodes;
+  const edges = detail.edges;
+
+  requireWellFormedWorkflowGraph(nodes, edges);
+  const rootTasks = nodes.filter((node) => asArray(node.dependsOn).length === 0).length;
+  const dependentTasks = nodes.length - rootTasks;
+
+  return {
+    totalTasks: nodes.length,
+    rootTasks,
+    dependentTasks,
+    edges: edges.length
+  };
+}
+
+function requireNonTrivialDagProof(executionEngine: ExecutionEngine, dagProof: DemoDagProof) {
+  if (executionEngine === "think_mock") {
+    return;
+  }
+
+  if (dagProof.totalTasks < 3) {
+    throw new Error(
+      `Expected ${executionEngine} demo proof to expose at least three compiled tasks.`
+    );
+  }
+
+  if (dagProof.rootTasks < 2) {
+    throw new Error(
+      `Expected ${executionEngine} demo proof to expose at least two root tasks.`
+    );
+  }
+
+  if (dagProof.edges < 1 || dagProof.dependentTasks < 1) {
+    throw new Error(
+      `Expected ${executionEngine} demo proof to expose at least one dependency edge.`
+    );
+  }
+}
+
 export async function main() {
   const explicitRunId = resolveExplicitRunId();
   const explicitBaseUrl = resolveExplicitBaseUrl();
   const persistedState = await readDemoState();
   const runId = explicitRunId ?? persistedState?.runId;
   const baseUrl = explicitBaseUrl ?? resolveBaseUrl(persistedState);
-  const requestedExecutionEngine = resolveExecutionEngine();
 
   if (!runId) {
     throw new Error("Provide --run-id=<id>, set KEYSTONE_RUN_ID, or run demo:run first.");
@@ -140,16 +329,15 @@ export async function main() {
 
   const summary = await fetchRunDetail(baseUrl, runId);
   const detail = requireDataObject(summary as Record<string, unknown>, "Run detail");
+  const { executionEngine, demoContract } = resolveValidatedRunContract(summary);
   const tasks = await fetchRunTasks(baseUrl, runId);
+  const workflowGraph = await fetchRunWorkflowGraph(baseUrl, runId);
   const tasksData = requireDataObject(tasks, "Run task list");
   const taskItems = asArray(tasksData.items).map((task) => asObject(task) ?? {});
-  const { executionEngine, demoContract } = resolveValidatedRunContract(
-    summary,
-    requestedExecutionEngine
-  );
   const status = typeof detail.status === "string" ? detail.status : "unknown";
   const compiledFrom = asObject(detail.compiledFrom);
   const taskSummary = summarizeTasks(taskItems);
+  const dagProof = summarizeDagProof(workflowGraph);
 
   if (status !== "archived") {
     throw new Error(`Expected archived run, received ${status}.`);
@@ -162,6 +350,8 @@ export async function main() {
   if (taskSummary.total < 1) {
     throw new Error("Expected at least one compiled run task.");
   }
+
+  requireNonTrivialDagProof(executionEngine, dagProof);
 
   if (executionEngine !== "scripted") {
     const taskWithConversation = taskItems.find((task) => {
@@ -187,6 +377,7 @@ export async function main() {
         status,
         compiledFrom,
         tasks: taskSummary,
+        workflow: dagProof,
         demoContract
       },
       null,

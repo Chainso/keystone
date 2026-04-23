@@ -37,9 +37,22 @@ The only authoritative execution selector is `executionEngine`:
 - `think_mock`
 - `think_live`
 
-`think_mock` is the deterministic Think-backed validation path.
+When project-backed run creation omits `executionEngine`, the API/runtime default resolves to `think_live`.
 
-`think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend.
+`think_mock` is the deterministic fixture-scoped Think-backed validation path.
+
+`think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend. It executes compiled handoffs against the full materialized project workspace, including multi-component projects.
+
+## Scheduler Contract
+
+`RunWorkflow` remains authoritative for DAG progression after compile.
+
+Current scheduler behavior:
+
+- every scheduler poll promotes newly satisfied dependencies from `pending` to `ready` with guarded `ifStatusIn: ["pending"]` writes
+- dependency-failure cancellation also uses guarded `pending`-only writes
+- each poll fans out the union of currently `active` and currently `ready` tasks
+- newly ready tasks can launch while unrelated branches remain active in the shared run sandbox
 
 The current persisted conversation classes are:
 
@@ -73,7 +86,7 @@ The current Think-backed task role is `implementer`.
 - `src/keystone/agents/base/KeystoneThinkAgent.ts` implements the Think-backed adapter
 - `src/keystone/agents/implementer/ImplementerAgent.ts` defines the implementer prompt and bridge-backed tools
 - the main capabilities are filesystem reads/writes and shell execution against the task worktree
-- the current implementer prompt expects the agent to commit workspace changes in the task worktree before staging its handoff note
+- the current implementer prompt expects the agent to commit in each changed component repo/worktree before staging its handoff note
 
 `TaskWorkflow` is responsible for:
 
@@ -134,7 +147,10 @@ Git commits made inside the task worktree are useful workspace state, but `TaskW
 
 These are runtime facts, not future design goals:
 
-- `scripted` remains the default execution engine
-- `think_mock` remains the deterministic Think validation path
-- `think_live` remains fixture-scoped in current demo coverage
+- the API/runtime default execution engine is `think_live`
+- the zero-argument `npm run demo:run` helper intentionally remains `scripted` until host-local live proof archives reliably again
+- `think_mock` remains the deterministic fixture-scoped Think validation path
+- compile is document-first and no longer requires a project-level compile target
+- `think_live` is the multi-component project-backed execution path
+- `scripted` remains intentionally single-component only
 - compile still expects the three run planning documents to exist before execution

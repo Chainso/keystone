@@ -21,7 +21,7 @@ Authoritative product state lives in:
 
 That means Keystone should be understood as:
 
-- project-scoped settings and compile-target inventory persisted alongside the project row
+- project-scoped settings and component inventory persisted alongside the project row
 - project-scoped run intake through `POST /v1/projects/:projectId/runs`
 - run-scoped planning documents and immutable revisions
 - explicit compile that writes a persisted DAG plus task handoffs

@@ -505,7 +505,44 @@ describe("app", () => {
     expect(response.status).toBe(401);
   });
 
-  it("creates a configured run for a project without launching workflow", async () => {
+  it("defaults project-scoped run creation to think_live", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-fixture/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({})
+      },
+      env
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        projectId: "project-fixture",
+        executionEngine: "think_live",
+        status: "configured",
+        compiledFrom: null
+      }
+    });
+    expect(mocked.createRunRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        executionEngine: "think_live",
+        sandboxId: expect.any(String),
+        status: "configured"
+      })
+    );
+    expect(mocked.runWorkflowCreate).not.toHaveBeenCalled();
+  });
+
+  it("creates a configured run for an explicitly scripted project run without launching workflow", async () => {
     const response = await app.request(
       "http://example.com/v1/projects/project-fixture/runs",
       {
@@ -516,7 +553,7 @@ describe("app", () => {
           "X-Keystone-Tenant-Id": "tenant-fixture"
         },
         body: JSON.stringify({
-          executionEngine: "think_live"
+          executionEngine: "scripted"
         })
       },
       env
@@ -526,7 +563,7 @@ describe("app", () => {
     await expect(response.json()).resolves.toMatchObject({
       data: {
         projectId: "project-fixture",
-        executionEngine: "think_live",
+        executionEngine: "scripted",
         status: "configured",
         compiledFrom: null
       },
@@ -539,7 +576,49 @@ describe("app", () => {
       expect.objectContaining({
         tenantId: "tenant-fixture",
         projectId: "project-fixture",
-        executionEngine: "think_live",
+        executionEngine: "scripted",
+        sandboxId: expect.any(String),
+        status: "configured"
+      })
+    );
+    expect(mocked.runWorkflowCreate).not.toHaveBeenCalled();
+  });
+
+  it("creates a configured run for an explicitly think_mock project run without launching workflow", async () => {
+    const response = await app.request(
+      "http://example.com/v1/projects/project-fixture/runs",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "Content-Type": "application/json",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        },
+        body: JSON.stringify({
+          executionEngine: "think_mock"
+        })
+      },
+      env
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        projectId: "project-fixture",
+        executionEngine: "think_mock",
+        status: "configured",
+        compiledFrom: null
+      },
+      meta: {
+        resourceType: "run"
+      }
+    });
+    expect(mocked.createRunRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        executionEngine: "think_mock",
         sandboxId: expect.any(String),
         status: "configured"
       })

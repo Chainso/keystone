@@ -11,10 +11,10 @@ describe("runInputSchema", () => {
     expect(parsed.executionEngine).toBe("think_live");
   });
 
-  it("defaults execution_engine to scripted", () => {
+  it("defaults execution_engine to think_live", () => {
     const parsed = parseRunInput({});
 
-    expect(parsed.executionEngine).toBe("scripted");
+    expect(parsed.executionEngine).toBe("think_live");
   });
 
   it("rejects invalid execution_engine values", () => {

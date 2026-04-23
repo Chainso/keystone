@@ -8,8 +8,8 @@ Keystone is a single Cloudflare Worker project that currently proves:
 - file-first artifact persistence in R2 with Postgres as the operational index
 - sandboxed execution with one sandbox per run and task-specific worktrees inside that sandbox
 - provider-backed compile and Think live-model turns using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
-- an `executionEngine` selector that keeps `scripted` as the default path and supports `think_mock` plus `think_live`
-- a Tailwind/shadcn React workspace shell served from the same Worker deployable, with Plate-backed document surfaces, assistant-ui planning/task conversations over Cloudflare, and the canonical route tree for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
+- an `executionEngine` selector that defaults project-backed run creation to `think_live`, keeps explicit `scripted` and `think_mock` paths available, and leaves the zero-argument `demo:run` helper on `scripted` until host-local live proof is reliable
+- a Tailwind/shadcn React workspace shell served from the same Worker deployable, with Plate-backed document surfaces, assistant-ui planning and task conversations over Cloudflare, and the canonical route tree for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
 
 The authoritative target-model contract for contributors is [.ultrakit/developer-docs/keystone-target-model-handoff.md](./.ultrakit/developer-docs/keystone-target-model-handoff.md). Read that first before changing persistence, API, run orchestration, or document behavior.
 
@@ -143,9 +143,11 @@ npm run demo:ensure-project
 
 Run that only after Wrangler dev is already serving the local API. `demo:run` already calls the same helper automatically before it posts the run.
 
-Current limitation:
+Current execution split:
 
-- project-backed compile still requires exactly one unambiguous executable component; multi-component compile-target selection is deferred until a real product concept exists
+- compile is document-first and no longer requires a project-level compile-target selector
+- `think_live` is the intended multi-component execution path
+- `scripted` remains intentionally conservative and supports only single-component projects
 
 ## Demo Flow
 
@@ -160,37 +162,37 @@ Then run one of the supported demo pairs:
 ```bash
 npm run demo:run
 npm run demo:validate
+
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:run
+KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:validate
+
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run
+KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate
 ```
 
-These commands cover three execution-engine contracts today:
+These pairs cover three distinct contracts:
 
-- `npm run demo:run` plus `npm run demo:validate`: the default scripted fixture path.
-- `KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:run` plus `KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:validate`: the deterministic mock-backed Think validation path.
-- `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run` plus `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate`: the live full-workflow Think proof on the current fixture-project happy path.
+- `npm run demo:run` plus `npm run demo:validate`: the conservative zero-argument scripted helper path.
+- `KEYSTONE_EXECUTION_ENGINE=think_mock ...`: the deterministic fixture-scoped Think validation path.
+- `KEYSTONE_EXECUTION_ENGINE=think_live ...`: the live-model Think proof against the stored `fixture-demo-project` plus the committed planning-document fixtures.
 
 All three flows create project-backed runs through the stored `fixture-demo-project`, seed the three run planning documents (`specification`, `architecture`, `execution_plan`), then call explicit compile before polling the run to completion.
 
-For a zero-argument live rerun after you have exported the execution engine once, use:
+The current shipped runtime and proof contract is:
 
-```bash
-export KEYSTONE_EXECUTION_ENGINE=think_live
-npm run demo:run
-npm run demo:validate
-```
+- omitting `executionEngine` on project-backed run creation defaults the API/runtime path to `think_live`
+- the zero-argument `demo:run` helper intentionally stays on `scripted` until a fresh host-local live proof archives reliably again
+- `think_live` can execute project-backed compiled DAGs against the full materialized project workspace, including multi-component projects
+- `RunWorkflow` fans out the union of `active` and `ready` tasks on each scheduler poll, so newly unblocked work can launch while unrelated branches stay active
+- `demo:validate` now fails closed if run detail is malformed and, for public `scripted` or `think_live` proofs, requires a well-formed acyclic workflow graph with at least three tasks, at least two root tasks, and at least one dependency edge
+- Think runs still must expose task conversation locators on `run_tasks`
 
-That live pair now proves the current end-to-end happy path from project-scoped run creation through:
+Current limits and caveats:
 
-- run document creation and revision persistence
-- live compile
-- compiled Think task execution
-- archived completion with pinned compile provenance and task conversation locators
-
-The proof remains intentionally narrow:
-
-- `scripted` stays the default runtime
-- `executionEngine=think_mock` remains the deterministic Think validation path
-- the live proof is fixture-scoped to the stored `fixture-demo-project` plus committed planning document fixtures
-- compile requires the run `specification`, `architecture`, and `execution_plan` documents to exist
+- compile is document-first and no longer requires a project-level compile target
+- `scripted` still supports only single-component projects and fails fast for multi-component workspaces; use `think_live` for multi-component execution
+- compile still expects the run `specification`, `architecture`, and `execution_plan` documents before execution
+- the latest host-local live-proof evidence on 2026-04-21 reached the local Worker, then `KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:run` failed with `Expected archived run, received failed.` and the latest run row showed `executionEngine: "think_live"`, `status: "failed"`, and `compiledFrom: null`; later that day `curl -i http://127.0.0.1:8787/v1/health` could not connect, so no fresher local archived proof is recorded yet
 
 `demo:run` persists only the last successful archived run under `.keystone/demo-last-run.json`. `demo:validate` reuses that state only when you do not supply `--run-id` or `KEYSTONE_RUN_ID`.
 
@@ -201,7 +203,7 @@ export KEYSTONE_BASE_URL=http://127.0.0.1:<port-from-ready-line>
 npm run demo:validate -- --run-id=<run-id-from-demo-run>
 ```
 
-The scripted path stays the default execution engine and should yield a `task_log` artifact. The deterministic Think pair is:
+The scripted helper path yields a `task_log` artifact. The deterministic Think pair is:
 
 ```bash
 KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:run
@@ -210,7 +212,7 @@ KEYSTONE_EXECUTION_ENGINE=think_mock npm run demo:validate
 
 That Think pair remains the stable validation path because it avoids live-model variability.
 
-For a live-model Think run through the current fixture-scoped path, use:
+For a live-model Think run through the current explicit helper path, use:
 
 ```bash
 npm run demo:run:think-live
@@ -224,11 +226,10 @@ For ad hoc manual Think validation when you need to supply the run id explicitly
 KEYSTONE_EXECUTION_ENGINE=think_live npm run demo:validate -- --run-id=<run-id-from-demo-run>
 ```
 
-The current Think path is intentionally narrow:
+The current Think path preserves a few intentional boundaries:
 
-- `executionEngine` defaults to `scripted`
-- `think_mock` is the deterministic validation path
-- `think_live` means live compile plus compiled Think task execution on the approved fixture-project happy path
+- `think_mock` remains the deterministic fixture-scoped validation path
+- `think_live` means live compile plus compiled Think task execution against the full project workspace, including multi-component projects
 - the Think implementer stages durable files under `/artifacts/out`, and `TaskWorkflow` promotes those staged files into canonical R2-backed `run_note` artifacts
 - final run success is anchored on a `run_summary` artifact and an archived run row
 
@@ -236,9 +237,11 @@ For manual API validation outside the helper scripts, create or update a project
 
 ```json
 {
-  "executionEngine": "think_mock"
+  "executionEngine": "think_live"
 }
 ```
+
+Omit `executionEngine` to use the same `think_live` runtime default explicitly documented above.
 
 ## Local Auth
 

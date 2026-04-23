@@ -997,11 +997,11 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-201/specification");
     });
-    expect(createRunBodies).toEqual([{ executionEngine: "scripted" }]);
+    expect(createRunBodies).toEqual([{ executionEngine: "think_live" }]);
     expect(fetchMock).toHaveBeenCalledWith(
       `/v1/projects/${project.projectId}/runs`,
       expect.objectContaining({
-        body: JSON.stringify({ executionEngine: "scripted" }),
+        body: JSON.stringify({ executionEngine: "think_live" }),
         method: "POST"
       })
     );
@@ -1036,11 +1036,11 @@ describe("App shell", () => {
     fireEvent.click(createButton);
 
     expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
-    expect(createRunBodies).toEqual([{ executionEngine: "scripted" }]);
+    expect(createRunBodies).toEqual([{ executionEngine: "think_live" }]);
     expect(fetchMock).toHaveBeenCalledWith(
       `/v1/projects/${project.projectId}/runs`,
       expect.objectContaining({
-        body: JSON.stringify({ executionEngine: "scripted" }),
+        body: JSON.stringify({ executionEngine: "think_live" }),
         method: "POST"
       })
     );

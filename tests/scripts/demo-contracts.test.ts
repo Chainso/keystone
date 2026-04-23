@@ -228,7 +228,7 @@ describe("demo scripts", () => {
         tenantId: "tenant-local",
         projectId: "project-fixture",
         runId: "run-local-123",
-        executionEngine: "scripted",
+        executionEngine: "think_live",
         status: "configured",
         nextSteps: {
           createDocuments: "/v1/runs/run-local-123/documents",
@@ -240,7 +240,7 @@ describe("demo scripts", () => {
           method: "POST",
           path: "/v1/projects/project-fixture/runs",
           body: {
-            executionEngine: "scripted"
+            executionEngine: "think_live"
           }
         })
       ]);
@@ -312,7 +312,7 @@ describe("demo scripts", () => {
     }
   });
 
-  it("demo:run seeds the three planning documents, compiles, and persists archived run state", async () => {
+  it("demo:run seeds the three planning documents, compiles, and persists archived scripted run state by default", async () => {
     const statePath = await createTempStatePath();
     const createdDocuments: Array<Record<string, unknown>> = [];
     const createdRevisions: Array<Record<string, unknown>> = [];
@@ -415,12 +415,16 @@ describe("demo scripts", () => {
             data: {
               items: [
                 {
-                  taskId: "task-1",
+                  taskId: "task-prepare-code",
                   status: "completed"
                 },
                 {
-                  taskId: "task-2",
-                  status: "ready"
+                  taskId: "task-prepare-tests",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-implement",
+                  status: "completed"
                 }
               ]
             }
@@ -450,9 +454,9 @@ describe("demo scripts", () => {
           executionPlanRevisionId: "plan-rev-1"
         },
         tasks: {
-          total: 2,
-          completed: 1,
-          ready: 1,
+          total: 3,
+          completed: 3,
+          ready: 0,
           active: 0,
           pending: 0,
           failed: 0,
@@ -467,6 +471,15 @@ describe("demo scripts", () => {
         runId: "run-123",
         executionEngine: "scripted"
       });
+      expect(server.requests).toContainEqual(
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/projects/project-123/runs",
+          body: {
+            executionEngine: "scripted"
+          }
+        })
+      );
       expect(createdDocuments).toEqual([
         {
           kind: "specification",
@@ -498,6 +511,160 @@ describe("demo scripts", () => {
           body: expect.any(String)
         })
       ]);
+      expect(createdRevisions[0]?.body).toContain("at least two root tasks");
+      expect(createdRevisions[1]?.body).toContain("Root task A");
+      expect(createdRevisions[2]?.body).toContain("depends on tasks 1 and 2");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:run keeps the explicit scripted execution engine path available", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/projects") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  projectId: "project-123",
+                  projectKey: "fixture-demo-project"
+                }
+              ],
+              total: 1
+            }
+          }
+        };
+      }
+
+      if (request.method === "PATCH" && request.path === "/v1/projects/project-123") {
+        return {
+          body: {
+            data: {
+              projectId: "project-123",
+              projectKey: "fixture-demo-project"
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/projects/project-123/runs") {
+        return {
+          status: 201,
+          body: {
+            data: {
+              runId: "run-scripted-123",
+              status: "configured"
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/runs/run-scripted-123/documents") {
+        const body = request.body as Record<string, unknown>;
+
+        return {
+          status: 201,
+          body: {
+            data: {
+              documentId: `doc-${body.kind}`
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "POST" &&
+        request.path.startsWith("/v1/runs/run-scripted-123/documents/doc-")
+      ) {
+        return {
+          status: 201,
+          body: {
+            data: {
+              documentRevisionId: crypto.randomUUID()
+            }
+          }
+        };
+      }
+
+      if (request.method === "POST" && request.path === "/v1/runs/run-scripted-123/compile") {
+        return {
+          body: {
+            data: {
+              runId: "run-scripted-123"
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-scripted-123") {
+        return {
+          body: {
+            data: {
+              runId: "run-scripted-123",
+              status: "archived",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-scripted",
+                architectureRevisionId: "arch-rev-scripted",
+                executionPlanRevisionId: "plan-rev-scripted"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-scripted-123/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-prepare-code",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-prepare-tests",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-implement",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      const { stdout } = await runDemoScript(
+        "demo:run",
+        [`--base-url=${server.baseUrl}`, "--execution-engine=scripted"],
+        {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        }
+      );
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        executionEngine: "scripted",
+        demoContract: {
+          contractId: "scripted-document-run"
+        }
+      });
+      expect(server.requests).toContainEqual(
+        expect.objectContaining({
+          method: "POST",
+          path: "/v1/projects/project-123/runs",
+          body: {
+            executionEngine: "scripted"
+          }
+        })
+      );
     } finally {
       await server.close();
     }
@@ -633,7 +800,7 @@ describe("demo scripts", () => {
     }
   });
 
-  it("demo:validate reads persisted run state and verifies compile provenance plus task conversations", async () => {
+  it("demo:validate reads persisted run state and verifies the non-trivial DAG proof for think_live", async () => {
     const statePath = await createTempStatePath();
     const server = await startStubServer((request) => {
       if (request.method === "GET" && request.path === "/v1/runs/run-validate-123") {
@@ -642,7 +809,7 @@ describe("demo scripts", () => {
             data: {
               runId: "run-validate-123",
               status: "archived",
-              executionEngine: "think_mock",
+              executionEngine: "think_live",
               compiledFrom: {
                 specificationRevisionId: "spec-rev-validate",
                 architectureRevisionId: "arch-rev-validate",
@@ -659,14 +826,70 @@ describe("demo scripts", () => {
             data: {
               items: [
                 {
-                  taskId: "task-validate",
+                  taskId: "task-prepare-code",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-prepare-tests",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-implement",
                   status: "completed",
                   conversation: {
                     agentClass: "KeystoneThinkAgent",
-                    agentName: "tenant:tenant-dev-local:run:run-validate-123:task:task-validate"
+                    agentName: "tenant:tenant-dev-local:run:run-validate-123:task:task-implement"
                   }
                 }
               ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-123/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-prepare-code",
+                  name: "Inspect greeting implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-prepare-tests",
+                  name: "Inspect greeting tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-implement",
+                  name: "Implement greeting update",
+                  status: "completed",
+                  dependsOn: ["task-prepare-code", "task-prepare-tests"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-prepare-code",
+                  toTaskId: "task-implement"
+                },
+                {
+                  fromTaskId: "task-prepare-tests",
+                  toTaskId: "task-implement"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
             }
           }
         };
@@ -682,7 +905,7 @@ describe("demo scripts", () => {
           {
             baseUrl: server.baseUrl,
             runId: "run-validate-123",
-            executionEngine: "think_mock"
+            executionEngine: "think_live"
           },
           null,
           2
@@ -698,7 +921,7 @@ describe("demo scripts", () => {
         ok: true,
         baseUrl: server.baseUrl,
         runId: "run-validate-123",
-        executionEngine: "think_mock",
+        executionEngine: "think_live",
         status: "archived",
         compiledFrom: {
           specificationRevisionId: "spec-rev-validate",
@@ -706,13 +929,1328 @@ describe("demo scripts", () => {
           executionPlanRevisionId: "plan-rev-validate"
         },
         tasks: {
-          total: 1,
-          completed: 1
+          total: 3,
+          completed: 3
+        },
+        workflow: {
+          totalTasks: 3,
+          rootTasks: 2,
+          dependentTasks: 1,
+          edges: 2
+        },
+        demoContract: {
+          contractId: "think-live-document-run"
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate keeps the explicit scripted DAG proof available", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-scripted") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-scripted",
+              status: "archived",
+              executionEngine: "scripted",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-scripted",
+                architectureRevisionId: "arch-rev-scripted",
+                executionPlanRevisionId: "plan-rev-scripted"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-scripted/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-prepare-code",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-prepare-tests",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-implement",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-scripted/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-prepare-code",
+                  name: "Inspect greeting implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-prepare-tests",
+                  name: "Inspect greeting tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-implement",
+                  name: "Implement greeting update",
+                  status: "completed",
+                  dependsOn: ["task-prepare-code", "task-prepare-tests"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-prepare-code",
+                  toTaskId: "task-implement"
+                },
+                {
+                  fromTaskId: "task-prepare-tests",
+                  toTaskId: "task-implement"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-scripted",
+            executionEngine: "scripted"
+          },
+          null,
+          2
+        )
+      );
+
+      const { stdout } = await runDemoScript("demo:validate", [], {
+        KEYSTONE_DEMO_STATE_PATH: statePath
+      });
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        ok: true,
+        baseUrl: server.baseUrl,
+        runId: "run-validate-scripted",
+        executionEngine: "scripted",
+        status: "archived",
+        workflow: {
+          totalTasks: 3,
+          rootTasks: 2,
+          dependentTasks: 1,
+          edges: 2
+        },
+        demoContract: {
+          contractId: "scripted-document-run"
+        }
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate keeps the narrow think_mock proof path available", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-mock",
+              status: "archived",
+              executionEngine: "think_mock",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-validate",
+                architectureRevisionId: "arch-rev-validate",
+                executionPlanRevisionId: "plan-rev-validate"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-validate",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-mock:task:task-validate"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-mock/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-validate",
+                  name: "Implement execution plan",
+                  status: "completed",
+                  dependsOn: []
+                }
+              ],
+              edges: [],
+              summary: {
+                totalTasks: 1,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 1,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-mock",
+            executionEngine: "think_mock"
+          },
+          null,
+          2
+        )
+      );
+
+      const { stdout } = await runDemoScript("demo:validate", [], {
+        KEYSTONE_DEMO_STATE_PATH: statePath
+      });
+      const payload = parseCommandJson(stdout);
+
+      expect(payload).toMatchObject({
+        ok: true,
+        baseUrl: server.baseUrl,
+        runId: "run-validate-mock",
+        executionEngine: "think_mock",
+        workflow: {
+          totalTasks: 1,
+          rootTasks: 1,
+          dependentTasks: 0,
+          edges: 0
         },
         demoContract: {
           contractId: "think-mock-document-run"
         }
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects a public DAG proof with fewer than three compiled tasks", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-two-tasks") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-two-tasks",
+              status: "archived",
+              executionEngine: "scripted",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-two",
+                architectureRevisionId: "arch-rev-two",
+                executionPlanRevisionId: "plan-rev-two"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-two-tasks/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-two-tasks/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                }
+              ],
+              edges: [],
+              summary: {
+                totalTasks: 2,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 2,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-two-tasks",
+            executionEngine: "scripted"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/at least three compiled tasks/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects a think_live run that lacks dependency edges", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-no-edges") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-no-edges",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-no-edges",
+                architectureRevisionId: "arch-rev-no-edges",
+                executionPlanRevisionId: "plan-rev-no-edges"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-no-edges/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-no-edges:task:task-c"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-no-edges/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                }
+              ],
+              edges: [],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-no-edges",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/missing dependency edge/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects a think_live run that lacks an independent root", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-linear") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-linear",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-linear",
+                architectureRevisionId: "arch-rev-linear",
+                executionPlanRevisionId: "plan-rev-linear"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-linear/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-linear:task:task-c"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-linear/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect greeting implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect greeting tests",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement greeting update",
+                  status: "completed",
+                  dependsOn: ["task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-b"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-linear",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/at least two root tasks/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects malformed workflow graph node payloads", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-malformed-node") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-malformed-node",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-malformed",
+                architectureRevisionId: "arch-rev-malformed",
+                executionPlanRevisionId: "plan-rev-malformed"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-malformed-node/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-malformed-node:task:task-c"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-malformed-node/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-malformed-node",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/well-formed workflow_graph payload/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects dependency edges that reference unknown tasks", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-unknown-edge") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-unknown-edge",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-unknown-edge",
+                architectureRevisionId: "arch-rev-unknown-edge",
+                executionPlanRevisionId: "plan-rev-unknown-edge"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-unknown-edge/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed",
+                  conversation: {
+                    agentClass: "KeystoneThinkAgent",
+                    agentName: "tenant:tenant-dev-local:run:run-validate-unknown-edge:task:task-c"
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-unknown-edge/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-missing",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-unknown-edge",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/references an unknown task/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects cyclic workflow graphs", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-cycle") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-cycle",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-cycle",
+                architectureRevisionId: "arch-rev-cycle",
+                executionPlanRevisionId: "plan-rev-cycle"
+              }
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-cycle/tasks") {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-cycle/workflow") {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: ["task-c"]
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-c",
+                  toTaskId: "task-a"
+                },
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-b"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-cycle",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/must be acyclic/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects duplicate workflow graph nodes", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (request.method === "GET" && request.path === "/v1/runs/run-validate-duplicate-node") {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-duplicate-node",
+              status: "archived",
+              executionEngine: "scripted",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-duplicate",
+                architectureRevisionId: "arch-rev-duplicate",
+                executionPlanRevisionId: "plan-rev-duplicate"
+              }
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-duplicate-node/tasks"
+      ) {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-duplicate-node/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-a",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-a"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-duplicate-node",
+            executionEngine: "scripted"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/duplicate node task-a/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects workflow edges the child node does not declare", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-child-edge-mismatch"
+      ) {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-child-edge-mismatch",
+              status: "archived",
+              executionEngine: "scripted",
+              compiledFrom: {
+                specificationRevisionId: "spec-rev-child-edge",
+                architectureRevisionId: "arch-rev-child-edge",
+                executionPlanRevisionId: "plan-rev-child-edge"
+              }
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-child-edge-mismatch/tasks"
+      ) {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-child-edge-mismatch/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-c"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-child-edge-mismatch",
+            executionEngine: "scripted"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/not declared by the child node/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("demo:validate rejects archived runs that omit compile provenance", async () => {
+    const statePath = await createTempStatePath();
+    const server = await startStubServer((request) => {
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-missing-compiled-from"
+      ) {
+        return {
+          body: {
+            data: {
+              runId: "run-validate-missing-compiled-from",
+              status: "archived",
+              executionEngine: "think_live",
+              compiledFrom: null
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-missing-compiled-from/tasks"
+      ) {
+        return {
+          body: {
+            data: {
+              items: [
+                {
+                  taskId: "task-a",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-b",
+                  status: "completed"
+                },
+                {
+                  taskId: "task-c",
+                  status: "completed"
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      if (
+        request.method === "GET" &&
+        request.path === "/v1/runs/run-validate-missing-compiled-from/workflow"
+      ) {
+        return {
+          body: {
+            data: {
+              nodes: [
+                {
+                  taskId: "task-a",
+                  name: "Inspect implementation",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-b",
+                  name: "Inspect tests",
+                  status: "completed",
+                  dependsOn: []
+                },
+                {
+                  taskId: "task-c",
+                  name: "Implement update",
+                  status: "completed",
+                  dependsOn: ["task-a", "task-b"]
+                }
+              ],
+              edges: [
+                {
+                  fromTaskId: "task-a",
+                  toTaskId: "task-c"
+                },
+                {
+                  fromTaskId: "task-b",
+                  toTaskId: "task-c"
+                }
+              ],
+              summary: {
+                totalTasks: 3,
+                activeTasks: 0,
+                pendingTasks: 0,
+                completedTasks: 3,
+                readyTasks: 0,
+                failedTasks: 0,
+                cancelledTasks: 0
+              }
+            }
+          }
+        };
+      }
+
+      throw new Error(`Unexpected request: ${request.method} ${request.path}`);
+    });
+
+    try {
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            baseUrl: server.baseUrl,
+            runId: "run-validate-missing-compiled-from",
+            executionEngine: "think_live"
+          },
+          null,
+          2
+        )
+      );
+
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/record compile provenance/);
     } finally {
       await server.close();
     }
@@ -764,21 +2302,11 @@ describe("demo scripts", () => {
         )
       );
 
-      await expect(async () => {
-        try {
-          await runDemoScript("demo:validate", [], {
-            KEYSTONE_DEMO_STATE_PATH: statePath
-          });
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-
-          expect(message).toMatch(/did not return a valid executionEngine/);
-          return;
-        }
-
-        throw new Error("Expected demo:validate to fail when executionEngine is missing.");
-      }).not.toThrow();
+      await expect(
+        runDemoScript("demo:validate", [], {
+          KEYSTONE_DEMO_STATE_PATH: statePath
+        })
+      ).rejects.toThrow(/did not return a valid executionEngine/);
     } finally {
       await server.close();
     }

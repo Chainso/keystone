@@ -12,7 +12,6 @@ import { readSandboxAgentFile } from "../keystone/agents/tools/filesystem";
 import type { AgentRuntimeArtifact } from "../maestro/agent-runtime";
 import type { TaskSessionState } from "../durable-objects/TaskSessionDO";
 import {
-  isAgentRuntimeArtifactKind,
   parseAgentRuntimeArtifactKind,
   type AgentRuntimeArtifactKind,
   type ArtifactKind
@@ -100,55 +99,6 @@ interface ProcessLogArtifact {
   stderr: string;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-function asStringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  return value.filter((entry): entry is string => typeof entry === "string");
-}
-
-function isThinkTurnOutcome(value: string | null): value is ThinkTurnSnapshot["outcome"] {
-  return value === "completed" || value === "failed" || value === "cancelled";
-}
-
-function parseTaskExecutionSnapshot(
-  payload: Record<string, unknown> | null,
-  fallback: {
-    processStatus: string;
-    exitCode: number | null;
-    logArtifactRefId: string | null;
-    promotedArtifactRefIds?: string[];
-  }
-): TaskExecutionSnapshot {
-  const promotedArtifactRefIds = asStringArray(payload?.promotedArtifactRefIds);
-  const processStatus =
-    asString(payload?.processStatus) ??
-    asString(payload?.status) ??
-    fallback.processStatus;
-  const exitCodeValue = payload?.exitCode;
-
-  return {
-    processStatus,
-    exitCode:
-      typeof exitCodeValue === "number"
-        ? exitCodeValue
-        : exitCodeValue === null
-          ? null
-          : fallback.exitCode,
-    logArtifactRefId: asString(payload?.logArtifactRefId) ?? fallback.logArtifactRefId,
-    promotedArtifactRefIds: promotedArtifactRefIds ?? (fallback.promotedArtifactRefIds ?? [])
-  };
-}
-
 function buildProcessLogArtifactBody(logs: ProcessLogArtifact) {
   return [
     logs.stdout
@@ -168,22 +118,6 @@ function buildProcessLogArtifactBody(logs: ProcessLogArtifact) {
   ]
     .filter((line): line is string => line !== null)
     .join("\n");
-}
-
-function parseStagedArtifactPayload(payload: Record<string, unknown> | null) {
-  const artifactPath = asString(payload?.path);
-  const artifactKind = asString(payload?.kind);
-
-  if (!artifactPath || !artifactKind || !isAgentRuntimeArtifactKind(artifactKind)) {
-    return null;
-  }
-
-  return {
-    path: artifactPath,
-    kind: artifactKind,
-    contentType: asString(payload?.contentType) ?? undefined,
-    metadata: asRecord(payload?.metadata) as Record<string, JsonValue> | undefined
-  };
 }
 
 type JsonValue =
@@ -232,6 +166,7 @@ interface TaskWorkspaceSnapshot {
   taskSessionId: string;
   sandboxId: string;
   agentBridgeJson: string;
+  scriptedProcessCwd: string | null;
 }
 
 interface TaskProjectContext {
@@ -243,10 +178,6 @@ interface AuthoritativeTaskRecordSnapshot {
 }
 
 type RunTaskRecord = NonNullable<Awaited<ReturnType<typeof getRunTask>>>;
-
-function isTerminalTaskStatus(status: string | null | undefined): status is "completed" | "failed" {
-  return status === "completed" || status === "failed";
-}
 
 function buildTaskConversationLocator(input: {
   executionEngine: ExecutionEngine;
@@ -380,7 +311,6 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
   async run(event: Readonly<WorkflowEvent<TaskWorkflowParams>>, step: WorkflowStep) {
     const executionEngine = event.payload.executionEngine;
     const preserveSandbox = event.payload.preserveSandbox ?? false;
-    let execution: TaskExecutionSnapshot | null = null;
     let taskSessionPrepared = false;
     let taskSessionState: TaskWorkspaceSnapshot | null = null;
     let authoritativeTaskRecord: AuthoritativeTaskRecordSnapshot | null = null;
@@ -460,7 +390,11 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
         return {
           taskSessionId: taskSessionId!,
           sandboxId: workspaceState.sandboxId,
-          agentBridgeJson: JSON.stringify(bridge)
+          agentBridgeJson: JSON.stringify(bridge),
+          scriptedProcessCwd:
+            workspaceState.workspace?.components.length === 1
+              ? workspaceState.workspace.components[0]?.worktreePath ?? null
+              : null
         };
       })) as TaskWorkspaceSnapshot;
 
@@ -517,102 +451,97 @@ export class TaskWorkflow extends WorkflowEntrypoint<WorkerBindings, TaskWorkflo
         return true;
       });
 
-      if (executionEngine !== "scripted") {
-        const runThinkStep = step.do as unknown as (
-          name: string,
-          fn: () => Promise<unknown>
-        ) => Promise<unknown>;
-        const turnResult = (await runThinkStep("run think implementer", async () => {
-          const agentBridge = JSON.parse(preparedTaskSession.agentBridgeJson) as SerializableAgentBridge;
-          const agent = await getAgentByName(
-            this.env.KEYSTONE_THINK_AGENT,
-            getThinkAgentName(event.payload.tenantId, event.payload.runId, taskSessionId!)
-          ) as Pick<KeystoneThinkAgent, "runImplementerTurn">;
-          const turnInput = resolveThinkTurnInput(
-            projectContext!.projectExecution,
-            handoff!,
-            executionEngine
-          );
-          const result = await agent.runImplementerTurn({
-            tenantId: event.payload.tenantId,
-            runId: event.payload.runId,
-            sessionId: taskSessionId!,
-            taskId: event.payload.taskId,
-            prompt: buildThinkImplementerPrompt(handoff!, {
-              projectId: event.payload.project.projectId,
-              projectKey: event.payload.project.projectKey,
-              displayName: event.payload.project.displayName,
-              ruleSet: projectContext!.projectExecution.ruleSet,
-              componentRuleOverrides: projectContext!.projectExecution.componentRuleOverrides
-            }),
-            sandboxId: preparedTaskSession.sandboxId,
-            agentBridge,
-            ...turnInput
-          });
+      const completedExecution =
+        executionEngine !== "scripted"
+          ? await (async () => {
+              const runThinkStep = step.do as unknown as (
+                name: string,
+                fn: () => Promise<unknown>
+              ) => Promise<unknown>;
+              const turnResult = (await runThinkStep("run think implementer", async () => {
+                const agentBridge = JSON.parse(preparedTaskSession.agentBridgeJson) as SerializableAgentBridge;
+                const agent = await getAgentByName(
+                  this.env.KEYSTONE_THINK_AGENT,
+                  getThinkAgentName(event.payload.tenantId, event.payload.runId, taskSessionId!)
+                ) as Pick<KeystoneThinkAgent, "runImplementerTurn">;
+                const turnInput = resolveThinkTurnInput(
+                  projectContext!.projectExecution,
+                  handoff!,
+                  executionEngine
+                );
+                const result = await agent.runImplementerTurn({
+                  tenantId: event.payload.tenantId,
+                  runId: event.payload.runId,
+                  sessionId: taskSessionId!,
+                  taskId: event.payload.taskId,
+                  prompt: buildThinkImplementerPrompt(handoff!, {
+                    projectId: event.payload.project.projectId,
+                    projectKey: event.payload.project.projectKey,
+                    displayName: event.payload.project.displayName,
+                    componentCount: projectContext!.projectExecution.components.length,
+                    ruleSet: projectContext!.projectExecution.ruleSet,
+                    componentRuleOverrides: projectContext!.projectExecution.componentRuleOverrides
+                  }),
+                  sandboxId: preparedTaskSession.sandboxId,
+                  agentBridge,
+                  ...turnInput
+                });
 
-          const serializedStagedArtifacts: SerializableThinkTurnResult["stagedArtifacts"] =
-            result.stagedArtifacts.map((stagedArtifact) => ({
-              path: stagedArtifact.path,
-              kind: stagedArtifact.kind,
-              contentType: stagedArtifact.contentType,
-              metadata: stagedArtifact.metadata
-                ? (JSON.parse(JSON.stringify(stagedArtifact.metadata)) as Record<string, JsonValue>)
-                : undefined
-            }));
+                const serializedStagedArtifacts: SerializableThinkTurnResult["stagedArtifacts"] =
+                  result.stagedArtifacts.map((stagedArtifact) => ({
+                    path: stagedArtifact.path,
+                    kind: stagedArtifact.kind,
+                    contentType: stagedArtifact.contentType,
+                    metadata: stagedArtifact.metadata
+                      ? (JSON.parse(JSON.stringify(stagedArtifact.metadata)) as Record<string, JsonValue>)
+                      : undefined
+                  }));
 
-          return {
-            outcome: result.outcome,
-            summary: result.summary ?? null,
-            stagedArtifacts: serializedStagedArtifacts
-          };
-        })) as unknown as SerializableThinkTurnResult;
+                return {
+                  outcome: result.outcome,
+                  summary: result.summary ?? null,
+                  stagedArtifacts: serializedStagedArtifacts
+                };
+              })) as unknown as SerializableThinkTurnResult;
 
-        execution = await step.do("promote think artifacts", async () => {
-          const client = createWorkerDatabaseClient(this.env);
+              return await step.do("promote think artifacts", async () => {
+                const client = createWorkerDatabaseClient(this.env);
 
-          try {
-            const promotedArtifactRefIds = await promoteStagedArtifacts(this.env, client, {
-              tenantId: event.payload.tenantId,
-              projectId: event.payload.project.projectId,
-              runId: event.payload.runId,
-              runTaskId: resolvedAuthoritativeTaskRecord.runTaskId,
-              sessionId: taskSessionId!,
-              taskId: event.payload.taskId,
-              sandboxId: preparedTaskSession.sandboxId,
-              agentBridge: JSON.parse(preparedTaskSession.agentBridgeJson) as SerializableAgentBridge,
-              stagedArtifacts: turnResult.stagedArtifacts
-            });
-            const thinkExecution = {
-              processStatus:
-                turnResult.outcome === "completed" ? "completed" : turnResult.outcome,
-              exitCode: turnResult.outcome === "completed" ? 0 : 1,
-              logArtifactRefId: null,
-              promotedArtifactRefIds
-            } satisfies TaskExecutionSnapshot;
+                try {
+                  const promotedArtifactRefIds = await promoteStagedArtifacts(this.env, client, {
+                    tenantId: event.payload.tenantId,
+                    projectId: event.payload.project.projectId,
+                    runId: event.payload.runId,
+                    runTaskId: resolvedAuthoritativeTaskRecord.runTaskId,
+                    sessionId: taskSessionId!,
+                    taskId: event.payload.taskId,
+                    sandboxId: preparedTaskSession.sandboxId,
+                    agentBridge: JSON.parse(preparedTaskSession.agentBridgeJson) as SerializableAgentBridge,
+                    stagedArtifacts: turnResult.stagedArtifacts
+                  });
+                  const thinkExecution = {
+                    processStatus:
+                      turnResult.outcome === "completed" ? "completed" : turnResult.outcome,
+                    exitCode: turnResult.outcome === "completed" ? 0 : 1,
+                    logArtifactRefId: null,
+                    promotedArtifactRefIds
+                  } satisfies TaskExecutionSnapshot;
 
-            return thinkExecution;
-          } finally {
-            await client.close();
-          }
-        });
-      } else {
-        execution = await runScriptedTask(
-          this.env,
-          step,
-          event.payload,
-          resolvedAuthoritativeTaskRecord.runTaskId,
-          taskSessionId!,
-          projectContext!.projectExecution.environment
-        );
-      }
-
-      if (!execution) {
-        throw new NonRetryableError(
-          `Task ${event.payload.taskId} did not produce an execution snapshot.`
-        );
-      }
-
-      const completedExecution = execution;
+                  return thinkExecution;
+                } finally {
+                  await client.close();
+                }
+              });
+            })()
+          : await runScriptedTask(
+              this.env,
+              step,
+              event.payload,
+              resolvedAuthoritativeTaskRecord.runTaskId,
+              taskSessionId!,
+              projectContext!.projectExecution.environment,
+              preparedTaskSession.scriptedProcessCwd
+            );
 
       const persistedTaskStatus = (await step.do("persist task terminal state", async () => {
         const client = createWorkerDatabaseClient(this.env);
@@ -750,8 +679,15 @@ async function runScriptedTask(
   payload: TaskWorkflowParams,
   runTaskId: string,
   taskSessionId: string,
-  projectEnv: Record<string, string>
+  projectEnv: Record<string, string>,
+  scriptedProcessCwd: string | null
 ): Promise<TaskExecutionSnapshot> {
+  if (!scriptedProcessCwd) {
+    throw new NonRetryableError(
+      "The scripted execution engine currently supports only projects with exactly one materialized component."
+    );
+  }
+
   await step.do("start task process", async () => {
     const taskSession = getTaskSessionStub(
       env,
@@ -763,6 +699,7 @@ async function runScriptedTask(
 
     const process = await taskSession.startProcess({
       command: "npm test",
+      cwd: scriptedProcessCwd,
       env: projectEnv
     });
 
@@ -911,6 +848,7 @@ function buildThinkImplementerPrompt(
     projectId: string;
     projectKey: string;
     displayName: string;
+    componentCount: number;
     ruleSet: ProjectRuleSet;
     componentRuleOverrides: ProjectExecutionRuleOverride[];
   }
@@ -952,6 +890,10 @@ function buildThinkImplementerPrompt(
           })
         ].join("\n")
       : null;
+  const commitGuidance =
+    project && project.componentCount > 1
+      ? "When you finish, if you changed workspace files, create a git commit in each changed component repo/worktree with a concise message, then stage a concise durable handoff note under /artifacts/out and leave the workspace in a test-passing state."
+      : "When you finish, if you changed workspace files, create a git commit in the changed component repo/worktree with a concise message, then stage a concise durable handoff note under /artifacts/out and leave the workspace in a test-passing state.";
 
   return [
     `Run ID: ${handoff.runId}`,
@@ -974,7 +916,7 @@ function buildThinkImplementerPrompt(
     "",
     "Projected run planning documents, run_plan, and task_handoff artifacts are available under /artifacts/in if you need broader context before editing.",
     "",
-    "When you finish, if you changed workspace files, create a git commit in the task worktree with a concise message, then stage a concise durable handoff note under /artifacts/out and leave the workspace in a test-passing state."
+    commitGuidance
   ].join("\n");
 }
 
@@ -983,22 +925,25 @@ function resolveThinkTurnInput(
   handoff: Awaited<ReturnType<typeof loadTaskHandoffArtifact>>,
   executionEngine: ExecutionEngine
 ) {
+  void projectExecution;
+  void handoff;
+
+  if (executionEngine === "think_live") {
+    return {};
+  }
+
   if (
     projectExecution.components.length === 1 &&
     projectExecution.components[0]?.type === "inline" &&
     projectExecution.components[0].repoUrl === "fixture://demo-target"
   ) {
-    if (executionEngine === "think_live") {
-      return {};
-    }
-
     return {
       mockModelPlan: createThinkSmokePlan()
     };
   }
 
   throw new NonRetryableError(
-    "The Think runtime currently supports only fixture-scoped compiled demo handoffs."
+    "The mock Think runtime currently supports only fixture-scoped compiled demo handoffs."
   );
 }
 
