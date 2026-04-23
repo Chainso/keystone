@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import {
   DocumentFrame,
   DocumentFrameBody,
@@ -188,7 +190,11 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
   );
 }
 
-export function PlanningWorkspaceFrame(props: RunPlanningPhaseViewModel) {
+export function PlanningWorkspaceFrame(
+  props: RunPlanningPhaseViewModel & {
+    documentAccessory?: ReactNode;
+  }
+) {
   return (
     <WorkspaceSplit className="planning-workspace-split">
       <WorkspaceSplitPane>
@@ -201,6 +207,9 @@ export function PlanningWorkspaceFrame(props: RunPlanningPhaseViewModel) {
 
       <WorkspaceSplitPane>
         <PlanningDocumentPanel {...props} />
+        {props.documentAccessory ? (
+          <div className="planning-workspace-accessory">{props.documentAccessory}</div>
+        ) : null}
       </WorkspaceSplitPane>
     </WorkspaceSplit>
   );

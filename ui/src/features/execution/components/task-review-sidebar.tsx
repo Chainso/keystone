@@ -340,7 +340,7 @@ function SupportingArtifactsSection({ artifacts }: { artifacts: TaskArtifactView
         <div className="task-review-group-heading">
           <ReviewSectionLabel>Supporting artifacts</ReviewSectionLabel>
           <DocumentFrameSummary>
-            Non-diff outputs remain available as metadata in this phase.
+            Other task outputs stay available here even when they are not changed-file diffs.
           </DocumentFrameSummary>
         </div>
         <p className="document-name">
@@ -383,8 +383,7 @@ function TaskReviewSidebarReady({ artifacts }: { artifacts: TaskArtifactViewMode
       <ReviewSection>
         <ReviewSectionLabel>Changed files</ReviewSectionLabel>
         <DocumentFrameSummary>
-          Changed files are inferred from current task text artifacts whose content parses as
-          unified diff through the authenticated run API seam.
+          Changed files are collected from the current task outputs whenever they include unified diffs.
         </DocumentFrameSummary>
       </ReviewSection>
 

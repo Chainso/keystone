@@ -1,12 +1,7 @@
-import { useState, type CSSProperties } from "react";
-import { Link } from "react-router-dom";
+import type { CSSProperties } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { cn } from "../../../lib/utils";
-import { DocumentFrameSummary } from "../../../components/workspace/document-frame";
-import {
-  ReviewSection,
-  ReviewSectionLabel
-} from "../../../components/workspace/review-frame";
 import {
   WorkspaceEmptyState,
   WorkspaceEmptyStateActions,
@@ -15,18 +10,16 @@ import {
 } from "../../../components/workspace/workspace-empty-state";
 import {
   WorkspacePanel,
+  WorkspacePanelActions,
   WorkspacePanelHeader,
   WorkspacePanelHeading,
   WorkspacePanelSummary,
   WorkspacePanelTitle
 } from "../../../components/workspace/workspace-panel";
-import { StatusPill } from "../../../shared/layout/status-pill";
 import type {
   ExecutionEdgeViewModel,
   ExecutionNodeViewModel,
-  ExecutionSummaryGroupViewModel,
-  RunExecutionViewModel,
-  TaskDependencyViewModel
+  RunExecutionViewModel
 } from "../use-execution-view-model";
 
 const executionGraphLayout = {
@@ -89,96 +82,6 @@ function buildExecutionEdgePath(edge: ExecutionEdgeViewModel) {
   const midX = startX + (endX - startX) / 2;
 
   return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
-}
-
-function ExecutionTaskPicker({
-  items,
-  label,
-  onSelectTask,
-  selectedTaskId
-}: {
-  items: TaskDependencyViewModel[];
-  label: string;
-  onSelectTask: (taskId: string) => void;
-  selectedTaskId: string | null;
-}) {
-  return (
-    <ReviewSection aria-label={label}>
-      <ReviewSectionLabel>{label}</ReviewSectionLabel>
-      {items.length === 0 ? (
-        <DocumentFrameSummary>None.</DocumentFrameSummary>
-      ) : (
-        <div className="execution-task-reference-list">
-          {items.map((task) => (
-            <button
-              key={task.taskId}
-              type="button"
-              className={cn(
-                "execution-task-reference",
-                selectedTaskId === task.taskId && "is-selected"
-              )}
-              onClick={() => {
-                onSelectTask(task.taskId);
-              }}
-            >
-              <span className="execution-task-reference-title">{task.title}</span>
-              <span className="document-name">
-                {task.taskId} · {task.statusLabel}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </ReviewSection>
-  );
-}
-
-function ExecutionSummaryGroupCard({
-  group,
-  onSelectTask,
-  selectedTaskId
-}: {
-  group: ExecutionSummaryGroupViewModel;
-  onSelectTask: (taskId: string) => void;
-  selectedTaskId: string | null;
-}) {
-  return (
-    <ReviewSection className={cn("execution-summary-group", `is-${group.tone}`)}>
-      <div className="execution-summary-group-header">
-        <div className="execution-summary-group-heading">
-          <ReviewSectionLabel>{group.label}</ReviewSectionLabel>
-          <DocumentFrameSummary>{group.description}</DocumentFrameSummary>
-        </div>
-        <StatusPill
-          label={`${group.count} task${group.count === 1 ? "" : "s"}`}
-          tone={group.tone}
-        />
-      </div>
-
-      {group.tasks.length > 0 ? (
-        <div className="execution-summary-task-list">
-          {group.tasks.map((task) => (
-            <button
-              key={task.taskId}
-              type="button"
-              className={cn(
-                "execution-summary-task",
-                selectedTaskId === task.taskId && "is-selected"
-              )}
-              onClick={() => {
-                onSelectTask(task.taskId);
-              }}
-            >
-              <span className="execution-summary-task-title">{task.title}</span>
-              <span className="document-name">
-                {task.taskId} · {task.statusLabel}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </ReviewSection>
-  );
 }
 
 function ExecutionGraphBoard({
@@ -269,7 +172,7 @@ function ExecutionGraphBoard({
       </div>
 
       <p className="execution-board-note">
-        Select a task node to inspect its current handoff, then open task detail when the live task record is ready.
+        Open a task node to move straight into its task conversation and review workspace.
       </p>
       <p className="execution-board-note">
         Columns track dependency steps, and parallel tasks remain grouped in the same step.
@@ -279,7 +182,7 @@ function ExecutionGraphBoard({
 }
 
 export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   if (model.state === "empty" || model.state === "pending") {
     return (
@@ -312,131 +215,41 @@ export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) 
   }
 
   const nodesById = new Map(model.nodes.map((node) => [node.taskId, node]));
-  const resolvedSelectedTaskId =
-    (selectedTaskId && nodesById.has(selectedTaskId) ? selectedTaskId : null) ??
-    model.defaultSelectedTaskId ??
-    model.nodes[0]?.taskId ??
-    null;
-  const selectedTask =
-    (resolvedSelectedTaskId ? nodesById.get(resolvedSelectedTaskId) : null) ?? null;
+  const highlightedTaskId = model.defaultSelectedTaskId ?? model.nodes[0]?.taskId ?? null;
+  const executionSummary = model.summaryGroups
+    .filter((group) => group.count > 0)
+    .map((group) => `${group.count} ${group.label.toLowerCase()}`)
+    .join(" · ");
+  const handleActivateTask = (_taskId: string, detailPath: string) => {
+    navigate(detailPath);
+  };
 
   return (
-    <div className="execution-grid">
-      <WorkspacePanel className="execution-panel">
-        <WorkspacePanelHeader>
-          <WorkspacePanelHeading>
-            <WorkspacePanelTitle>Task workflow DAG</WorkspacePanelTitle>
-          </WorkspacePanelHeading>
+    <WorkspacePanel className="execution-panel">
+      <WorkspacePanelHeader>
+        <WorkspacePanelHeading>
+          <WorkspacePanelTitle>Task workflow DAG</WorkspacePanelTitle>
           <WorkspacePanelSummary>
-            Select a task to inspect its current handoff before moving into task detail.
+            The graph stays as the run-level overview. Opening a node switches into task detail for that task.
           </WorkspacePanelSummary>
-        </WorkspacePanelHeader>
+        </WorkspacePanelHeading>
+        {executionSummary ? (
+          <WorkspacePanelActions className="execution-summary-inline" aria-label="Execution status">
+            <p className="document-name">{executionSummary}</p>
+          </WorkspacePanelActions>
+        ) : null}
+      </WorkspacePanelHeader>
 
-        <ExecutionGraphBoard
-          model={model}
-          onSelectTask={setSelectedTaskId}
-          selectedTaskId={resolvedSelectedTaskId}
-        />
-      </WorkspacePanel>
-
-      <div className="execution-sidebar">
-        <WorkspacePanel>
-          <WorkspacePanelHeader>
-            <WorkspacePanelHeading>
-              <WorkspacePanelTitle>Workflow status</WorkspacePanelTitle>
-            </WorkspacePanelHeading>
-          </WorkspacePanelHeader>
-
-          <div className="execution-summary-grid">
-            {model.summaryGroups.map((group) => (
-              <ExecutionSummaryGroupCard
-                key={group.id}
-                group={group}
-                onSelectTask={setSelectedTaskId}
-                selectedTaskId={resolvedSelectedTaskId}
-              />
-            ))}
-          </div>
-        </WorkspacePanel>
-
-        <WorkspacePanel className="execution-selected-panel">
-          <WorkspacePanelHeader>
-            <WorkspacePanelHeading>
-              <WorkspacePanelTitle>Selected task</WorkspacePanelTitle>
-            </WorkspacePanelHeading>
-          </WorkspacePanelHeader>
-
-          {selectedTask ? (
-            <>
-              <section className="execution-selection-card">
-                <div className="execution-selection-header">
-                  <div className="execution-selection-heading">
-                    <p className="message-card-speaker">{selectedTask.logicalTaskId}</p>
-                    <p className="execution-selection-title">{selectedTask.title}</p>
-                  </div>
-                  <StatusPill
-                    label={selectedTask.statusLabel}
-                    tone={selectedTask.statusTone}
-                  />
-                </div>
-
-                <DocumentFrameSummary>{selectedTask.description}</DocumentFrameSummary>
-
-                <div className="execution-selection-metrics">
-                  <p className="execution-selection-metric">
-                    Depends on {selectedTask.dependencyCount} task{selectedTask.dependencyCount === 1 ? "" : "s"}
-                  </p>
-                  <p className="execution-selection-metric">
-                    Unblocks {selectedTask.downstreamTasks.length} task{selectedTask.downstreamTasks.length === 1 ? "" : "s"}
-                  </p>
-                  <p className="execution-selection-metric">{selectedTask.activityLabel}</p>
-                  <p className="execution-selection-metric">
-                    {selectedTask.taskRecordReady
-                      ? selectedTask.conversationAttached
-                        ? "Conversation locator attached"
-                        : "Conversation locator not attached"
-                      : "Task record is still materializing"}
-                  </p>
-                </div>
-
-                <DocumentFrameSummary>{selectedTask.handoffSummary}</DocumentFrameSummary>
-
-                <div className="shell-state-actions">
-                  {selectedTask.detailPath ? (
-                    <Link to={selectedTask.detailPath} className="ghost-button">
-                      Open task detail
-                    </Link>
-                  ) : (
-                    <button type="button" className="ghost-button" disabled>
-                      Task detail is loading
-                    </button>
-                  )}
-                </div>
-              </section>
-
-              <ExecutionTaskPicker
-                items={selectedTask.dependsOn}
-                label="Depends on"
-                onSelectTask={setSelectedTaskId}
-                selectedTaskId={resolvedSelectedTaskId}
-              />
-              <ExecutionTaskPicker
-                items={selectedTask.downstreamTasks}
-                label="Unlocks"
-                onSelectTask={setSelectedTaskId}
-                selectedTaskId={resolvedSelectedTaskId}
-              />
-            </>
-          ) : (
-            <WorkspaceEmptyState>
-              <WorkspaceEmptyStateTitle as="h3">No task selected</WorkspaceEmptyStateTitle>
-              <WorkspaceEmptyStateDescription>
-                Select a node in the workflow graph to inspect its current execution handoff.
-              </WorkspaceEmptyStateDescription>
-            </WorkspaceEmptyState>
-          )}
-        </WorkspacePanel>
-      </div>
-    </div>
+      <ExecutionGraphBoard
+        model={model}
+        onSelectTask={(taskId) => {
+          const nextTask = nodesById.get(taskId);
+          if (nextTask) {
+            handleActivateTask(taskId, nextTask.detailPath);
+          }
+        }}
+        selectedTaskId={highlightedTaskId}
+      />
+    </WorkspacePanel>
   );
 }

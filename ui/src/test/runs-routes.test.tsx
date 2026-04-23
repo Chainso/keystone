@@ -3130,33 +3130,26 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
     expect(screen.getByLabelText("Execution summary")).toHaveTextContent(
       "3 tasks across 3 dependency steps"
     );
     expect(
-      within(screen.getByLabelText("Execution workflow graph")).getByRole("button", {
+      within(graphRegion).getByRole("button", {
         name: /Live run provider cutover/i
       })
     ).toHaveAttribute("aria-pressed", "true");
-    const workflowStatusPanel = screen.getByRole("heading", { name: "Workflow status" }).closest("section");
-
-    expect(workflowStatusPanel).toBeTruthy();
-    expect(within(workflowStatusPanel!).getByText("In progress")).toBeInTheDocument();
-    expect(within(workflowStatusPanel!).getByText("Completed")).toBeInTheDocument();
-    expect(screen.getByText("Implement the live run-detail provider.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution/tasks/task-032"
-    );
+    expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 in progress");
+    expect(screen.getByLabelText("Execution status")).toHaveTextContent("2 completed");
     expect(
       screen.getByText(
-        "Select a task node to inspect its current handoff, then open task detail when the live task record is ready."
+        "Open a task node to move straight into its task conversation and review workspace."
       )
     ).toBeInTheDocument();
   });
 
-  it("lets the operator change the selected DAG task before opening task detail", async () => {
-    renderRunRoute("/runs/run-104/execution");
+  it("opens task detail directly when the operator clicks a ready DAG node", async () => {
+    const { router } = renderRunRoute("/runs/run-104/execution");
 
     const graphRegion = await screen.findByLabelText("Execution workflow graph");
     fireEvent.click(
@@ -3165,99 +3158,92 @@ describe("Run routes", () => {
       })
     );
 
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/execution/tasks/task-031");
+    });
+    expect(await screen.findByRole("heading", { name: "run-104 / task-031" })).toBeInTheDocument();
     expect(screen.getByText("Translate the specification into architecture decisions.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution/tasks/task-031"
-    );
-    expect(
-      within(graphRegion).getByRole("button", {
-        name: /Architecture decisions/i
-      })
-    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps the task-detail handoff honest while workflow nodes are ahead of task rows", async () => {
-    renderRunRoute("/runs/run-111/execution");
+    const { router } = renderRunRoute("/runs/run-111/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.getAllByText("Task metadata is still loading from the live task list.").length).toBeGreaterThan(0);
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
     expect(
-      screen.getByText("Task detail is still waiting on the live task record for this workflow node.")
+      within(graphRegion).getByRole("button", {
+        name: /Lagging UI task row/i
+      })
     ).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open task detail" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Task detail is loading" })).toBeDisabled();
-    expect(screen.getByText("Task record is still materializing")).toBeInTheDocument();
-
-    const selectedTaskPanel = screen.getByRole("heading", { name: "Selected task" }).closest("section");
-
-    expect(selectedTaskPanel).toBeTruthy();
     fireEvent.click(
-      within(selectedTaskPanel as HTMLElement).getByRole("button", {
+      within(graphRegion).getByRole("button", {
         name: /Foundation bootstrap/i
       })
     );
 
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-111/execution/tasks/task-111-foundation");
+    });
+    expect(await screen.findByRole("heading", { name: "run-111 / task-111-foundation" })).toBeInTheDocument();
     expect(screen.getByText("Materialize the first task row from the compiled workflow.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
-      "href",
-      "/runs/run-111/execution/tasks/task-111-foundation"
-    );
-    expect(screen.getByText("Task detail is ready for this task from the current run task record.")).toBeInTheDocument();
   });
 
   it("renders branching DAG steps and supports right-rail task selection across the branch", async () => {
-    renderRunRoute("/runs/run-110/execution");
+    const { router } = renderRunRoute("/runs/run-110/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
     expect(screen.getByLabelText("Execution summary")).toHaveTextContent(
       "4 tasks across 3 dependency steps"
     );
     expect(screen.getByText("2 parallel tasks in this step")).toBeInTheDocument();
-    expect(screen.getByText("Apply the workflow-first execution workspace in the UI shell.")).toBeInTheDocument();
-
-    const workflowStatusPanel = screen.getByRole("heading", { name: "Workflow status" }).closest("section");
-
-    expect(workflowStatusPanel).toBeTruthy();
+    expect(
+      within(graphRegion).getByRole("button", {
+        name: /Workflow-first UI cutover/i
+      })
+    ).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(
-      within(workflowStatusPanel as HTMLElement).getByRole("button", {
+      within(graphRegion).getByRole("button", {
         name: /Validation sweep/i
       })
     );
 
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-110/execution/tasks/task-110-verify");
+    });
+    expect(await screen.findByRole("heading", { name: "run-110 / task-110-verify" })).toBeInTheDocument();
     expect(screen.getByText("Validate the merged execution changes before release.")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "This task is still waiting on 2 prerequisites, but task detail is already available from the current run task record."
-      )
-    ).toBeInTheDocument();
 
-    const selectedTaskPanel = screen.getByRole("heading", { name: "Selected task" }).closest("section");
+    fireEvent.click(screen.getByRole("link", { name: /API route wiring/i }));
 
-    expect(selectedTaskPanel).toBeTruthy();
-    fireEvent.click(
-      within(selectedTaskPanel as HTMLElement).getByRole("button", {
-        name: /API route wiring/i
-      })
-    );
-
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-110/execution/tasks/task-110-api");
+    });
+    expect(await screen.findByRole("heading", { name: "run-110 / task-110-api" })).toBeInTheDocument();
     expect(screen.getByText("Wire the run routes and data seams for the branching DAG state.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
-      "href",
-      "/runs/run-110/execution/tasks/task-110-api"
-    );
   });
 
   it("defaults the execution inspector to the ready task when no work is active", async () => {
-    renderRunRoute("/runs/run-109/execution");
+    const { router } = renderRunRoute("/runs/run-109/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(screen.getByText("Ready next")).toBeInTheDocument();
-    expect(screen.getByText("Inspect the currently compiled workflow.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open task detail" })).toHaveAttribute(
-      "href",
-      "/runs/run-109/execution/tasks/task-090"
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
+    expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 ready next");
+    expect(
+      within(graphRegion).getByRole("button", {
+        name: /Inspect current execution graph/i
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(
+      within(graphRegion).getByRole("button", {
+        name: /Inspect current execution graph/i
+      })
     );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-109/execution/tasks/task-090");
+    });
   });
 
   it("renders an honest execution empty state when compile has not produced a workflow", async () => {

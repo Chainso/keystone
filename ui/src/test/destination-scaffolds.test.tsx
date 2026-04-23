@@ -174,13 +174,6 @@ function expectProjectConfigurationChromeRemoved(container: HTMLElement) {
   expect(pageStage?.querySelectorAll("aside")).toHaveLength(0);
 }
 
-function expectProjectConfigurationMetadata(modeLabel: string, tabCountLabel = "4 tabs") {
-  const metadata = screen.getByRole("group", { name: "Project configuration metadata" });
-
-  expect(within(metadata).getByText(modeLabel)).toBeInTheDocument();
-  expect(within(metadata).getByText(tabCountLabel)).toBeInTheDocument();
-}
-
 function expectDescribedByText(control: HTMLElement, expectedText: string) {
   const describedByIds = (control.getAttribute("aria-describedby") ?? "")
     .split(/\s+/)
@@ -265,7 +258,7 @@ function expectWorkstreamRows(expectedRows: string[][]) {
         .map((cell) => cell.textContent?.trim() ?? "")
     ).toEqual(expectedCells);
 
-    expect(rows[index]).not.toHaveAttribute("tabindex");
+    expect(rows[index]).toHaveAttribute("tabindex", "0");
     expect(within(rows[index]!).getAllByRole("link")).toHaveLength(1);
   });
 }
@@ -738,7 +731,6 @@ describe("Destination scaffolds", () => {
 
     const documentationMetadata = screen.getByRole("group", { name: "Documentation metadata" });
 
-    expect(within(documentationMetadata).getByText("Keystone Cloudflare")).toBeInTheDocument();
     expect(within(documentationMetadata).getByText("4 documents")).toBeInTheDocument();
 
     const documentationNavigation = screen.getByRole("navigation", {
@@ -754,25 +746,25 @@ describe("Destination scaffolds", () => {
     expect(
       within(documentationNavigation).getByRole("heading", { name: "Miscellaneous Notes" })
     ).toBeInTheDocument();
-    expect(within(documentationNavigation).getAllByRole("button")).toHaveLength(4);
+    expect(within(documentationNavigation).getAllByRole("link")).toHaveLength(4);
     expect(
-      within(documentationNavigation).getByRole("button", {
+      within(documentationNavigation).getByRole("link", {
         name: "Current docs/product/current.md"
       })
     ).toBeInTheDocument();
     expect(
-      within(documentationNavigation).getByRole("button", {
+      within(documentationNavigation).getByRole("link", {
         name: "Current docs/architecture/current.md"
       })
     ).toBeInTheDocument();
 
-    const currentSpecButton = within(documentationNavigation).getByRole("button", {
+    const currentSpecButton = within(documentationNavigation).getByRole("link", {
       name: "Current docs/product/current.md"
     });
-    const currentArchitectureButton = within(documentationNavigation).getByRole("button", {
+    const currentArchitectureButton = within(documentationNavigation).getByRole("link", {
       name: "Current docs/architecture/current.md"
     });
-    const openQuestionsButton = within(documentationNavigation).getByRole("button", {
+    const openQuestionsButton = within(documentationNavigation).getByRole("link", {
       name: "Open questions docs/notes/open-questions.md"
     });
     const getDocumentationRegion = () =>
@@ -789,9 +781,9 @@ describe("Destination scaffolds", () => {
       return currentDocumentPanel as HTMLElement;
     };
 
-    expect(currentSpecButton).toHaveAttribute("aria-pressed", "true");
-    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
-    expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
+    expect(currentSpecButton).toHaveAttribute("aria-current", "page");
+    expect(currentArchitectureButton).not.toHaveAttribute("aria-current");
+    expect(openQuestionsButton).not.toHaveAttribute("aria-current");
     expect(
       within(getCurrentDocumentPanel()).getByText("docs/product/current.md")
     ).toBeInTheDocument();
@@ -815,9 +807,9 @@ describe("Destination scaffolds", () => {
         "The product runs as a Cloudflare-served SPA with route-owned destinations and feature-owned rendering surfaces."
       )
     ).toBeInTheDocument();
-    expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
-    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "true");
-    expect(openQuestionsButton).toHaveAttribute("aria-pressed", "false");
+    expect(currentSpecButton).not.toHaveAttribute("aria-current");
+    expect(currentArchitectureButton).toHaveAttribute("aria-current", "page");
+    expect(openQuestionsButton).not.toHaveAttribute("aria-current");
 
     fireEvent.click(openQuestionsButton);
 
@@ -829,13 +821,13 @@ describe("Destination scaffolds", () => {
     expect(
       within(getCurrentDocumentPanel()).getByText("docs/notes/open-questions.md")
     ).toBeInTheDocument();
-    expect(currentSpecButton).toHaveAttribute("aria-pressed", "false");
-    expect(currentArchitectureButton).toHaveAttribute("aria-pressed", "false");
-    expect(openQuestionsButton).toHaveAttribute("aria-pressed", "true");
+    expect(currentSpecButton).not.toHaveAttribute("aria-current");
+    expect(currentArchitectureButton).not.toHaveAttribute("aria-current");
+    expect(openQuestionsButton).toHaveAttribute("aria-current", "page");
     expect(
       within(documentationNavigation)
-        .getAllByRole("button")
-        .filter((button) => button.getAttribute("aria-pressed") === "true")
+        .getAllByRole("link")
+        .filter((link) => link.getAttribute("aria-current") === "page")
     ).toHaveLength(1);
 
     await act(async () => {
@@ -869,8 +861,8 @@ describe("Destination scaffolds", () => {
     expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Open questions docs/notes/open-questions.md" })
-    ).toHaveAttribute("aria-pressed", "true");
+      screen.getByRole("link", { name: "Open questions docs/notes/open-questions.md" })
+    ).toHaveAttribute("aria-current", "page");
     expect(router.state.location.search).toBe("?document=project-open-questions");
 
     fireEvent.change(getProjectSelector(), {
@@ -908,8 +900,8 @@ describe("Destination scaffolds", () => {
       expect(router.state.location.search).toBe("?document=project-spec-current");
     });
     expect(
-      screen.getByRole("button", { name: "Current docs/product/current.md" })
-    ).toHaveAttribute("aria-pressed", "true");
+      screen.getByRole("link", { name: "Current docs/product/current.md" })
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("renders a compatibility state for documentation on a non-scaffold live project", async () => {
@@ -947,41 +939,44 @@ describe("Destination scaffolds", () => {
 
   it("renders documentation markdown through Plate with list structure preserved", () => {
     render(
-      <DocumentationWorkspace
-        model={{
-          currentProjectLabel: "Keystone Cloudflare",
-          documentCountLabel: "1 document",
-          groups: [
-            {
-              groupId: "notes",
-              label: "Miscellaneous Notes",
-              summary: "1 document",
-              documents: [
-                {
-                  documentId: "checklist",
-                  isSelected: true,
-                  label: "Checklist",
-                  path: "docs/notes/checklist.md",
-                  title: "Checklist"
-                }
-              ]
-            }
-          ],
-          selectDocument: vi.fn(),
-          selectedDocument: {
-            documentId: "checklist",
-            markdown: buildDocumentationMarkdown([
-              "# Checklist",
-              "- Preserve scaffold truth",
-              "- Keep list structure"
-            ]),
-            path: "docs/notes/checklist.md",
-            title: "Checklist",
-            viewerTitle: "checklist"
-          },
-          title: "Project documentation"
-        }}
-      />
+      <MemoryRouter>
+        <DocumentationWorkspace
+          model={{
+            currentProjectLabel: "Keystone Cloudflare",
+            documentCountLabel: "1 document",
+            groups: [
+              {
+                groupId: "notes",
+                label: "Miscellaneous Notes",
+                summary: "1 document",
+                documents: [
+                  {
+                    documentId: "checklist",
+                    href: "/documentation?document=checklist",
+                    isSelected: true,
+                    label: "Checklist",
+                    path: "docs/notes/checklist.md",
+                    title: "Checklist"
+                  }
+                ]
+              }
+            ],
+            selectDocument: vi.fn(),
+            selectedDocument: {
+              documentId: "checklist",
+              markdown: buildDocumentationMarkdown([
+                "# Checklist",
+                "- Preserve scaffold truth",
+                "- Keep list structure"
+              ]),
+              path: "docs/notes/checklist.md",
+              title: "Checklist",
+              viewerTitle: "checklist"
+            },
+            title: "Project documentation"
+          }}
+        />
+      </MemoryRouter>
     );
 
     const documentationRegion = screen.getByRole("region", {
@@ -998,44 +993,47 @@ describe("Destination scaffolds", () => {
 
   it("renders documentation markdown tables through the shared Plate document surface", () => {
     render(
-      <DocumentationWorkspace
-        model={{
-          currentProjectLabel: "Keystone Cloudflare",
-          documentCountLabel: "1 document",
-          groups: [
-            {
-              groupId: "notes",
-              label: "Miscellaneous Notes",
-              summary: "1 document",
-              documents: [
-                {
-                  documentId: "handoff",
-                  isSelected: true,
-                  label: "Handoff",
-                  path: "docs/notes/handoff.md",
-                  title: "Handoff"
-                }
-              ]
-            }
-          ],
-          selectDocument: vi.fn(),
-          selectedDocument: {
-            documentId: "handoff",
-            markdown: buildDocumentationMarkdown([
-              "# Handoff",
-              "",
-              "| Surface | Status |",
-              "| --- | --- |",
-              "| Documentation | Shared |",
-              "| Planning | Live |"
-            ]),
-            path: "docs/notes/handoff.md",
-            title: "Handoff",
-            viewerTitle: "handoff"
-          },
-          title: "Project documentation"
-        }}
-      />
+      <MemoryRouter>
+        <DocumentationWorkspace
+          model={{
+            currentProjectLabel: "Keystone Cloudflare",
+            documentCountLabel: "1 document",
+            groups: [
+              {
+                groupId: "notes",
+                label: "Miscellaneous Notes",
+                summary: "1 document",
+                documents: [
+                  {
+                    documentId: "handoff",
+                    href: "/documentation?document=handoff",
+                    isSelected: true,
+                    label: "Handoff",
+                    path: "docs/notes/handoff.md",
+                    title: "Handoff"
+                  }
+                ]
+              }
+            ],
+            selectDocument: vi.fn(),
+            selectedDocument: {
+              documentId: "handoff",
+              markdown: buildDocumentationMarkdown([
+                "# Handoff",
+                "",
+                "| Surface | Status |",
+                "| --- | --- |",
+                "| Documentation | Shared |",
+                "| Planning | Live |"
+              ]),
+              path: "docs/notes/handoff.md",
+              title: "Handoff",
+              viewerTitle: "handoff"
+            },
+            title: "Project documentation"
+          }}
+        />
+      </MemoryRouter>
     );
 
     const documentationRegion = screen.getByRole("region", {
@@ -1140,12 +1138,13 @@ describe("Destination scaffolds", () => {
     expect(
       screen.getByText("Track running, queued, and blocked work across every run in Keystone Cloudflare.")
     ).toBeInTheDocument();
-    expectWorkstreamsSummary(["Keystone Cloudflare", "5 matching tasks", "25 per page"]);
-    expect(screen.getByText("Filters:")).toBeInTheDocument();
+    expectWorkstreamsSummary(["5 matching tasks", "25 per page"]);
     expectActiveWorkstreamFilter("Active");
-    expect(screen.getByRole("region", { name: "Task detail handoff" })).toHaveTextContent(
+    expect(
+      screen.getByText(
       "Rows open the matching task inside Runs > Execution without leaving the selected project."
-    );
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
     expectWorkstreamRows([
       ["TASK-032", "Run shell navigation", "run-104", "Running", "2m ago"],
@@ -1261,7 +1260,7 @@ describe("Destination scaffolds", () => {
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-LIVE-001" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
-    expectWorkstreamsSummary(["Keystone Cloudflare", "3 matching tasks", "25 per page"]);
+    expectWorkstreamsSummary(["3 matching tasks", "25 per page"]);
     expectActiveWorkstreamFilter("Active");
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -1276,7 +1275,7 @@ describe("Destination scaffolds", () => {
     fireEvent.click(screen.getByRole("radio", { name: "All" }));
     await screen.findByRole("link", { name: "TASK-LIVE-003" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-003" })).toBeInTheDocument();
-    expectWorkstreamsSummary(["Keystone Cloudflare", "4 matching tasks", "25 per page"]);
+    expectWorkstreamsSummary(["4 matching tasks", "25 per page"]);
 
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -1508,11 +1507,7 @@ describe("Destination scaffolds", () => {
       />
     );
 
-    expect(screen.getByText("Filters:")).toBeInTheDocument();
-    expectWorkstreamsSummary(["Keystone Cloudflare", "0 matching tasks", "25 per page"]);
-    expect(
-      screen.getByText("Show work that is ready or pending while it waits to enter execution.")
-    ).toBeInTheDocument();
+    expectWorkstreamsSummary(["0 matching tasks", "25 per page"]);
     expect(screen.getByRole("radio", { name: "Queued" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No workstreams match this filter" })).toBeInTheDocument();
     expect(screen.getByText("No workstreams match the queued filter right now.")).toBeInTheDocument();
@@ -1606,7 +1601,7 @@ describe("Destination scaffolds", () => {
       </MemoryRouter>
     );
 
-    expectWorkstreamsSummary(["Keystone Cloudflare", "2 matching tasks", "25 per page"]);
+    expectWorkstreamsSummary(["2 matching tasks", "25 per page"]);
     expect(screen.getByText("Failed")).toHaveClass("status-pill-blocked");
     expect(screen.getByText("Cancelled")).toHaveClass("status-pill-blocked");
   });
@@ -3319,7 +3314,6 @@ describe("Destination scaffolds", () => {
     expect(
       await screen.findByRole("heading", { name: "Loading project settings" })
     ).toBeInTheDocument();
-    expectProjectConfigurationMetadata("Save flow");
     expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
 
     expect(resolveAltDetailResponse).not.toBeNull();

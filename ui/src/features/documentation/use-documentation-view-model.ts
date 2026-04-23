@@ -11,6 +11,7 @@ import { updateSearchParams } from "../../shared/navigation/search-param-state";
 
 export interface DocumentationTreeDocument {
   documentId: string;
+  href: string;
   label: string;
   title: string;
   path: string;
@@ -243,6 +244,9 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       summary: formatDocumentCount(group.documents.length),
       documents: group.documents.map((document) => ({
         documentId: document.documentId,
+        href: `?${updateSearchParams(searchParams, {
+          document: document.documentId
+        }).toString()}`,
         label: document.label,
         title: document.title,
         path: document.path,

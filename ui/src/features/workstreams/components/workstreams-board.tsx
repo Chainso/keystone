@@ -4,9 +4,6 @@ import { ToggleGroup, ToggleGroupItem } from "../../../components/ui/toggle-grou
 import { EntityTable, type EntityTableColumn } from "../../../components/workspace/entity-table";
 import {
   WorkspacePage,
-  WorkspacePageActions,
-  WorkspacePageHeader,
-  WorkspacePageHeading,
   WorkspacePageSection
 } from "../../../components/workspace/workspace-page";
 import { StatusPill } from "../../../shared/layout/status-pill";
@@ -61,8 +58,7 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
           ) : null}
         </div>
 
-        <WorkspacePageActions className="workstreams-pagination-actions">
-          <span className="meta-chip">{model.pageSizeLabel}</span>
+        <div className="workstreams-pagination-actions" aria-label="Workstreams pagination actions">
           {model.pagination.pageCount > 1 ? (
             <>
               <button
@@ -83,37 +79,25 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
               </button>
             </>
           ) : null}
-        </WorkspacePageActions>
+        </div>
       </div>
     );
 
   return (
     <WorkspacePage>
       <WorkspacePageSection className="entity-table-panel">
-        <WorkspacePageHeader>
-          <WorkspacePageHeading>
-            <p className="page-eyebrow">Workstreams</p>
+        <div className="workspace-surface-header">
+          <div className="workspace-surface-heading">
             <h1 className="page-title runs-page-title">{model.title}</h1>
-            <p className="page-summary">{model.summary}</p>
-          </WorkspacePageHeading>
-          <WorkspacePageActions
-            className="workstreams-header-meta"
+            <p className="workspace-surface-note">{model.summary}</p>
+          </div>
+          <div
+            className="workspace-surface-actions workstreams-header-meta"
             aria-label="Workstreams summary"
             role="group"
           >
-            <span className="meta-chip">{model.currentProjectLabel}</span>
             <span className="meta-chip">{model.recordSummaryLabel}</span>
             <span className="meta-chip">{model.pageSizeLabel}</span>
-          </WorkspacePageActions>
-        </WorkspacePageHeader>
-
-        <div className="workstreams-toolbar">
-          <section className="workstreams-filter-stack" aria-label="Workstream filter summary">
-            <div className="workstreams-toolbar-copy">
-              <p className="workstreams-filter-label">Filters:</p>
-              <p className="page-section-copy">{model.activeFilterDescription}</p>
-            </div>
-
             <ToggleGroup
               type="single"
               variant="outline"
@@ -135,12 +119,7 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
-          </section>
-
-          <section className="workstreams-handoff-note" aria-label="Task detail handoff">
-            <p className="workstreams-filter-label">Task detail handoff</p>
-            <p className="page-section-copy">{model.routeGuidance}</p>
-          </section>
+          </div>
         </div>
 
         <EntityTable

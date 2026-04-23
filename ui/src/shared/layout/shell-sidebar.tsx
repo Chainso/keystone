@@ -3,14 +3,6 @@ import { Link, NavLink, type NavLinkRenderProps } from "react-router-dom";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  WorkspacePanel,
-  WorkspacePanelEyebrow,
-  WorkspacePanelHeader,
-  WorkspacePanelHeading,
-  WorkspacePanelSummary,
-  WorkspacePanelTitle
-} from "@/components/workspace/workspace-panel";
 import { cn } from "@/lib/utils";
 
 import { useTheme } from "../../app/theme-provider";
@@ -61,16 +53,15 @@ export function ShellSidebar() {
           <Link className="shell-brand-link" to="/runs">
             Operator workspace
           </Link>
-          <p className="shell-brand-copy">One selected project, one stable shell.</p>
         </div>
 
-        <WorkspacePanel className="shell-sidebar-panel" aria-labelledby="project-context-label">
-          <WorkspacePanelHeader>
-            <WorkspacePanelHeading>
-              <WorkspacePanelEyebrow id="project-context-label">Project</WorkspacePanelEyebrow>
-              <p className="shell-panel-title shell-project-title">{currentProjectLabel}</p>
-            </WorkspacePanelHeading>
-          </WorkspacePanelHeader>
+        <section className="shell-sidebar-section" aria-labelledby="project-context-label">
+          <div className="shell-sidebar-section-header">
+            <p id="project-context-label" className="page-eyebrow">
+              Project
+            </p>
+            <p className="shell-panel-title shell-project-title">{currentProjectLabel}</p>
+          </div>
 
           <div className="project-switcher-field">
             <select
@@ -121,18 +112,13 @@ export function ShellSidebar() {
               </NavLink>
             ))}
           </div>
-        </WorkspacePanel>
+        </section>
 
-        <WorkspacePanel className="shell-sidebar-panel">
-          <WorkspacePanelHeader>
-            <WorkspacePanelHeading>
-              <WorkspacePanelEyebrow>Navigation</WorkspacePanelEyebrow>
-              <WorkspacePanelTitle className="shell-panel-title">Destinations</WorkspacePanelTitle>
-            </WorkspacePanelHeading>
-            <WorkspacePanelSummary className="shell-panel-summary">
-              Stay in one project while moving between runs, documentation, and workstreams.
-            </WorkspacePanelSummary>
-          </WorkspacePanelHeader>
+        <section className="shell-sidebar-section">
+          <div className="shell-sidebar-section-header">
+            <p className="page-eyebrow">Navigation</p>
+            <p className="shell-panel-title">Destinations</p>
+          </div>
 
           <nav className="shell-nav" aria-label="Global navigation">
             {primaryDestinations.map((destination) => (
@@ -147,26 +133,19 @@ export function ShellSidebar() {
                   </span>
                   <span className="shell-nav-link-title">{destination.label}</span>
                 </span>
-                <span className="shell-nav-link-summary" aria-hidden="true">
-                  {destination.summary}
-                </span>
               </NavLink>
             ))}
           </nav>
-        </WorkspacePanel>
+        </section>
+        <div className="shell-sidebar-footer">
+          <div className="shell-sidebar-footer-copy">
+            <p className="page-eyebrow">Theme</p>
+            <p className="shell-panel-summary">System by default, or pin a workspace theme.</p>
+          </div>
+        </div>
       </div>
 
-      <WorkspacePanel className="shell-sidebar-panel shell-theme-panel">
-        <WorkspacePanelHeader>
-          <WorkspacePanelHeading>
-            <WorkspacePanelEyebrow>Theme</WorkspacePanelEyebrow>
-            <WorkspacePanelTitle className="shell-panel-title">Appearance</WorkspacePanelTitle>
-          </WorkspacePanelHeading>
-          <WorkspacePanelSummary className="shell-panel-summary">
-            Follow the system by default, or pin a workspace theme.
-          </WorkspacePanelSummary>
-        </WorkspacePanelHeader>
-
+      <div className="shell-theme-panel" aria-label="Theme controls">
         <ToggleGroup
           type="single"
           variant="outline"
@@ -184,7 +163,7 @@ export function ShellSidebar() {
           <ToggleGroupItem value="light">Light</ToggleGroupItem>
           <ToggleGroupItem value="dark">Dark</ToggleGroupItem>
         </ToggleGroup>
-      </WorkspacePanel>
+      </div>
     </aside>
   );
 }

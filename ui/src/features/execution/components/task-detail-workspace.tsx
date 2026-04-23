@@ -2,20 +2,10 @@ import { Link } from "react-router-dom";
 
 import { DocumentFrameSummary } from "../../../components/workspace/document-frame";
 import {
-  ReviewSection,
-  ReviewSectionLabel
-} from "../../../components/workspace/review-frame";
-import {
   WorkspaceEmptyState,
   WorkspaceEmptyStateDescription,
   WorkspaceEmptyStateTitle
 } from "../../../components/workspace/workspace-empty-state";
-import {
-  WorkspacePage,
-  WorkspacePageActions,
-  WorkspacePageHeader,
-  WorkspacePageHeading
-} from "../../../components/workspace/workspace-page";
 import {
   WorkspacePanel,
   WorkspacePanelHeader,
@@ -35,7 +25,7 @@ import type {
 } from "../use-execution-view-model";
 import { TaskReviewSidebar } from "./task-review-sidebar";
 
-function TaskDependencyList({
+function TaskDependencyStrip({
   label,
   tasks
 }: {
@@ -43,64 +33,78 @@ function TaskDependencyList({
   tasks: TaskDependencyViewModel[];
 }) {
   return (
-    <ReviewSection>
-      <ReviewSectionLabel>{label}</ReviewSectionLabel>
+    <section className="task-dependency-strip" aria-label={label}>
+      <p className="review-sidebar-label">{label}</p>
       {tasks.length === 0 ? (
         <DocumentFrameSummary>None.</DocumentFrameSummary>
       ) : (
-        <ul className="message-stack" aria-label={label}>
+        <ul className="task-dependency-list" aria-label={label}>
           {tasks.map((task) => (
-            <li key={task.taskId} className="message-card">
+            <li key={task.taskId}>
               <Link to={task.detailPath} className="task-context-link">
-                <p className="message-card-speaker">
-                  {task.taskId} · {task.statusLabel}
-                </p>
-                <p className="message-card-body">{task.title}</p>
+                <span className="task-dependency-title">{task.title}</span>
+                <span className="document-name">{`${task.taskId} · ${task.statusLabel}`}</span>
               </Link>
             </li>
           ))}
         </ul>
       )}
-    </ReviewSection>
+    </section>
   );
 }
 
 export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
   return (
-    <WorkspacePage>
-      <WorkspacePageHeader className="run-detail-header">
-        <WorkspacePageHeading>
-          <p className="page-eyebrow">Task workspace</p>
-          <h1 className="run-detail-title">
-            {model.runDisplayId} / {model.taskDisplayId}
-          </h1>
-          {model.state === "ready" ? <p className="page-summary">{model.title}</p> : null}
-        </WorkspacePageHeading>
-
-        <WorkspacePageActions className="task-detail-header-actions">
-          {model.state === "ready" ? (
-            <StatusPill label={model.statusLabel} tone={model.statusTone} />
-          ) : null}
-          <Link to={model.backPath} className="back-link">
-            Back to DAG
-          </Link>
-        </WorkspacePageActions>
-      </WorkspacePageHeader>
-
+    <div className="task-detail-workspace">
       <WorkspaceSplit className="task-detail-split">
         <WorkspaceSplitPane>
           <WorkspacePanel>
-            <WorkspacePanelHeader>
-              <WorkspacePanelHeading>
-                <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
-              </WorkspacePanelHeading>
-              <WorkspacePanelSummary>
-                Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation.
-              </WorkspacePanelSummary>
-            </WorkspacePanelHeader>
+            <div className="task-detail-pane-body">
+              <section className="task-context-bar" aria-label="Task context">
+                <div className="task-context-copy">
+                  <p className="review-sidebar-label">Task scope</p>
+                  <h2 className="run-detail-title">
+                    {model.runDisplayId} / {model.taskDisplayId}
+                  </h2>
+                  {model.state === "ready" ? (
+                    <p className="task-detail-title">{model.title}</p>
+                  ) : null}
+                  {model.state === "ready" ? (
+                    <DocumentFrameSummary>{model.description}</DocumentFrameSummary>
+                  ) : null}
+                </div>
+                <div className="task-context-meta">
+                  {model.state === "ready" ? (
+                    <div className="task-context-actions">
+                      <StatusPill label={model.statusLabel} tone={model.statusTone} />
+                    </div>
+                  ) : null}
+                  <Link to={model.backPath} className="back-link">
+                    Back to DAG
+                  </Link>
+                  {model.state === "ready" ? (
+                    <p className="document-name">{model.activityLabel}</p>
+                  ) : null}
+                  {model.state === "ready" ? (
+                    <div className="task-context-grid">
+                      <TaskDependencyStrip label="Depends on" tasks={model.dependsOn} />
+                      <TaskDependencyStrip label="Downstream tasks" tasks={model.downstreamTasks} />
+                    </div>
+                  ) : null}
+                </div>
+              </section>
 
-            {model.state === "ready" ? (
-              <div className="task-detail-pane-body">
+              {model.state === "ready" ? (
+                <>
+                <WorkspacePanelHeader>
+                  <WorkspacePanelHeading>
+                    <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
+                  </WorkspacePanelHeading>
+                  <WorkspacePanelSummary>
+                    Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation.
+                  </WorkspacePanelSummary>
+                </WorkspacePanelHeader>
+
                 <AssistantChatSurface
                   composerPlaceholder="Continue this task conversation with Keystone."
                   emptyMessage="This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
@@ -109,27 +113,16 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
                   unavailableMessage="Task chat becomes available after the run task record provisions a Cloudflare conversation locator."
                   unavailableTitle="No task conversation attached"
                 />
-
-                <ReviewSection>
-                  <ReviewSectionLabel>Task scope</ReviewSectionLabel>
-                  <p className="task-detail-title">{model.title}</p>
-                  <DocumentFrameSummary>{model.description}</DocumentFrameSummary>
-                  <DocumentFrameSummary>{model.activityLabel}</DocumentFrameSummary>
-                </ReviewSection>
-
-                <div className="task-context-grid">
-                  <TaskDependencyList label="Depends on" tasks={model.dependsOn} />
-                  <TaskDependencyList label="Downstream tasks" tasks={model.downstreamTasks} />
-                </div>
-              </div>
-            ) : (
-              <WorkspaceEmptyState>
-                <WorkspaceEmptyStateTitle as="h3">
-                  {model.state === "not_found" ? "Task not found" : "Execution unavailable"}
-                </WorkspaceEmptyStateTitle>
-                <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
-              </WorkspaceEmptyState>
-            )}
+                </>
+              ) : (
+                <WorkspaceEmptyState>
+                  <WorkspaceEmptyStateTitle as="h3">
+                    {model.state === "not_found" ? "Task not found" : "Execution unavailable"}
+                  </WorkspaceEmptyStateTitle>
+                  <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
+                </WorkspaceEmptyState>
+              )}
+            </div>
           </WorkspacePanel>
         </WorkspaceSplitPane>
 
@@ -156,6 +149,6 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
           </WorkspacePanel>
         </WorkspaceSplitPane>
       </WorkspaceSplit>
-    </WorkspacePage>
+    </div>
   );
 }

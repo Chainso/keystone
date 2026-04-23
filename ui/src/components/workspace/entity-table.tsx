@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 import {
   flexRender,
@@ -66,6 +66,16 @@ function shouldIgnoreRowActivation(event: MouseEvent<HTMLTableRowElement>) {
     event.ctrlKey ||
     event.shiftKey ||
     (target instanceof Element && target.closest("a, button, input, textarea, select, summary"))
+  );
+}
+
+function shouldActivateRowFromKeyboard(event: KeyboardEvent<HTMLTableRowElement>) {
+  const target = event.target;
+
+  return (
+    !event.defaultPrevented &&
+    (event.key === "Enter" || event.key === " ") &&
+    !(target instanceof Element && target.closest("a, button, input, textarea, select, summary"))
   );
 }
 
@@ -147,6 +157,7 @@ export function EntityTable<RowData>({
             <TableRow
               key={row.id}
               className={onRowActivate ? "table-clickable-row" : undefined}
+              tabIndex={onRowActivate ? 0 : undefined}
               onClick={
                 onRowActivate
                   ? (event) => {
@@ -154,6 +165,18 @@ export function EntityTable<RowData>({
                         return;
                       }
 
+                      onRowActivate(row.original);
+                    }
+                  : undefined
+              }
+              onKeyDown={
+                onRowActivate
+                  ? (event) => {
+                      if (!shouldActivateRowFromKeyboard(event)) {
+                        return;
+                      }
+
+                      event.preventDefault();
                       onRowActivate(row.original);
                     }
                   : undefined

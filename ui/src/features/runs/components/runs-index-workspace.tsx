@@ -1,24 +1,14 @@
+import { useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../../../components/workspace/entity-table";
 import {
   WorkspacePage,
-  WorkspacePageActions,
-  WorkspacePageHeader,
-  WorkspacePageHeading,
   WorkspacePageSection
 } from "../../../components/workspace/workspace-page";
-import {
-  WorkspacePanel,
-  WorkspacePanelEyebrow,
-  WorkspacePanelHeader,
-  WorkspacePanelHeading,
-  WorkspacePanelSummary,
-  WorkspacePanelTitle
-} from "../../../components/workspace/workspace-panel";
 import { useProjectManagement } from "../../projects/project-context";
 import { StatusPill } from "../../../shared/layout/status-pill";
-import { buildRunPhasePath, runPhaseDefinitions } from "../../../shared/navigation/run-phases";
+import { buildRunPhasePath } from "../../../shared/navigation/run-phases";
 import { formatMachineLabel, getRunStatusTone } from "../run-status";
 import { useRunsIndexViewModel } from "../use-runs-index-view-model";
 
@@ -39,22 +29,22 @@ export function RunsIndexWorkspace() {
   const { state } = useProjectManagement();
   const currentProject = state.currentProject;
   const totalRuns = model.scaffoldRuns.length + model.liveRuns.length;
-  const runSourceLabel =
-    model.scaffoldRuns.length > 0
-      ? "Compatibility seed"
-      : currentProject
-        ? "Live project data"
-        : "Project selection required";
-  const projectSummary =
-    currentProject?.description || currentProject?.projectKey || "Choose a project before opening Runs.";
   const runsSummary = currentProject
-    ? `Create a run, then move through the current workspace for ${currentProject.displayName}.`
+    ? `Open or create a run for ${currentProject.displayName}, then move through Specification, Architecture, Execution Plan, and Execution.`
     : "Choose a project, then create a run and step into its workspace.";
   const tableFooter = (
-    <p className="table-row-note">
-      Open a run to move between Specification, Architecture, Execution Plan, and Execution.
-    </p>
+    <div className="entity-table-footer">
+      <p className="table-row-note">
+        Open a row to move through the four-stage run workspace without leaving the selected project.
+      </p>
+      <div className="filter-chip-row">
+        <span className="meta-chip">
+          {`${totalRuns} recorded ${totalRuns === 1 ? "run" : "runs"}`}
+        </span>
+      </div>
+    </div>
   );
+  const createRunAttemptRef = useRef<Promise<void> | null>(null);
 
   const scaffoldColumns: EntityTableColumn<(typeof model.scaffoldRuns)[number]>[] = [
     {
@@ -125,136 +115,107 @@ export function RunsIndexWorkspace() {
   ];
 
   async function handleCreateRun() {
-    try {
-      const runId = await model.createRun();
+    const existingAttempt = createRunAttemptRef.current;
 
-      if (!runId) {
-        return;
-      }
-
-      navigate(buildRunPhasePath(runId, "specification"));
-    } catch {
-      // The view model owns the visible error state for create-run failures.
+    if (existingAttempt) {
+      return existingAttempt;
     }
+
+    const createAttempt = (async () => {
+      try {
+        const runId = await model.createRun();
+
+        if (!runId) {
+          return;
+        }
+
+        navigate(buildRunPhasePath(runId, "specification"));
+      } catch {
+        // The view model owns the visible error state for create-run failures.
+      } finally {
+        if (createRunAttemptRef.current === createAttempt) {
+          createRunAttemptRef.current = null;
+        }
+      }
+    })();
+
+    createRunAttemptRef.current = createAttempt;
+    return createAttempt;
   }
 
   return (
     <WorkspacePage>
-      <div className="runs-index-grid">
-        <WorkspacePageSection className="entity-table-panel">
-          <WorkspacePageHeader>
-            <WorkspacePageHeading>
-              <p className="page-eyebrow">Run index</p>
-              <h1 className="page-title runs-page-title">{model.title}</h1>
-              <p className="page-summary">{runsSummary}</p>
-            </WorkspacePageHeading>
-            <WorkspacePageActions>
-              <button
-                type="button"
-                className="ghost-button"
-                aria-busy={model.isCreatingRun || undefined}
-                disabled={!model.canCreateRun}
-                onClick={() => {
-                  void handleCreateRun();
-                }}
-              >
-                {model.isCreatingRun ? "Creating run..." : "+ New run"}
-              </button>
-            </WorkspacePageActions>
-          </WorkspacePageHeader>
-
-          {model.createRunErrorMessage ? (
-            <p className="document-card-summary" role="alert">
-              {model.createRunErrorMessage}
-            </p>
-          ) : null}
-
-          {model.compatibilityState ? (
-            <EntityTable
-              ariaLabel="Runs"
-              columns={scaffoldColumns}
-              emptyState={{
-                action:
-                  model.compatibilityState.heading === "Unable to load runs" ? (
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => {
-                        model.retry();
-                      }}
-                    >
-                      Retry
-                    </button>
-                  ) : undefined,
-                description: model.compatibilityState.message,
-                title: model.compatibilityState.heading
+      <WorkspacePageSection className="entity-table-panel">
+        <div className="workspace-surface-header">
+          <div className="workspace-surface-heading">
+            <h1 className="page-title runs-page-title">{model.title}</h1>
+            <p className="workspace-surface-note">{runsSummary}</p>
+          </div>
+          <div className="workspace-surface-actions" aria-label="Runs actions" role="group">
+            <button
+              type="button"
+              className="ghost-button"
+              aria-busy={model.isCreatingRun || undefined}
+              disabled={!model.canCreateRun}
+              onClick={() => {
+                void handleCreateRun();
               }}
-              footer={tableFooter}
-              getRowId={(run) => run.runId}
-              rows={[]}
-            />
-          ) : model.scaffoldRuns.length > 0 ? (
-            <EntityTable
-              ariaLabel="Runs"
-              columns={scaffoldColumns}
-              footer={tableFooter}
-              getRowId={(run) => run.runId}
-              onRowActivate={(run) => navigate(run.detailPath)}
-              rows={model.scaffoldRuns}
-            />
-          ) : (
-            <EntityTable
-              ariaLabel="Runs"
-              columns={liveColumns}
-              footer={tableFooter}
-              getRowId={(run) => run.runId}
-              onRowActivate={(run) => navigate(run.detailPath)}
-              rows={model.liveRuns}
-            />
-          )}
-        </WorkspacePageSection>
+            >
+              {model.isCreatingRun ? "Creating run..." : "+ New run"}
+            </button>
+          </div>
+        </div>
 
-        <aside className="runs-index-sidebar" aria-label="Runs destination guide">
-          <WorkspacePanel>
-            <WorkspacePanelHeader>
-              <WorkspacePanelHeading>
-                <WorkspacePanelEyebrow>Selected project</WorkspacePanelEyebrow>
-                <WorkspacePanelTitle>
-                  {currentProject?.displayName ?? "No project selected"}
-                </WorkspacePanelTitle>
-              </WorkspacePanelHeading>
-            </WorkspacePanelHeader>
-            <WorkspacePanelSummary>{projectSummary}</WorkspacePanelSummary>
-            <div className="filter-chip-row">
-              <span className="meta-chip">
-                {`${totalRuns} recorded ${totalRuns === 1 ? "run" : "runs"}`}
-              </span>
-              <span className="meta-chip">{runSourceLabel}</span>
-            </div>
-          </WorkspacePanel>
+        {model.createRunErrorMessage ? (
+          <p className="document-card-summary" role="alert">
+            {model.createRunErrorMessage}
+          </p>
+        ) : null}
 
-          <WorkspacePanel>
-            <WorkspacePanelHeader>
-              <WorkspacePanelHeading>
-                <WorkspacePanelEyebrow>Inside a run</WorkspacePanelEyebrow>
-                <WorkspacePanelTitle>Run workspace</WorkspacePanelTitle>
-              </WorkspacePanelHeading>
-            </WorkspacePanelHeader>
-            <WorkspacePanelSummary>
-              Open a row to move through the four-stage run workspace without leaving the selected
-              project.
-            </WorkspacePanelSummary>
-            <ol className="run-phase-guide" aria-label="Run stage order">
-              {runPhaseDefinitions.map((phase) => (
-                <li key={phase.id} className="run-phase-guide-item">
-                  <p className="run-phase-guide-label">{phase.label}</p>
-                  <p className="run-phase-guide-summary">{phase.summary}</p>
-                </li>
-              ))}
-            </ol>
-          </WorkspacePanel>
-        </aside>
-      </div>
+        {model.compatibilityState ? (
+          <EntityTable
+            ariaLabel="Runs"
+            columns={scaffoldColumns}
+            emptyState={{
+              action:
+                model.compatibilityState.heading === "Unable to load runs" ? (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => {
+                      model.retry();
+                    }}
+                  >
+                    Retry
+                  </button>
+                ) : undefined,
+              description: model.compatibilityState.message,
+              title: model.compatibilityState.heading
+            }}
+            footer={tableFooter}
+            getRowId={(run) => run.runId}
+            rows={[]}
+          />
+        ) : model.scaffoldRuns.length > 0 ? (
+          <EntityTable
+            ariaLabel="Runs"
+            columns={scaffoldColumns}
+            footer={tableFooter}
+            getRowId={(run) => run.runId}
+            onRowActivate={(run) => navigate(run.detailPath)}
+            rows={model.scaffoldRuns}
+          />
+        ) : (
+          <EntityTable
+            ariaLabel="Runs"
+            columns={liveColumns}
+            footer={tableFooter}
+            getRowId={(run) => run.runId}
+            onRowActivate={(run) => navigate(run.detailPath)}
+            rows={model.liveRuns}
+          />
+        )}
+      </WorkspacePageSection>
     </WorkspacePage>
   );
 }

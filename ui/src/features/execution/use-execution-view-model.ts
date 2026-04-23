@@ -118,7 +118,7 @@ export interface ExecutionNodeViewModel {
   dependsOn: TaskDependencyViewModel[];
   dependencyCount: number;
   description: string;
-  detailPath: string | null;
+  detailPath: string;
   downstreamTasks: TaskDependencyViewModel[];
   footnote: string;
   graphColumn: number;
@@ -636,7 +636,7 @@ function buildExecutionGraph(tasks: ExecutionTaskRecord[], runId: string) {
           dependsOn,
           dependencyCount: task.dependsOn.length,
           description: task.description,
-          detailPath: task.taskRecordReady ? buildRunTaskPath(runId, task.taskId) : null,
+          detailPath: buildRunTaskPath(runId, task.taskId),
           downstreamTasks,
           footnote: buildExecutionNodeFootnote(task, {
             downstreamCount: downstreamTasks.length,

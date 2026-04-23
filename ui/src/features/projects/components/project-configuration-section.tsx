@@ -27,11 +27,9 @@ export function ProjectConfigurationSection({
     <section className="project-config-section">
       <div className="project-config-section-header">
         <div className="project-config-section-copy">
-          <h2 className="workspace-panel-title">{title}</h2>
+          <h2 className="page-section-title">{title}</h2>
           {summary ? (
-            <p className="workspace-panel-summary project-config-section-summary">
-              {summary}
-            </p>
+            <p className="page-section-copy project-config-section-summary">{summary}</p>
           ) : null}
         </div>
         {actions ? <div className="project-config-section-actions">{actions}</div> : null}

@@ -295,10 +295,9 @@ function expectShellLinkTarget(name: string, href: string) {
 }
 
 function expectWorkspaceLocation(projectName: string, destinationName: string) {
-  const location = screen.getByLabelText("Workspace location");
-
-  expect(location).toHaveTextContent(projectName);
-  expect(location).toHaveTextContent(destinationName);
+  expect(screen.queryByLabelText("Workspace location")).not.toBeInTheDocument();
+  expect(getProjectSelector()).toHaveDisplayValue(projectName);
+  expect(screen.getByRole("link", { name: destinationName })).toHaveAttribute("aria-current", "page");
 }
 
 function getProjectSelector() {
@@ -306,14 +305,7 @@ function getProjectSelector() {
 }
 
 function getThemePreferencePanel() {
-  return screen.getByRole("group", { name: "Theme preference" }).closest("section");
-}
-
-function expectProjectConfigurationMetadata(modeLabel: string, tabCountLabel = "4 tabs") {
-  const metadata = screen.getByRole("group", { name: "Project configuration metadata" });
-
-  expect(within(metadata).getByText(modeLabel)).toBeInTheDocument();
-  expect(within(metadata).getByText(tabCountLabel)).toBeInTheDocument();
+  return screen.getByRole("group", { name: "Theme preference" }).closest(".shell-theme-panel");
 }
 
 function buildProjectsResponse(projects: CurrentProject[]) {
@@ -1101,12 +1093,7 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
-    const workspaceLocation = screen.getByLabelText("Workspace location");
-
-    expectWorkspaceLocation("Keystone Cloudflare", "Runs");
-    expect(
-      within(workspaceLocation).getByText("Create runs and step into the current run workspace.")
-    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Workspace location")).not.toBeInTheDocument();
   });
 
   it("does not navigate into a stale run when the current project changes before + New run resolves", async () => {
@@ -1480,7 +1467,6 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
-    expectProjectConfigurationMetadata("Save flow");
     expect(screen.getByText("Project settings failed.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -1559,7 +1545,6 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Project settings: Alt Project" })
     ).toBeInTheDocument();
-    expectProjectConfigurationMetadata("Save flow");
     expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([request]) =>
       typeof request === "string" ? request : request.toString()
@@ -1653,7 +1638,6 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
-    expectProjectConfigurationMetadata("Save flow");
     expect(screen.getByText("Project settings are no longer available.")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
   });

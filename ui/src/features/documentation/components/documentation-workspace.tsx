@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import {
   DocumentFrame,
   DocumentFrameBody,
@@ -12,19 +14,7 @@ import {
   WorkspaceEmptyStateDescription,
   WorkspaceEmptyStateTitle
 } from "../../../components/workspace/workspace-empty-state";
-import {
-  WorkspacePage,
-  WorkspacePageActions,
-  WorkspacePageHeader,
-  WorkspacePageHeading
-} from "../../../components/workspace/workspace-page";
-import {
-  WorkspacePanel,
-  WorkspacePanelHeader,
-  WorkspacePanelHeading,
-  WorkspacePanelSummary,
-  WorkspacePanelTitle
-} from "../../../components/workspace/workspace-panel";
+import { WorkspacePage } from "../../../components/workspace/workspace-page";
 import {
   WorkspaceSplit,
   WorkspaceSplitPane
@@ -49,26 +39,24 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
 
   return (
     <WorkspacePage>
-      <WorkspacePageHeader>
-        <WorkspacePageHeading>
-          <p className="page-eyebrow">Documentation</p>
+      <div className="workspace-surface-header">
+        <div className="workspace-surface-heading">
           <h1 className="page-title runs-page-title">{model.title}</h1>
-          <p className="page-summary documentation-shell-summary">
-            Current project knowledge stays project-scoped and renders through the shared document surface.
+          <p className="workspace-surface-note documentation-shell-summary">
+            Current project knowledge stays grouped by document category and opens in the shared reader.
           </p>
-        </WorkspacePageHeading>
-        <WorkspacePageActions
-          className="documentation-header-meta"
+        </div>
+        <div
+          className="workspace-surface-actions documentation-header-meta"
           aria-label="Documentation metadata"
           role="group"
         >
-          <span className="meta-chip">{model.currentProjectLabel}</span>
           <span className="meta-chip">{model.documentCountLabel}</span>
-        </WorkspacePageActions>
-      </WorkspacePageHeader>
+        </div>
+      </div>
 
       {model.compatibilityState || !model.selectedDocument ? (
-        <WorkspacePanel>
+        <section className="workspace-surface">
           <WorkspaceEmptyState>
             <WorkspaceEmptyStateTitle>
               {model.compatibilityState?.heading ?? "No documentation yet"}
@@ -77,19 +65,17 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
               {model.compatibilityState?.message ?? "This project does not have any documentation yet."}
             </WorkspaceEmptyStateDescription>
           </WorkspaceEmptyState>
-        </WorkspacePanel>
+        </section>
       ) : (
         <WorkspaceSplit className="documentation-grid">
           <WorkspaceSplitPane>
-            <WorkspacePanel className="documentation-tree-panel">
-              <WorkspacePanelHeader>
-                <WorkspacePanelHeading>
-                  <WorkspacePanelTitle>Documentation categories</WorkspacePanelTitle>
-                  <WorkspacePanelSummary>
-                    Scaffold-backed documents stay grouped by category while the live project documentation API remains out of scope.
-                  </WorkspacePanelSummary>
-                </WorkspacePanelHeading>
-              </WorkspacePanelHeader>
+            <section className="workspace-surface documentation-tree-panel">
+              <div className="workspace-surface-section-heading">
+                <h2 className="page-section-title">Documentation categories</h2>
+                <p className="page-section-copy">
+                  Browse the current notes and reference documents for this project.
+                </p>
+              </div>
 
               <nav className="documentation-tree" aria-label="Documentation categories">
                 {model.groups.map((group) => (
@@ -101,17 +87,16 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
 
                     <div className="documentation-tree-items">
                       {group.documents.map((document, index) => (
-                        <button
+                        <Link
                           key={document.documentId}
-                          type="button"
+                          to={document.href}
                           className={
                             document.isSelected
                               ? "documentation-tree-item is-active"
                               : "documentation-tree-item"
                           }
                           aria-label={`${document.label} ${document.path}`}
-                          aria-pressed={document.isSelected}
-                          onClick={() => model.selectDocument(document.documentId)}
+                          aria-current={document.isSelected ? "page" : undefined}
                         >
                           <span className="documentation-tree-item-branch" aria-hidden="true">
                             {String(index + 1).padStart(2, "0")}
@@ -120,25 +105,23 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
                             <span className="documentation-tree-item-label">{document.label}</span>
                             <span className="documentation-tree-item-path">{document.path}</span>
                           </span>
-                        </button>
+                        </Link>
                       ))}
                     </div>
                   </section>
                 ))}
               </nav>
-            </WorkspacePanel>
+            </section>
           </WorkspaceSplitPane>
 
           <WorkspaceSplitPane>
-            <WorkspacePanel className="workspace-panel-document">
-              <WorkspacePanelHeader>
-                <WorkspacePanelHeading>
-                  <WorkspacePanelTitle>Current document</WorkspacePanelTitle>
-                  <WorkspacePanelSummary>
-                    Markdown remains scaffold-backed truth until project-level document APIs are live.
-                  </WorkspacePanelSummary>
-                </WorkspacePanelHeading>
-              </WorkspacePanelHeader>
+            <section className="workspace-surface workspace-panel-document">
+              <div className="workspace-surface-section-heading">
+                <h2 className="page-section-title">Current document</h2>
+                <p className="page-section-copy">
+                  Read the current document for the selected category without leaving the active project.
+                </p>
+              </div>
 
               <DocumentFrame>
                 <DocumentFramePath>{model.selectedDocument.path}</DocumentFramePath>
@@ -155,7 +138,7 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
                   />
                 </DocumentFrameBody>
               </DocumentFrame>
-            </WorkspacePanel>
+            </section>
           </WorkspaceSplitPane>
         </WorkspaceSplit>
       )}
