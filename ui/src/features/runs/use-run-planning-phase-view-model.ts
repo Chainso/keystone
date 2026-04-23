@@ -255,6 +255,7 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
       conversationLocator: base.conversationLocator,
       discardChanges,
       documentEditor: {
+        disabled: isSubmitting,
         editorLabel: "Document body",
         markdown: body,
         markdownSourceKey: sourceKey,

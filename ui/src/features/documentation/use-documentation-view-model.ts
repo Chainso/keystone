@@ -88,10 +88,10 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       compatibilityState: {
         heading: "Documentation is not connected for this project yet",
         message:
-          "Project-level documents still come from the built-in demo dataset. Switch to the Keystone Cloudflare demo project to review the current documentation surface."
+          "Project documentation is currently available only for the sample Keystone Cloudflare project. Switch to that project to review the current Documentation surface."
       },
       currentProjectLabel: project.displayName,
-      documentCountLabel: "Demo dataset only",
+      documentCountLabel: "Sample project only",
       title: "Documentation",
       groups: [],
       selectedDocument: null,
@@ -103,7 +103,7 @@ export function useDocumentationViewModel(): DocumentationViewModel {
     return {
       compatibilityState: {
         heading: "No documentation yet",
-        message: `${project.displayName} does not have any project-scoped documentation in the scaffold dataset yet.`
+        message: `${project.displayName} does not have any project documentation yet.`
       },
       currentProjectLabel: project.displayName,
       documentCountLabel: "0 documents",

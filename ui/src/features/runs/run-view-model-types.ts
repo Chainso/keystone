@@ -70,6 +70,7 @@ export interface RunPlanningPhaseEditingViewModel extends RunPlanningPhaseBaseVi
   canSave: boolean;
   discardChanges: () => void;
   documentEditor: {
+    disabled: boolean;
     editorLabel: string;
     markdown: string;
     markdownSourceKey: string;

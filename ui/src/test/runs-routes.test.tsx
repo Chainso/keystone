@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { UIMessage } from "ai";
+import { MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID } from "../components/editor/markdown-document-surface";
 
 interface CloudflareChatMock {
   addToolApprovalResponse: ReturnType<typeof vi.fn>;
@@ -193,41 +194,6 @@ vi.mock("@cloudflare/ai-chat/react", () => ({
   useAgentChat: cloudflareConversationMocks.useAgentChat
 }));
 
-vi.mock("../components/editor/markdown-document-surface", async () => {
-  const actual = await vi.importActual<typeof import("../components/editor/markdown-document-surface")>(
-    "../components/editor/markdown-document-surface"
-  );
-
-  return {
-    ...actual,
-    MarkdownDocumentEditor: ({
-      editorLabel,
-      label,
-      markdown,
-      onMarkdownChange,
-      placeholder
-    }: {
-      editorLabel: string;
-      label: string;
-      markdown: string;
-      onMarkdownChange: (markdown: string) => void;
-      placeholder?: string;
-    }) => (
-      <section role="region" aria-label={label} className="markdown-document-surface">
-        <textarea
-          aria-label={editorLabel}
-          className="conversation-composer-input"
-          placeholder={placeholder}
-          value={markdown}
-          onChange={(event) => {
-            onMarkdownChange(event.currentTarget.value);
-          }}
-        />
-      </section>
-    )
-  };
-});
-
 import type { RunManagementApi, StaticRunDetailRecord } from "../features/runs/run-management-api";
 import {
   createStaticRunManagementApi,
@@ -272,6 +238,24 @@ function createDeferred<T>() {
 
 function getPlanningDocumentRegion(documentLabel: string) {
   return screen.getByRole("region", { name: documentLabel });
+}
+
+function getPlanningDocumentBodyInput() {
+  return screen.getByTestId(
+    MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID
+  ) as HTMLTextAreaElement;
+}
+
+function changePlanningDocumentBody(markdown: string) {
+  fireEvent.change(getPlanningDocumentBodyInput(), {
+    target: {
+      value: markdown
+    }
+  });
+}
+
+function expectPlanningDocumentBodyValue(markdown: string) {
+  expect(getPlanningDocumentBodyInput()).toHaveValue(markdown);
 }
 
 function normalizeRenderedText(text: string | null | undefined) {
@@ -2158,17 +2142,8 @@ describe("Run routes", () => {
         value: "Run Specification v2"
       }
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: updatedBody
-      }
-    });
-    expect(
-      within(screen.getByRole("region", { name: "Run Specification v2 document" })).getByRole(
-        "textbox",
-        { name: "Document body" }
-      )
-    ).toHaveValue(updatedBody);
+    changePlanningDocumentBody(updatedBody);
+    expectPlanningDocumentBodyValue(updatedBody);
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2185,6 +2160,13 @@ describe("Run routes", () => {
       "Preserve task lists in saved markdown."
     );
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+    await screen.findByRole("region", { name: "Run Specification v2 document" });
+    expectPlanningDocumentBodyValue(updatedBody);
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    await screen.findByRole("button", { name: "Edit document" });
+
     expectFetchJsonRequest(requestLog, {
       jsonBody: {
         body: updatedBody,
@@ -2277,11 +2259,7 @@ describe("Run routes", () => {
         value: "Run Specification v2"
       }
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Specification\n- Retry the save after a transient failure.\n"
-      }
-    });
+    changePlanningDocumentBody("# Specification\n- Retry the save after a transient failure.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2294,7 +2272,7 @@ describe("Run routes", () => {
     expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue(
       "Run Specification v2"
     );
-    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+    expectPlanningDocumentBodyValue(
       "# Specification\n- Retry the save after a transient failure.\n"
     );
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
@@ -2330,11 +2308,9 @@ describe("Run routes", () => {
       "Run Specification"
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Specification\n- Single-flight planning mutations prevent duplicates.\n"
-      }
-    });
+    changePlanningDocumentBody(
+      "# Specification\n- Single-flight planning mutations prevent duplicates.\n"
+    );
 
     const saveButton = screen.getByRole("button", { name: "Save changes" });
     fireEvent.click(saveButton);
@@ -2411,11 +2387,7 @@ describe("Run routes", () => {
         defaultTitle
       );
 
-      fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-        target: {
-          value: `${defaultTitle}\n${expectedLine}\n`
-        }
-      });
+      changePlanningDocumentBody(`${defaultTitle}\n${expectedLine}\n`);
 
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2530,23 +2502,18 @@ describe("Run routes", () => {
         "Run Architecture"
       );
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Discarded draft changes.\n"
-      }
-    });
+    changePlanningDocumentBody("# Architecture\n- Discarded draft changes.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
 
     expect(screen.getByText("No current architecture revision")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Document body" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId(MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID)
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Save the first architecture revision.\n"
-      }
-    });
+    expectPlanningDocumentBodyValue("");
+    changePlanningDocumentBody("# Architecture\n- Save the first architecture revision.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2574,11 +2541,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Guard this draft.\n"
-      }
-    });
+    changePlanningDocumentBody("# Architecture\n- Guard this draft.\n");
 
     fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
 
@@ -2588,9 +2551,7 @@ describe("Run routes", () => {
       );
     });
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
-    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
-      "# Architecture\n- Guard this draft.\n"
-    );
+    expectPlanningDocumentBodyValue("# Architecture\n- Guard this draft.\n");
 
     confirmMock.mockReturnValue(true);
 
@@ -2609,11 +2570,7 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
     await screen.findByRole("textbox", { name: "Document title" });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Warn before unload.\n"
-      }
-    });
+    changePlanningDocumentBody("# Architecture\n- Warn before unload.\n");
 
     const beforeUnloadEvent = new Event("beforeunload", {
       cancelable: true
@@ -2673,16 +2630,14 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
     await screen.findByRole("textbox", { name: "Document title" });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Save is still pending.\n"
-      }
-    });
+    changePlanningDocumentBody("# Architecture\n- Save is still pending.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
     expect(createRunDocumentRevision).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("textbox", { name: "Document title" })).toBeDisabled();
+    expect(getPlanningDocumentBodyInput()).toBeDisabled();
 
     fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
 
@@ -2692,9 +2647,7 @@ describe("Run routes", () => {
       );
     });
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
-    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
-      "# Architecture\n- Save is still pending.\n"
-    );
+    expectPlanningDocumentBodyValue("# Architecture\n- Save is still pending.\n");
 
     pendingSave.resolve(undefined);
 

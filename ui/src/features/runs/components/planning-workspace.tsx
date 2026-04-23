@@ -118,6 +118,7 @@ function PlanningDocumentPanel(
               </div>
               <DocumentFrameRule />
               <MarkdownDocumentEditor
+                disabled={props.documentEditor.disabled}
                 label={`${props.panelTitle} document`}
                 markdown={props.documentEditor.markdown}
                 markdownSourceKey={props.documentEditor.markdownSourceKey}

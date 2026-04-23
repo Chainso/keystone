@@ -48,6 +48,11 @@ const markdownStaticPlugins = [
   ...MarkdownKit,
 ];
 
+export const MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID =
+  'markdown-document-editor-source';
+
+const isTestMode = import.meta.env.MODE === 'test';
+
 function buildFallbackDocumentValue(markdown: string): Value {
   return [
     {
@@ -61,18 +66,39 @@ function buildFallbackDocumentValue(markdown: string): Value {
   ];
 }
 
+type MarkdownParseResult =
+  | {
+      status: 'ready';
+      value: Value;
+    }
+  | {
+      markdown: string;
+      status: 'error';
+    };
+
 function parseMarkdownSource(
   editor: Parameters<typeof deserializeMd>[0],
   markdown: string
-): Value {
-  if (markdown.trim().length === 0) {
-    return buildFallbackDocumentValue('');
+): MarkdownParseResult {
+  const normalizedMarkdown = normalizeMarkdownSourceBody(markdown);
+
+  if (normalizedMarkdown.trim().length === 0) {
+    return {
+      status: 'ready',
+      value: buildFallbackDocumentValue(''),
+    };
   }
 
   try {
-    return deserializeMd(editor, markdown);
+    return {
+      status: 'ready',
+      value: deserializeMd(editor, normalizedMarkdown),
+    };
   } catch {
-    return buildFallbackDocumentValue(markdown);
+    return {
+      markdown,
+      status: 'error',
+    };
   }
 }
 
@@ -91,10 +117,11 @@ function createStaticMarkdownViewer(markdown: string) {
   const editor = createStaticEditor({
     plugins: markdownStaticPlugins,
   });
+  const result = parseMarkdownSource(editor, markdown);
 
   return {
     editor,
-    value: parseMarkdownSource(editor, markdown),
+    result,
   };
 }
 
@@ -132,6 +159,27 @@ export function MarkdownDocumentViewer({
     );
   }
 
+  if (viewer.result.status === 'error') {
+    return (
+      <section
+        role="region"
+        aria-label={label}
+        className={cn('markdown-document-surface', className)}
+        data-parse-error="true"
+      >
+        <div className="markdown-document-surface-shell">
+          <p className="form-field-error">
+            This document uses markdown the workspace cannot safely render yet.
+            The original source is shown below unchanged.
+          </p>
+          <pre className="markdown-document-surface-content whitespace-pre-wrap px-4 py-3 font-mono text-sm leading-6">
+            {viewer.result.markdown}
+          </pre>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
       role="region"
@@ -142,7 +190,7 @@ export function MarkdownDocumentViewer({
         <EditorStatic
           className="markdown-document-surface-content"
           editor={viewer.editor}
-          value={viewer.value}
+          value={viewer.result.value}
           variant="workspaceDocument"
         />
       </div>
@@ -152,6 +200,7 @@ export function MarkdownDocumentViewer({
 
 export interface MarkdownDocumentEditorProps {
   className?: string;
+  disabled?: boolean;
   editorLabel?: string;
   label: string;
   markdown: string;
@@ -162,6 +211,7 @@ export interface MarkdownDocumentEditorProps {
 
 export function MarkdownDocumentEditor({
   className,
+  disabled = false,
   editorLabel = 'Document editor',
   label,
   markdown,
@@ -169,20 +219,27 @@ export function MarkdownDocumentEditor({
   onMarkdownChange,
   placeholder = 'Write the current document.',
 }: MarkdownDocumentEditorProps) {
-  const initialValue = React.useMemo(() => {
+  const [editorResetNonce, setEditorResetNonce] = React.useState(0);
+  const editorKey = `${markdownSourceKey}:${editorResetNonce}`;
+  const initialState = React.useMemo(() => {
     const editor = createPlateEditor({
       plugins: markdownEditorPlugins,
     });
 
     return parseMarkdownSource(editor, markdown);
-  }, [markdownSourceKey]);
+  }, [editorKey, markdown]);
+
+  const isEditorDisabled = disabled || initialState.status === 'error';
 
   const editor = usePlateEditor(
     {
       plugins: markdownEditorPlugins,
-      value: initialValue,
+      value:
+        initialState.status === 'ready'
+          ? initialState.value
+          : buildFallbackDocumentValue(''),
     },
-    [markdownSourceKey]
+    [editorKey]
   );
 
   return (
@@ -191,6 +248,32 @@ export function MarkdownDocumentEditor({
       aria-label={label}
       className={cn('markdown-document-surface', className)}
     >
+      {isTestMode ? (
+        <textarea
+          aria-hidden="true"
+          className="sr-only"
+          data-markdown-source-key={markdownSourceKey}
+          data-testid={MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID}
+          disabled={isEditorDisabled}
+          tabIndex={-1}
+          value={markdown}
+          onChange={(event) => {
+            setEditorResetNonce((current) => current + 1);
+            onMarkdownChange(event.currentTarget.value);
+          }}
+        />
+      ) : null}
+      {initialState.status === 'error' ? (
+        <div className="markdown-document-surface-shell" data-parse-error="true">
+          <p className="form-field-error">
+            This document uses markdown the editor cannot safely round-trip yet.
+            Body editing is disabled until the source is simplified.
+          </p>
+          <pre className="markdown-document-surface-content whitespace-pre-wrap px-4 py-3 font-mono text-sm leading-6">
+            {initialState.markdown}
+          </pre>
+        </div>
+      ) : (
       <Plate
         editor={editor}
         onValueChange={({ editor: currentEditor, value }) => {
@@ -198,19 +281,24 @@ export function MarkdownDocumentEditor({
         }}
       >
         <EditorContainer
+          aria-disabled={isEditorDisabled || undefined}
           className="markdown-document-surface-shell"
           variant="workspaceDocument"
         >
           <Editor
+            aria-disabled={isEditorDisabled || undefined}
             aria-label={editorLabel}
             aria-multiline="true"
             className="markdown-document-surface-content markdown-document-editor-content"
+            disabled={isEditorDisabled}
             placeholder={placeholder}
+            readOnly={isEditorDisabled}
             role="textbox"
             variant="workspaceDocument"
           />
         </EditorContainer>
       </Plate>
+      )}
     </section>
   );
 }

@@ -930,7 +930,9 @@ describe("Destination scaffolds", () => {
       screen.getByRole("heading", { name: "Documentation is not connected for this project yet" })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Project-level documents still come from the built-in demo dataset\./i)
+      screen.getByText(
+        /Project documentation is currently available only for the sample Keystone Cloudflare project\./i
+      )
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Documentation categories" })

@@ -336,19 +336,25 @@ describe("resource-model selectors", () => {
       ]
     };
 
-    expect(listProjectDocumentationGroups("project-keystone-cloudflare", dataset)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          groupId: "project:miscellaneous-notes",
-          label: "Miscellaneous Notes",
-          documents: expect.arrayContaining([
-            expect.objectContaining({
-              documentId: "project-decision-log",
-              path: "docs/decision-log/current.md"
-            })
-          ])
-        })
-      ])
+    const groups = listProjectDocumentationGroups("project-keystone-cloudflare", dataset);
+
+    expect(groups).toHaveLength(3);
+    expect(groups.map((group) => group.groupId)).toEqual([
+      "project:product-specifications",
+      "project:technical-architecture",
+      "project:miscellaneous-notes"
+    ]);
+    expect(groups[2]).toEqual(
+      expect.objectContaining({
+        groupId: "project:miscellaneous-notes",
+        label: "Miscellaneous Notes",
+        documents: expect.arrayContaining([
+          expect.objectContaining({
+            documentId: "project-decision-log",
+            path: "docs/decision-log/current.md"
+          })
+        ])
+      })
     );
   });
 

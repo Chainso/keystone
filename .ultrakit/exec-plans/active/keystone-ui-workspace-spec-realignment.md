@@ -145,6 +145,12 @@ Alternatives considered:
   - `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` -> passed (`3 passed` test files, `109 passed` tests).
   - sandbox `rtk npm test` -> failed again in `tests/scripts/demo-contracts.test.ts` with the known `listen EPERM 127.0.0.1` restriction.
   - escalated host `rtk npm test` -> passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- 2026-04-23: Completed the one allowed Phase 3 targeted fix pass:
+  - documentation compatibility copy now uses product-facing sample-project language instead of scaffold/demo-dataset jargon,
+  - the shared `markdown-document-surface` now fails closed on markdown parse errors by showing the original source and disabling body editing instead of coercing unsupported markdown into a lossy paragraph fallback,
+  - planning editors now disable both title/body editing while a save is in flight so users cannot type changes that would be lost behind the pending request,
+  - `runs-routes` now exercises the real shared markdown surface through a test-only keyed source seam, asserts reinitialization after save/reopen plus in-flight disabled behavior, and `resource-model-selectors` now fails if documentation grouping ever expands beyond the canonical three groups,
+  - reran validation: `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed (`3 passed` test files, `109 passed` tests), sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker again, and the escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 
 ## Progress
 
@@ -158,6 +164,7 @@ Alternatives considered:
 - [x] 2026-04-22 Phase 2: realign run and execution flow behavior with the workspace spec.
 - [x] 2026-04-23 Phase 2 targeted fix pass: align run-index deep links with displayed stages, remove the misleading default-phase hook, and add the missing coverage.
 - [x] 2026-04-23 Phase 3: realign documentation model and document surfaces with the workspace spec.
+- [x] 2026-04-23 Phase 3 targeted fix pass: remove the remaining documentation jargon, fail closed on parse errors, restore planning-editor pending locks, and tighten the real-surface coverage.
 - [ ] Phase 4: evaluate doc / notes impact, run closeout validation, and archive the plan.
 
 ## Surprises & Discoveries
@@ -213,6 +220,8 @@ Alternatives considered:
 - Host broad validation exposed one transient assertion in `ui/src/test/runs-routes.test.tsx`: the compile flow can navigate quickly enough that `Compiling run...` disappears before Testing Library observes it. Counting the compile `POST` plus the execution redirect is a more stable proof for that path.
 - Phase 2 host broad validation exposed the same kind of timing issue in `ui/src/test/app-shell.test.tsx`: the in-flight create-run request can resolve quickly enough that the `Creating run...` label disappears before Testing Library observes it. Asserting the single `POST /v1/projects/:projectId/runs` call is the more stable proof of request reuse.
 - Review follow-up clarified that the run-index stage column and the bare `/runs/:runId` route serve different jobs: the table should preserve current-stage semantics, while the route should stay a stable specification landing. The least misleading fix is stage-specific row deep links rather than changing the stable bare route.
+- Phase 3 fix-pass review confirmed that silent markdown parse fallback is not acceptable at the shared document seam: unsupported markdown must surface as raw source with body editing disabled, otherwise a title-only revisit can silently rewrite the document on the next save.
+- Route tests do not need a full markdown-surface mock to prove planning save/load behavior in jsdom: a test-only source seam inside the real shared component is enough to exercise `markdownSourceKey` resets and pending-state locks without reverting to the old textarea contract.
 
 ## Outcomes & Retrospective
 
@@ -242,8 +251,9 @@ Alternatives considered:
   - Planning and documentation now share a Plate-first markdown surface built from the generated Plate UI editor/static shells plus the installed markdown/basic/code/link/list/math/table kits.
   - The old repo-owned Plate wrapper is gone, markdown remains the authoritative save/load contract, and the planning workspace now edits directly in Plate instead of mirroring a textarea into a separate preview.
   - Documentation categories now collapse to the canonical workspace-spec group set: `Product Specifications`, `Technical Architecture`, and `Miscellaneous Notes`.
-  - Documentation compatibility copy now explains the current scaffold-backed behavior in product terms rather than implementation jargon.
-  - Route tests preserve the user-facing save/load contract with a focused editor test double, while static rendering keeps the real Plate viewer semantics and accessible document-region labels.
+  - Documentation compatibility copy now explains the current sample-project limitation in product terms rather than scaffold/demo-dataset jargon.
+  - The targeted fix pass made markdown parse failures fail closed: the viewer now shows original source unchanged, the editor disables body edits when it cannot safely round-trip that source, and in-flight saves now disable the planning editor instead of leaving a data-loss window.
+  - Route tests now preserve the user-facing save/load contract with the real shared markdown surface through a keyed test seam, and selector coverage now fails if a fourth documentation group appears.
 - Validation:
   - `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed (`3 passed` test files, `109 passed` tests).
   - Phase 3 sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
@@ -674,13 +684,16 @@ Status:
 
 Completion Notes:
 - Completed on 2026-04-23.
+- Targeted fix pass completed on 2026-04-23.
 - Deleted `ui/src/components/editor/plate-markdown-document.tsx` in favor of a shared `markdown-document-surface` built on generated Plate UI editor/static shells and the installed markdown/basic/code/link/list/math/table kits.
 - Planning now edits the execution-plan document in Plate while keeping markdown as the persisted source of truth.
-- Documentation grouping now maps resources into the canonical three workspace-spec categories and uses product-facing compatibility copy.
-- Targeted Phase 3 validation passed, sandbox broad validation hit the known localhost bind restriction, and the escalated host rerun passed.
+- Documentation grouping now maps resources into the canonical three workspace-spec categories, uses product-facing compatibility copy, and the selector coverage now fails if a fourth group appears.
+- The shared markdown surface now treats parse failures as a read-only raw-source fallback instead of a lossy paragraph coercion, and the planning editor disables body/title input while saves are in flight.
+- Targeted Phase 3 validation passed, sandbox broad validation hit the known localhost bind restriction again, and the escalated host rerun passed.
 
 Next Starter Context:
-- Phase 4 should stay focused on documentation and closeout truth: update any affected developer docs, run the closeout validation required by the plan, and archive the execution plan once the documentation surface/model changes are reflected in durable docs.
+- Phase 3 review findings are closed; Phase 4 should stay focused on documentation and closeout truth rather than reopening the document-surface or run-flow code.
+- Next closeout should update any affected developer docs, run the final validation required by the plan, and archive the execution plan once the shipped documentation-surface/model behavior is reflected in durable docs.
 
 ## Phase 4 - Documentation and closeout truth
 
