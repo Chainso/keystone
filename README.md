@@ -30,6 +30,7 @@ npm run test:workflows
 npm run build:ui
 npm run build
 npm run dev:ui
+npm run dev:ui:serve
 npm run dev:zellij
 npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 ```
@@ -38,13 +39,15 @@ npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
 
 `npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the workspace shell while Wrangler is already running.
 
+When you need real React development errors instead of the minified production bundle, run `npm run dev:ui:serve` in a second terminal and open the Vite URL it prints, usually `http://127.0.0.1:5173`. That serves the UI in Vite dev mode and proxies `/v1`, `/agents`, `/internal`, and `/healthz` back to the local Worker at `KEYSTONE_DEV_PROXY_TARGET` or `KEYSTONE_BASE_URL` (default `http://127.0.0.1:8787`).
+
 `npm run dev:zellij` is the checked-in helper for the standard UI scaffold workflow. After Postgres is up and `npm run db:migrate` has completed, it opens zellij with vertically split panes that run `npx localflare` and `npm run dev:ui` from repo root, then opens the local UI in the default browser once `/v1/health` responds at `http://127.0.0.1:8787`. Use it from a normal host shell, not inside the Codex sandbox, because local Worker startup on this machine still needs host execution. If you need a different browser target, export `KEYSTONE_BROWSER_URL` or `KEYSTONE_BASE_URL` first. If you want to suppress browser launch, export `KEYSTONE_OPEN_BROWSER=0`.
 
 ## UI Scaffold
 
 The current UI is a structure-first React SPA under `ui/` served through Wrangler's `ASSETS` binding alongside the existing Hono API routes.
 
-For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manual path or do not use zellij, keep using `npm run dev` plus `npm run dev:ui` in separate terminals.
+For the standard local UI loop, run `npm run dev:zellij`. If you prefer the manual path or do not use zellij, keep using `npm run dev` plus `npm run dev:ui` in separate terminals. If you are debugging frontend rendering issues, switch the second terminal to `npm run dev:ui:serve` and use the Vite URL instead of the Worker-served asset URL.
 
 Current UI scope:
 

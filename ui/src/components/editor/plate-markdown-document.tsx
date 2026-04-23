@@ -27,7 +27,7 @@ const plateMarkdownPlugins = [
   BaseHeadingPlugin,
   BaseBlockquotePlugin,
   BaseBasicMarksPlugin,
-  BaseHorizontalRulePlugin,
+  BaseHorizontalRulePlugin.withComponent(MarkdownHorizontalRuleElement),
   BaseBulletedListPlugin,
   BaseNumberedListPlugin,
   BaseListItemPlugin,
@@ -85,6 +85,23 @@ function MarkdownTableHeaderCellElement({
     <th {...attributes} scope="col">
       {children}
     </th>
+  );
+}
+
+function MarkdownHorizontalRuleElement({
+  attributes,
+  children
+}: {
+  attributes: HTMLAttributes<HTMLDivElement>;
+  children: ReactNode;
+}) {
+  return (
+    <div {...attributes} className={cn("slate-hr", attributes.className)}>
+      <div contentEditable={false}>
+        <hr />
+      </div>
+      {children}
+    </div>
   );
 }
 
