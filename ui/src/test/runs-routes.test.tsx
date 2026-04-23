@@ -278,7 +278,7 @@ function expectTaskChatSurface() {
   expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
   expect(
     screen.getByText(
-      "This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+      "This task already has an attached conversation. Send the next implementation turn here."
     )
   ).toBeInTheDocument();
   expect(
@@ -1752,51 +1752,37 @@ function createBrowserRunFetch(
 }
 
 describe("Run routes", () => {
-  it("redirects /runs/:runId to execution when compiled workflow data exists", async () => {
+  it("redirects /runs/:runId to specification as the stable run landing", async () => {
     const { router } = renderRunRoute("/runs/run-104");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-104/execution");
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
     });
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
         name: "Execution"
       })
     ).toHaveAttribute("href", "/runs/run-104/execution");
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
   });
 
-  it("redirects an uncompiled run to the first incomplete planning step", async () => {
-    const { router: planRouter } = renderRunRoute("/runs/run-102");
+  it.each(["run-101", "run-102", "run-103", "run-107"])(
+    "keeps %s on specification instead of inferring a deeper run phase",
+    async (runId) => {
+      const { router } = renderRunRoute(`/runs/${runId}`);
 
-    expect(await screen.findByRole("heading", { name: "run-102" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(planRouter.state.location.pathname).toBe("/runs/run-102/execution-plan");
-    });
+      expect(await screen.findByRole("heading", { name: runId })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe(`/runs/${runId}/specification`);
+      });
+      expect(await screen.findByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+    }
+  );
 
-    const { router: architectureRouter } = renderRunRoute("/runs/run-103");
+  it("keeps the execution materializing state available on the execution route", async () => {
+    renderRunRoute("/runs/run-107/execution");
 
-    expect(await screen.findByRole("heading", { name: "run-103" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(architectureRouter.state.location.pathname).toBe("/runs/run-103/execution-plan");
-    });
-
-    const { router: specificationRouter } = renderRunRoute("/runs/run-101");
-
-    expect(await screen.findByRole("heading", { name: "run-101" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(specificationRouter.state.location.pathname).toBe("/runs/run-101/architecture");
-    });
-  });
-
-  it("redirects a compiled run with a materializing workflow into execution", async () => {
-    const { router } = renderRunRoute("/runs/run-107");
-
-    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-107/execution");
-    });
     expect(await screen.findByText("Execution is materializing")).toBeInTheDocument();
     expect(
       await screen.findByText(
@@ -1811,7 +1797,7 @@ describe("Run routes", () => {
     ).toHaveAttribute("href", "/runs/run-107/execution");
   });
 
-  it("redirects a brand-new run with no planning documents to specification", async () => {
+  it("keeps a brand-new run with no planning documents on specification", async () => {
     const { router } = renderRunRoute("/runs/run-106");
 
     expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
@@ -1822,13 +1808,18 @@ describe("Run routes", () => {
     expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
   });
 
-  it("renders the run workspace frame with back-link, metadata, and stage summaries", async () => {
+  it("renders the run workspace frame with back-link, concise meta copy, and stage summaries", async () => {
     renderRunRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
-    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
-    expect(screen.getByText("Engine Think Live")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Move between specification, architecture, execution plan, and execution from this run workspace."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Workflow wf-run-104")).not.toBeInTheDocument();
+    expect(screen.queryByText("Engine Think Live")).not.toBeInTheDocument();
     const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
 
     expect(within(phaseNavigation).getByText("Agent chat plus the living product spec.")).toBeInTheDocument();
@@ -3269,17 +3260,18 @@ describe("Run routes", () => {
     expect(executionStep).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("renders changed-file groups and unified diffs through the authenticated run API seam", async () => {
+  it("renders task conversation and code review without approval framing", async () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation."
+        "Continue the task conversation here while changed files, diffs, and review notes stay in the sidebar."
       )
     ).toBeInTheDocument();
     expectTaskChatSurface();
-    expect(screen.getByText("Task scope")).toBeInTheDocument();
+    expect(screen.getByText("Task workspace")).toBeInTheDocument();
+    expect(screen.queryByText(/approvals/i)).not.toBeInTheDocument();
     expect(await screen.findByText("Modified files")).toBeInTheDocument();
     expect(screen.getByText("Added files")).toBeInTheDocument();
     expect(screen.getByText("ui/src/features/execution/components/task-detail-workspace.tsx")).toBeInTheDocument();
@@ -3305,7 +3297,7 @@ describe("Run routes", () => {
     expect(screen.queryByText("Artifacts and review")).not.toBeInTheDocument();
   });
 
-  it("binds task detail to the persisted Cloudflare conversation locator without synthesizing a fallback", async () => {
+  it("binds task detail to the persisted task conversation locator without synthesizing a fallback", async () => {
     const browserAuth = {
       token: "browser-task-token",
       tenantId: "tenant-task-browser"
@@ -3550,7 +3542,7 @@ describe("Run routes", () => {
     fireEvent.click(within(row as HTMLElement).getByText("Project workspace navigation"));
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-104/execution");
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
     });
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
   });

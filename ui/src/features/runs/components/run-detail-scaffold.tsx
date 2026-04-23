@@ -10,25 +10,21 @@ import type { RunPhaseStepViewModel } from "../use-run-view-model";
 
 interface RunDetailScaffoldProps {
   displayId: string;
-  executionEngineLabel: string;
   summary: string;
   statusLabel: string;
   statusTone: ComponentProps<typeof StatusPill>["tone"];
   updatedLabel: string;
   phaseSteps: RunPhaseStepViewModel[];
-  workflowInstanceId: string;
   children: ReactNode;
 }
 
 export function RunDetailScaffold({
   displayId,
-  executionEngineLabel,
   summary,
   statusLabel,
   statusTone,
   updatedLabel,
   phaseSteps,
-  workflowInstanceId,
   children
 }: RunDetailScaffoldProps) {
   return (
@@ -47,10 +43,6 @@ export function RunDetailScaffold({
             <p className="document-name">{updatedLabel}</p>
           </div>
           <p className="run-detail-summary">{summary}</p>
-          <div className="run-detail-inline-meta">
-            <p className="document-name">{`Workflow ${workflowInstanceId}`}</p>
-            <p className="document-name">{`Engine ${executionEngineLabel}`}</p>
-          </div>
         </div>
         <RunPhaseStepper steps={phaseSteps} />
       </header>

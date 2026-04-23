@@ -4,12 +4,10 @@ import type { ConversationLocator } from "./run-types";
 
 export interface RunHeaderViewModel {
   displayId: string;
-  executionEngineLabel: string;
   statusLabel: string;
   statusTone: StatusTone;
   summary: string;
   updatedLabel: string;
-  workflowInstanceId: string;
 }
 
 export interface RunPhaseStepViewModel {

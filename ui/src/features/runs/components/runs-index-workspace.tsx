@@ -6,36 +6,21 @@ import {
   WorkspacePage,
   WorkspacePageSection
 } from "../../../components/workspace/workspace-page";
-import { useProjectManagement } from "../../projects/project-context";
 import { StatusPill } from "../../../shared/layout/status-pill";
 import { buildRunPhasePath } from "../../../shared/navigation/run-phases";
-import { formatMachineLabel, getRunStatusTone } from "../run-status";
+import { getRunStatusTone } from "../run-status";
 import { useRunsIndexViewModel } from "../use-runs-index-view-model";
-
-function getLiveRunStageLabel(run: {
-  compiledFrom: {
-    architectureRevisionId: string;
-    compiledAt: string;
-    executionPlanRevisionId: string;
-    specificationRevisionId: string;
-  } | null;
-}) {
-  return run.compiledFrom ? "Execution" : "Planning";
-}
 
 export function RunsIndexWorkspace() {
   const model = useRunsIndexViewModel();
   const navigate = useNavigate();
-  const { state } = useProjectManagement();
-  const currentProject = state.currentProject;
   const totalRuns = model.scaffoldRuns.length + model.liveRuns.length;
-  const runsSummary = currentProject
-    ? `Open or create a run for ${currentProject.displayName}, then move through Specification, Architecture, Execution Plan, and Execution.`
-    : "Choose a project, then create a run and step into its workspace.";
+  const runsSummary =
+    "Open a run to move through specification, architecture, execution plan, and execution in one workspace.";
   const tableFooter = (
     <div className="entity-table-footer">
       <p className="table-row-note">
-        Open a row to move through the four-stage run workspace without leaving the selected project.
+        Open a row to step into the run workspace and move across the four stages.
       </p>
       <div className="filter-chip-row">
         <span className="meta-chip">
@@ -88,17 +73,12 @@ export function RunsIndexWorkspace() {
       id: "run-id"
     },
     {
-      cell: (run) => (
-        <div className="table-detail-stack">
-          <span>{`Workflow ${run.workflowInstanceId}`}</span>
-          <span className="table-row-note">{`Engine ${formatMachineLabel(run.executionEngine)}`}</span>
-        </div>
-      ),
+      cell: (run) => run.summary,
       header: "Summary",
       id: "summary"
     },
     {
-      cell: (run) => getLiveRunStageLabel(run),
+      cell: (run) => run.stageLabel,
       header: "Stage",
       id: "stage"
     },

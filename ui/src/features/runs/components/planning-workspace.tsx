@@ -55,7 +55,11 @@ function PlanningConversationPanel({
   );
 }
 
-function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
+function PlanningDocumentPanel(
+  props: RunPlanningPhaseViewModel & {
+    documentFollowup?: ReactNode;
+  }
+) {
   return (
     <WorkspacePanel className="workspace-panel-document">
       <WorkspacePanelHeader>
@@ -185,6 +189,10 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
             </WorkspaceEmptyStateActions>
           </WorkspaceEmptyState>
         )}
+
+        {props.documentFollowup ? (
+          props.documentFollowup
+        ) : null}
       </DocumentFrame>
     </WorkspacePanel>
   );
@@ -192,24 +200,23 @@ function PlanningDocumentPanel(props: RunPlanningPhaseViewModel) {
 
 export function PlanningWorkspaceFrame(
   props: RunPlanningPhaseViewModel & {
-    documentAccessory?: ReactNode;
+    documentFollowup?: ReactNode;
   }
 ) {
+  const { documentFollowup, ...planningProps } = props;
+
   return (
     <WorkspaceSplit className="planning-workspace-split">
       <WorkspaceSplitPane>
         <PlanningConversationPanel
-          phaseTitle={props.phaseTitle}
-          phaseSummary={props.phaseSummary}
-          conversationLocator={props.conversationLocator}
+          phaseTitle={planningProps.phaseTitle}
+          phaseSummary={planningProps.phaseSummary}
+          conversationLocator={planningProps.conversationLocator}
         />
       </WorkspaceSplitPane>
 
       <WorkspaceSplitPane>
-        <PlanningDocumentPanel {...props} />
-        {props.documentAccessory ? (
-          <div className="planning-workspace-accessory">{props.documentAccessory}</div>
-        ) : null}
+        <PlanningDocumentPanel {...planningProps} documentFollowup={documentFollowup} />
       </WorkspaceSplitPane>
     </WorkspaceSplit>
   );

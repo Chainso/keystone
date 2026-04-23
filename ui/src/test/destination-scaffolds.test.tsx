@@ -2235,7 +2235,7 @@ describe("Destination scaffolds", () => {
     expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+        "This task already has an attached conversation. Send the next implementation turn here."
       )
     ).toBeInTheDocument();
     expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();

@@ -21,12 +21,12 @@ interface RunsCompatibilityState {
 
 interface LiveRunRowViewModel {
   detailPath: string;
-  executionEngine: string;
   latestActivityLabel: string;
   runId: string;
+  stageLabel: string;
   statusLabel: string;
   statusTone: StatusTone;
-  workflowInstanceId: string;
+  summary: string;
 }
 
 interface ScaffoldRunRowViewModel {
@@ -67,18 +67,78 @@ function getRunsErrorMessage(error: unknown) {
   return "Unable to load runs.";
 }
 
+function normalizeStatus(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function getLiveRunStageLabel(run: ApiProjectRunRecord) {
+  return run.compiledFrom ? "Execution" : "Specification";
+}
+
+function buildLiveRunSummary(run: ApiProjectRunRecord) {
+  const normalizedStatus = normalizeStatus(run.status);
+
+  if (run.compiledFrom) {
+    if (
+      normalizedStatus.includes("block") ||
+      normalizedStatus.includes("cancel") ||
+      normalizedStatus.includes("fail")
+    ) {
+      return "Execution needs attention.";
+    }
+
+    if (
+      normalizedStatus.includes("complete") ||
+      normalizedStatus.includes("done") ||
+      normalizedStatus.includes("passed") ||
+      normalizedStatus.includes("archiv")
+    ) {
+      return "Execution completed for this run.";
+    }
+
+    return "Execution is the current stage for this run.";
+  }
+
+  if (
+    normalizedStatus.includes("block") ||
+    normalizedStatus.includes("cancel") ||
+    normalizedStatus.includes("fail")
+  ) {
+    return "Planning needs attention before compile.";
+  }
+
+  if (
+    normalizedStatus.includes("complete") ||
+    normalizedStatus.includes("done") ||
+    normalizedStatus.includes("passed") ||
+    normalizedStatus.includes("archiv")
+  ) {
+    return "Planning closed before execution started.";
+  }
+
+  if (
+    normalizedStatus.includes("active") ||
+    normalizedStatus.includes("running") ||
+    normalizedStatus.includes("review")
+  ) {
+    return "Planning is in progress.";
+  }
+
+  return "Continue planning before compiling into execution.";
+}
+
 function normalizeLiveRuns(runs: ApiProjectRunRecord[]): LiveRunRowViewModel[] {
   return runs.map((run) => ({
     detailPath: buildRunPath(run.runId),
-    executionEngine: run.executionEngine,
     latestActivityLabel: buildRunActivityLabel({
       compiledAt: run.compiledFrom?.compiledAt ?? null,
       endedAt: run.endedAt,
       startedAt: run.startedAt
     }),
     runId: run.runId,
+    stageLabel: getLiveRunStageLabel(run),
     ...getRunStatusPresentation(run.status),
-    workflowInstanceId: run.workflowInstanceId
+    summary: buildLiveRunSummary(run)
   }));
 }
 
@@ -293,7 +353,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
       canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
         heading: "Loading runs",
-        message: `Keystone is loading runs for ${currentProject.displayName}.`
+        message: "Keystone is loading runs for this workspace."
       },
       createRun,
       createRunErrorMessage: createRunState.errorMessage,
@@ -331,7 +391,8 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
       canCreateRun: createRunState.status !== "submitting",
       compatibilityState: {
         heading: "No runs yet",
-        message: `${currentProject.displayName} does not have any recorded runs yet.`
+        message:
+          "Create the first run to work through specification, architecture, execution plan, and execution."
       },
       createRun,
       createRunErrorMessage: createRunState.errorMessage,

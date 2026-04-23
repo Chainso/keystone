@@ -809,10 +809,11 @@ describe("App shell", () => {
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expectWorkspaceLocation("Keystone Cloudflare", "Runs");
-    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
+    expect(screen.getByText("Planning is in progress.")).toBeInTheDocument();
+    expect(screen.getByText("Specification")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Open a row to move through the four-stage run workspace without leaving the selected project."
+        "Open a row to step into the run workspace and move across the four stages."
       )
     ).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
@@ -1035,8 +1036,9 @@ describe("App shell", () => {
     fireEvent.click(createButton);
     fireEvent.click(createButton);
 
-    expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
-    expect(createRunBodies).toEqual([{ executionEngine: "think_live" }]);
+    await waitFor(() => {
+      expect(createRunBodies).toEqual([{ executionEngine: "think_live" }]);
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       `/v1/projects/${project.projectId}/runs`,
       expect.objectContaining({
@@ -1297,7 +1299,11 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expectWorkspaceLocation("Alt Project", "Runs");
-    expect(screen.getByText("Alt Project does not have any recorded runs yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Create the first run to work through specification, architecture, execution plan, and execution."
+      )
+    ).toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
 
@@ -1362,7 +1368,7 @@ describe("App shell", () => {
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expectWorkspaceLocation("Alt Project", "Runs");
     expect(await screen.findByRole("heading", { name: "Loading runs" })).toBeInTheDocument();
-    expect(screen.getByText("Keystone is loading runs for Alt Project.")).toBeInTheDocument();
+    expect(screen.getByText("Keystone is loading runs for this workspace.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
 
     deferredAlternateRunsResponse.resolve(
