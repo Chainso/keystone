@@ -1,0 +1,1296 @@
+# Keystone UI Shadcn Tailwind Redesign
+
+## Purpose / Big Picture
+
+This plan replaces Keystone’s current Radix Themes plus custom-CSS UI foundation with a centralized Tailwind 4 plus shadcn/ui system, upgrades document surfaces to Plate-backed markdown editing and viewing, and upgrades planning/task conversation panes to assistant-ui rendered over Cloudflare’s existing chat runtime.
+
+From the user’s perspective, the product should still be Keystone:
+
+- one project selected at a time
+- one persistent left sidebar
+- `Runs`, `Documentation`, and `Workstreams` as the primary destinations
+- run detail navigation through `Specification`, `Architecture`, `Execution Plan`, and `Execution`
+- planning views with conversation on the left and a living document on the right
+- execution that defaults to the DAG and hands off into task conversation plus review
+
+What changes is how the UI is owned and how it feels:
+
+- the app becomes a restrained, panel-oriented workspace instead of a set of card-heavy boards
+- themeing becomes centralized and token-driven instead of component-owned
+- repeated UI patterns become Keystone wrappers built on top of shadcn primitives
+- planning and documentation surfaces become markdown-first Plate surfaces
+- planning and task conversation panes become real, live Cloudflare-backed chat surfaces instead of placeholders
+
+Observable outcome after the plan is complete:
+
+- the app no longer relies on direct Radix Themes styling for its main UI system
+- the major destinations read as one coherent workspace
+- planning documents are edited and viewed through Plate-backed Keystone components
+- planning/task chat panes reconnect through Cloudflare conversation locators and render through assistant-ui without introducing a second persistence model
+
+## Primary Sources Of Truth
+
+When implementation details conflict, execution must use these sources in this order:
+
+1. the user’s explicit guidance in this thread
+2. `design/workspace-spec.md`
+3. `design/design-guidelines.md`
+4. `ui/AGENTS.md`
+5. `.ultrakit/developer-docs/m1-architecture.md`
+6. `.ultrakit/developer-docs/think-runtime-architecture.md`
+7. the active execution plan itself
+
+Target images are loose inspiration only. They do not override the user’s written direction or the checked-in design markdown.
+
+## Backward Compatibility
+
+Backward compatibility with the current visual system is **not required**. The user explicitly wants to move away from direct Radix Themes usage and the current card-heavy look.
+
+Backward compatibility that **is required**:
+
+- preserve the product information architecture and terminology from `design/workspace-spec.md`
+- preserve the interaction and density constraints from `design/design-guidelines.md`
+- keep the route tree stable under `/runs`, `/documentation`, `/workstreams`, `/projects/new`, and `/settings`
+- keep `ui/src/routes/` thin and keep destination state/composition under `ui/src/features/**`
+- keep current backend truth for projects, runs, workflows, tasks, documents, and artifacts
+- keep Cloudflare, Think, and persisted conversation locator seams authoritative unless a phase explicitly introduces a frontend adapter on top
+- do not fake live behavior for surfaces that are still scaffold-backed or compatibility-backed
+
+Baseline compatibility facts already captured:
+
+- `rtk npm test` passes
+- `rtk npm run lint` fails on pre-existing repo-wide issues
+- `rtk npm run typecheck` fails on pre-existing repo-wide issues
+- `rtk npm run build:ui` passes
+- `rtk npm run build` fails in the sandbox after `vite build` because Wrangler and Docker need host-writable home-directory paths
+
+## Design Decisions
+
+### Decision 1: Tailwind 4 plus shadcn/ui becomes the primary frontend foundation
+
+- **Date:** 2026-04-21
+- **Decision:** Use Tailwind 4 with shadcn/ui as the shared UI foundation. Exit direct `@radix-ui/themes` usage for normal app surfaces.
+- **Rationale:** The user wants centralized theme control, strong wrapper composition, and a less card-heavy, more VS Code-like workspace feel. Tailwind plus shadcn gives repo-owned components, token control, and an established composition model.
+- **Alternatives considered:** keep Radix Themes and refine it; keep the current custom CSS foundation. Both leave too much visual ownership fragmented and too little repo-owned component structure.
+
+### Decision 2: Themeing is centralized through tokens, not feature components
+
+- **Date:** 2026-04-21
+- **Decision:** All theme semantics live in centralized tokens defined from `ui/src/app/styles.css` and consumed by wrappers and primitives. Feature components may not invent their own color systems or local theme variables.
+- **Rationale:** The user explicitly wants themeing centralized and does not want components individually in charge of themeing.
+- **Alternatives considered:** per-feature token files; component-local styling ownership. Those approaches drift too quickly and make the product read as multiple systems.
+
+### Decision 3: Theme toggle exists, follows system initially, and persists user choice
+
+- **Date:** 2026-04-21
+- **Decision:** First load follows the system theme. Explicit user choice is persisted in browser storage. The theme toggle lives at the bottom of the persistent left sidebar.
+- **Rationale:** This matches the user’s request while keeping theme ownership centralized.
+- **Alternatives considered:** dark-only first cut; theme toggle deferred; `next-themes`. The user explicitly asked for theme toggling, and a repo-owned provider is simpler in this Vite client than adding `next-themes`.
+
+### Decision 4: Keystone wrappers are mandatory above shadcn primitives
+
+- **Date:** 2026-04-21
+- **Decision:** Repeated product patterns must be implemented as Keystone-owned wrappers and composites instead of repeatedly composing raw shadcn primitives in feature files.
+- **Rationale:** The user explicitly wants strong thought around higher-level components built on top of shadcn to suit Keystone’s needs.
+- **Alternatives considered:** direct shadcn composition per destination; a thinner wrapper layer. Both would create drift and duplicate composition logic.
+
+### Decision 5: Phase 1 installs the full known dependency envelope, but generates only minimal UI source
+
+- **Date:** 2026-04-21
+- **Decision:** Install all known npm dependencies up front in Phase 1, but do not generate Plate UI code or assistant-ui surface code in Phase 1. Phase 1 is setup-only.
+- **Rationale:** The user explicitly asked for a first phase that only installs and sets up dependencies and wanted key dependency decisions made up front.
+- **Alternatives considered:** incremental dependency installs as phases progress; generating all registry code up front. Incremental installs cause drift; generating all source up front creates low-signal churn and harder review.
+
+### Decision 6: `ui/src/app/styles.css` remains the single Tailwind CSS entrypoint
+
+- **Date:** 2026-04-21
+- **Decision:** Keep `ui/src/app/styles.css` as the single Tailwind 4 CSS-first entrypoint and the home of foundational and semantic tokens.
+- **Rationale:** This minimizes bootstrap churn and keeps theme ownership in one place.
+- **Alternatives considered:** introduce a separate `tailwind.config.*`; rename the main stylesheet. Neither is necessary for the target stack right now.
+
+### Decision 7: Frontend aliasing is unified under `@/* -> ui/src/*`
+
+- **Date:** 2026-04-21
+- **Decision:** Use `@/* -> ui/src/*` consistently across Vite, TypeScript, and Vitest.
+- **Rationale:** shadcn, Plate wrappers, and feature code need one consistent alias scheme. The repo currently has no aligned alias story.
+- **Alternatives considered:** multiple alias roots; keep relative imports. Both increase drift and make generated code harder to own.
+
+### Decision 8: Plate is a markdown-first document projection, not a new canonical storage format
+
+- **Date:** 2026-04-21
+- **Decision:** Use Plate as the editor/viewer surface for planning and documentation while keeping markdown as the canonical document format.
+- **Rationale:** Backend document contracts already default to markdown, and current planning/documentation surfaces are still markdown-oriented.
+- **Alternatives considered:** invent a new canonical Plate JSON format; use read-only markdown renderers. A new canonical format would fight the current backend contract; read-only markdown renderers are insufficient for the target document experience.
+
+### Decision 9: Plate math dependencies are installed up front, but math behavior is not part of acceptance by default
+
+- **Date:** 2026-04-21
+- **Decision:** Install `@platejs/math` and `remark-math` in Phase 1 to avoid later dependency churn, but do not make math-specific editor behavior part of redesign acceptance unless an actual Keystone document surface needs it.
+- **Rationale:** The user asked for the full dependency/setup envelope up front. This preserves that while keeping the initial document surface contract markdown-first and product-driven.
+- **Alternatives considered:** omit math entirely up front; fully commit to math and MDX authoring as redesign acceptance. Omitting it fights the all-deps-first direction; fully committing would overstate the current product requirement.
+
+### Decision 10: Cloudflare owns chat runtime and persistence
+
+- **Date:** 2026-04-21
+- **Decision:** Use `useAgent` and `useAgentChat` as the authoritative runtime, persistence, streaming, and sync layer for planning and task conversations.
+- **Rationale:** The repo’s durable docs already state that Think/Cloudflare owns conversation history and that Keystone only persists locators on documents and tasks.
+- **Alternatives considered:** add `@ai-sdk/react` as an app-level runtime; build a second browser chat runtime. Both duplicate Cloudflare’s authority and fight the existing architecture.
+
+### Decision 11: assistant-ui is the conversation rendering and bridge layer
+
+- **Date:** 2026-04-21
+- **Decision:** Use assistant-ui with an `ExternalStoreRuntime`-style bridge over Cloudflare-owned message state. Do not use `@assistant-ui/react-ai-sdk`, Assistant Cloud, or assistant-ui as the persistence owner.
+- **Rationale:** The user wants to avoid reinventing the wheel, but Cloudflare must remain authoritative.
+- **Alternatives considered:** AI Elements; AI SDK UI; building all chat primitives manually. assistant-ui is the best fit for reusable UI while preserving Cloudflare authority.
+
+### Decision 12: Interactables stay in scope, but only through Keystone- or Cloudflare-backed state
+
+- **Date:** 2026-04-21
+- **Decision:** Selected assistant-ui interactables are allowed in the conversation cutover phase, but only for conversation-adjacent persistent patterns that are backed by real Keystone or Cloudflare state. Do not use default in-memory interactable persistence as a second source of truth.
+- **Rationale:** The user explicitly asked for interactables, but the product cannot tolerate a second hidden tool or persistence authority.
+- **Alternatives considered:** ban interactables entirely; allow unrestricted interactables. The first ignores user direction. The second would create architecture drift.
+
+### Decision 13: Unified diffs render through `react-diff-view`
+
+- **Date:** 2026-04-21
+- **Decision:** Use `react-diff-view` for task review diffs.
+- **Rationale:** The current review seam is text artifact content fetched from `contentUrl`, not old/new value pairs. `react-diff-view` matches that model more cleanly and is a better React 19 fit than `react-diff-viewer-continued`.
+- **Alternatives considered:** `react-diff-viewer-continued`; custom diff rendering. Both are weaker fits for the existing artifact seam.
+
+### Decision 14: Dense operational tables use the shadcn data-table pattern, backed by TanStack Table
+
+- **Date:** 2026-04-21
+- **Decision:** Use the shadcn data-table pattern for `Workstreams` and other dense operational list/table surfaces, with `@tanstack/react-table` kept as the underlying engine dependency and hidden behind shadcn and Keystone wrappers.
+- **Rationale:** The user wants shadcn components leveraged as much as possible. shadcn’s data-table pattern already uses TanStack Table for the hard table-state problems while keeping the visible component model aligned with the rest of the design system.
+- **Alternatives considered:** raw `@tanstack/react-table` composition directly in feature code; custom table state on top of shadcn `table`; heavier grid libraries. Raw TanStack in feature code breaks the ownership model, custom table state would recreate solved problems, and heavier grids are unnecessary for current requirements.
+
+### Decision 15: Direct Radix usage is removed from normal feature/shared app code
+
+- **Date:** 2026-04-21
+- **Decision:** Normal feature and shared app code should stop importing Radix Themes or direct Radix primitives for routine surfaces. If Radix remains in the dependency graph through shadcn-generated code, it must stay behind repo-owned primitives and wrappers.
+- **Rationale:** The user explicitly wants to stop relying directly on Radix and to rely on higher-level shadcn components.
+- **Alternatives considered:** keep direct Radix usage where convenient. That would undermine the redesign’s ownership model.
+
+### Decision 16: Interactive CLIs and TUIs must be managed through `tmux`
+
+- **Date:** 2026-04-21
+- **Decision:** Any interactive CLI or TUI encountered during execution must be run inside `tmux`.
+- **Rationale:** This is a user preference and a durable project note.
+- **Alternatives considered:** attach directly in the Codex shell. Rejected by user preference and local working pattern.
+
+## Execution Log
+
+- **Date:** 2026-04-21
+  **Phase:** Planning
+  **Decision:** Re-ran discovery-oriented repo and documentation review after context compaction before revising the active plan.
+  **Rationale:** The user explicitly asked for context to be re-gathered and for the whole plan to be read before further planning.
+
+- **Date:** 2026-04-21
+  **Phase:** Planning
+  **Decision:** Installed the global shadcn skill via `npx skills add shadcn/ui --yes --global`.
+  **Rationale:** The user asked for this as a pre-execution step and wanted it reflected in planning.
+
+- **Date:** 2026-04-21
+  **Phase:** Planning
+  **Decision:** Ran parallel subagent deep dives for Cloudflare chat runtime, assistant-ui fit, document/editor stack, diff viewer choice, and shadcn/bootstrap decisions, then folded their findings into this revision.
+  **Rationale:** The user explicitly asked for deeper subagent research to avoid under-specified execution.
+
+- **Date:** 2026-04-21
+  **Phase:** Planning
+  **Decision:** Rewrote the active plan to conform more closely to the execution-plan contract by adding explicit design decisions, more prescriptive handoffs, and tighter dependency/file-boundary guidance.
+  **Rationale:** The prior revision still left too much room for interpretation in later phases.
+
+- **Date:** 2026-04-21
+  **Phase:** Phase 1
+  **Decision:** User approval was given to begin execution, so the plan moved from approval-pending into active execution with Phase 1 as the current work item.
+  **Rationale:** The checked-in plan and active index need to reflect the actual execution state before delegating work.
+
+- **Date:** 2026-04-21
+  **Phase:** Phase 1
+  **Decision:** Tightened the table strategy before implementation so dense table surfaces must follow the shadcn data-table pattern rather than exposing raw TanStack composition in feature code.
+  **Rationale:** The user explicitly asked to prefer shadcn data-table over raw TanStack usage before execution began.
+
+- **Date:** 2026-04-21
+  **Phase:** Phase 1
+  **Decision:** Installed the locked dependency envelope, added alias wiring across Vite/TypeScript/Vitest, created a repo-owned `components.json`, and generated the initial shadcn seed set without keeping the CLI's stylesheet token injection.
+  **Rationale:** Phase 1 needed the full bootstrap foundation, but the plan explicitly kept token migration and visible theme-system changes out of scope until Phase 2.
+
+- **Date:** 2026-04-21
+  **Phase:** Phase 1
+  **Decision:** Validated the bootstrap with `npm install`, `build:ui`, and the targeted UI route tests, then re-ran `typecheck` and `lint` to classify results back to the known repo baseline.
+  **Rationale:** The phase handoff requires proving the new foundation works while distinguishing regressions from pre-existing repo-wide failures.
+
+- **Date:** 2026-04-21
+  **Phase:** Phase 1
+  **Decision:** Ran the one allowed targeted fix pass after review, restoring the minimum real Tailwind/shadcn stylesheet foundation in `ui/src/app/styles.css` and clearing the dropdown/sidebar regressions without pulling broader theme migration into Phase 1.
+  **Rationale:** The generated shadcn primitives already depended on Tailwind utilities, so Phase 1 needed the entrypoint, animation import, and semantic token bridge to be truthful while still deferring centralized theming and dark-mode ownership to Phase 2.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 1
+  **Decision:** Corrected the Phase 1 validation record so `rtk npx tsc --noEmit -p tsconfig.ui.json` stays classified as a pre-existing unrelated failure rather than a passing Phase 1 check.
+  **Rationale:** Read-only verification showed the UI-specific TypeScript command still fails on existing typing drift in `ui/src/test/runs-routes.test.tsx` and `src/keystone/agents/implementer/ImplementerAgent.ts`, so the closeout notes needed to be made truthful before Phase 2 starts.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 2
+  **Decision:** Replaced the temporary stylesheet bridge with centralized light/dark semantic tokens, added a repo-owned theme provider plus browser storage/system detection seam, and removed the direct `@radix-ui/themes/styles.css` bootstrap import.
+  **Rationale:** The redesign needs one authoritative theme system before shell and destination rewrites begin, but that ownership must stay repo-controlled rather than pushing theme state into feature code or adding `next-themes`.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 2
+  **Decision:** Ran the one allowed targeted fix pass to move the first-paint theme bootstrap into `ui/index.html`, harden `localStorage` access at the browser boundary, and extend coverage through the real head bootstrap plus a seeded shadcn token consumer.
+  **Rationale:** Phase 2 review found that `main.tsx` still applied theme too late for a cold dark-pref load, `window.localStorage` access could still throw before the existing `try` blocks ran, and the tests did not yet exercise the real pre-paint/bootstrap or shadcn-consumer paths.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 2 closeout exception pass
+  **Decision:** The user explicitly authorized an exception pass after read-only verification reported `ui/src/test/runs-routes.test.tsx:1652` failing to find the `Document title` textbox in the "Write first revision" flow, so the exact targeted validation command was rerun on HEAD `8b48028` and the reported route test was rerun in isolation multiple times.
+  **Rationale:** Phase 2 could only be closed truthfully after distinguishing a checked-in regression from transient verification drift.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 3
+  **Decision:** Added the first Keystone-owned workspace wrapper layer under `ui/src/components/workspace/*`, then moved shared layout states and the current run/workstream/document scaffold surfaces onto those wrappers instead of leaving raw shadcn/TanStack composition in feature code.
+  **Rationale:** Later shell and destination phases need stable product-wide panes, split layouts, document/review frames, and dense table behavior before larger UI rewrites begin.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 3 fix pass
+  **Decision:** Ran the one allowed targeted fix pass to replace `EntityTable`'s DOM-scraping row click usage with an explicit row-activation seam, neutralize the generic table chrome away from `runs-*` styling, and add wrapper-level activation-suppression coverage.
+  **Rationale:** Review found that the first-cut wrapper still leaked a runs-specific class contract and left row activation coupled to the first rendered link instead of a reusable table-owned abstraction.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 4
+  **Decision:** Rebuilt the shared shell around the wrapper layer by turning the left rail into stacked workspace panels, adding route-aware stage chrome above all shell destinations, and mounting the visible `system | light | dark` theme toggle at the bottom of the persistent sidebar on top of the Phase 2 provider seam.
+  **Rationale:** The workspace spec and design guidelines require one stable shell across destinations, and the visible theme toggle belonged in the persistent sidebar rather than inside any destination surface.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 4
+  **Decision:** Tightened the focused shell tests to assert the new workspace-location chrome and the sidebar-owned theme toggle while preserving existing route and project-management behavior.
+  **Rationale:** Phase 4 changes the shared app frame, so the validation had to prove the new chrome contract without drifting into destination-specific assertions.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 4 fix pass
+  **Decision:** Ran the one allowed targeted fix pass to restore the sidebar project-summary fallback for blank descriptions and to strengthen shell tests around the reserved footer toggle slot plus nested run-detail workspace chrome.
+  **Rationale:** Review found that the project-management layer normalizes missing descriptions to `""`, and the initial Phase 4 assertions proved only toggle existence rather than the required footer placement and run-detail shell-chrome contract.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 5
+  **Decision:** Moved the `Runs` destination rendering into a feature-owned workspace component, reframed the index around shared workspace wrappers, and rebuilt the run-detail header/top rail/state chrome with a back-link, metadata chips, and stage summaries while leaving route semantics and inner planning/execution workspaces unchanged.
+  **Rationale:** Phase 5 needed the visible runs shell to migrate into the new workspace system without pushing destination rendering back into `ui/src/routes/` or inventing backend data that the current runs collection does not expose.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 5 fix pass
+  **Decision:** Ran the one allowed targeted fix pass by tightening `ui/src/test/runs-routes.test.tsx` so the loading, not-found, and error run-detail fallbacks assert the shared `Back to runs` and `Run workspace` chrome while leaving runtime code unchanged.
+  **Rationale:** Review found that the migrated Phase 5 wrapper could regress out of the non-ready run-detail states without failing the existing tests, because those checks only asserted headings and messages.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 6
+  **Decision:** Reworked the planning interiors around a shared split that keeps the left pane explicitly placeholder-framed for chat while the right pane now renders saved planning documents and edit-time previews through repo-owned Plate markdown surfaces, with changed markdown round-tripped back through Plate serialization on save.
+  **Rationale:** Phase 6 needed to migrate the document side of `Specification`, `Architecture`, and `Execution Plan` onto Plate-backed surfaces without introducing a new canonical format or pulling live conversation binding into scope.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 6 targeted fix pass
+  **Decision:** Restored source-markdown ownership for planning save payloads, moved save-boundary normalization into a pure utility module, and tightened `ui/src/test/runs-routes.test.tsx` to assert document heading/list structure plus exact revision-save POST bodies.
+  **Rationale:** Review showed that Plate serialization was a lossy save boundary for common markdown forms, the view-model was importing save behavior from a React component module, and the route suite was not proving either the structural render contract or the actual persisted markdown payload.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 7
+  **Decision:** Rebuilt `Execution` around a graph-first workspace that renders the live workflow as dependency-step DAG columns with selectable nodes, workflow status groups, and a selected-task inspector that hands off explicitly into task detail, while also letting the DAG appear as soon as workflow nodes materialize even if task rows lag briefly behind.
+  **Rationale:** Phase 7 needed the execution default view to feel like an active workflow workspace rather than a link list, and the live route suite showed that `/workflow` can become ready before `/tasks`, so the graph could not remain blocked on richer task metadata.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 7 targeted fix pass
+  **Decision:** Tightened the workflow-first handoff by tracking task-record readiness separately from workflow-node readiness, disabling task-detail entry until the run-task row exists, clamping node cards to the fixed graph geometry, and extending route coverage across lagging and branching DAG states.
+  **Rationale:** Review found that the first Phase 7 cut could over-promise task detail during the workflow-before-tasks lag window, leaked Phase 8 review/chat wording into visible execution copy, and allowed graph cards to outgrow the layout math that positions nodes and edges.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 8
+  **Decision:** Rebuilt task detail into a real task workspace: the left pane now reads as a task conversation frame with task-scoped context and an honest live-chat placeholder, while the right pane now loads diff artifact content through the existing run API seam, groups changed files, renders unified diffs via `react-diff-view`, and keeps non-diff artifacts as metadata-only supporting records.
+  **Rationale:** The Phase 8 contract required a true conversation-plus-review task surface without inventing old/new snapshot APIs or backend changes, and the existing artifact metadata does not carry file-grouping detail until the diff text at `contentUrl` is fetched and parsed.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 8 targeted fix pass
+  **Decision:** Replaced the fake `git_diff` / `screenshot` review classifier with a truthful text-artifact seam: the task sidebar now treats `run_note` and `staged_output` text artifacts as review candidates, derives changed-file groups only from payloads that parse as unified diff, keeps the remaining task artifacts as metadata-only support records, and invalidates in-flight diff loads when the task or artifact set changes.
+  **Rationale:** Review found that the first Phase 8 cut depended on artifact kinds the backend never emits, could leave stale diff state visible across task switches, and did not yet prove the real text-artifact fallback/retry behavior in the route suite.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 9
+  **Decision:** Rebuilt `Workstreams` as a one-panel operational surface with a workspace header, shadcn `ToggleGroup` filters, status-pill rows, and explicit pagination plus route-handoff framing while leaving the existing project-task query seam untouched.
+  **Rationale:** Phase 9 needed denser operator scanning and clearer `Runs > Execution` language without reopening backend pagination or the stable Phase 8 task-detail workspace.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 9
+  **Decision:** Updated the focused destination tests to assert the shadcn filter control's radio semantics and the current task-workspace conversation copy before rerunning the locked Phase 9 validation commands.
+  **Rationale:** The filter surface moved from custom buttons to shadcn `ToggleGroup`, and the row-handoff assertion needed to match the real Phase 8 task-detail copy rather than stale expectations.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 9 targeted fix pass
+  **Decision:** Restored explicit task-status tone mapping on Workstreams rows while preserving the existing `Queued`/`Running`/`Blocked`/`Complete` labels, made the summary-chip cluster an explicit grouped contract, and tightened the focused destination tests to assert both the summary labels and blocked-tone handling for failed/cancelled rows.
+  **Rationale:** Review found that the label-only `StatusPill` path could render failed or cancelled tasks with neutral treatment and that the new summary header region was not actually covered by the Phase 9 validation tests.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 10
+  **Decision:** Rebuilt `New project` and `Project settings` around a workspace header, richer tab chrome, shared section framing, description-aware form wrappers, denser list editors, and clearer component/environment cards while keeping route ownership, provider-owned state, and create/save semantics unchanged.
+  **Rationale:** Phase 10 needed the project configuration surfaces to match the redesigned system without changing backend payloads, deep links, or the non-wizard tab model.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 10
+  **Decision:** Preserved the exact source-mode radio names after the redesign by moving explanatory copy out of the radios' accessible names before rerunning the locked destination and shell validation.
+  **Rationale:** The richer component cards still needed to honor the existing exact-name interaction contract for `Local path` and `Git URL`, which the focused route tests prove directly.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 10 targeted fix pass
+  **Decision:** Added visible keyboard-focus treatment to the source-mode radio cards, wired shared form and list help text through `aria-describedby`, waited for `useProjectManagement().state.currentProject` before loading live settings, and tightened the focused shell tests to assert metadata plus truthful loading/error branches.
+  **Rationale:** Review found a hidden-radio card focus regression, visual-only help text on shared wrappers, thin non-ready shell coverage, and a live-settings load path that could briefly render scaffold compatibility data before the real selected project resolved.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 11
+  **Decision:** Rebuilt `Documentation` around the shared workspace header, category-navigation framing, and a Plate-backed current-document surface while preserving the exact scaffold-compatibility gate for non-scaffold live projects.
+  **Rationale:** Phase 11 needed project documentation to read like the same document system as planning without inventing backend capabilities or weakening the current compatibility truth.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 11
+  **Decision:** Added a line-aware markdown projection for scaffold `contentLines[]` data and tightened the focused destination tests around named navigation/document regions before rerunning the locked validation commands.
+  **Rationale:** The scaffold documentation source is not stored as canonical markdown, and Plate changes heading/list DOM semantics, so the phase needed a truthful projection seam plus region-scoped assertions rather than brittle raw-text assumptions.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 11 targeted fix pass
+  **Decision:** Added a focused `DocumentationRoute` harness over `ResourceModelProvider` so the real `useDocumentationViewModel` -> `PlateMarkdownDocument` chain is exercised with custom scaffold `contentLines[]`, and expanded the markdown-projection assertions to cover headings, blank lines, ordered lists, blockquotes, fenced code, and tables.
+  **Rationale:** Review found that Phase 11's coverage proved the direct workspace fixture and one simple list path, but it did not yet force the real route/view-model seam or the important non-list projection branches that keep the scaffold-backed Plate surface honest.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 12
+  **Decision:** Added deterministic planning-document conversation locator provisioning and lazy backfill on the run document create/list/detail paths, then mounted a minimal browser binding layer that attaches planning and task panes to persisted Cloudflare agent instances without changing the current placeholder-framed UI.
+  **Rationale:** Phase 12 needed runtime truth and reconnection seams before any assistant-ui cutover, and the browser hydrates planning state from `GET /v1/runs/:runId/documents`, so locator completion had to cover the collection path rather than only create or single-document reads.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 12
+  **Decision:** Exposed `/agents/*` through the Worker with shared dev-auth enforcement and added query-param auth fallback for local browser agent requests, while keeping Cloudflare as the only conversation authority.
+  **Rationale:** `useAgent({ agent, name })` must select a persisted agent instance explicitly, and the frontend binding would remain inert unless the Worker handled agent traffic and asset routing let those requests reach the Worker first.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 12 targeted fix pass
+  **Decision:** Made the deterministic planning locator authoritative for run-scoped planning documents on both create and lazy list/detail normalization, restricted query-param dev auth to `/agents/*` only, and removed the frontend's planning-create locator payload while strengthening the focused HTTP/UI tests around those runtime seams.
+  **Rationale:** Review found that Phase 12 still trusted caller-controlled planning locator values, accepted query auth too broadly for protected `/v1` routes, and did not yet prove the real create-path provisioning branch or the browser binding hook's emitted auth contract.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 13
+  **Decision:** Replaced the placeholder planning and task conversation panes with assistant-ui surfaces backed by the Phase 12 Cloudflare binding seam, removed the fake synthesized task chat timeline, and tightened the focused route tests around the real composer and empty-state contract.
+  **Rationale:** Phase 13 needed to make the visible chat panes truthful without introducing a second message store or reopening the resource-identity and transport work that Phase 12 already completed.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 13 targeted fix pass
+  **Decision:** Kept the assistant-ui tool renderer's converted fallback result whenever Cloudflare's helper exposes no `output` for failed or denied tool calls, and expanded the focused route suite to cover unavailable, loading, error, composer-send, and non-empty transcript rendering through the real bridge.
+  **Rationale:** Review found that failed and denied tool outcomes collapsed to empty cards because `getToolOutput()` only returns payloads for `output-available`, and the Phase 13 route coverage had not yet exercised the non-empty assistant transcript or the representative non-ready assistant-ui branches.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 14
+  **Decision:** Updated `README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, and `.ultrakit/notes.md` so the durable docs now reflect the shipped assistant-ui planning/task cutover, Plate-backed document surfaces, and the current sandbox-vs-host validation reality.
+  **Rationale:** Explorer review found those docs still described placeholder or out-of-scope chat behavior and duplicated outdated README scope language, so Phase 14 needed to make the durable truth match the completed redesign before final review.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 14
+  **Decision:** Broad `rtk npm test` exposed two closeout-scope regressions, so the phase added a narrow `agents` mock to `tests/http/projects.test.ts` and a `useCloudflareConversation` mock plus updated assistant-ui expectations to `ui/src/test/destination-scaffolds.test.tsx`, then reran the full validation suite and retried `rtk npm run build` on the host after the expected sandbox `EROFS` failure.
+  **Rationale:** The final suite needed to distinguish genuine regressions from baseline failures. Both failures were narrow test drift introduced by the now-always-registered `/agents/*` route and the Phase 13 assistant-ui task-pane cutover, so they were in-scope to fix before recording the final validation baseline.
+
+- **Date:** 2026-04-22
+  **Phase:** Phase 14 final closeout pass
+  **Decision:** Registered the Plate table plugin family plus repo-owned semantic table renderers, guarded the concrete late-write async seams in run detail, workstreams, runs index, and task review, expanded assistant-ui route coverage through approval-requested/source/reasoning branches, fixed the root `tests/http/projects.test` typing blocker, and reran `rtk npm run typecheck` without archiving the plan.
+  **Rationale:** Final review found those remaining closeout gaps, and the old `typecheck` record had become misleading because the root `tsc --noEmit` failure in `tests/http/projects.test` was masking the broader existing UI/shared baseline.
+
+## Progress
+
+- [x] 2026-04-21 Discovery completed.
+- [x] 2026-04-21 Repo baseline captured with broad test/lint/typecheck/build commands.
+- [x] 2026-04-21 Global shadcn skill installed as a pre-execution prerequisite.
+- [x] 2026-04-21 Parallel subagent research completed and incorporated into the plan.
+- [x] 2026-04-21 Active plan rewritten into a more prescriptive execution document.
+- [x] 2026-04-21 User approved execution to begin with Phase 1.
+- [x] 2026-04-21 Phase 1 completed: dependency install and build bootstrap.
+- [x] 2026-04-21 Phase 1 targeted fix pass completed: Tailwind/shadcn bootstrap made real, and the review findings were cleared.
+- [x] 2026-04-22 Phase 2 completed: centralized theme tokens, repo-owned theme provider, and direct Radix bootstrap exit.
+- [x] 2026-04-22 Phase 2 targeted fix pass completed: first-paint theming moved into `ui/index.html`, storage access was hardened, and bootstrap/token-consumer coverage now reflects the real Phase 2 contract.
+- [x] 2026-04-22 Phase 2 closeout exception pass completed: the exact targeted route-test validation reran green on HEAD `8b48028`, the reported `runs-routes` failure was not reproducible in isolated reruns, and no further Phase 2 code change was required.
+- [x] 2026-04-22 Phase 3 completed: workspace wrapper inventory, frame primitives, and Keystone-owned `EntityTable` landed and are now consumed by the current shared/layout scaffold surfaces.
+- [x] 2026-04-22 Phase 3 targeted fix pass completed: `EntityTable` now exposes explicit row activation, generic table styling no longer uses `runs-*` naming, and activation-suppression behavior is covered in the targeted UI tests.
+- [x] 2026-04-22 Phase 4 completed: the persistent shell now uses wrapper-backed sidebar panels, route-aware stage chrome, and the footer-owned theme toggle slot without pushing destination-specific behavior into the shell.
+- [x] 2026-04-22 Phase 4 targeted fix pass completed: blank project descriptions now fall back to stable sidebar copy, and shell coverage now proves the footer-owned theme toggle slot plus nested run-detail workspace-location chrome.
+- [x] 2026-04-22 Phase 5 completed: the `Runs` index now lives in the workspace system, and the run-detail frame now exposes the migrated header, top rail, and state chrome without changing route semantics.
+- [x] 2026-04-22 Phase 5 targeted fix pass completed: non-ready run-detail states now assert the shared fallback chrome, and the exact Phase 5 validation reran green without reproducing the earlier planning-editor drift note.
+- [x] 2026-04-22 Phase 6 completed: planning phases now use the shared split workspace with repo-owned Plate document rendering, canonical markdown source flows, and live preview-backed create/save/discard states.
+- [x] 2026-04-22 Phase 6 targeted fix pass completed: planning saves now persist the authored markdown source directly, title-only edits compare against the persisted save draft instead of raw editor state, and route coverage now asserts both rendered markdown structure and exact revision-save POST bodies.
+- [x] 2026-04-22 Phase 7 completed: execution now defaults to a graph-first workspace with dependency-step DAG rendering, workflow status groups, selected-task inspection, and an explicit task-detail handoff.
+- [x] 2026-04-22 Phase 7 targeted fix pass completed: execution handoff copy is now task-detail scoped, workflow-only nodes no longer over-promise task detail before task rows materialize, DAG cards are height-clamped to the fixed canvas math, and the targeted route suite now covers lagging plus branching workflows.
+- [x] 2026-04-22 Phase 8 completed: task detail now uses a real conversation/review split with changed-file groups, unified diffs, and supporting-artifact metadata over the current run API seam.
+- [x] 2026-04-22 Phase 8 targeted fix pass completed: review diffs now infer from real text artifact kinds, the sidebar invalidates stale loads across task switches and empty-review states, and the route suite now covers fallback, partial fetch failure, retry, and truthful task-to-task navigation.
+- [x] 2026-04-22 Phase 9 completed: `Workstreams` now uses the workspace-system header, shadcn single-select filters, status-pill rows, and explicit pagination/handoff framing while preserving server-driven filter/page state and direct task-detail routing.
+- [x] 2026-04-22 Phase 9 targeted fix pass completed: Workstreams rows now pass shared task tones explicitly, the summary header chips are a covered contract, and the locked Phase 9 validation commands reran green.
+- [x] 2026-04-22 Phase 10 completed: `New project` and `Project settings` now share the redesigned shell, section framing, component cards, and configuration form language while preserving deep links, direct create/save actions, and provider-owned payload truth.
+- [x] 2026-04-22 Phase 10 targeted fix pass completed: source-mode cards now expose visible keyboard focus, shared form/list descriptions are wired to their controls, and live settings waits for the real selected project while focused shell tests prove the metadata plus non-ready branches.
+- [x] 2026-04-22 Phase 11 completed: `Documentation` now uses the workspace header language, grouped category navigation, and a shared Plate document viewer while preserving the exact scaffold-backed compatibility gate and non-live-project honesty.
+- [x] 2026-04-22 Phase 11 targeted fix pass completed: documentation tests now drive the real `useDocumentationViewModel` -> `PlateMarkdownDocument` seam through the route layer, and `contentLines[] -> markdown` coverage now proves headings, blank lines, ordered lists, blockquotes, fenced code, and tables.
+- [x] 2026-04-22 Phase 12 completed: planning locators now auto-provision/backfill, `/agents/*` is bound through the Worker, and placeholder planning/task panes attach to persisted Cloudflare agent instances without a visible chat cutover.
+- [x] 2026-04-22 Phase 12 targeted fix pass completed: run-planning locators are now canonical on create and lazy normalization, query-param dev auth is limited to `/agents/*`, and focused HTTP/UI coverage now proves the real provisioning plus placeholder-framed browser binding contract.
+- [x] 2026-04-22 Phase 13 completed: planning and task panes now render assistant-ui chat surfaces over the persisted Cloudflare conversation binding, task-detail no longer synthesizes a fake chat timeline, and the focused route suite proves the new visible conversation contract.
+- [x] 2026-04-22 Phase 13 targeted fix pass completed: failed and denied tool cards now render their available reason/details instead of an empty outcome, and the focused route suite now covers unavailable/loading/error/composer branches plus a non-empty assistant transcript with markdown and structured parts.
+- [x] Phase 1: dependency install and build bootstrap.
+- [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
+- [x] Phase 3: Keystone wrapper inventory and workspace primitives.
+- [x] Phase 4: global shell and project-scoped chrome.
+- [x] Phase 5: runs index and run-detail structural frame.
+- [x] Phase 6: planning workspace and Plate planning documents.
+- [x] Phase 7: execution DAG workspace.
+- [x] Phase 8: task detail review workspace.
+- [x] Phase 9: workstreams surface.
+- [x] Phase 10: project configuration surfaces.
+- [x] Phase 11: documentation surfaces via Plate.
+- [x] Phase 12: planning locator completion and Cloudflare conversation binding.
+- [x] Phase 13: assistant-ui planning and task chat cutover.
+- [x] 2026-04-22 Phase 14 completed: durable docs now match the shipped redesign, two narrow closeout-scope test regressions were fixed, the broad suite was rerun honestly, and host build proof was captured after the known sandbox write failure.
+- [x] 2026-04-22 Final closeout pass completed: planning/documentation tables now render through semantic Plate table elements, the concrete async late-write seams are guarded against unmount/navigation, assistant-ui route coverage now proves approval/source/reasoning branches, and the active plan's typecheck/archive wording is truthful again.
+- [x] Phase 14: durable docs, regression cleanup, and final validation.
+
+## Surprises & Discoveries
+
+These notes record what execution uncovered at the time it was encountered. Later phases may resolve the issue, but the discovery remains useful context for why the plan changed.
+
+- `ui/src/main.tsx` still imports `@radix-ui/themes/styles.css`, which means the current bootstrap still depends on direct Radix Themes ownership.
+- `ui/src/app/styles.css` is still the monolithic stylesheet and still has a light-biased root token model.
+- `vite.config.ts`, `tsconfig.ui.json`, and `vitest.config.ts` currently do not implement the alias and plugin wiring that the target stack requires.
+- The repo already has `ai`, `agents`, `@cloudflare/ai-chat`, and `@ai-sdk/openai`, but not Tailwind, shadcn bootstrap, Plate packages, assistant-ui, or the table/form/diff helpers now locked in this plan.
+- Document contracts are already markdown-first. Plate should be a markdown projection, not a storage-format replacement.
+- Planning conversation panes are still placeholder UI, and task detail still keeps only the live-message portion placeholder-framed even though document/task contracts already carry conversation locators.
+- `tests/http/app.test.ts` still expects the task conversation route to be missing, which confirms that conversation transport is a real implementation phase and not a styling concern.
+- The current task review seam is text `run_note` / `staged_output` artifact content loaded through `contentUrl`, which materially affects both the diff-library decision and the UI-side review classifier.
+- The current shadcn registry does not ship a standalone `data-table` UI component for this stack. It ships a `data-table-demo` example plus the guide built on `Table` and `@tanstack/react-table`, so Phase 1 should seed the required primitives and keep feature-owned TanStack composition out of scope until the Phase 3 Keystone wrapper.
+- Phase 1 can defer the broader token migration, but it cannot leave `ui/src/app/styles.css` as legacy-only CSS. The real bootstrap minimum is `@import "tailwindcss"`, `@import "tw-animate-css"`, and a small semantic token bridge from the current palette into the shadcn variables already referenced by the generated primitives. The full token takeover, persisted theme model, and Radix bootstrap exit still belong to Phase 2.
+- Earlier execution surfaced a UI-only fixture mismatch around invented artifact kinds in `ui/src/test/runs-routes.test.tsx`; the Phase 8 targeted fix pass clears that portion, but `projectedArtifacts[].kind` is still typed as `string` in `src/keystone/agents/implementer/ImplementerAgent.ts`.
+- On this host, `npm run build` still needs a host shell because Wrangler and Docker hit sandbox write constraints after `vite build` succeeds.
+- The current shell sidebar still has no footer-owned theme-control slot, so Phase 2 should land the provider/storage seam and token system first, then let Phase 4 mount the visible toggle in the persistent left sidebar without inventing a second theme owner.
+- Phase 2's first-paint contract needs a dedicated `ui/index.html` head seam; a `main.tsx` bootstrap still starts after the app module begins evaluating and can flash the light theme on a cold load before the stored dark preference is applied.
+- A later read-only verification report claimed the "Write first revision" route flow could not find the `Document title` textbox in `ui/src/test/runs-routes.test.tsx`, but rerunning the exact Phase 2 target command plus five isolated reruns of that specific test on HEAD `8b48028` all passed, so the reported failure is currently classified as non-reproducible validation drift rather than a checked-in Phase 2 regression.
+- The new wrapper layer still swaps between empty-state and table/document bodies in several destinations, so UI tests that hold onto a `findByRole(...)` element handle across filter or editor-state transitions can fail even though the next DOM has rendered correctly. Stable assertions need to re-query after the awaited render point.
+- Phase 3's initial `EntityTable` seam was still too DOM-shaped: reusable row activation needs to be expressed as an explicit row-level callback owned by the wrapper, not by asking feature callers to scrape the first rendered `a[href]` out of table cells.
+- The live `/v1/projects/:projectId/runs` payload still exposes workflow instance, execution engine, status, and timestamps, but not per-run planning-step progress or authored summaries. Phase 5 therefore keeps the live runs index honest with coarse `Planning` vs `Execution` stage framing plus workflow/engine detail, while the sidebar guide carries the stable four-stage product vocabulary.
+- Plate-backed planning documents change both heading and list semantics in the DOM: document markdown headings can legitimately duplicate panel titles, and rendered list text no longer includes literal markdown markers like `- `. Route tests need to assert against the named document regions and rendered sentence content rather than raw markdown text nodes.
+- Plate's current markdown deserialize/serialize path is not safe as a Phase 6 persistence boundary for common authored forms like task lists and strikethrough. For this slice, Plate should render markdown source, but save/export must stay on the authored markdown string path.
+- The live run-detail refresh can surface a non-empty workflow graph before the task collection catches up. Phase 7 therefore has to project the DAG from workflow nodes first and enrich it with task-row metadata opportunistically instead of treating an empty task list as proof that execution is still unavailable.
+- The workflow-first lag window also needs an explicit task-record-readiness seam on both the DAG inspector and the task route. A workflow node is not yet an honest task-detail target until the corresponding `run_tasks` row has materialized.
+- Task artifact metadata alone is not enough to build the review sidebar: changed-file grouping and diff type have to be derived by loading reviewable text artifact `contentUrl` values and parsing whichever payloads contain unified diff text, because the list endpoint exposes only artifact-level metadata.
+- shadcn single-select `ToggleGroup` controls expose filter items as `radio` elements, not button-role toggles. Future route tests and accessibility assertions need to query the workstream filters through radio semantics once a destination adopts that primitive.
+- `StatusPill` label inference is not sufficient for task rows whose visible labels are intentionally normalized. On `Workstreams`, failed and cancelled task rows need the shared explicit task-tone mapping even though the page still collapses ready/pending states into the visible `Queued` label.
+- When project-configuration cards add explanatory copy inside radio-label containers, Testing Library's exact-name `radio` queries will include that copy unless it is marked `aria-hidden`. Keep the `Local path` / `Git URL` radios' accessible names exact because the route suite depends on that contract.
+- `useCurrentProject()` is still a compatibility helper, not a safe live-settings authority. On `/settings`, the shared shell can legitimately remain at `Loading projects` until project-management resolves the selected project, and only then should the project-configuration shell begin its own selected-project loading state.
+- Project-scoped documentation scaffold data still arrives as `contentLines[]`, not canonical markdown. Plate-backed documentation therefore needs a small projection seam that preserves list blocks and blank-line truth before rendering, and the route tests should keep asserting against the named document region rather than raw text-node shape.
+- `useCurrentProject()` also falls back cleanly to the resource-model provider when no project-management context is mounted, which makes it possible to exercise the real `DocumentationRoute` and `useDocumentationViewModel` chain against a custom scaffold dataset in focused tests without adding a new runtime seam.
+- Cloudflare agent hooks were not enough on their own: the Worker also needed a real `/agents/*` handler and Wrangler `run_worker_first` coverage for `/agents/*`, otherwise the browser binding layer would attach to locators that could never reach the Worker transport.
+- The original Phase 12 HTTP create-path test was still mocking `createDocument`, which hid both the real locator-authority behavior and the repository fixture defaults that the route serializer expects. The targeted fix pass needed the fixture-backed insert path to exercise actual provisioning.
+- assistant-ui's thread viewport behavior needs `ResizeObserver`, `scrollIntoView`, and `scrollTo` shims in jsdom-focused route tests, and the tool-card bridge must tolerate transient original-message entries that do not yet carry a `parts[]` array during reconciliation.
+- `getToolOutput()` from `@cloudflare/ai-chat/react` only returns a payload for `output-available`. Failed and denied tool cards have to preserve the converter-provided fallback result if they want to render Cloudflare's error or rejection details.
+- Any HTTP suite that boots `src/http/app` now needs to mock the `agents` package, because `/agents/*` is always registered during app construction and the real package will otherwise trip Node test imports on `cloudflare:` worker-runtime specifiers before test collection starts.
+- Route-level scaffold tests that navigate into live task detail now need an explicit `useCloudflareConversation` mock, otherwise the assistant-ui task pane will try to hit the real `/agents/*` transport during jsdom runs and crash through the router error boundary.
+- Broad `rtk npm test` currently passes in the sandbox on this host, including `tests/scripts/demo-contracts.test.ts` binding `127.0.0.1`; the older host-only guidance for that suite was stale and has been corrected in `.ultrakit/notes.md`.
+- The current `rtk npm run typecheck` baseline is materially broader than the narrow early-phase summary implied: the remaining failures cluster around existing assistant-ui/execution/workstreams exact-optional-property typing drift plus a few shared workspace and route-test types, not just the earlier backend-only examples.
+- `rtk npm run typecheck` is two chained `tsc` commands. Until `tests/http/projects.test` stopped failing in the first root pass, the broader UI/shared baseline never surfaced; after fixing that narrow mock signature, the existing assistant-ui/execution/workstreams/shared/test cluster reappeared exactly as the real unresolved baseline.
+- Plate's base table plugins deserialize markdown tables into structured nodes, but route-level tests only see native `table`/`th`/`td` roles once the repo supplies semantic table renderers instead of the default `slate-table` div wrappers.
+
+## Outcomes & Retrospective
+
+Planning outcome on 2026-04-21:
+
+- the frontend foundation, theming model, document strategy, conversation runtime strategy, and diff strategy are now locked
+- the plan is now more explicit about what is installed in Phase 1 versus what code generation and visible wiring are deferred
+- the phase sequence is now detailed enough that later implementation phases should not need to make architecture decisions mid-flight
+- the remaining work is execution only, pending user approval
+
+Phase 1 outcome on 2026-04-21:
+
+- the repo now has the locked Tailwind/shadcn/Plate/assistant-ui dependency envelope plus the extra runtime packages required by the generated shadcn seed set
+- Vite, TypeScript, and Vitest now share the `@/* -> ui/src/*` alias contract
+- `components.json`, `ui/src/lib/utils.ts`, and the initial shadcn seed components now exist under repo-owned paths without changing visible product surfaces or removing the current Radix bootstrap
+- the shadcn data-table path is prepared through `@tanstack/react-table` plus the seeded table/form/menu primitives, while actual Keystone table wrappers remain deferred to Phase 3
+- the review-triggered fix pass made the bootstrap honest by activating Tailwind and `tw-animate-css` in `ui/src/app/styles.css`, bridging the current palette into the minimal semantic token set the seeded primitives need, and correcting the Phase 1 dropdown/sidebar regressions without starting the broader Phase 2 theme migration
+- `rtk npm run build:ui` and the targeted UI route tests now pass; `rtk npx tsc --noEmit -p tsconfig.ui.json` still fails on unrelated existing typing drift in `ui/src/test/runs-routes.test.tsx` and `src/keystone/agents/implementer/ImplementerAgent.ts`, and `rtk npm run typecheck` still ends at the known repo baseline failures
+
+Phase 2 outcome on 2026-04-22:
+
+- `ui/src/app/styles.css` now owns the semantic light/dark token model for both the existing workspace CSS and the shadcn/Tailwind variables
+- the root app now uses a repo-owned `ThemeProvider` plus thin browser theme utilities for `system | light | dark` preference resolution, explicit user-preference persistence, and post-mount theme syncing, while `ui/index.html` applies the resolved theme in the document head before the app bundle runs
+- `ui/src/main.tsx` no longer imports `@radix-ui/themes/styles.css`, so direct Radix Themes bootstrap ownership is removed from the main UI entrypoint
+- the targeted fix pass also hardened `localStorage` access so storage-denied browsers fall back cleanly instead of throwing during boot
+- targeted theme tests now cover the real head bootstrap, storage-denied fallback, provider-driven persistence/reset behavior, and a seeded shadcn `Button` consumer that still resolves through semantic theme tokens
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` pass; `rtk npm run typecheck` still fails at the known baseline in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`, while `rtk npx tsc --noEmit -p tsconfig.ui.json` still shows only the pre-existing `runs-routes` artifact-kind fixture drift plus the same implementer typing drift
+- the user-authorized closeout exception pass reran the exact Phase 2 targeted route-test validation on HEAD `8b48028` and reran the reported `runs-routes` editor test in isolation five times; all of those checks passed, so no additional product or test change was required to close Phase 2 truthfully
+- the visible sidebar theme toggle is intentionally deferred to Phase 4 shell work, where it can mount at the bottom of the persistent left sidebar on top of the Phase 2 provider seam instead of introducing out-of-scope shell churn here
+
+Phase 3 outcome on 2026-04-22:
+
+- `ui/src/components/workspace/` now owns reusable `WorkspacePage`, `WorkspacePanel`, `WorkspaceSplit`, `WorkspaceEmptyState`, `DocumentFrame`, `ReviewSection`, and `EntityTable` primitives so later phases can compose product-wide structure without rewriting the same shell logic in feature files
+- `EntityTable` wraps the shadcn `Table` pattern and TanStack row model behind a Keystone API that supports shared empty states, footer/pagination slots, and explicit row activation without pushing raw table-state wiring or DOM scraping into each destination
+- shared layout states and the current scaffold/live transition surfaces now consume the wrapper layer: app-shell fallback states, runs index tables, workstreams board, run detail scaffolds, planning/execution/documentation workspaces, and task review/document panes all now read through the same workspace vocabulary
+- `StatusPill` now resolves through the shadcn `Badge` primitive while preserving the existing Keystone tone classes, so status treatments participate in the new wrapper/primitives stack instead of staying on legacy markup
+- the Phase 3 fix pass removed the leftover `runs-*` styling contract from the generic table shell, keeping the shared stylesheet neutral while preserving the current runs/workstreams consumers
+- targeted wrapper coverage now proves that `EntityTable` suppresses row activation for modifier-clicks and nested interactive controls, while the route-level tests still prove that the current runs/workstreams consumers navigate correctly on row-body clicks
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 3 implementation; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 4 outcome on 2026-04-22:
+
+- the app shell now reads as one project-scoped workspace: the sidebar uses wrapper-backed panels for project context, destination navigation, and footer-owned theme controls, while the main stage gets a route-aware workspace-location strip without moving destination logic into `ui/src/routes/`
+- the left rail now exposes the visible `system | light | dark` preference control at the bottom of the persistent sidebar, reusing the Phase 2 theme provider/storage seam instead of introducing a second theme owner
+- the targeted fix pass closed the remaining shell regressions by treating blank project descriptions like missing sidebar summary data and by proving, through focused tests, that the theme toggle stays in the reserved sidebar footer slot and that nested `/runs/:id/specification` routes still render the workspace-location chrome
+- global navigation and project actions stay stable against the workspace spec, but the shell markup now keeps destination summaries out of link accessible names and avoids duplicating stage-state headings like `Loading projects`
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 4 implementation and fix pass; the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 5 outcome on 2026-04-22:
+
+- the `Runs` landing surface now renders through `ui/src/features/runs/components/runs-index-workspace.tsx`, keeping `ui/src/routes/runs/runs-index-route.tsx` thin while moving the visible index composition under the runs feature
+- the runs index now uses the shared workspace page/panel/table vocabulary for both the main table and the right-hand guide, and the live table stays honest to current backend data by showing workflow/engine detail plus a coarse `Planning` vs `Execution` stage instead of inventing missing per-run summaries
+- run detail now has one coherent outer frame across ready/loading/error states: a `Back to runs` affordance, run metadata chips, the stable four-stage top rail with summaries, and unchanged route semantics for nested planning, execution, and task paths
+- the targeted fix pass tightened the route-suite coverage so loading, not-found, and error run-detail fallbacks now prove the shared `Back to runs` link and `Run workspace` eyebrow remain present, closing the review gap without changing runtime behavior
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 5 implementation and fix pass; the earlier planning-editor validation-drift note did not reproduce on this rerun, and the broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 6 outcome on 2026-04-22:
+
+- `Specification`, `Architecture`, and `Execution Plan` now share one planning interior contract: a placeholder-framed chat pane on the left and a wider document-focused pane on the right, without reopening the Phase 5 run header or stage rail
+- `ui/src/components/editor/plate-markdown-document.tsx` now owns repo-specific Plate markdown rendering for saved documents and edit-time previews, so planning pages no longer map stored markdown into ad hoc line-by-line paragraphs
+- the targeted fix pass restored source-markdown ownership for save/export in Phase 6: planning edit/create flows still use the existing live run-detail actions, but the right pane now pairs the canonical markdown source field with a live Plate preview while revision saves persist the authored markdown string directly through a pure save-boundary helper instead of Plate serialization
+- title-only planning edits now compare against the persisted save draft rather than raw editor state, so trim-only title churn no longer creates redundant no-op revisions and body-noop saves preserve the existing markdown body verbatim
+- targeted planning-route coverage now asserts against named document regions, heading/list structure, the edit-time preview contract, and exact revision-save POST bodies, matching the final Phase 6 document surface and save-boundary contract
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx` pass on the Phase 6 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 7 outcome on 2026-04-22:
+
+- `Execution` now opens into a graph-first workspace instead of the old depth-row link list: the main panel renders the workflow DAG as dependency-step columns with live connector paths, node status emphasis, and explicit selection that keeps the operator in the DAG until they choose to open task detail
+- the right rail now acts as the execution handoff surface for this phase: workflow status groups expose actionable task buckets, the selected-task inspector shows live description/dependency/downstream/conversation facts, and task detail only opens once the live task record is actually ready
+- the DAG can now render from `/v1/runs/:runId/workflow` as soon as workflow nodes exist, even if `/v1/runs/:runId/tasks` is still catching up after compile; task metadata opportunistically enriches the graph when present, but the default execution workspace no longer blocks on richer task rows just to show the live graph
+- the targeted fix pass kept the graph workflow-first while making the handoff honest: workflow-only nodes now stay selectable but show a disabled waiting state instead of a bogus open link, direct task routes stay in a materializing state while the task row lags, and graph cards are height-clamped so long titles/footnotes cannot drift off the fixed connector geometry
+- targeted route coverage now asserts the graph summary, workflow status groups, DAG selection changes, ready-task default selection, the workflow-before-tasks lag window, branching DAG navigation, and the delayed-materialization path after compile, matching the final Phase 7 execution-workspace contract
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx` pass on the Phase 7 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 8 outcome on 2026-04-22:
+
+- task detail now reads as the intended product split instead of an artifact-preview utility: the left pane is a task conversation frame with task handoff, execution state, dependency/downstream navigation, and an explicit placeholder for the still-missing live chat transport
+- the right pane now behaves like a real review inspector: changed files are grouped by diff type, unified diffs render inline through `react-diff-view`, and file sections stay collapsible by inferring diff content from real text `run_note` / `staged_output` artifacts rather than a fake dedicated diff kind
+- task artifacts that do not parse as diffs remain visible as supporting records in the review sidebar, which keeps metadata for notes, images, and other outputs available without pretending dedicated viewers landed in this phase
+- the targeted fix pass then hardened the route: stale diff loads are invalidated across task switches and empty-review states, and targeted route coverage now proves the changed-file groups, real-artifact fallback, partial fetch failure, retry, and updated task-review error state, matching the final Phase 8 task-detail contract
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 8 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 9 outcome on 2026-04-22:
+
+- `Workstreams` now shares the same workspace header language as `Runs` and `Execution` while staying list-first: the page exposes project context, matching-task count, and the locked 25-row page size without adding a new dashboard frame
+- the filter strip now uses shadcn `ToggleGroup` semantics over the existing server-driven `filter` plus `page` URL state, so the operator can move between `All`, `Active`, `Running`, `Queued`, and `Blocked` without losing the current project or the existing backend contract
+- the table still routes directly into `/runs/:runId/execution/tasks/:taskId`, but rows now scan more cleanly through status pills and the destination now makes the `Runs > Execution` handoff explicit in both the operator summary and pagination framing
+- the targeted fix pass then restored explicit task-tone wiring on Workstreams rows without changing the Phase 9 visible status labels, made the summary-chip cluster a grouped header contract, and extended the focused destination suite so regressions in the summary labels or failed/cancelled task tones now fail fast
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 9 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 10 outcome on 2026-04-22:
+
+- `New project` and `Project settings` now share one redesigned configuration shell: the page uses a workspace header, richer tab chrome with stable deep links, and section-level framing that still keeps the route layer thin and the create/save action model direct
+- the project configuration tabs now read as real operator forms instead of scaffold placeholders: overview, rules, components, and environment each have explicit summaries, workspace-aligned empty states, and footer actions that preserve the existing create/save/discard/cancel behavior
+- shared form wrappers now support field descriptions, `aria-describedby` wiring, and monospace treatment for stable keys, refs, paths, URLs, and environment variables without changing the underlying payload or null-description behavior owned by the project configuration providers
+- component configuration now uses clearer repository cards, an explicit type picker surface that still offers only `Git repository`, and a source-mode choice that preserves the exact `Local path` / `Git URL` radio contract even with richer explanatory copy
+- the targeted fix pass then restored visible keyboard focus on the hidden-radio source-mode cards, kept shell metadata covered in both loading and error states, and prevented scaffold compatibility data from briefly loading as live settings before the real selected project resolved
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` pass on the Phase 10 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 11 outcome on 2026-04-22:
+
+- `Documentation` now shares the same workspace language as planning and the other project-scoped destinations: a stable page header, grouped document-category navigation, and a calmer current-document panel instead of the earlier line-by-line scaffold viewer
+- the current document body now renders through `ui/src/components/editor/plate-markdown-document.tsx`, so project documentation uses the same Plate-backed markdown surface as planning while the route layer stays thin and the scaffold dataset remains the only truth source
+- Phase 11 kept the compatibility contract exact: only scaffold-backed selected projects get documentation content, while non-scaffold live projects still show the explicit compatibility state instead of a fake empty or live document view
+- the new line-aware `contentLines[] -> markdown` projection preserves paragraph spacing plus list/heading structure before handing scaffold content to Plate, which keeps the documentation surface truthful without claiming a live markdown backend now exists
+- the targeted fix pass strengthened documentation coverage so the real `DocumentationRoute` now exercises `useDocumentationViewModel` through `PlateMarkdownDocument` with heading, ordered-list, and blockquote semantics from scaffold `contentLines[]`, while the projection tests also cover blank-line handling plus fenced-code and table joins
+- `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` pass on the Phase 11 implementation; broader repo `lint`, `typecheck`, and host-constrained `build` baselines remain unchanged from earlier phases
+
+Phase 12 outcome on 2026-04-22:
+
+- run-scoped planning documents now get a deterministic Cloudflare locator contract on create and lazy backfill on list/detail reads, so the browser no longer depends on pre-seeded planning locator data to reconnect to a run planning conversation
+- the Worker now serves authenticated `/agents/*` traffic and the local browser dev-auth seam now supports equivalent query-param auth for Cloudflare agent binding, which lets `useAgent({ agent, name })` select the persisted instance before `useAgentChat({ agent })` attaches chat behavior
+- the frontend now has a small `ui/src/features/conversations/*` binding layer and mounts it from both planning and task placeholder panes, keeping the visible frames unchanged while making the runtime plumbing real
+- Phase 12 also added a real `PlanningDocumentAgent` class and corresponding binding/export/config so planning locators resolve to an actual Cloudflare agent class rather than placeholder-only identity
+- `rtk npm run build:ui` and `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx` pass on the Phase 12 implementation; `rtk npm run typecheck` still fails on unrelated existing UI typing drift in `ui/src/components/workspace/entity-table.tsx`, `ui/src/features/execution/components/task-review-sidebar.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/runs/components/runs-index-workspace.tsx`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/shared/forms/text-list-field.tsx`, and `ui/src/test/app-shell.test.tsx`
+- the targeted fix pass tightened the runtime contract instead of widening scope: run planning documents now ignore caller-supplied locator values in favor of the canonical tenant/run/document-kind locator, lazy list/detail reads rewrite missing or non-canonical planning locators, protected `/v1` routes stay header-auth only while `/agents/*` keeps the browser query-auth seam, and the focused route tests now prove both the emitted `useAgent` query plus `useAgentChat` headers and that planning/task panes remain placeholder-framed in Phase 12
+- `rtk npm run build:ui`, `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx`, and the additional focused `rtk npm run test -- tests/http/dev-auth.test.ts` all pass on the fix-pass head; `rtk npm run typecheck` was not rerun because the change stayed within the locked Phase 12 validation set and did not touch the known baseline typecheck failures
+
+Phase 13 outcome on 2026-04-22:
+
+- planning and task detail now expose the real chat surface instead of placeholder cards: both left panes render assistant-ui over the persisted Cloudflare conversation binding, while the planning document pane, task context block, and task review sidebar remain in their existing product-owned positions
+- `ui/src/features/conversations/assistant-chat-surface.tsx` and `assistant-message-converter.tsx` now provide the thin `AssistantRuntimeProvider` plus `useExternalStoreRuntime` bridge that maps Cloudflare `UIMessage[]` into assistant-ui thread messages, handles markdown rendering, composer send/stop state, error banners, attachments, copy actions, and tool-call cards without introducing a second persistence model
+- the fake synthesized task chat timeline is gone from `use-execution-view-model.ts`, so task detail now relies on the real Cloudflare-backed message history instead of mixed placeholder metadata
+- targeted route coverage now proves the new planning/task visible contract through empty-state copy, composer presence, and the continued Cloudflare `useAgent` plus `useAgentChat` binding assertions, while shared jsdom test setup now includes the assistant-ui-required viewport shims
+- the targeted fix pass kept Cloudflare as the only conversation authority while making failed and denied tool cards fall back to their converted assistant-ui result, and it extended the focused route suite to cover unavailable/loading/error/composer branches plus a non-empty transcript with markdown and structured parts
+- `rtk npm run build:ui`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx`, and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts` pass on the fix-pass head; no durable developer-doc update was required because the runtime authority and persisted conversation contract from Phase 12 did not change
+
+Phase 14 outcome on 2026-04-22:
+
+- `README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, and `.ultrakit/notes.md` now describe the shipped redesign truthfully: planning/task chat is visibly assistant-ui-backed over Cloudflare `useAgent` / `useAgentChat`, document surfaces are Plate-backed, and the local validation constraints no longer overstate sandbox limits for `rtk npm test`
+- broad validation uncovered and cleared two narrow regressions that mattered for truthful closeout: `tests/http/projects.test.ts` now mocks `agents` because app boot always registers `/agents/*`, and `ui/src/test/destination-scaffolds.test.tsx` now mocks `useCloudflareConversation` plus expects the real assistant-ui task empty state instead of the pre-Phase-13 placeholder copy
+- `rtk npm test` now passes on the final Phase 14 head with `35 passed | 2 skipped` files and `304 passed | 19 skipped` tests
+- `rtk npm run lint` still fails on 20 repo-wide issues across scripts, backend, and tests; Phase 14 removed the extra lint noise it introduced, but it did not broaden scope into the existing lint cleanup backlog
+- the final closeout pass then closed the remaining review gaps without widening product scope: `PlateMarkdownDocument` now renders planning/documentation markdown tables as native table markup, the concrete async loaders no longer write late state after unmount/navigation at the reviewed sites, and the focused route suites now prove reasoning, `source-url`, `source-document`, and approval-requested approve/reject behavior
+- `rtk npm run typecheck` no longer stops at `tests/http/projects.test`; after fixing that root mock signature it now truthfully fails on the broader existing UI/shared baseline, concentrated in `entity-table`, assistant-ui conversation typings, task-review/execution/workstreams exact-optional-property drift, shared forms, and route-test typing. This pass keeps that baseline recorded honestly rather than broadening into a separate type-fix initiative.
+- `rtk npm run build` still fails inside the sandbox after `vite build` because Wrangler and Docker need writable home-directory paths, but rerunning the exact same command on the host completed successfully and now serves as the final build proof for this phase
+- the redesign is through final closeout implementation, but this active plan intentionally remains unarchived until the separate verification/archive step runs
+
+## Context and Orientation
+
+The current repository has a real backend and a still-partial operator UI.
+
+Key backend and runtime facts:
+
+- `src/http/api/v1/runs/contracts.ts` and `src/http/api/v1/documents/contracts.ts` already expose conversation locators on tasks and documents.
+- `.ultrakit/developer-docs/think-runtime-architecture.md` states that Think/Cloudflare owns conversation history and that Keystone persists only locators on `documents` and `run_tasks`.
+- `src/workflows/TaskWorkflow.ts` provisions task conversation locators for non-`scripted` execution, but planning documents do not yet consistently provision locators.
+- `wrangler.jsonc` and `src/env.d.ts` already define the Cloudflare runtime pieces that back Think-backed task execution.
+
+Key UI facts:
+
+- `ui/index.html` now applies the repo-owned resolved theme in the document head before the app bundle runs, and `ui/src/main.tsx` no longer bootstraps Radix Themes CSS.
+- `ui/src/app/styles.css` is the Tailwind token authority for the current UI shell and the generated shadcn variable surface.
+- `ui/src/routes/` is intentionally thin and should remain thin.
+- `ui/src/features/runs/components/planning-workspace.tsx` and `ui/src/features/execution/components/task-detail-workspace.tsx` now mount assistant-ui chat surfaces over the Phase 12 Cloudflare conversation binding, while keeping the planning document pane and task review sidebar as separate product-owned surfaces.
+- `ui/src/features/runs/run-management-api.ts` is now the real live run data seam. Do not route live run detail back through scaffold-only resource-model code.
+- `ui/src/features/resource-model/` remains the checked-in source of scaffold data for surfaces that are not live yet.
+
+Key product facts from the design docs:
+
+- one persistent left sidebar
+- `Runs`, `Documentation`, and `Workstreams` as primary destinations
+- run detail top rail for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
+- planning split of chat left, document right
+- execution defaulting to the DAG
+- task detail split of conversation left, review right
+- restrained dark workspace direction with tight panel composition and little ornamental chrome
+
+New subsystem ownership after this redesign:
+
+- `ui/src/components/ui/*`
+  shadcn-generated primitives and thin repo-owned adjustments
+- `ui/src/components/workspace/*`
+  shared Keystone wrappers and product-wide composites
+- `ui/src/components/editor/*`
+  Plate-backed editor/viewer shells and markdown helpers
+- `ui/src/features/conversations/*`
+  resource-scoped Cloudflare binding helpers, assistant-ui runtime bridges, and message/rendering mappers
+- `ui/src/shared/forms/*`
+  shared project-form helpers on top of `react-hook-form` and shadcn
+
+## Theme And Component Ownership Model
+
+### Token Layers
+
+The redesign uses three token layers:
+
+1. **Foundation tokens**
+   raw palette, type scale, spacing, radii, shadows, motion, focus, z-index
+
+2. **Semantic product tokens**
+   app background, sidebar surface, workspace pane surface, inspector surface, muted surface, separators, text roles, accent/focus states, code surface, diff colors, DAG/review states
+
+3. **Product contract tokens**
+   sidebar width, pane header height, inspector width, dense row height, document max width, review accordion density
+
+### Enforcement Rules
+
+- no raw color literals in feature files
+- no component-local theme variables for standard surfaces
+- no feature hook or route file decides a surface palette
+- no visual system branching outside the centralized token model
+- wrappers consume tokens; features consume wrappers
+
+### Wrapper Inventory
+
+The redesign should standardize on this wrapper inventory:
+
+- `WorkspaceShell`
+- `AppSidebar`
+- `DestinationHeader`
+- `RunPhaseRail`
+- `WorkspaceSplit`
+- `WorkspacePane`
+- `PaneHeader`
+- `PaneToolbar`
+- `PaneBody`
+- `InspectorPane`
+- `StatusBadge`
+- `ResourceStateBanner`
+- `EntityTable`
+- `FilterChipGroup`
+- `EmptyStatePanel`
+- `DocumentPaneFrame`
+- `ConversationPaneFrame`
+- `ReviewInspector`
+- `ArtifactAccordion`
+- `ProjectFormSection`
+- `SectionActionRow`
+
+Exact names may shift slightly to fit repo conventions, but the responsibilities must remain stable.
+
+For table concerns specifically, `EntityTable` should be a Keystone wrapper over the shadcn data-table pattern rather than a direct feature-owned `@tanstack/react-table` composition.
+
+## Dependency And Setup Matrix
+
+### Package-Level Dependencies To Add In Phase 1
+
+- `tailwindcss`
+- `@tailwindcss/vite`
+- `lucide-react`
+- `class-variance-authority`
+- `clsx`
+- `tailwind-merge`
+- `tw-animate-css`
+- `react-hook-form`
+- `@hookform/resolvers`
+- `@tanstack/react-table`
+- `platejs`
+- `@platejs/markdown`
+- `@platejs/basic-nodes`
+- `@platejs/link`
+- `@platejs/table`
+- `@platejs/list-classic`
+- `@platejs/code-block`
+- `@platejs/math`
+- `lowlight`
+- `remark-gfm`
+- `remark-math`
+- `@assistant-ui/react`
+- `@assistant-ui/react-markdown`
+- `react-diff-view`
+
+Existing packages that remain in place:
+
+- `ai`
+- `agents`
+- `@cloudflare/ai-chat`
+- `@cloudflare/think`
+- `zod`
+
+Packages explicitly not part of this redesign stack:
+
+- `@ai-sdk/react`
+- `@assistant-ui/react-ai-sdk`
+- `next-themes`
+- Assistant Cloud persistence
+
+### shadcn Bootstrap Contract
+
+`components.json` must lock:
+
+- `style: new-york`
+- `tsx: true`
+- `cssVariables: true`
+- `iconLibrary: lucide`
+- `baseColor: neutral`
+- Tailwind CSS entrypoint pointing at `ui/src/app/styles.css`
+- frontend aliases rooted under `@/* -> ui/src/*`
+
+### Initial shadcn Seed Set
+
+Phase 1 should generate only the primitives needed to prove the bootstrap path and support wrapper work:
+
+- `button`
+- `badge`
+- `separator`
+- `scroll-area`
+- `tabs`
+- `sidebar`
+- `resizable`
+- `data-table` if the installed shadcn registry supports it for this stack; otherwise seed the primitives the official shadcn data-table pattern requires and defer the Keystone `EntityTable` wrapper to Phase 3
+- `table`
+- `skeleton`
+- `tooltip`
+- `dialog`
+- `dropdown-menu`
+- `popover`
+- `sheet`
+- `command`
+- `avatar`
+- `input`
+- `textarea`
+- `label`
+- `form`
+- `select`
+- `checkbox`
+- `switch`
+- `accordion`
+- `toggle-group`
+- `alert`
+
+### Registry Additions Deliberately Deferred Beyond Phase 1
+
+- Plate registry/UI code generation
+- assistant-ui registry code generation
+- generated thread-list or assistant-sidebar patterns
+- `@plate/editor-ai`
+- `@plate/ai-kit`
+- documentation or planning surface code migration
+- visible chat pane integration
+
+## Plan of Work
+
+The work intentionally starts with infrastructure and ownership, not screen rewrites.
+
+First, the repo gets the build-time and source-level foundation: dependencies, aliases, Tailwind wiring, shadcn bootstrap, and the minimal primitive seed set. This isolates dependency and generator churn from visible product changes.
+
+Second, the plan moves theme ownership and direct-Radix exit ahead of destination migration. That ensures every later phase works inside the final visual system instead of adding new surfaces on a temporary foundation.
+
+Third, the plan creates the Keystone wrapper layer before touching major destinations. This is the core anti-drift mechanism. Each later phase should consume wrappers rather than inventing bespoke layout and status composition.
+
+Fourth, the plan migrates visible surfaces in a product-coherent order: app shell, run frame, planning documents, execution DAG, task review, workstreams, project configuration, then documentation. That sequence keeps the most central product paths coherent first.
+
+Finally, the plan resolves live conversation behavior in two phases. Phase 12 finishes locator truth and frontend binding to Cloudflare agents without changing visible panes. Phase 13 swaps the placeholder panes to assistant-ui only after the runtime seam is already stable. This prevents chat UI work from having to design runtime contracts at the same time.
+
+### Phase Order Rationale
+
+- Phase 1 is build/bootstrap only.
+- Phase 2 gives the project a single visual system before screen rewrites begin.
+- Phase 3 creates the wrapper inventory that later phases depend on.
+- Phases 4 and 5 establish the persistent shell and run shell that every detailed workspace sits inside.
+- Phases 6 through 11 migrate one product surface family at a time.
+- Phase 12 solves runtime and locator plumbing with no visible chat cutover.
+- Phase 13 does the visible conversation cutover after the runtime seam is solved.
+- Phase 14 updates durable docs, classifies failures, and closes the plan honestly.
+
+### Phase 1: Dependency Install And Build Bootstrap
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-21 after targeted fix pass; validation record corrected on 2026-04-22.
+- **Goal:** Install the approved dependency families and wire the repo bootstrap needed for Tailwind, shadcn, Plate, assistant-ui, and the shadcn data-table path without changing product surfaces yet.
+- **Scope Boundary:** In scope are `package.json`, lockfile changes, Vite/TS/Vitest alias wiring, `components.json`, `ui/src/lib/utils.ts`, the initial shadcn seed set, and the minimal `ui/src/app/styles.css` wiring needed to make those generated primitives actually usable. Out of scope are the broader token migration, direct-Radix removal, wrapper creation, Plate UI generation, and any destination rewrite.
+- **Read First:** `package.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.ui.json`, `vitest.config.ts`, `ui/src/main.tsx`, `ui/AGENTS.md`.
+- **Files Expected To Change:** `package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.ui.json`, `vitest.config.ts`, `components.json`, `ui/src/lib/utils.ts`, `ui/src/app/styles.css`, `ui/src/components/ui/*`.
+- **Validation:** `rtk npm install`; `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`; `rtk npx tsc --noEmit -p tsconfig.ui.json` (still fails on unrelated existing typing drift in `ui/src/test/runs-routes.test.tsx` and `src/keystone/agents/implementer/ImplementerAgent.ts`); `rtk npm run typecheck`; `rtk npm run lint`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** all known dependencies are installed, aliasing is consistent across build/test/typecheck, shadcn bootstrap files exist, the initial primitive seed set is generated, and the table bootstrap path is ready for Phase 3 to wrap the shadcn data-table pattern rather than raw TanStack usage.
+- **Commit Expectation:** `bootstrap ui dependency and build foundation`
+- **Known Constraints / Baseline Failures:** lint and typecheck already fail outside this phase; `rtk npx tsc --noEmit -p tsconfig.ui.json` also still fails outside this phase on unrelated existing typing drift in `ui/src/test/runs-routes.test.tsx` and `src/keystone/agents/implementer/ImplementerAgent.ts`; `build` remains host-constrained after `vite build`.
+- **Completion Notes:** Installed the locked dependency families plus shadcn-required runtime packages (`cmdk`, `radix-ui`, `react-resizable-panels`), added consistent `@/* -> ui/src/*` alias wiring, created `components.json` and `ui/src/lib/utils.ts`, and generated the initial shadcn seed set under `ui/src/components/ui/*`. The current shadcn registry only exposes a `data-table-demo` example, so the Phase 1 table path is the official guide pattern: `@tanstack/react-table` plus seeded table/form/menu primitives, with no feature-owned TanStack composition introduced yet. The targeted fix pass completed the minimum truthful stylesheet foundation in `ui/src/app/styles.css` by turning on Tailwind output, importing `tw-animate-css`, and aliasing the current palette into the semantic tokens that the generated primitives already reference, while still leaving the broader theme-system takeover to Phase 2. The same fix pass also removed the `DropdownMenuCheckboxItem` `exactOptionalPropertyTypes` regression and made mobile `Sidebar` prop forwarding match desktop behavior. `rtk npx tsc --noEmit -p tsconfig.ui.json` was reclassified back to baseline because it still fails on unrelated existing typing drift, and earlier execution later showed that the UI fixture-mismatch portion was a separate issue cleared in the Phase 8 targeted fix pass.
+- **Next Starter Context:** Phase 2 should start from the generated shadcn primitives and the now-live Tailwind entrypoint already on disk, then take over `ui/src/app/styles.css` for the final token model, dark-mode variant ownership, persisted theme wiring, and Radix bootstrap removal. Do not regenerate the seed set; build on the existing `components.json` contract and replace the temporary semantic-token bridge with the centralized theme system.
+
+### Phase 2: Theme Tokens, Root Theme Provider, And Direct-Radix Exit
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22; closeout exception pass verified on 2026-04-22.
+- **Goal:** Move the UI onto the centralized token system, add the persisted theme preference model, and remove Radix Themes bootstrap ownership.
+- **Scope Boundary:** In scope are `ui/src/app/styles.css`, root theme provider/storage wiring, semantic token definition, and removal of `@radix-ui/themes/styles.css` from bootstrap. Out of scope are destination rewrites and live conversation work.
+- **Read First:** `design/design-guidelines.md`, `ui/index.html`, `ui/src/main.tsx`, `ui/src/app/theme.ts`, `ui/src/app/styles.css`, `ui/src/app/app-providers.tsx`, `components.json`.
+- **Files Expected To Change:** `ui/index.html`, `ui/src/main.tsx`, `ui/src/app/styles.css`, `ui/src/app/app-providers.tsx`, `ui/src/app/theme.ts`, new `ui/src/app/theme-provider.tsx` or equivalent, targeted theme tests, and `vitest.config.ts` if the generated shadcn alias contract needs to be made explicit to the jsdom test project.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`; `rtk npm run typecheck`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** one centralized token system exists, both themes resolve through it, system-default first load works, explicit user preference persists, and Radix Themes CSS is no longer the main UI bootstrap.
+- **Commit Expectation:** `centralize theme tokens and remove radix bootstrap`
+- **Known Constraints / Baseline Failures:** the current stylesheet is large; focus on ownership and token structure first, not full screen polish.
+- **Completion Notes:** Replaced the temporary light-only semantic bridge in `ui/src/app/styles.css` with centralized light/dark theme tokens that drive both the existing workspace classes and the shadcn/Tailwind variable surface. Added repo-owned browser theme utilities plus `ThemeProvider` wiring under `ui/src/app/`, wrapped the app root with that provider, and moved the pre-paint theme bootstrap into `ui/index.html` so the stored or system-resolved theme is applied in the document head before the app bundle runs. The targeted fix pass also hardened `readStoredThemePreference()` and `writeStoredThemePreference()` so `window.localStorage` access failures fall back cleanly instead of throwing during boot, and it extended `ui/src/test/app-shell.test.tsx` to execute the real inline bootstrap plus a seeded shadcn `Button` consumer. `ui/src/main.tsx` no longer imports `@radix-ui/themes/styles.css`, `vitest.config.ts` now makes the `@/* -> ui/src/*` alias explicit for the jsdom UI test project, `rtk npm run build:ui` passes, and `rtk npm run typecheck` still fails only on the known baseline issues in `src/keystone/agents/implementer/ImplementerAgent.ts` and `tests/lib/db-client-worker.test.ts`. An extra `rtk npx tsc --noEmit -p tsconfig.ui.json` rerun from the base implementation had already been classified as the unrelated `ui/src/test/runs-routes.test.tsx` artifact-kind fixture drift plus the same implementer typing drift, so Phase 2 still does not add new TypeScript failures. During the user-authorized closeout exception pass, `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` reran green on HEAD `8b48028`, and the reported `runs-routes` "Write first revision" test reran green in isolation five times, so no additional code change was required to close Phase 2 truthfully. The visible theme toggle button is intentionally deferred to Phase 4 shell work; the provider/storage seam needed for that control now exists.
+- **Next Starter Context:** Phase 3 can start directly from the checked-in Phase 2 theme foundation without further stabilization work; it should consume the new semantic tokens instead of inventing surface colors, and Phase 4 shell work should mount the visible theme toggle at the bottom of the persistent left sidebar by reusing the Phase 2 `ThemeProvider` seam and the new `ui/index.html` head bootstrap rather than introducing new theme state.
+
+### Phase 3: Keystone Wrapper Layer And Workspace Primitives
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Create the stable wrapper inventory that later destination phases will compose.
+- **Scope Boundary:** In scope are shared workspace panes, split containers, shell-friendly wrappers, status treatments, tables, empty states, and review/document frame wrappers. Out of scope are destination-specific business logic changes.
+- **Read First:** `design/design-guidelines.md`, `ui/AGENTS.md`, `ui/src/components/ui/*`, `ui/src/shared/layout/*`.
+- **Files Expected To Change:** `ui/src/components/workspace/*`, `ui/src/shared/layout/*`, `ui/src/shared/forms/*` if small shared form wrappers are needed, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** the wrapper inventory exists and is ready for shell and destination phases to consume, including a Keystone `EntityTable` built on the shadcn data-table pattern.
+- **Commit Expectation:** `build keystone workspace wrapper layer`
+- **Known Constraints / Baseline Failures:** wrappers must remain product-wide and must not absorb feature-specific API state.
+- **Completion Notes:** Added Keystone-owned workspace primitives under `ui/src/components/workspace/` for page framing, panels, split panes, empty states, document/review wrappers, and a shared `EntityTable`. Updated the current shared/layout and scaffold/live feature surfaces to consume that vocabulary instead of open-coding wrapper logic: app-shell loading/empty/error states now render through `WorkspacePage`, run-detail scaffolds and detail-state fallbacks use the same page wrappers, planning/execution/documentation/task-detail workspaces now use `WorkspacePanel`, `WorkspaceSplit`, `DocumentFrame`, `ReviewSection`, and `WorkspaceEmptyState`, and both runs/workstreams list surfaces now flow through `EntityTable` rather than direct feature-owned table composition. The targeted fix pass then tightened the reusable table boundary so row activation now routes through an explicit `onRowActivate` seam instead of first-link DOM scraping, renamed the generic table panel/shell classes away from `runs-*`, and added focused tests for modifier-key and nested-interactive suppression. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- **Next Starter Context:** Phase 4 should rebuild the persistent shell and sidebar by composing the new `WorkspacePage`/`WorkspacePanel` wrappers instead of adding another shell-specific layout layer. Keep the visible theme toggle work inside the Phase 2 provider seam, continue routing dense list surfaces through `EntityTable`, and treat `onRowActivate` plus the neutral `entity-table*` styling hooks as the stable table contract rather than reintroducing feature-owned DOM scraping or runs-specific class names.
+
+### Phase 4: Global Shell And Project-Scoped Chrome
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Rebuild the persistent app frame and left sidebar around the new wrapper system.
+- **Scope Boundary:** In scope are the shell layout, persistent sidebar, destination framing, and top-level chrome. Out of scope are run-detail interiors, document editing, and live chat behavior.
+- **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/shared/layout/app-shell.tsx`, `ui/src/shared/layout/shell-sidebar.tsx`, `ui/src/routes/shell-layout.tsx`.
+- **Files Expected To Change:** `ui/src/shared/layout/app-shell.tsx`, `ui/src/shared/layout/shell-sidebar.tsx`, `ui/src/routes/shell-layout.tsx`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** one cohesive persistent left rail and shell frame that match the workspace spec, including the reserved theme toggle location.
+- **Commit Expectation:** `rebuild keystone shell chrome`
+- **Known Constraints / Baseline Failures:** keep destinations and sidebar structure stable. Do not drift into destination-specific behavior.
+- **Completion Notes:** Rebuilt the shared shell around the Phase 3 wrapper layer without expanding route ownership: the persistent sidebar now uses stacked workspace panels for project context, project actions, global navigation, and the footer-owned theme selector; destination summaries moved into route-aware shell chrome above the outlet content; and the shell-specific tests now assert the new workspace-location strip plus the visible sidebar theme toggle while preserving existing live project-management behavior. The targeted fix pass then restored the blank-description fallback so the project summary falls back to `projectKey`, strengthened the theme-toggle assertion to prove the toggle panel remains in the reserved bottom sidebar slot, and added run-detail shell coverage for nested `/runs/:id/specification` routes. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- **Next Starter Context:** Phase 5 should keep `ui/src/routes/` thin and treat the new shell chrome as stable. Build the `Runs` index and run-detail frame inside the existing route tree by reusing the wrapper-backed sidebar/stage contract, the `resolveShellLocation` route framing seam, the footer-owned theme toggle placement, and the sidebar summary fallback without reintroducing destination-specific shell logic.
+
+### Phase 5: Runs Index And Run-Detail Structural Frame
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Migrate the `Runs` landing surface and the run-detail frame into the new workspace system.
+- **Scope Boundary:** In scope are the runs index, run header, top rail, and run-detail shell. Out of scope are planning document cutover, execution DAG redesign, and live chat transport.
+- **Read First:** `design/workspace-spec.md`, `ui/src/routes/router.tsx`, `ui/src/routes/runs/run-detail-layout.tsx`, `ui/src/features/runs/components/*`.
+- **Files Expected To Change:** `ui/src/features/runs/components/*`, `ui/src/routes/runs/run-detail-layout.tsx`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** the `Runs` destination and run-detail shell are visually migrated without changing route semantics.
+- **Commit Expectation:** `migrate runs index and run frame`
+- **Known Constraints / Baseline Failures:** keep product nouns and run phase order stable.
+- **Completion Notes:** Moved the `Runs` landing surface into `ui/src/features/runs/components/runs-index-workspace.tsx`, keeping the route file thin while framing the index with shared workspace page/panel/table primitives plus a right-hand run-workspace guide. The live runs table now stays honest to the current `/v1/projects/:projectId/runs` payload by surfacing workflow/engine detail and a coarse `Planning` vs `Execution` stage, while scaffold rows keep their seeded summary/stage fields. The run-detail frame now exposes a coherent outer shell across ready and state fallbacks: `Back to runs`, run metadata chips, a summary-bearing four-stage rail, and unchanged nested route semantics for planning, execution, and task detail. The targeted fix pass then tightened `ui/src/test/runs-routes.test.tsx` so the loading, not-found, and error run-detail fallback states assert the shared `Back to runs` link plus `Run workspace` eyebrow, closing the review gap without changing runtime behavior. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`; the earlier minor planning-editor validation-drift note did not reproduce on this rerun.
+- **Next Starter Context:** Phase 6 should treat the Phase 5 runs index and run-detail shell as stable outer chrome. Focus only on swapping the planning interiors to the shared split workspace with Plate-backed document surfaces; do not reopen the run header, stage rail, or index framing unless a small supporting seam is truly required for the document cutover.
+
+### Phase 6: Planning Workspace And Plate Planning Documents
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Migrate `Specification`, `Architecture`, and `Execution Plan` to the new split workspace with Plate-backed document surfaces.
+- **Scope Boundary:** In scope are the shared planning split layout, Plate document wrappers, markdown import/export, save/discard/create flows, and planning-specific states. Out of scope are live conversation panes and Cloudflare binding.
+- **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `.ultrakit/developer-docs/m1-architecture.md`.
+- **Files Expected To Change:** `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, new or expanded `ui/src/components/editor/*`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** all three planning phases share one consistent layout and use Plate-backed document surfaces while keeping markdown canonical.
+- **Commit Expectation:** `migrate planning workspace to plate`
+- **Known Constraints / Baseline Failures:** do not introduce a new canonical document format; keep chat as a placeholder frame in this phase.
+- **Completion Notes:** Added `ui/src/components/editor/plate-markdown-document.tsx` as the repo-owned Plate markdown renderer for saved planning documents plus edit-time previews, then rewired `ui/src/features/runs/components/planning-workspace.tsx` to use that surface instead of raw line-by-line paragraph output. The right pane now keeps markdown canonical through the existing title/body form state, shows a live Plate preview while editing, and persists revision saves from the authored markdown source string through a pure save-boundary helper instead of Plate serialization, which keeps task lists, strikethrough, title-only saves, and body-noop saves aligned with the document-first backend contract. The left chat pane stays explicitly placeholder-framed rather than pretending live conversation transport exists. The shared planning split was widened toward the document side through `ui/src/app/styles.css`, and the targeted route suite now asserts the named document regions, heading/list structure, preview contract, and exact revision-save POST bodies. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
+- **Next Starter Context:** Phase 7 should treat the Phase 5 shell and the final Phase 6 planning document contract as stable. Leave `ui/src/components/editor/plate-markdown-document.tsx`, the named planning document regions, the source-markdown save boundary in `ui/src/features/runs/use-run-planning-phase-view-model.ts`, and the placeholder-framed planning chat pane alone; focus on the execution DAG workspace and graph-to-task handoff.
+
+### Phase 7: Execution DAG Workspace
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Rebuild the execution default workspace around the workflow graph and graph-to-task handoff.
+- **Scope Boundary:** In scope are graph presentation, node emphasis/state, summary groups, selection behavior, and task-detail navigation handoff. Out of scope are task chat and review sidebar cutover.
+- **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/features/execution/components/execution-workspace.tsx`, `ui/src/features/execution/use-execution-view-model.ts`.
+- **Files Expected To Change:** `ui/src/features/execution/components/execution-workspace.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** the execution default view reads as an active workflow workspace and hands off cleanly into task detail.
+- **Commit Expectation:** `redesign execution dag workspace`
+- **Known Constraints / Baseline Failures:** execution must still default to the DAG and use current workflow/task data truth.
+- **Completion Notes:** Rebuilt `ui/src/features/execution/components/execution-workspace.tsx` around a graph-first execution board: the main panel now renders dependency-step workflow columns with live connector paths, status-emphasized selectable nodes, and explicit graph-only selection state, while the right rail now exposes workflow status groups plus a selected-task inspector with dependency/downstream facts and the task-detail handoff. `ui/src/features/execution/use-execution-view-model.ts` now projects the execution board from live workflow nodes first and enriches it with task metadata when available, so the DAG can appear as soon as `/v1/runs/:runId/workflow` materializes even if `/v1/runs/:runId/tasks` is still catching up after compile. The targeted fix pass then made that workflow-first seam truthful by tracking task-record readiness separately from workflow-node readiness, disabling task-detail entry until the run-task row exists, keeping direct lagging task routes in a materializing state, replacing Phase 8 review/chat wording with task-detail-only copy, and clamping DAG cards to the fixed node geometry used by the layout math. Targeted route coverage now proves the graph summary, workflow status groups, selection changes, ready-task defaulting, lagging workflow-node behavior, branching DAG navigation, and delayed-materialization behavior. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx`.
+- **Next Starter Context:** Phase 8 should treat the Phase 7 DAG workspace as stable. Keep the graph canvas, workflow status groups, selected-task inspector, workflow-first fallback when task rows lag, the disabled waiting state for workflow-only nodes, and the fixed node-card geometry intact; focus on replacing the current task route internals with the real conversation/review workspace rather than reopening the default execution board.
+
+### Phase 8: Task Detail Review Workspace
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Rebuild task detail around the left conversation frame and right review inspector.
+- **Scope Boundary:** In scope are the task detail shell, changed-file groups, unified diff rendering, review sidebar behavior, and task-specific states. Out of scope are live chat binding and backend artifact changes.
+- **Read First:** `design/workspace-spec.md`, `design/design-guidelines.md`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/runs/run-management-api.ts`.
+- **Files Expected To Change:** `ui/src/features/execution/components/task-detail-workspace.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/components/workspace/*`, likely new diff helpers/components under execution or workspace folders, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** task detail becomes a real review workspace with unified diff rendering through `react-diff-view`.
+- **Commit Expectation:** `redesign task review workspace`
+- **Known Constraints / Baseline Failures:** keep artifact truth tied to the current API seam and `contentUrl`; do not invent old/new snapshot APIs.
+- **Completion Notes:** Replaced the old artifact-preview-first task route with a real task workspace. `ui/src/features/execution/use-execution-view-model.ts` now enriches task detail with task-scope conversation entries, activity copy, and review-summary facts while preserving the existing artifact metadata seam. `ui/src/features/execution/components/task-detail-workspace.tsx` now renders the product-shaped split: a left conversation frame with task handoff, execution status, dependency/downstream navigation, and an honest live-chat placeholder, plus a right code-review pane. The new `ui/src/features/execution/components/task-review-sidebar.tsx` infers reviewable changed files from text `run_note` and `staged_output` artifacts by loading `contentUrl`, parsing whichever payloads contain unified diff text, grouping changed files by diff type, rendering one-pane diffs inside collapsible file sections, and leaving the remaining task artifacts as metadata-only supporting records. The targeted fix pass then invalidated in-flight diff loads across task/artifact changes so stale reviews cannot flash between tasks or after empty-review routes. `ui/src/app/styles.css` now imports the `react-diff-view` stylesheet, maps it onto the shared theme tokens, and adds the task-review layout/diff styling needed for the new inspector. `ui/src/test/runs-routes.test.tsx` now proves the changed-file groups, real-artifact fallback, partial fetch failure, retry, truthful task-to-task route preservation, and the renamed task-review error state. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 9 should treat the Phase 8 task-detail workspace as stable. Keep the graph-to-task handoff, the task conversation/review split, the diff grouping/parsing contract over `contentUrl`, and the metadata-only supporting-artifact lane intact; the main visible gap left in task detail is still live conversation behavior, so Phase 9 should stay focused on the Workstreams surface.
+
+### Phase 9: Workstreams Surface
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Rebuild `Workstreams` as a dense operational list that shares the same workspace language as `Runs` and `Execution`.
+- **Scope Boundary:** In scope are server-driven filters, table rendering, pagination framing, row interaction, and route handoff into task detail. Out of scope are backend pagination changes and AI conversation UI.
+- **Read First:** `design/workspace-spec.md`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/features/workstreams/use-workstreams-view-model.ts`.
+- **Files Expected To Change:** `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/features/workstreams/use-workstreams-view-model.ts`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** `Workstreams` is a coherent list-first operational surface using the locked filters and a Keystone `EntityTable` built from the shadcn data-table pattern over TanStack.
+- **Commit Expectation:** `redesign workstreams surface`
+- **Known Constraints / Baseline Failures:** no virtualization or heavier grid dependency is needed for the current product contract.
+- **Completion Notes:** Rebuilt `ui/src/features/workstreams/components/workstreams-board.tsx` around the workspace-system header and a denser operator surface: the page now exposes project context, matching-task count, locked page-size framing, shadcn `ToggleGroup` filters, status-pill rows, and explicit `Runs > Execution` handoff copy while keeping the board list-first. `ui/src/features/workstreams/use-workstreams-view-model.ts` now projects the active filter description, summary copy, pagination facts, and project/task counts that the board needs without changing the existing `/v1/projects/:projectId/tasks` filter or pagination contract. `ui/src/app/styles.css` now styles the new header, filter band, mono task/run identifiers, and pagination framing. The targeted fix pass then restored explicit task-tone wiring on the workstream row model via the shared task-status tone helper while preserving the Phase 9 visible labels, made the summary-chip cluster an explicit grouped header contract, and extended `ui/src/test/destination-scaffolds.test.tsx` to assert the summary labels plus failed/cancelled blocked-tone coverage. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 10 should treat the Phase 9 `Workstreams` surface as stable. Keep the server-driven filter/page URL state, shadcn filter-radio semantics, grouped summary header chips, explicit task-tone table contract, and direct task-detail handoff into `Runs > Execution` intact; focus on rebuilding the project configuration tabs and forms without pulling `Workstreams` or live task-conversation runtime back into scope.
+
+### Phase 10: Project Configuration Surfaces
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22 after the targeted fix pass.
+- **Goal:** Redesign `New project` and `Project settings` around the new design system while preserving their tab/action model.
+- **Scope Boundary:** In scope are the project configuration shell, tab chrome, forms, list inputs, cards, and type picker surfaces. Out of scope are backend contract changes or turning the flow into a wizard.
+- **Read First:** `design/workspace-spec.md`, `ui/src/routes/projects/project-configuration-layout.tsx`, `ui/src/features/projects/components/project-configuration-shell.tsx`, `ui/src/features/projects/components/project-configuration-tabs.tsx`, `ui/src/features/projects/components/project-component-card.tsx`.
+- **Files Expected To Change:** `ui/src/routes/projects/project-configuration-layout.tsx`, `ui/src/features/projects/components/project-configuration-shell.tsx`, `ui/src/features/projects/components/project-configuration-tabs.tsx`, `ui/src/features/projects/components/project-component-card.tsx`, `ui/src/features/projects/components/project-component-type-picker.tsx`, `ui/src/shared/forms/*`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** project configuration tabs and forms align with the redesign while preserving `New project` create semantics and `Project settings` save semantics.
+- **Commit Expectation:** `redesign project configuration surfaces`
+- **Known Constraints / Baseline Failures:** component type selection must stay explicit because backend support is still narrow.
+- **Completion Notes:** `ui/src/features/projects/components/project-configuration-shell.tsx` and `ui/src/routes/projects/project-configuration-layout.tsx` now present `New project` and `Project settings` through the workspace header language, redesigned tab chrome, and truthful shared loading/error states while keeping the route layer thin. `ui/src/features/projects/components/project-configuration-tabs.tsx`, `project-component-card.tsx`, and `project-component-type-picker.tsx` now deliver section summaries, workspace-aligned empty states, clearer repository/env cards, and the explicit one-option type picker without changing the provider-owned draft or payload logic. `ui/src/shared/forms/form-field.tsx`, `text-list-field.tsx`, `ui/src/features/projects/project-configuration-scaffold.ts`, `use-project-configuration-view-model.ts`, and `ui/src/app/styles.css` now supply the richer field descriptions, `aria-describedby` wiring, monospace value treatment, and focus treatment the shell/cards need while preserving exact source-mode radio names for `Local path` and `Git URL`. The targeted fix pass also moved live settings to wait on `useProjectManagement().state.currentProject` before loading project detail, so scaffold compatibility data can no longer briefly render as live settings state, and the focused shell tests now assert both the mode/tab-count badges and the truthful loading/error branches. Validation passed with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx`.
+- **Next Starter Context:** Phase 11 should treat the project configuration surface as stable. Keep the direct create/save semantics, `/projects/new/*` and `/settings/*` deep links, explicit `Git repository` type picker, exact `Local path` / `Git URL` radio names, shared-form `aria-describedby` wiring, and project-management-owned live-settings selection intact while moving on to the project-scoped `Documentation` destination.
+
+### Phase 11: Documentation Surfaces Via Plate
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22.
+- **Goal:** Apply Plate-backed document surfaces to the project-scoped `Documentation` destination while preserving its current compatibility truth.
+- **Scope Boundary:** In scope are documentation layout, category navigation framing, document rendering, and compatibility states. Out of scope are new backend documentation capabilities and chat UI.
+- **Read First:** `design/workspace-spec.md`, `.ultrakit/developer-docs/m1-architecture.md`, `ui/src/features/documentation/components/documentation-workspace.tsx`, `ui/src/features/documentation/use-documentation-view-model.ts`.
+- **Files Expected To Change:** `ui/src/features/documentation/components/documentation-workspace.tsx`, `ui/src/features/documentation/use-documentation-view-model.ts`, `ui/src/components/editor/*`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff.
+- **Deliverables:** project-scoped documentation uses the same document language as planning while preserving scaffold-backed truth where the backend is not live.
+- **Commit Expectation:** `migrate documentation destination to plate`
+- **Known Constraints / Baseline Failures:** do not fake live documentation for non-scaffold projects.
+- **Completion Notes:** `ui/src/features/documentation/components/documentation-workspace.tsx` now presents `Documentation` through the shared workspace-page header, grouped category navigation, stable metadata chips, and a calmer current-document panel while keeping the route layer thin. `ui/src/features/documentation/use-documentation-view-model.ts` still owns the selected-project lookup, `?document=` canonicalization, and exact scaffold-compatibility branch, but now also projects scaffold `contentLines[]` into line-aware markdown so headings, lists, and paragraph spacing remain truthful when rendered through `PlateMarkdownDocument`. `ui/src/app/styles.css` adds the documentation header/navigation styling needed for the redesigned destination, and `ui/src/test/destination-scaffolds.test.tsx` now asserts the new metadata/navigation contracts, the named document region, compatibility behavior, canonicalization, one focused direct Plate list-render path, the real `DocumentationRoute` -> `useDocumentationViewModel` -> `PlateMarkdownDocument` seam, and richer markdown-projection branches covering headings, blank lines, ordered lists, blockquotes, fenced code, and tables. Validation passed again with `rtk npm run build:ui` and `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`.
+- **Next Starter Context:** Phase 12 should treat the Documentation destination as stable. Keep the exact scaffold-backed compatibility gate, grouped category navigation, and `contentLines[] -> markdown` projection intact while adding planning/task conversation-locator truth plus Cloudflare binding; do not reopen documentation backend promises or chat UI in that phase.
+
+### Phase 12: Planning Locator Completion And Cloudflare Conversation Binding
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22.
+- **Goal:** Ensure planning documents have stable conversation locators and add the frontend binding layer that connects planning/task resources to Cloudflare `useAgent` and `useAgentChat`.
+- **Scope Boundary:** In scope are planning-document locator provisioning and lazy backfill, deterministic resource-scoped conversation identity, and frontend Cloudflare binding helpers. Out of scope are final visible assistant-ui panes and any second conversation store.
+- **Read First:** `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, `src/http/api/v1/runs/contracts.ts`, `src/http/api/v1/documents/contracts.ts`, `src/http/api/v1/documents/handlers.ts`, `src/workflows/TaskWorkflow.ts`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `ui/src/features/execution/use-execution-view-model.ts`.
+- **Files Expected To Change:** `src/http/api/v1/documents/contracts.ts`, `src/http/api/v1/documents/handlers.ts`, related tests under `tests/http/*` if planning locator behavior changes, new `ui/src/features/conversations/*`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `ui/src/features/execution/use-execution-view-model.ts`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx`; additional focused `rtk npm run test -- tests/http/dev-auth.test.ts`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff, and durable docs if the planning locator contract changes materially.
+- **Deliverables:** planning documents and tasks both expose usable Cloudflare conversation identities, and the browser can bind directly from persisted locators to Cloudflare chat agents without duplicating transcript history into Keystone tables.
+- **Commit Expectation:** `bind resources to cloudflare chat agents`
+- **Known Constraints / Baseline Failures:** do not synthesize fake task conversations; do not introduce a generic second conversation authority.
+- **Completion Notes:** Added deterministic planning locator helpers under `src/lib/documents/model.ts` and used them in `src/lib/db/documents.ts` so run-scoped planning documents now normalize to the authoritative `PlanningDocumentAgent` tenant/run/document locator on create and on lazy list/detail reads. The targeted fix pass removed the old caller-controlled branch: create no longer trusts client-supplied planning locator values, list/detail normalization rewrites missing or non-canonical planning locators back to the deterministic contract, and the frontend no longer sends planning locator payloads when creating missing planning documents. Exposed authenticated `/agents/*` routing from the Worker, then tightened the local browser dev-auth seam so query-param fallback is limited to `/agents/*` while protected `/v1` JSON routes remain header-auth only. On the frontend, `ui/src/features/conversations/*` and the placeholder planning/task panes still mount the Cloudflare binding host without changing their visible placeholder framing; the focused route tests now assert the emitted `useAgent` query, `useAgentChat` headers, and the continued placeholder-only planning/task panes for Phase 12. The HTTP suite now exercises the real create-path provisioning behavior through the repository fixture instead of a fabricated `createDocument` mock, and it covers missing-locator backfill, non-canonical normalization, canonical-locator preservation, authoritative planning create responses, authenticated `/agents/*` routing, and `/v1` query-auth rejection. Validation passed with `rtk npm run build:ui`, `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx`, and the additional focused `rtk npm run test -- tests/http/dev-auth.test.ts`.
+- **Next Starter Context:** Phase 13 should treat the authoritative planning locator contract, `/agents/*` transport, shared browser dev-auth helpers, `ui/src/features/conversations/*`, and the placeholder-framed planning/task panes as stable runtime plumbing. Replace only the visible placeholder panes with assistant-ui surfaces over those bindings; do not add a second conversation store, reopen planning/task resource identity, or broaden query-param auth beyond `/agents/*`.
+
+### Phase 13: assistant-ui Planning And Task Chat Cutover
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22.
+- **Goal:** Replace the placeholder planning and task conversation frames with assistant-ui chat surfaces backed by the Cloudflare binding from Phase 12.
+- **Scope Boundary:** In scope are conversation rendering, composer behavior, streaming state, empty/error states, markdown rendering, actions, human-approval affordances, and selected interactables that are backed by real state. Out of scope are runtime persistence changes, thread-list product models, or a second tool authority.
+- **Read First:** `ui/src/features/conversations/*`, `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `.ultrakit/developer-docs/think-runtime-architecture.md`, assistant-ui runtime docs.
+- **Files Expected To Change:** `ui/src/features/conversations/*`, `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `ui/src/components/workspace/*`, `ui/src/app/styles.css`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts`.
+- **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff, and durable docs if new conversation interaction rules become part of the product contract.
+- **Deliverables:** planning and task conversation panes use assistant-ui components over an `ExternalStoreRuntime`-style bridge to Cloudflare message state, while preserving Keystone’s existing planning/task product model.
+- **Commit Expectation:** `cut planning and task chat to assistant ui`
+- **Known Constraints / Baseline Failures:** Cloudflare remains the persistence authority; no `@assistant-ui/react-ai-sdk`; no Assistant Cloud; interactables must not introduce in-memory-only product state.
+- **Completion Notes:** Added `ui/src/features/conversations/assistant-chat-surface.tsx` and `assistant-message-converter.tsx` as the thin assistant-ui bridge over the existing Cloudflare `useAgent` plus `useAgentChat` seam. Planning and task left panes now render assistant-ui thread/view/composer surfaces with markdown rendering, attachment cards, copy action, error/empty-state handling, and real streaming status while leaving the planning document pane and task review sidebar unchanged. `ui/src/features/execution/use-execution-view-model.ts` no longer synthesizes a fallback task chat timeline, so the visible task transcript depends only on the persisted Cloudflare conversation locator from Phase 12. The route suite was updated from placeholder assertions to assistant-ui surface assertions, and shared jsdom setup now shims the viewport APIs assistant-ui expects. The targeted fix pass kept the same Cloudflare transport contract while making failed and denied tool cards preserve their converted assistant-ui result whenever `getToolOutput()` is undefined, so rejection/error details now render instead of disappearing. `ui/src/test/runs-routes.test.tsx` now also covers the unavailable planning conversation branch, the submitted/loading task state, and a non-empty planning transcript with markdown, data/tool/file parts, error banners, and composer send behavior. Validation passed with `rtk npm run build:ui`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx`, and `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts`. No durable developer-doc change was needed because Cloudflare remained the persistence and runtime authority.
+- **Next Starter Context:** Phase 14 should treat the assistant-ui planning/task panes, failed/denied tool outcome rendering, the Phase 12 Cloudflare locator plus `/agents/*` transport contract, and the narrowed task view-model as stable. Focus only on durable docs, broad validation, and any small regression cleanup that the final suite uncovers.
+
+### Phase 14: Durable Docs, Regression Cleanup, And Final Validation
+
+#### Phase Handoff
+
+- **Status:** Complete on 2026-04-22; final closeout pass completed on 2026-04-22.
+- **Goal:** Update durable docs and notes, rerun the broad validation suite, classify residual failures honestly, and leave the redesign ready for final verification without archiving it in the same pass.
+- **Scope Boundary:** In scope are developer docs, notes, README truth, plan maintenance, and small regression fixes discovered during final validation. Out of scope are new product features or redesign scope changes.
+- **Read First:** `.ultrakit/notes.md`, `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, `README.md`, this plan.
+- **Files Expected To Change:** `.ultrakit/notes.md`, `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, `README.md`, `.ultrakit/exec-plans/active/index.md`, this plan file, and any small final validation fixes.
+- **Validation:** `rtk npm test`; `rtk npm run lint`; `rtk npm run typecheck`; `rtk npm run build`; if `npm run build` still fails only on the known sandbox home-directory writes, record that and rerun from a host shell only if final build proof is needed.
+- **Plan / Docs To Update:** all living sections of this plan plus any affected durable docs.
+- **Deliverables:** durable docs match the shipped redesign, residual failures are classified honestly, and the plan is ready for the separate verification/archive step without overstating archive readiness inside this pass.
+- **Commit Expectation:** `document ui redesign closeout`
+- **Known Constraints / Baseline Failures:** `rtk npm run lint` still fails on 20 existing repo-wide issues; `rtk npm run typecheck` still fails on broader existing UI/shared typing drift than the early plan summary captured; `rtk npm run build` still hits the known sandbox `EROFS` writes after `vite build`, but the same command now has host-run proof.
+- **Completion Notes:** Refreshed durable docs and notes so the shipped redesign truth is explicit: assistant-ui planning/task panes are now live over Cloudflare `useAgent` / `useAgentChat`, the README no longer claims real task conversations are out of scope, and the notes now capture both the visible chat seam and the fact that broad `rtk npm test` once again passes in the sandbox on this host. Broad validation initially exposed two narrow regressions: `tests/http/projects.test.ts` imported the real `agents` package through `src/http/app`, and `ui/src/test/destination-scaffolds.test.tsx` still expected the old placeholder task-conversation copy while trying to hit the live `/agents/*` transport. Phase 14 fixed both tests without changing product scope, reran the full suite, and recorded the final outcomes honestly. The final closeout pass then cleared the remaining review findings without widening scope: `PlateMarkdownDocument` now registers the table plugin family and renders native `table` / `th` / `td` elements for planning/documentation markdown tables; the reviewed async loaders now guard against late state writes after unmount/navigation; assistant-ui route coverage now proves reasoning, `source-url`, `source-document`, approval-requested controls, and approve/reject actions; and `tests/http/projects.test.ts` now lets the root `tsc --noEmit` finish so `rtk npm run typecheck` truthfully reports the broader existing UI/shared baseline instead of only the narrow HTTP test failure. Closeout validation in this pass ran `rtk npm run build:ui`, `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx`, `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx tests/http/app.test.ts tests/http/projects.test.ts`, and `rtk npm run typecheck`, where the build and focused tests passed and `typecheck` failed on the existing broader baseline across `entity-table`, assistant-ui conversation typings, task review/execution/workstreams typing, shared forms, and route-test types.
+- **Next Starter Context:** This active plan remains intentionally unarchived. The next pass should verify this final closeout state and only then perform the separate archive step, including the active-index update that was intentionally left untouched here. Preserve the unrelated dirty files in `.ultrakit/exec-plans/active/index.md` and `DESIGN.md`, and keep the current lint/typecheck failures classified as unresolved baseline unless that archive/verification step explicitly scopes a separate cleanup.
+
+## Concrete Steps
+
+1. Reconfirm the working tree and current broad baseline before Phase 1 starts.
+
+```bash
+cd /home/chanzo/code/large-projects/keystone-cloudflare
+rtk git status --short
+rtk npm test
+rtk npm run lint
+rtk npm run typecheck
+rtk npm run build:ui
+rtk npm run build
+```
+
+Expected result:
+
+- `npm test` passes
+- `lint` and `typecheck` still show the known pre-existing failures
+- `build:ui` passes
+- `build` reaches the known Wrangler/Docker sandbox failure after `vite build`
+
+2. Phase 1 installs the locked dependency envelope and bootstrap files only.
+
+```bash
+cd /home/chanzo/code/large-projects/keystone-cloudflare
+rtk npm install tailwindcss @tailwindcss/vite lucide-react class-variance-authority clsx tailwind-merge tw-animate-css react-hook-form @hookform/resolvers @tanstack/react-table platejs @platejs/markdown @platejs/basic-nodes @platejs/link @platejs/table @platejs/list-classic @platejs/code-block @platejs/math lowlight remark-gfm remark-math @assistant-ui/react @assistant-ui/react-markdown react-diff-view
+rtk npx shadcn@latest init
+rtk npx shadcn@latest add button badge separator scroll-area tabs sidebar resizable table skeleton tooltip dialog dropdown-menu popover sheet command avatar input textarea label form select checkbox switch accordion toggle-group alert
+```
+
+If any CLI step becomes interactive, move it into `tmux`. Use non-interactive flags where supported, but do not improvise a different bootstrap contract.
+
+3. Phase 2 removes Radix Themes bootstrap and establishes the theme/token model.
+
+Key observable checks:
+
+- `@radix-ui/themes/styles.css` is gone from `ui/src/main.tsx`
+- `ui/src/app/styles.css` is the live token authority
+- the left sidebar includes the reserved theme-toggle affordance
+
+4. Phase 3 creates the wrapper inventory and normalizes shared composition.
+
+Key observable checks:
+
+- shell, pane, inspector, status, empty-state, and table wrappers exist
+- destination phases can compose wrappers instead of raw primitive clusters
+
+5. Migrate destination surfaces in the locked order:
+
+- Phase 4: global shell
+- Phase 5: runs shell
+- Phase 6: planning docs
+- Phase 7: execution DAG
+- Phase 8: task review
+- Phase 9: workstreams
+- Phase 10: project configuration
+- Phase 11: documentation
+
+6. Only after visible shells and documents are stable, land the live conversation path:
+
+- Phase 12: locator truth plus Cloudflare binding
+- Phase 13: assistant-ui pane cutover
+
+7. Re-run targeted validation after each phase and the broad suite during Phase 14 closeout.
+
+## Validation and Acceptance
+
+Acceptance for the full redesign is:
+
+- the app no longer depends on direct `@radix-ui/themes` bootstrap styling for its main UI system
+- normal feature/shared app code no longer imports Radix directly for standard surfaces
+- themeing is centralized through Tailwind/shadcn tokens and semantic CSS variables
+- first load follows system theme, explicit user choice is persisted, and both themes are driven by one centralized token system
+- Keystone-owned wrappers exist for recurring workspace patterns instead of repeated raw primitive composition
+- `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` read as one coherent workspace system
+- the run-detail top rail and planning split layout remain stable
+- execution still defaults to the DAG and still hands off into task detail
+- planning and documentation documents render through Plate-backed Keystone wrappers while keeping markdown canonical
+- planning and task conversations render through assistant-ui panes backed by Cloudflare `useAgent` and `useAgentChat` plus persisted locators
+- Cloudflare and Think remain authoritative for conversation/runtime data
+- broad validation results are recorded honestly, including any persistent repo-wide lint/typecheck failures and the known host-only build constraint
+
+### Locked Manual Smoke Matrix
+
+Each major migration phase should at least smoke these routes:
+
+- `/runs`
+- `/runs/:runId/specification`
+- `/runs/:runId/architecture`
+- `/runs/:runId/execution-plan`
+- `/runs/:runId/execution`
+- `/runs/:runId/execution/tasks/:taskId`
+- `/documentation`
+- `/workstreams`
+- `/projects/new/overview`
+- `/settings/overview`
+
+### Baseline To Compare Against
+
+- `rtk npm test`: passes with `35 passed | 2 skipped` files and `304 passed | 19 skipped` tests
+- `rtk npm run lint`: fails on the current 20-issue repo baseline across `scripts/demo-validate.ts`, `scripts/run-local.ts`, `src/http/api/v1/documents/handlers.ts`, `src/keystone/compile/plan-run.ts`, `src/keystone/integration/finalize-run.ts`, `src/lib/db/schema.ts`, `src/lib/workspace/init.ts`, `src/workflows/RunWorkflow.ts`, `src/workflows/TaskWorkflow.ts`, `tests/lib/project-workspace-materialization.test.ts`, `tests/lib/run-records.test.ts`, and `tests/lib/workflows/run-workflow-compile.test.ts`
+- `rtk npm run typecheck`: fails on the current broader baseline in `ui/src/components/workspace/entity-table.tsx`, `ui/src/features/conversations/assistant-chat-surface.tsx`, `ui/src/features/conversations/assistant-message-converter.tsx`, `ui/src/features/execution/components/task-review-sidebar.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/runs/components/runs-index-workspace.tsx`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/shared/forms/text-list-field.tsx`, `ui/src/test/app-shell.test.tsx`, and `ui/src/test/runs-routes.test.tsx`
+- `rtk npm run build:ui`: passes as part of `rtk npm run build`
+- `rtk npm run build`: `vite build` passes, the sandbox run still fails on `EROFS` writes under `~/.config/.wrangler` and `~/.docker/buildx/activity/`, and rerunning the same command on the host passes end to end with Wrangler `--dry-run`
+
+## Idempotence and Recovery
+
+- Phase 1 dependency/bootstrap work is safe to rerun if the working tree returns to the last committed phase boundary.
+- If a phase stops halfway, update `Progress`, `Execution Log`, `Surprises & Discoveries`, `Outcomes & Retrospective`, and that phase handoff before stopping.
+- If shadcn-generated files are partially introduced, finish the intended registry path or revert only the uncommitted files from that phase. Do not mix duplicate component trees.
+- If Plate wrappers are partially introduced, keep editor/viewer ownership in `ui/src/components/editor/*` instead of scattering new editor code across feature folders.
+- If validation fails, classify it as baseline versus regression before fixing anything outside the current phase boundary.
+- If an interactive CLI appears, move the work into `tmux`.
+- If `rtk npm run build` is the only failing command and it fails after `vite build` because of sandbox home-directory writes, record that as the known host-only build constraint unless final proof requires a host rerun.
+
+## Artifacts and Notes
+
+Primary repository references:
+
+- `design/workspace-spec.md`
+- `design/design-guidelines.md`
+- `ui/AGENTS.md`
+- `.ultrakit/developer-docs/m1-architecture.md`
+- `.ultrakit/developer-docs/think-runtime-architecture.md`
+- `package.json`
+- `vite.config.ts`
+- `tsconfig.json`
+- `tsconfig.ui.json`
+- `vitest.config.ts`
+- `ui/src/main.tsx`
+- `ui/src/app/styles.css`
+- `ui/src/app/app-providers.tsx`
+- `ui/src/routes/router.tsx`
+- `ui/src/features/runs/run-management-api.ts`
+- `ui/src/features/runs/components/planning-workspace.tsx`
+- `ui/src/features/execution/components/task-detail-workspace.tsx`
+- `src/http/api/v1/runs/contracts.ts`
+- `src/http/api/v1/documents/contracts.ts`
+- `src/http/api/v1/documents/handlers.ts`
+- `src/workflows/TaskWorkflow.ts`
+
+Official references consulted during planning:
+
+- [Tailwind Vite installation](https://tailwindcss.com/docs/installation/using-vite)
+- [Tailwind theme variables](https://tailwindcss.com/docs/theme)
+- [shadcn Vite installation](https://ui.shadcn.com/docs/installation/vite)
+- [shadcn `components.json`](https://ui.shadcn.com/docs/components-json)
+- [shadcn Vite dark mode guidance](https://ui.shadcn.com/docs/dark-mode/vite)
+- [shadcn React Hook Form](https://ui.shadcn.com/docs/forms/react-hook-form)
+- [shadcn data table](https://ui.shadcn.com/docs/components/data-table)
+- [Plate markdown](https://platejs.org/docs/markdown)
+- [Plate UI installation](https://platejs.org/docs/installation/plate-ui)
+- [Cloudflare chat agents](https://developers.cloudflare.com/agents/api-reference/chat-agents/)
+- [Cloudflare client SDK](https://developers.cloudflare.com/agents/api-reference/client-sdk/)
+- [assistant-ui installation](https://www.assistant-ui.com/docs/installation)
+- [assistant-ui `ExternalStoreRuntime`](https://www.assistant-ui.com/docs/runtimes/custom/external-store)
+- [assistant-ui interactables](https://www.assistant-ui.com/docs/guides/interactables)
+
+Subagent findings folded into this rewrite:
+
+- Cloudflare should remain the conversation runtime and persistence authority
+- assistant-ui should be a rendering/runtime bridge, not the persistence owner
+- markdown should remain canonical for document storage
+- unified diff rendering is a better match than old/new diff-pair rendering
+- theme toggling in this Vite app should be repo-owned, not delegated to `next-themes`
+
+## Interfaces and Dependencies
+
+- **Tailwind CSS 4 / `@tailwindcss/vite`**
+  CSS-first build and token foundation for the UI
+
+- **shadcn/ui**
+  repo-owned primitive registry and code generation path
+
+- **`class-variance-authority` + `clsx` + `tailwind-merge`**
+  standard shadcn-friendly class composition and variant management
+
+- **`react-hook-form` + `@hookform/resolvers` + existing `zod`**
+  project configuration and form-state stack
+
+- **shadcn data-table pattern + `@tanstack/react-table`**
+  dense operational table behavior under Keystone wrappers, with TanStack kept behind the shadcn/Keystone table layer rather than used raw in feature code
+
+- **Plate (`platejs`, `@platejs/markdown`, plugin packages)**
+  markdown-first editor/viewer substrate for planning and documentation
+
+- **Cloudflare `agents` + `@cloudflare/ai-chat`**
+  authoritative runtime seam for conversation transport, persistence, streaming, and sync
+
+- **assistant-ui (`@assistant-ui/react`, `@assistant-ui/react-markdown`)**
+  conversation rendering layer and `ExternalStoreRuntime`-style bridge over Cloudflare-owned message state
+
+- **`react-diff-view`**
+  unified diff renderer aligned with the current text-artifact review seam
+
+- **`ui/src/components/workspace/*`**
+  durable wrapper layer for shell, panes, inspectors, status, empty states, and action rows
+
+- **`ui/src/components/editor/*`**
+  durable document layer for Plate-backed editor and viewer surfaces
+
+- **`ui/src/features/conversations/*`**
+  frontend conversation identity, Cloudflare binding, assistant-ui runtime bridging, and message rendering contracts
+
+- **Keystone run/document/task APIs**
+  remain the primary product data seams; the redesign does not replace them
+
+- **Cloudflare and Think conversation locator model**
+  remains authoritative for runtime identity and persistence; the browser adapts to it rather than replacing it

@@ -448,7 +448,10 @@ const mocked = vi.hoisted(() => {
       createDocumentRepositoryClient(projectDocumentRepositoryFixture, close)
     ),
     deleteArtifactRef: vi.fn(async () => null),
-    getArtifactText: vi.fn(async (_bucket: R2Bucket, _key: string): Promise<string | null> => null),
+    getArtifactText: vi.fn(
+      async (_bucket: R2Bucket, _key: string): Promise<string | null> => null
+    ),
+    routeAgentRequest: vi.fn(async (): Promise<Response | null> => null),
     createArtifactRef: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,
       artifactRefId: "artifact-project-spec-v2",
@@ -746,6 +749,10 @@ vi.mock("../../src/http/handlers/dev-smoke", () => ({
 
 vi.mock("../../src/http/handlers/dev-think", () => ({
   runThinkSmokeHandler: vi.fn()
+}));
+
+vi.mock("agents", () => ({
+  routeAgentRequest: mocked.routeAgentRequest
 }));
 
 const documentsDb = await import("../../src/lib/db/documents");

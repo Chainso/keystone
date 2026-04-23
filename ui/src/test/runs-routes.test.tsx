@@ -2,6 +2,196 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import type { UIMessage } from "ai";
+
+interface CloudflareChatMock {
+  addToolApprovalResponse: ReturnType<typeof vi.fn>;
+  addToolOutput: ReturnType<typeof vi.fn>;
+  append: ReturnType<typeof vi.fn>;
+  clearError: ReturnType<typeof vi.fn>;
+  clearHistory: ReturnType<typeof vi.fn>;
+  data: unknown[];
+  error: unknown;
+  handleInputChange: ReturnType<typeof vi.fn>;
+  handleSubmit: ReturnType<typeof vi.fn>;
+  input: string;
+  isServerStreaming: boolean;
+  isStreaming: boolean;
+  messages: UIMessage[];
+  reload: ReturnType<typeof vi.fn>;
+  resumeStream: ReturnType<typeof vi.fn>;
+  sendMessage: ReturnType<typeof vi.fn>;
+  setData: ReturnType<typeof vi.fn>;
+  setInput: ReturnType<typeof vi.fn>;
+  setMessages: ReturnType<typeof vi.fn>;
+  status: "error" | "idle" | "streaming" | "submitted";
+  stop: ReturnType<typeof vi.fn>;
+}
+
+function createCloudflareChatMock(overrides: Partial<CloudflareChatMock> = {}) {
+  return {
+    ...defaultCloudflareChatMock(),
+    ...overrides
+  };
+}
+
+function defaultCloudflareChatMock(): CloudflareChatMock {
+  return {
+    addToolApprovalResponse: vi.fn(),
+    addToolOutput: vi.fn(),
+    append: vi.fn(),
+    clearError: vi.fn(),
+    clearHistory: vi.fn(),
+    data: [],
+    error: undefined,
+    handleInputChange: vi.fn(),
+    handleSubmit: vi.fn(),
+    input: "",
+    isServerStreaming: false,
+    isStreaming: false,
+    messages: [] as UIMessage[],
+    reload: vi.fn(),
+    resumeStream: vi.fn(),
+    sendMessage: vi.fn(),
+    setData: vi.fn(),
+    setInput: vi.fn(),
+    setMessages: vi.fn(),
+    status: "idle",
+    stop: vi.fn()
+  };
+}
+
+function createConversationMessage(
+  id: string,
+  role: UIMessage["role"],
+  parts: UIMessage["parts"]
+): UIMessage {
+  return {
+    id,
+    parts,
+    role
+  };
+}
+
+function createAssistantTranscriptMessages(): UIMessage[] {
+  return [
+    createConversationMessage("planning-user-1", "user", [
+      {
+        text: "Summarize the current planning state.",
+        type: "text"
+      }
+    ]),
+    createConversationMessage("planning-assistant-1", "assistant", [
+      {
+        text: "### Transcript summary\n- Keep Cloudflare as the conversation authority.\n- Render tool outcomes truthfully.\n",
+        type: "text"
+      },
+      {
+        text: "Inspect the planning note before requesting host access.",
+        type: "reasoning"
+      },
+      {
+        sourceId: "source-agents-docs",
+        title: "Cloudflare Agents docs",
+        type: "source-url",
+        url: "https://developers.cloudflare.com/agents/"
+      },
+      {
+        filename: "planning-context.md",
+        mediaType: "text/markdown",
+        sourceId: "source-planning-context",
+        title: "Planning context bundle",
+        type: "source-document"
+      },
+      {
+        data: {
+          activeTasks: 1,
+          updatedFiles: 2
+        },
+        type: "data-execution-metrics"
+      },
+      {
+        errorText: "Host shell unavailable.",
+        input: {
+          cmd: "rtk npm run build:ui"
+        },
+        state: "output-error",
+        toolCallId: "tool-error-1",
+        toolName: "run_command",
+        type: "dynamic-tool"
+      },
+      {
+        approval: {
+          approved: false,
+          id: "approval-denied-1",
+          reason: "User rejected host access."
+        },
+        input: {
+          cmd: "wrangler dev"
+        },
+        state: "output-denied",
+        toolCallId: "tool-denied-1",
+        toolName: "request_host_access",
+        type: "dynamic-tool"
+      },
+      {
+        approval: {
+          id: "approval-requested-1"
+        },
+        input: {
+          cmd: "rtk npm run typecheck"
+        },
+        state: "approval-requested",
+        toolCallId: "tool-approval-1",
+        toolName: "request_human_approval",
+        type: "dynamic-tool"
+      },
+      {
+        filename: "plan.diff",
+        mediaType: "text/plain",
+        type: "file",
+        url: "https://example.com/plan.diff"
+      }
+    ])
+  ];
+}
+
+const cloudflareConversationMocks = vi.hoisted(() => ({
+  useAgent: vi.fn((options: { agent: string; name?: string; query?: Record<string, string> }) => ({
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    send: vi.fn(),
+    close: vi.fn(),
+    reconnect: vi.fn(),
+    ready: Promise.resolve(),
+    identified: true,
+    state: undefined,
+    setState: vi.fn(),
+    call: vi.fn(),
+    stub: {},
+    getHttpUrl: () => `http://example.com/agents/${options.agent}/${options.name ?? "default"}`,
+    agent: options.agent,
+    name: options.name ?? "default"
+  })),
+  useAgentChat: vi.fn(() => createCloudflareChatMock())
+}));
+
+type WindowWithDevAuth = Window & {
+  __KESTONE_UI_DEV_AUTH__?:
+    | {
+        tenantId?: string;
+        token?: string;
+      }
+    | undefined;
+};
+
+vi.mock("agents/react", () => ({
+  useAgent: cloudflareConversationMocks.useAgent
+}));
+
+vi.mock("@cloudflare/ai-chat/react", () => ({
+  useAgentChat: cloudflareConversationMocks.useAgentChat
+}));
 
 import type { RunManagementApi, StaticRunDetailRecord } from "../features/runs/run-management-api";
 import {
@@ -12,9 +202,19 @@ import { renderRoute } from "./render-route";
 
 afterEach(() => {
   cleanup();
+  cloudflareConversationMocks.useAgent.mockClear();
+  cloudflareConversationMocks.useAgentChat.mockImplementation(() => createCloudflareChatMock());
+  cloudflareConversationMocks.useAgentChat.mockClear();
+  (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = undefined;
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
+
+type FetchRequestRecord = {
+  jsonBody?: unknown;
+  method: string;
+  url: string;
+};
 
 function createDeferred<T>() {
   let resolvePromise: ((value: T) => void) | null = null;
@@ -33,6 +233,58 @@ function createDeferred<T>() {
       resolvePromise?.(value);
     }
   };
+}
+
+function getPlanningDocumentRegion(documentLabel: string) {
+  return screen.getByRole("region", { name: documentLabel });
+}
+
+function normalizeRenderedText(text: string | null | undefined) {
+  return text?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function expectPlanningDocumentHeading(documentLabel: string, heading: string) {
+  expect(
+    within(getPlanningDocumentRegion(documentLabel)).getByRole("heading", {
+      level: 1,
+      name: heading
+    })
+  ).toBeInTheDocument();
+}
+
+function expectPlanningDocumentToContain(documentLabel: string, expectedText: string) {
+  const normalizedExpectedText = expectedText.replace(/^[-*]\s*/, "").trim();
+  const matchingListItem = within(getPlanningDocumentRegion(documentLabel))
+    .queryAllByRole("listitem")
+    .find((item) => normalizeRenderedText(item.textContent).includes(normalizedExpectedText));
+
+  expect(matchingListItem).toBeTruthy();
+}
+
+function expectPlanningChatSurface() {
+  expect(screen.getByText("Planning conversation ready")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "This document already has a persisted Cloudflare conversation. Send the next planning turn here."
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Continue the planning conversation with Keystone.")
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+}
+
+function expectTaskChatSurface() {
+  expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Continue this task conversation with Keystone.")
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
 }
 
 function createRunFixture(
@@ -237,8 +489,10 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
   "run-104": {
     ...createRunFixture("run-104", {
       artifactContents: {
-        "/v1/artifacts/artifact-task-032-diff/content":
-          "--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n+ keep artifact access inside the authenticated run API seam\n"
+        "/v1/artifacts/artifact-task-032-review/content":
+          "diff --git a/ui/src/features/execution/components/task-detail-workspace.tsx b/ui/src/features/execution/components/task-detail-workspace.tsx\nindex 1111111..2222222 100644\n--- a/ui/src/features/execution/components/task-detail-workspace.tsx\n+++ b/ui/src/features/execution/components/task-detail-workspace.tsx\n@@ -18,3 +18,4 @@ export function TaskDetailWorkspace() {\n-  return <p>Artifacts and review</p>;\n+  return <p>Code review</p>;\n+  // keep artifact access inside the authenticated run API seam\n }\ndiff --git a/ui/src/features/execution/components/task-review-sidebar.tsx b/ui/src/features/execution/components/task-review-sidebar.tsx\nnew file mode 100644\n--- /dev/null\n+++ b/ui/src/features/execution/components/task-review-sidebar.tsx\n@@ -0,0 +1,3 @@\n+export function TaskReviewSidebar() {\n+  return \"render unified diffs from task artifact content\";\n+}\n",
+        "/v1/artifacts/artifact-task-032-note/content":
+          "# Review note\n\nKept task-level review inside the authenticated run API seam.\n"
       },
       run: {
         compiledFrom: {
@@ -258,18 +512,26 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
       taskArtifacts: {
         "task-032": [
           {
-            artifactId: "artifact-task-032-diff",
+            artifactId: "artifact-task-032-review",
             contentType: "text/plain; charset=utf-8",
-            contentUrl: "/v1/artifacts/artifact-task-032-diff/content",
-            kind: "git_diff",
+            contentUrl: "/v1/artifacts/artifact-task-032-review/content",
+            kind: "staged_output",
             sha256: "task-032-sha",
             sizeBytes: 4096
+          },
+          {
+            artifactId: "artifact-task-032-note",
+            contentType: "text/markdown; charset=utf-8",
+            contentUrl: "/v1/artifacts/artifact-task-032-note/content",
+            kind: "run_note",
+            sha256: "task-032-note-sha",
+            sizeBytes: 1024
           },
           {
             artifactId: "artifact-task-032-preview",
             contentType: "image/png",
             contentUrl: "/v1/artifacts/artifact-task-032-preview/content",
-            kind: "screenshot",
+            kind: "staged_output",
             sha256: "task-032-preview-sha",
             sizeBytes: 8192
           }
@@ -425,7 +687,7 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
             artifactId: "artifact-task-082-diff",
             contentType: "text/plain; charset=utf-8",
             contentUrl: "/v1/artifacts/artifact-task-082-diff/content",
-            kind: "git_diff",
+            kind: "staged_output",
             sha256: "task-082-sha",
             sizeBytes: 2048
           }
@@ -645,6 +907,194 @@ const runFixtures: Record<string, StaticRunDetailRecord> = {
         }
       }
     })
+  },
+  "run-110": {
+    ...createRunFixture("run-110", {
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-110-architecture-v1",
+          compiledAt: "2026-04-20T13:20:00.000Z",
+          executionPlanRevisionId: "run-110-execution-plan-v1",
+          specificationRevisionId: "run-110-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "scripted",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-110",
+        startedAt: "2026-04-20T13:21:00.000Z",
+        status: "active",
+        workflowInstanceId: "wf-run-110"
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Build the shared execution plan foundation.",
+          endedAt: "2026-04-20T13:23:00.000Z",
+          logicalTaskId: "TASK-110",
+          name: "Execution plan foundation",
+          runId: "run-110",
+          startedAt: "2026-04-20T13:21:30.000Z",
+          status: "completed",
+          taskId: "task-110-foundation",
+          updatedAt: "2026-04-20T13:23:00.000Z"
+        },
+        {
+          conversation: {
+            agentClass: "KeystoneThinkAgent",
+            agentName: "tenant:tenant-dev-local:run:run-110:task:task-110-ui"
+          },
+          dependsOn: ["task-110-foundation"],
+          description: "Apply the workflow-first execution workspace in the UI shell.",
+          endedAt: null,
+          logicalTaskId: "TASK-111",
+          name: "Workflow-first UI cutover",
+          runId: "run-110",
+          startedAt: "2026-04-20T13:24:00.000Z",
+          status: "active",
+          taskId: "task-110-ui",
+          updatedAt: "2026-04-20T13:24:00.000Z"
+        },
+        {
+          conversation: null,
+          dependsOn: ["task-110-foundation"],
+          description: "Wire the run routes and data seams for the branching DAG state.",
+          endedAt: null,
+          logicalTaskId: "TASK-112",
+          name: "API route wiring",
+          runId: "run-110",
+          startedAt: null,
+          status: "ready",
+          taskId: "task-110-api",
+          updatedAt: "2026-04-20T13:24:00.000Z"
+        },
+        {
+          conversation: null,
+          dependsOn: ["task-110-ui", "task-110-api"],
+          description: "Validate the merged execution changes before release.",
+          endedAt: null,
+          logicalTaskId: "TASK-113",
+          name: "Validation sweep",
+          runId: "run-110",
+          startedAt: null,
+          status: "pending",
+          taskId: "task-110-verify",
+          updatedAt: "2026-04-20T13:25:00.000Z"
+        }
+      ],
+      workflow: {
+        edges: [
+          { fromTaskId: "task-110-foundation", toTaskId: "task-110-ui" },
+          { fromTaskId: "task-110-foundation", toTaskId: "task-110-api" },
+          { fromTaskId: "task-110-ui", toTaskId: "task-110-verify" },
+          { fromTaskId: "task-110-api", toTaskId: "task-110-verify" }
+        ],
+        nodes: [
+          {
+            dependsOn: [],
+            name: "Execution plan foundation",
+            status: "completed",
+            taskId: "task-110-foundation"
+          },
+          {
+            dependsOn: ["task-110-foundation"],
+            name: "Workflow-first UI cutover",
+            status: "active",
+            taskId: "task-110-ui"
+          },
+          {
+            dependsOn: ["task-110-foundation"],
+            name: "API route wiring",
+            status: "ready",
+            taskId: "task-110-api"
+          },
+          {
+            dependsOn: ["task-110-ui", "task-110-api"],
+            name: "Validation sweep",
+            status: "pending",
+            taskId: "task-110-verify"
+          }
+        ],
+        summary: {
+          activeTasks: 1,
+          cancelledTasks: 0,
+          completedTasks: 1,
+          failedTasks: 0,
+          pendingTasks: 1,
+          readyTasks: 1,
+          totalTasks: 4
+        }
+      }
+    })
+  },
+  "run-111": {
+    ...createRunFixture("run-111", {
+      run: {
+        compiledFrom: {
+          architectureRevisionId: "run-111-architecture-v1",
+          compiledAt: "2026-04-20T13:26:00.000Z",
+          executionPlanRevisionId: "run-111-execution-plan-v1",
+          specificationRevisionId: "run-111-specification-v1"
+        },
+        endedAt: null,
+        executionEngine: "think_live",
+        projectId: "project-keystone-cloudflare",
+        runId: "run-111",
+        startedAt: "2026-04-20T13:26:30.000Z",
+        status: "active",
+        workflowInstanceId: "wf-run-111"
+      },
+      tasks: [
+        {
+          conversation: null,
+          dependsOn: [],
+          description: "Materialize the first task row from the compiled workflow.",
+          endedAt: "2026-04-20T13:27:30.000Z",
+          logicalTaskId: "TASK-120",
+          name: "Foundation bootstrap",
+          runId: "run-111",
+          startedAt: "2026-04-20T13:26:45.000Z",
+          status: "completed",
+          taskId: "task-111-foundation",
+          updatedAt: "2026-04-20T13:27:30.000Z"
+        }
+      ],
+      workflow: {
+        edges: [
+          { fromTaskId: "task-111-foundation", toTaskId: "task-111-ui" },
+          { fromTaskId: "task-111-foundation", toTaskId: "task-111-api" }
+        ],
+        nodes: [
+          {
+            dependsOn: [],
+            name: "Foundation bootstrap",
+            status: "completed",
+            taskId: "task-111-foundation"
+          },
+          {
+            dependsOn: ["task-111-foundation"],
+            name: "Lagging UI task row",
+            status: "active",
+            taskId: "task-111-ui"
+          },
+          {
+            dependsOn: ["task-111-foundation"],
+            name: "Lagging API task row",
+            status: "ready",
+            taskId: "task-111-api"
+          }
+        ],
+        summary: {
+          activeTasks: 1,
+          cancelledTasks: 0,
+          completedTasks: 1,
+          failedTasks: 0,
+          pendingTasks: 0,
+          readyTasks: 1,
+          totalTasks: 3
+        }
+      }
+    })
   }
 };
 
@@ -654,9 +1104,24 @@ function renderRunRoute(initialEntry: string, runApi: RunManagementApi = staticR
   return renderRoute(initialEntry, { runApi });
 }
 
+function expectRunDetailStateChrome() {
+  expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
+  expect(screen.getByText("Run workspace")).toBeInTheDocument();
+}
+
 function createRunApi(overrides: Partial<RunManagementApi> = {}): RunManagementApi {
   return {
     ...staticRunApi,
+    ...overrides
+  };
+}
+
+function createRunApiFromFixtures(
+  fixtures: Record<string, StaticRunDetailRecord>,
+  overrides: Partial<RunManagementApi> = {}
+): RunManagementApi {
+  return {
+    ...createStaticRunManagementApi(fixtures),
     ...overrides
   };
 }
@@ -724,6 +1189,16 @@ function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
 
   expect(headers.get("authorization")).toBe("Bearer change-me-local-token");
   expect(headers.get("x-keystone-tenant-id")).toBe("tenant-dev-local");
+}
+
+function expectConversationBindingHeaders(
+  headers: HeadersInit | undefined,
+  auth: { tenantId: string; token: string }
+) {
+  const normalizedHeaders = new Headers(headers);
+
+  expect(normalizedHeaders.get("authorization")).toBe(`Bearer ${auth.token}`);
+  expect(normalizedHeaders.get("x-keystone-tenant-id")).toBe(auth.tenantId);
 }
 
 function createErrorResponse(input: { code: string; message: string; status: number }) {
@@ -814,6 +1289,74 @@ function getFetchRequests(fetchMock: ReturnType<typeof vi.fn>) {
   }));
 }
 
+async function buildFetchRequestRecord(
+  request: RequestInfo | URL,
+  init?: RequestInit
+): Promise<FetchRequestRecord> {
+  const record: FetchRequestRecord = {
+    method: getRunRequestMethod(request, init),
+    url: getRunRequestUrl(request)
+  };
+
+  if (request instanceof Request) {
+    if (!request.headers.get("content-type")?.includes("application/json")) {
+      return record;
+    }
+
+    try {
+      record.jsonBody = await request.clone().json();
+    } catch {
+      // Ignore non-JSON or unreadable request bodies in the recorder.
+    }
+
+    return record;
+  }
+
+  if (!new Headers(init?.headers).get("content-type")?.includes("application/json")) {
+    return record;
+  }
+
+  if (typeof init?.body !== "string" || init.body.length === 0) {
+    return record;
+  }
+
+  try {
+    record.jsonBody = JSON.parse(init.body);
+  } catch {
+    // Ignore malformed JSON in the recorder so the route handler still surfaces failures.
+  }
+
+  return record;
+}
+
+function findFetchRequestRecord(
+  requestLog: FetchRequestRecord[],
+  input: {
+    method: string;
+    url: string;
+  }
+) {
+  return (
+    requestLog.find(
+      (request) => request.method === input.method && request.url === input.url
+    ) ?? null
+  );
+}
+
+function expectFetchJsonRequest(
+  requestLog: FetchRequestRecord[],
+  input: {
+    jsonBody: unknown;
+    method: string;
+    url: string;
+  }
+) {
+  const request = findFetchRequestRecord(requestLog, input);
+
+  expect(request).not.toBeNull();
+  expect(request?.jsonBody).toEqual(input.jsonBody);
+}
+
 function countFetchRequests(
   fetchMock: ReturnType<typeof vi.fn>,
   input: {
@@ -830,7 +1373,10 @@ function createBrowserRunFetch(
   overrides: Record<string, (() => Promise<Response> | Response) | undefined> = {}
 ) {
   const browserRunFixtures = cloneRunFixtures();
+  const requestLog: FetchRequestRecord[] = [];
   const fetchMock = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+    requestLog.push(await buildFetchRequestRecord(request, init));
+
     const url = getRunRequestUrl(request);
     const method = getRunRequestMethod(request, init);
 
@@ -1200,7 +1746,8 @@ function createBrowserRunFetch(
   vi.stubGlobal("fetch", fetchMock);
 
   return {
-    fetchMock
+    fetchMock,
+    requestLog
   };
 }
 
@@ -1275,6 +1822,19 @@ describe("Run routes", () => {
     expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
   });
 
+  it("renders the run workspace frame with back-link, metadata, and stage summaries", async () => {
+    renderRunRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
+    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
+    expect(screen.getByText("Engine Think Live")).toBeInTheDocument();
+    const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
+
+    expect(within(phaseNavigation).getByText("Agent chat plus the living product spec.")).toBeInTheDocument();
+    expect(within(phaseNavigation).getByText("Workflow DAG first, then task detail.")).toBeInTheDocument();
+  });
+
   it("renders the loading state before the live run provider resolves", async () => {
     const deferredRun = createDeferred<StaticRunDetailRecord["run"]>();
     const runApi = createRunApi({
@@ -1284,6 +1844,7 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/specification", runApi);
 
     expect(await screen.findByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
 
     deferredRun.resolve(runFixtures["run-104"]!.run);
 
@@ -1312,6 +1873,7 @@ describe("Run routes", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Loading run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.queryByRole("heading", { name: "run-101" })).not.toBeInTheDocument();
 
     deferredRun.resolve(runFixtures["run-104"]!.run);
@@ -1321,6 +1883,7 @@ describe("Run routes", () => {
 
   it.each([
     {
+      documentHeading: "Architecture",
       documentPath: "architecture",
       expectedLine: "- Keep route files thin.",
       path: "/runs/run-104/architecture",
@@ -1328,6 +1891,7 @@ describe("Run routes", () => {
       revisionTitle: "Run Architecture"
     },
     {
+      documentHeading: "Execution Plan",
       documentPath: "execution-plan",
       expectedLine: "- Cut over the live provider seam.",
       path: "/runs/run-104/execution-plan",
@@ -1336,34 +1900,229 @@ describe("Run routes", () => {
     }
   ])(
     "loads the current planning revision for $path through the live route seam",
-    async ({ documentPath, expectedLine, path, phaseHeading, revisionTitle }) => {
+    async ({
+      documentHeading,
+      documentPath,
+      expectedLine,
+      path,
+      phaseHeading,
+      revisionTitle
+    }) => {
       createBrowserRunFetch();
 
       renderRoute(path);
 
       expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: phaseHeading })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: revisionTitle })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: `${revisionTitle} document` })).toBeInTheDocument();
       expect(screen.getByText(documentPath)).toBeInTheDocument();
-      expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-        "Conversation attached to this document."
-      );
-      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+      expectPlanningChatSurface();
+      expectPlanningDocumentHeading(`${revisionTitle} document`, documentHeading);
+      expectPlanningDocumentToContain(`${revisionTitle} document`, expectedLine);
     }
   );
 
-  it("loads the current specification revision and saves a new revision without route churn", async () => {
-    const { fetchMock } = createBrowserRunFetch();
+  it("renders planning markdown tables through the shared Plate document surface", async () => {
+    const fixtures = cloneRunFixtures();
+    const runFixture = fixtures["run-104"];
+
+    if (!runFixture) {
+      throw new Error("Missing run-104 fixture.");
+    }
+
+    if (!runFixture.documents || !runFixture.revisions) {
+      throw new Error("Missing planning document fixtures for run-104.");
+    }
+
+    const specificationDocument = runFixture.documents.find(
+      (document) => document.kind === "specification"
+    );
+    const specificationRevision = runFixture.revisions.find(
+      (candidate) => candidate.documentId === specificationDocument?.documentId
+    );
+
+    if (!specificationRevision) {
+      throw new Error("Missing specification revision fixture for run-104.");
+    }
+
+    specificationRevision.content =
+      "# Specification\n\n| Surface | Status |\n| --- | --- |\n| Planning | Live |\n| Documentation | Shared |\n";
+
+    renderRunRoute("/runs/run-104/specification", createRunApiFromFixtures(fixtures));
+
+    const documentRegion = await screen.findByRole("region", {
+      name: "Run Specification document"
+    });
+    const table = within(documentRegion).getByRole("table");
+
+    expect(within(table).getByRole("columnheader", { name: "Surface" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(within(table).getByText("Planning")).toBeInTheDocument();
+    expect(within(table).getByText("Documentation")).toBeInTheDocument();
+    expect(within(table).getByText("Shared")).toBeInTheDocument();
+  });
+
+  it("binds a planning page to the persisted Cloudflare conversation locator", async () => {
+    const browserAuth = {
+      token: "browser-agent-token",
+      tenantId: "tenant-browser"
+    };
+    (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = browserAuth;
+
+    renderRunRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expectPlanningChatSurface();
+
+    await waitFor(() => {
+      expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent: "PlanningDocumentAgent",
+          name: "run-104-specification-conversation",
+          query: {
+            keystoneTenantId: browserAuth.tenantId,
+            keystoneToken: browserAuth.token
+          }
+        })
+      );
+    });
+
+    const planningAgentHandle = cloudflareConversationMocks.useAgent.mock.results.find(
+      (result) =>
+        result.type === "return" &&
+        result.value?.agent === "PlanningDocumentAgent" &&
+        result.value?.name === "run-104-specification-conversation"
+    )?.value;
+
+    expect(planningAgentHandle).toBeTruthy();
+    expect(cloudflareConversationMocks.useAgentChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: planningAgentHandle
+      })
+    );
+    const planningChatBinding = cloudflareConversationMocks.useAgentChat.mock.calls.find(
+      ([options]) => options?.agent === planningAgentHandle
+    )?.[0];
+
+    expectConversationBindingHeaders(planningChatBinding?.headers, browserAuth);
+    expect(planningChatBinding?.credentials).toBe("same-origin");
+  });
+
+  it("renders the unavailable planning conversation surface when no locator is attached", async () => {
+    renderRunRoute("/runs/run-105/architecture", createStaticRunManagementApi(cloneRunFixtures()));
+
+    expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
+    expect(screen.getByText("No planning conversation attached")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Create or attach a planning conversation before sending messages from this document."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Conversation unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByText("Conversation input becomes available after a locator is attached.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    expect(cloudflareConversationMocks.useAgent).not.toHaveBeenCalled();
+    expect(cloudflareConversationMocks.useAgentChat).not.toHaveBeenCalled();
+  });
+
+  it("renders planning transcripts with reasoning, sources, approvals, and structured tool outcomes", async () => {
+    const sendMessage = vi.fn();
+    const chatMock = createCloudflareChatMock({
+      addToolApprovalResponse: vi.fn(),
+      error: new Error("Cloudflare stream lost."),
+      messages: createAssistantTranscriptMessages(),
+      sendMessage,
+      status: "error" as const
+    });
+    cloudflareConversationMocks.useAgentChat.mockImplementation(() => chatMock);
+
+    renderRunRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Cloudflare stream lost.");
+    expect(screen.getByRole("heading", { name: "Transcript summary" })).toBeInTheDocument();
+    expect(
+      screen.getByText((content) =>
+        content.includes("Keep Cloudflare as the conversation authority.")
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Summarize the current planning state.")).toBeInTheDocument();
+    expect(screen.getByText("Reasoning")).toBeInTheDocument();
+    expect(
+      screen.getByText("Inspect the planning note before requesting host access.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Cloudflare Agents docs/i })
+    ).toHaveAttribute("href", "https://developers.cloudflare.com/agents/");
+    expect(screen.getByText("source document")).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("planning-context.md"))).toBeInTheDocument();
+    expect(screen.getByText(/execution metrics/i)).toBeInTheDocument();
+    expect(screen.getByText("plan.diff")).toBeInTheDocument();
+    expect(screen.getByText("run_command")).toBeInTheDocument();
+    expect(screen.getByText("request_host_access")).toBeInTheDocument();
+    expect(screen.getByText("request_human_approval")).toBeInTheDocument();
+    expect(screen.getAllByText("Outcome")).toHaveLength(2);
+    expect(
+      screen.getByText((content) => content.includes("Host shell unavailable."))
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((content) => content.includes("User rejected host access."))
+    ).toBeInTheDocument();
+
+    const approveButton = screen.getByRole("button", { name: "Approve" });
+    const rejectButton = screen.getByRole("button", { name: "Reject" });
+
+    fireEvent.click(approveButton);
+    expect(chatMock.addToolApprovalResponse).toHaveBeenCalledWith({
+      approved: true,
+      id: "approval-requested-1"
+    });
+
+    fireEvent.click(rejectButton);
+    expect(chatMock.addToolApprovalResponse).toHaveBeenCalledWith({
+      approved: false,
+      id: "approval-requested-1"
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Continue the planning conversation with Keystone."), {
+      target: {
+        value: "Continue from the persisted transcript."
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith({
+        parts: [
+          {
+            text: "Continue from the persisted transcript.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      });
+    });
+  });
+
+  it("loads the current specification revision, preserves source markdown in the save payload, and stays on-route", async () => {
+    const { fetchMock, requestLog } = createBrowserRunFetch();
     const { router } = renderRoute("/runs/run-104/specification");
+    const updatedBody =
+      "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n- [ ] Preserve task lists in saved markdown.\n- ~~Remove the legacy preview path.~~\n";
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Run Specification" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Run Specification document" })).toBeInTheDocument();
     expect(screen.getByText("specification")).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this document."
+    expectPlanningChatSurface();
+    expectPlanningDocumentHeading("Run Specification document", "Specification");
+    expectPlanningDocumentToContain(
+      "Run Specification document",
+      "- Replace scaffold run detail with live data."
     );
-    expect(screen.getByText("- Replace scaffold run detail with live data.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
 
@@ -1374,10 +2133,12 @@ describe("Run routes", () => {
     });
     fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
       target: {
-        value:
-          "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n"
+        value: updatedBody
       }
     });
+    expectPlanningDocumentHeading("Document preview", "Specification");
+    expectPlanningDocumentToContain("Document preview", "Save current revisions without route churn.");
+    expectPlanningDocumentToContain("Document preview", "Preserve task lists in saved markdown.");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -1385,8 +2146,24 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Save current revisions without route churn.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Specification v2 document",
+      "- Save current revisions without route churn."
+    );
+    expectPlanningDocumentToContain(
+      "Run Specification v2 document",
+      "Preserve task lists in saved markdown."
+    );
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+    expectFetchJsonRequest(requestLog, {
+      jsonBody: {
+        body: updatedBody,
+        contentType: "text/markdown; charset=utf-8",
+        title: "Run Specification v2"
+      },
+      method: "POST",
+      url: "/v1/runs/run-104/documents/run-104-specification/revisions"
+    });
 
     expect(getFetchRequests(fetchMock)).toEqual(
       expect.arrayContaining([
@@ -1396,6 +2173,48 @@ describe("Run routes", () => {
         })
       ])
     );
+  });
+
+  it("treats title-only planning saves as body-preserving revisions and ignores trim-only title churn", async () => {
+    const { requestLog } = createBrowserRunFetch();
+    const originalBody = "# Architecture\n- Keep route files thin.\n";
+
+    renderRoute("/runs/run-104/architecture");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+
+    const titleField = screen.getByRole("textbox", { name: "Document title" });
+    fireEvent.change(titleField, {
+      target: {
+        value: "  Run Architecture  "
+      }
+    });
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+    fireEvent.change(titleField, {
+      target: {
+        value: "Run Architecture v2"
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Run Architecture v2" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
+    });
+    expectPlanningDocumentHeading("Run Architecture v2 document", "Architecture");
+    expectPlanningDocumentToContain("Run Architecture v2 document", "- Keep route files thin.");
+    expectFetchJsonRequest(requestLog, {
+      jsonBody: {
+        body: originalBody,
+        contentType: "text/markdown; charset=utf-8",
+        title: "Run Architecture v2"
+      },
+      method: "POST",
+      url: "/v1/runs/run-104/documents/run-104-architecture/revisions"
+    });
   });
 
   it("keeps planning edits in place and allows retry after a revision save fails", async () => {
@@ -1456,7 +2275,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Retry the save after a transient failure.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Specification v2 document",
+      "- Retry the save after a transient failure."
+    );
     expect(screen.queryByText("Unable to save specification changes.")).not.toBeInTheDocument();
     expect(createRunDocumentRevision).toHaveBeenCalledTimes(2);
   });
@@ -1492,9 +2314,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("- Single-flight planning mutations prevent duplicates.")
-    ).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Specification document",
+      "- Single-flight planning mutations prevent duplicates."
+    );
     expect(
       countFetchRequests(fetchMock, {
         method: "POST",
@@ -1534,8 +2357,20 @@ describe("Run routes", () => {
   ])(
     "creates and saves a missing planning document for $path without route churn",
     async ({ defaultTitle, documentId, emptyTitle, expectedLine, path }) => {
-      const { fetchMock } = createBrowserRunFetch();
+      const { fetchMock, requestLog } = createBrowserRunFetch();
       const { router } = renderRoute(path);
+      const documentPath =
+        path === "/runs/run-106/specification"
+          ? "specification"
+          : path === "/runs/run-106/architecture"
+            ? "architecture"
+            : "execution-plan";
+      const documentKind =
+        documentPath === "specification"
+          ? "specification"
+          : documentPath === "architecture"
+            ? "architecture"
+            : "execution_plan";
 
       expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
       expect(screen.getByText(emptyTitle)).toBeInTheDocument();
@@ -1558,7 +2393,7 @@ describe("Run routes", () => {
       await waitFor(() => {
         expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
       });
-      expect(screen.getByText(expectedLine)).toBeInTheDocument();
+      expectPlanningDocumentToContain(`${defaultTitle} document`, expectedLine);
       expect(router.state.location.pathname).toBe(path);
 
       expect(getFetchRequests(fetchMock)).toEqual(
@@ -1573,6 +2408,14 @@ describe("Run routes", () => {
           })
         ])
       );
+      expectFetchJsonRequest(requestLog, {
+        jsonBody: {
+          kind: documentKind,
+          path: documentPath
+        },
+        method: "POST",
+        url: "/v1/runs/run-106/documents"
+      });
     }
   );
 
@@ -1632,7 +2475,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Conflict recovery reflects backend truth.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Architecture document",
+      "- Conflict recovery reflects backend truth."
+    );
     expect(screen.queryByText("No architecture document yet")).not.toBeInTheDocument();
     expect(createRunDocument).toHaveBeenCalledTimes(1);
     expect(listRunDocuments).toHaveBeenCalledTimes(2);
@@ -1676,7 +2522,10 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Save the first architecture revision.")).toBeInTheDocument();
+    expectPlanningDocumentToContain(
+      "Run Architecture document",
+      "- Save the first architecture revision."
+    );
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
   });
 
@@ -1727,7 +2576,8 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+    await screen.findByRole("textbox", { name: "Document title" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
       target: {
         value: "# Architecture\n- Warn before unload.\n"
       }
@@ -1790,7 +2640,8 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+    await screen.findByRole("textbox", { name: "Document title" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
       target: {
         value: "# Architecture\n- Save is still pending.\n"
       }
@@ -1819,7 +2670,7 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit document" })).toBeInTheDocument();
     });
-    expect(screen.getByText("- Save is still pending.")).toBeInTheDocument();
+    expectPlanningDocumentToContain("Run Architecture document", "- Save is still pending.");
   });
 
   it("only exposes Compile run when the live planning documents are ready for compilation", async () => {
@@ -2011,6 +2862,7 @@ describe("Run routes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh run" }));
 
     expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.getByText("Run detail refresh failed.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Refresh run" })).not.toBeInTheDocument();
     expect(
@@ -2170,8 +3022,12 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh execution" }));
 
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
-    expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
+    await waitFor(() => {
+      expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
+    });
+    expect(await screen.findByLabelText("Execution summary")).toHaveTextContent(
+      "3 tasks across 3 dependency steps"
+    );
   });
 
   it("does not navigate back into an older run when compile acceptance resolves after switching routes", async () => {
@@ -2249,6 +3105,7 @@ describe("Run routes", () => {
     renderRoute("/runs/run-404/specification");
 
     expect(await screen.findByRole("heading", { name: "Run not found" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.getByText("Run run-404 was not found.")).toBeInTheDocument();
   });
 
@@ -2265,6 +3122,7 @@ describe("Run routes", () => {
     renderRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "Unable to load run" })).toBeInTheDocument();
+    expectRunDetailStateChrome();
     expect(screen.getByText("Run detail load exploded.")).toBeInTheDocument();
   });
 
@@ -2272,21 +3130,120 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
     expect(screen.getByLabelText("Execution summary")).toHaveTextContent(
-      "3 tasks · 0 ready · 0 pending · 1 active · 2 completed"
+      "3 tasks across 3 dependency steps"
     );
-    expect(screen.getByRole("link", { name: /task-030/i })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution/tasks/task-030"
-    );
-    expect(screen.getByRole("link", { name: /task-032/i })).toHaveAttribute(
-      "href",
-      "/runs/run-104/execution/tasks/task-032"
-    );
-    expect(screen.getByText("Live run provider cutover")).toBeInTheDocument();
     expect(
-      screen.getByText("Workflow rows are grouped by dependency depth in the current workflow graph.")
+      within(graphRegion).getByRole("button", {
+        name: /Live run provider cutover/i
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 in progress");
+    expect(screen.getByLabelText("Execution status")).toHaveTextContent("2 completed");
+    expect(
+      screen.getByText(
+        "Open a task node to move straight into its task conversation and review workspace."
+      )
     ).toBeInTheDocument();
+  });
+
+  it("opens task detail directly when the operator clicks a ready DAG node", async () => {
+    const { router } = renderRunRoute("/runs/run-104/execution");
+
+    const graphRegion = await screen.findByLabelText("Execution workflow graph");
+    fireEvent.click(
+      within(graphRegion).getByRole("button", {
+        name: /Architecture decisions/i
+      })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/execution/tasks/task-031");
+    });
+    expect(await screen.findByRole("heading", { name: "run-104 / task-031" })).toBeInTheDocument();
+    expect(screen.getByText("Translate the specification into architecture decisions.")).toBeInTheDocument();
+  });
+
+  it("keeps the task-detail handoff honest while workflow nodes are ahead of task rows", async () => {
+    const { router } = renderRunRoute("/runs/run-111/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
+    expect(
+      within(graphRegion).getByRole("button", {
+        name: /Lagging UI task row/i
+      })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(graphRegion).getByRole("button", {
+        name: /Foundation bootstrap/i
+      })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-111/execution/tasks/task-111-foundation");
+    });
+    expect(await screen.findByRole("heading", { name: "run-111 / task-111-foundation" })).toBeInTheDocument();
+    expect(screen.getByText("Materialize the first task row from the compiled workflow.")).toBeInTheDocument();
+  });
+
+  it("renders branching DAG steps and supports right-rail task selection across the branch", async () => {
+    const { router } = renderRunRoute("/runs/run-110/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
+    expect(screen.getByLabelText("Execution summary")).toHaveTextContent(
+      "4 tasks across 3 dependency steps"
+    );
+    expect(screen.getByText("2 parallel tasks in this step")).toBeInTheDocument();
+    expect(
+      within(graphRegion).getByRole("button", {
+        name: /Workflow-first UI cutover/i
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(
+      within(graphRegion).getByRole("button", {
+        name: /Validation sweep/i
+      })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-110/execution/tasks/task-110-verify");
+    });
+    expect(await screen.findByRole("heading", { name: "run-110 / task-110-verify" })).toBeInTheDocument();
+    expect(screen.getByText("Validate the merged execution changes before release.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: /API route wiring/i }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-110/execution/tasks/task-110-api");
+    });
+    expect(await screen.findByRole("heading", { name: "run-110 / task-110-api" })).toBeInTheDocument();
+    expect(screen.getByText("Wire the run routes and data seams for the branching DAG state.")).toBeInTheDocument();
+  });
+
+  it("defaults the execution inspector to the ready task when no work is active", async () => {
+    const { router } = renderRunRoute("/runs/run-109/execution");
+
+    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    const graphRegion = screen.getByLabelText("Execution workflow graph");
+    expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 ready next");
+    expect(
+      within(graphRegion).getByRole("button", {
+        name: /Inspect current execution graph/i
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(
+      within(graphRegion).getByRole("button", {
+        name: /Inspect current execution graph/i
+      })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-109/execution/tasks/task-090");
+    });
   });
 
   it("renders an honest execution empty state when compile has not produced a workflow", async () => {
@@ -2305,54 +3262,233 @@ describe("Run routes", () => {
     expect(executionStep).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("renders task artifacts and loads preview content through the authenticated run API seam", async () => {
+  it("renders changed-file groups and unified diffs through the authenticated run API seam", async () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this task."
-    );
-    expect(screen.getByText("Depends on")).toBeInTheDocument();
-    expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
-    expect(await screen.findByText("artifact-task-032-diff")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation."
+      )
+    ).toBeInTheDocument();
+    expectTaskChatSurface();
+    expect(screen.getByText("Task scope")).toBeInTheDocument();
+    expect(await screen.findByText("Modified files")).toBeInTheDocument();
+    expect(screen.getByText("Added files")).toBeInTheDocument();
+    expect(screen.getByText("ui/src/features/execution/components/task-detail-workspace.tsx")).toBeInTheDocument();
+    expect(screen.getByText("ui/src/features/execution/components/task-review-sidebar.tsx")).toBeInTheDocument();
+    expect(screen.getByText("Supporting artifacts")).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+    expect(screen.getByText("run_note · text/markdown; charset=utf-8 · 1.0 KB")).toBeInTheDocument();
     expect(screen.getByText("artifact-task-032-preview")).toBeInTheDocument();
-    expect(screen.getByText("Content type: text/plain; charset=utf-8")).toBeInTheDocument();
-    const textArtifactCard = screen.getByText("artifact-task-032-diff").closest("details");
-    const unsupportedArtifactCard = screen.getByText("artifact-task-032-preview").closest("details");
-
-    expect(textArtifactCard).not.toBeNull();
-    expect(unsupportedArtifactCard).not.toBeNull();
+    expect(screen.getByText("staged_output · image/png · 8.0 KB")).toBeInTheDocument();
     expect(
-      within(textArtifactCard as HTMLElement).getByText(
-        /Text preview is available for this artifact and loads on demand through the run API seam/i
-      )
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Open artifact content" })).not.toBeInTheDocument();
-    expect(
-      within(unsupportedArtifactCard as HTMLElement).getByText(
-        "Preview unavailable in this view because image/png is not text-compatible."
-      )
-    ).toBeInTheDocument();
-    expect(
-      within(unsupportedArtifactCard as HTMLElement).queryByRole("button", {
-        name: "Load text preview"
-      })
-    ).not.toBeInTheDocument();
-    expect(
-      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      within(textArtifactCard as HTMLElement).getByRole("button", { name: "Load text preview" })
-    );
-
-    expect(
-      await within(textArtifactCard as HTMLElement).findByText((content) =>
+      await screen.findByText((content) =>
         content.includes("keep artifact access inside the authenticated run API seam")
       )
     ).toBeInTheDocument();
-    expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
-    expect(screen.queryByText("+ keep task detail scoped to the selected run")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText((content) =>
+        content.includes("render unified diffs from task artifact content")
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Depends on")).toBeInTheDocument();
+    expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load text preview" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Artifacts and review")).not.toBeInTheDocument();
+  });
+
+  it("binds task detail to the persisted Cloudflare conversation locator without synthesizing a fallback", async () => {
+    const browserAuth = {
+      token: "browser-task-token",
+      tenantId: "tenant-task-browser"
+    };
+    (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = browserAuth;
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032");
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expectTaskChatSurface();
+    expect(
+      screen.queryByText(/Live task conversation remains out of scope in this phase/i)
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent: "KeystoneThinkAgent",
+          name: "tenant:tenant-dev-local:run:run-104:task:task-032",
+          query: {
+            keystoneTenantId: browserAuth.tenantId,
+            keystoneToken: browserAuth.token
+          }
+        })
+      );
+    });
+
+    const taskAgentHandle = cloudflareConversationMocks.useAgent.mock.results.find(
+      (result) =>
+        result.type === "return" &&
+        result.value?.agent === "KeystoneThinkAgent" &&
+        result.value?.name === "tenant:tenant-dev-local:run:run-104:task:task-032"
+    )?.value;
+
+    expect(taskAgentHandle).toBeTruthy();
+    expect(cloudflareConversationMocks.useAgentChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: taskAgentHandle
+      })
+    );
+    const taskChatBinding = cloudflareConversationMocks.useAgentChat.mock.calls.find(
+      ([options]) => options?.agent === taskAgentHandle
+    )?.[0];
+
+    expectConversationBindingHeaders(taskChatBinding?.headers, browserAuth);
+    expect(taskChatBinding?.credentials).toBe("same-origin");
+  });
+
+  it("shows live task loading state while a Cloudflare turn is still in flight", async () => {
+    cloudflareConversationMocks.useAgentChat.mockImplementation(() =>
+      createCloudflareChatMock({
+        status: "submitted" as const
+      })
+    );
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032");
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(screen.getByText("Streaming live")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+  });
+
+  it("keeps non-diff review candidates as supporting metadata when no unified diff can be parsed", async () => {
+    const fixtures = cloneRunFixtures();
+    const runFixture = fixtures["run-104"];
+
+    if (!runFixture) {
+      throw new Error("Missing run-104 fixture.");
+    }
+
+    runFixture.artifactContents = {
+      ...(runFixture.artifactContents ?? {}),
+      "/v1/artifacts/artifact-task-032-review/content":
+        "# Review note\n\nNo patch was attached to this task output.\n"
+    };
+
+    renderRunRoute(
+      "/runs/run-104/execution/tasks/task-032",
+      createRunApiFromFixtures(fixtures)
+    );
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("No changed files were parsed from the current reviewable text artifacts.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-review")).toBeInTheDocument();
+    expect(screen.getByText("staged_output · text/plain; charset=utf-8 · 4.0 KB")).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+  });
+
+  it("keeps successful changed files visible when one reviewable text artifact fails to load", async () => {
+    const fixtures = cloneRunFixtures();
+    const baseRunApi = createStaticRunManagementApi(fixtures);
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getArtifactContent: vi.fn(async (contentUrl) => {
+        if (contentUrl === "/v1/artifacts/artifact-task-032-note/content") {
+          throw new Error("Run note fetch failed.");
+        }
+
+        return baseRunApi.getArtifactContent(contentUrl);
+      })
+    };
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
+
+    expect(await screen.findByText("Modified files")).toBeInTheDocument();
+    expect(
+      screen.getByText("1 reviewable text artifact could not be loaded and is omitted from this view.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+  });
+
+  it("retries changed-file loading after review content fetch fails", async () => {
+    const fixtures = cloneRunFixtures();
+    const baseRunApi = createStaticRunManagementApi(fixtures);
+    let failReviewLoads = true;
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getArtifactContent: vi.fn(async (contentUrl) => {
+        if (
+          failReviewLoads &&
+          (contentUrl === "/v1/artifacts/artifact-task-032-review/content" ||
+            contentUrl === "/v1/artifacts/artifact-task-032-note/content")
+        ) {
+          throw new Error("Review artifact fetch failed.");
+        }
+
+        return baseRunApi.getArtifactContent(contentUrl);
+      })
+    };
+
+    renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
+
+    expect(await screen.findByText("Unable to load changed files")).toBeInTheDocument();
+    expect(screen.getByText("Review artifact fetch failed.")).toBeInTheDocument();
+
+    failReviewLoads = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry review" }));
+
+    expect(await screen.findByText("Modified files")).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load changed files")).not.toBeInTheDocument();
+  });
+
+  it("clears pending changed-file state when routing to a task with no review artifacts", async () => {
+    const fixtures = cloneRunFixtures();
+    const baseRunApi = createStaticRunManagementApi(fixtures);
+    const deferredReviewContent = createDeferred<string>();
+    const runApi: RunManagementApi = {
+      ...baseRunApi,
+      getArtifactContent: vi.fn(async (contentUrl) => {
+        if (contentUrl === "/v1/artifacts/artifact-task-032-review/content") {
+          return deferredReviewContent.promise;
+        }
+
+        return baseRunApi.getArtifactContent(contentUrl);
+      })
+    };
+
+    const { router } = renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loading changed files from the current task artifacts.")
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByRole("list", { name: "Depends on" })).getByRole("link", {
+        name: /task-031/i
+      })
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-104/execution/tasks/task-031");
+    });
+    expect(await screen.findByRole("heading", { name: "run-104 / task-031" })).toBeInTheDocument();
+    expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Modified files")).not.toBeInTheDocument();
+
+    deferredReviewContent.resolve(
+      await baseRunApi.getArtifactContent("/v1/artifacts/artifact-task-032-review/content")
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
+      expect(screen.queryByText("Modified files")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("ui/src/features/execution/components/task-review-sidebar.tsx")
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("renders a task-detail error state when artifact metadata fails to load", async () => {
@@ -2369,9 +3505,22 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
-    expect(await screen.findByText("Unable to load task artifacts")).toBeInTheDocument();
+    expect(await screen.findByText("Unable to load task review")).toBeInTheDocument();
     expect(screen.getByText("Artifact load failed.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("keeps a lagging workflow task route in a truthful materializing state", async () => {
+    renderRunRoute("/runs/run-111/execution/tasks/task-111-ui");
+
+    expect(await screen.findByRole("heading", { name: "run-111 / task-111-ui" })).toBeInTheDocument();
+    expect(screen.getByText("Execution unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Task task-111-ui is still materializing for run run-111. Return to the DAG and wait for the live task record."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Task not found")).not.toBeInTheDocument();
   });
 
   it("surfaces an invalid task route as a truthful not-found state", async () => {

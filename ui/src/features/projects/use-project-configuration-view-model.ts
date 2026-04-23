@@ -67,6 +67,7 @@ export interface ProjectConfigurationShellViewModel {
   tabs: Array<{
     label: string;
     path: string;
+    summary: string;
     tabId: (typeof projectConfigurationTabs)[number]["tabId"];
   }>;
   title: string;
@@ -131,7 +132,8 @@ function buildProjectConfigurationTabs(mode: ProjectConfigurationMode) {
   return projectConfigurationTabs.map((tab) => ({
     tabId: tab.tabId,
     label: tab.label,
-    path: buildProjectConfigurationPath(mode, tab.tabId)
+    path: buildProjectConfigurationPath(mode, tab.tabId),
+    summary: tab.summary
   }));
 }
 

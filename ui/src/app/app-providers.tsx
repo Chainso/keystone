@@ -9,6 +9,7 @@ import {
   RunManagementApiProvider
 } from "../features/runs/run-detail-context";
 import type { RunManagementApi } from "../features/runs/run-management-api";
+import { ThemeProvider } from "./theme-provider";
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -34,8 +35,10 @@ export function AppProviders({
     );
 
   return (
-    <RunManagementApiProvider {...(runApi ? { api: runApi } : {})}>
-      {currentProjectProvider}
-    </RunManagementApiProvider>
+    <ThemeProvider>
+      <RunManagementApiProvider {...(runApi ? { api: runApi } : {})}>
+        {currentProjectProvider}
+      </RunManagementApiProvider>
+    </ThemeProvider>
   );
 }

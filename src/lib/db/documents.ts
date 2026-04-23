@@ -8,6 +8,7 @@ import type {
 } from "./schema";
 import {
   type DocumentKind,
+  getRunPlanningConversationLocator,
   type DocumentScopeType,
   validateDocumentPath,
   validateDocumentKindPath
@@ -95,6 +96,29 @@ function assertDocumentScope(input: CreateDocumentInput) {
   validateDocumentKindPath(input.scopeType, input.kind, input.path);
 }
 
+function resolveDocumentConversationLocator(input: CreateDocumentInput) {
+  const planningLocator = getRunPlanningConversationLocator({
+    tenantId: input.tenantId,
+    scopeType: input.scopeType,
+    runId: input.runId ?? null,
+    kind: input.kind,
+    path: input.path
+  });
+
+  if (planningLocator) {
+    return planningLocator;
+  }
+
+  if (input.conversationAgentClass && input.conversationAgentName) {
+    return {
+      conversationAgentClass: input.conversationAgentClass,
+      conversationAgentName: input.conversationAgentName
+    };
+  }
+
+  return null;
+}
+
 function assertRevisionArtifactBoundary(document: DocumentRow, artifact: ArtifactRefRow) {
   if (artifact.projectId !== document.projectId) {
     throw new Error(
@@ -136,6 +160,10 @@ function assertRevisionArtifactBoundary(document: DocumentRow, artifact: Artifac
 export async function createDocument(client: DatabaseClient, input: CreateDocumentInput) {
   assertDocumentScope(input);
   const normalizedPath = validateDocumentKindPath(input.scopeType, input.kind, input.path);
+  const conversationLocator = resolveDocumentConversationLocator({
+    ...input,
+    path: normalizedPath
+  });
 
   await assertProjectOwnership(client, {
     tenantId: input.tenantId,
@@ -165,8 +193,8 @@ export async function createDocument(client: DatabaseClient, input: CreateDocume
       scopeType: input.scopeType,
       kind: input.kind,
       path: normalizedPath,
-      conversationAgentClass: input.conversationAgentClass ?? null,
-      conversationAgentName: input.conversationAgentName ?? null
+      conversationAgentClass: conversationLocator?.conversationAgentClass ?? null,
+      conversationAgentName: conversationLocator?.conversationAgentName ?? null
     })
     .returning();
 
@@ -180,6 +208,29 @@ export async function getDocument(client: DatabaseClient, input: DocumentLookupI
   return client.db.query.documents.findFirst({
     where: and(eq(documents.tenantId, input.tenantId), eq(documents.documentId, input.documentId))
   });
+}
+
+export async function updateDocumentConversation(
+  client: DatabaseClient,
+  input: DocumentLookupInput & {
+    conversationAgentClass: string;
+    conversationAgentName: string;
+  }
+) {
+  const [updated] = await client.db
+    .update(documents)
+    .set({
+      conversationAgentClass: input.conversationAgentClass,
+      conversationAgentName: input.conversationAgentName,
+      updatedAt: new Date()
+    })
+    .where(and(eq(documents.tenantId, input.tenantId), eq(documents.documentId, input.documentId)))
+    .returning();
+
+  return requireInsertedRow(
+    updated,
+    `Document ${input.documentId} conversation update returned no row.`
+  );
 }
 
 export async function getProjectDocumentByPath(
@@ -397,6 +448,52 @@ export async function getDocumentWithCurrentRevision(
     ...document,
     currentRevision: currentRevision ?? null
   };
+}
+
+export async function ensureRunPlanningConversationLocator(
+  client: DatabaseClient,
+  document: DocumentWithCurrentRevision
+): Promise<DocumentWithCurrentRevision> {
+  const nextLocator = getRunPlanningConversationLocator({
+    tenantId: document.tenantId,
+    scopeType: document.scopeType,
+    runId: document.runId,
+    kind: document.kind,
+    path: document.path
+  });
+
+  if (!nextLocator) {
+    return document;
+  }
+
+  const isCanonicalLocator =
+    document.conversationAgentClass === nextLocator.conversationAgentClass &&
+    document.conversationAgentName === nextLocator.conversationAgentName;
+
+  if (isCanonicalLocator) {
+    return document;
+  }
+
+  const updated = await updateDocumentConversation(client, {
+    tenantId: document.tenantId,
+    documentId: document.documentId,
+    conversationAgentClass: nextLocator.conversationAgentClass,
+    conversationAgentName: nextLocator.conversationAgentName
+  });
+
+  return {
+    ...updated,
+    currentRevision: document.currentRevision
+  };
+}
+
+export async function ensureRunPlanningConversationLocators(
+  client: DatabaseClient,
+  documents: DocumentWithCurrentRevision[]
+) {
+  return Promise.all(
+    documents.map((document) => ensureRunPlanningConversationLocator(client, document))
+  );
 }
 
 export async function listProjectDocumentsWithCurrentRevision(

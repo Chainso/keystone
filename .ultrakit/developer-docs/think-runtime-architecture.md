@@ -54,6 +54,11 @@ Current scheduler behavior:
 - each poll fans out the union of currently `active` and currently `ready` tasks
 - newly ready tasks can launch while unrelated branches remain active in the shared run sandbox
 
+The current persisted conversation classes are:
+
+- `KeystoneThinkAgent` for task conversations
+- `PlanningDocumentAgent` for run-scoped planning documents
+
 ## Filesystem Contract
 
 `TaskSessionDO.ensureWorkspace()` materializes task-specific worktrees inside the shared run sandbox and exposes a stable agent-facing layout:
@@ -105,7 +110,20 @@ The locator fields are:
 - `conversation_agent_class`
 - `conversation_agent_name`
 
-This lets the UI reconnect through `useAgent` / `useAgentChat` without duplicating the messages into relational tables.
+Run-scoped planning documents now normalize to this locator contract:
+
+- `conversation_agent_class = PlanningDocumentAgent`
+- `conversation_agent_name = tenant:<tenantId>:run:<runId>:document:<canonical-path>`
+
+Keystone ignores client-supplied planning locator values and rewrites missing or non-canonical planning locators to that deterministic contract.
+
+`TaskWorkflow` remains the authority for task locators and still provisions them only for non-`scripted` tasks.
+
+This lets the UI reconnect through `useAgent({ agent, name })` and `useAgentChat({ agent })` without duplicating the messages into relational tables or inventing a second conversation store.
+
+The visible planning and task panes now layer assistant-ui's external-store runtime on top of that bridge, so assistant-ui owns rendering and composer behavior while Cloudflare still owns persistence, sync, and message authority.
+
+The Worker now exposes `/agents/*` as the browser transport entrypoint for those Cloudflare agent conversations, protected by the same dev-auth seam as the JSON API.
 
 ## Artifact Flow
 

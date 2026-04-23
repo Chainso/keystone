@@ -20,14 +20,16 @@ function buildHeaderViewModel(run: ReadyRun): RunHeaderViewModel {
 
   return {
     displayId: run.runId,
+    executionEngineLabel: formatMachineLabel(run.executionEngine),
     statusLabel: status.statusLabel,
     statusTone: status.statusTone,
-    summary: `Workflow ${run.workflowInstanceId} · ${formatMachineLabel(run.executionEngine)}`,
+    summary: "Open the stage rail to move through the current run workspace.",
     updatedLabel: buildRunActivityLabel({
       compiledAt: run.compiledFrom?.compiledAt ?? null,
       endedAt: run.endedAt,
       startedAt: run.startedAt
-    })
+    }),
+    workflowInstanceId: run.workflowInstanceId
   };
 }
 
@@ -38,7 +40,11 @@ function buildPhaseStepperViewModel(
     href: buildRunPhasePath(run.runId, phase.id),
     isAvailable: phase.id === "execution" ? hasCompileProvenance(run) : true,
     label: phase.label,
-    phaseId: phase.id
+    phaseId: phase.id,
+    summary:
+      phase.id === "execution" && !hasCompileProvenance(run)
+        ? "Compile the run to open execution."
+        : phase.summary
   }));
 }
 

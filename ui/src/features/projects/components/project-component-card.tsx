@@ -1,3 +1,7 @@
+import { useId } from "react";
+
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import {
   getProjectComponentKindLabel,
   type ProjectComponentScaffold,
@@ -19,34 +23,52 @@ function SourceModeField({
   sourceMode: ProjectComponentSourceMode;
 }) {
   const inputName = `${componentId}-source-mode`;
+  const descriptionId = useId();
 
   return (
-    <fieldset className="form-field">
+    <fieldset className="source-mode-field" aria-describedby={descriptionId}>
       <legend className="form-field-label">Source mode</legend>
+      <p id={descriptionId} className="form-field-description">
+        Choose whether Keystone should use a local repository path or a Git remote for this component.
+      </p>
 
       <div className="source-mode-row">
-        <label>
+        <label
+          className={
+            sourceMode === "localPath" ? "source-mode-option is-active" : "source-mode-option"
+          }
+        >
           <input
             type="radio"
             name={inputName}
             checked={sourceMode === "localPath"}
             disabled={readOnly}
+            aria-describedby={descriptionId}
             onChange={() => onChange?.("localPath")}
           />
-          {" "}
-          Local path
+          <span className="source-mode-option-label">Local path</span>
+          <span className="source-mode-option-copy" aria-hidden="true">
+            Use a checked-out repository that already exists in the workspace.
+          </span>
         </label>
 
-        <label>
+        <label
+          className={
+            sourceMode === "gitUrl" ? "source-mode-option is-active" : "source-mode-option"
+          }
+        >
           <input
             type="radio"
             name={inputName}
             checked={sourceMode === "gitUrl"}
             disabled={readOnly}
+            aria-describedby={descriptionId}
             onChange={() => onChange?.("gitUrl")}
           />
-          {" "}
-          Git URL
+          <span className="source-mode-option-label">Git URL</span>
+          <span className="source-mode-option-copy" aria-hidden="true">
+            Clone from a remote repository and optional default ref.
+          </span>
         </label>
       </div>
     </fieldset>
@@ -61,8 +83,14 @@ export function EditableProjectComponentCard({
   return (
     <article className="component-card">
       <div className="component-card-header">
-        <div>
+        <div className="component-card-copy">
           <h3 className="page-section-title">{component.heading}</h3>
+          <p className="workspace-panel-summary">
+            Configure the repository source, default ref, and any component-specific review overrides.
+          </p>
+        </div>
+        <div className="component-card-meta">
+          <Badge variant="outline">{getProjectComponentKindLabel(component.kind)}</Badge>
         </div>
       </div>
 
@@ -71,16 +99,20 @@ export function EditableProjectComponentCard({
           label="Type"
           options={[getProjectComponentKindLabel(component.kind)]}
           value={getProjectComponentKindLabel(component.kind)}
+          description="Backend support is currently limited to Git repository components."
           disabled
         />
         <FormTextField
           label={component.displayNameField.label}
+          description="Operator-facing name used in the project workspace."
           value={component.displayNameField.value}
           onChange={(event) => component.displayNameField.onChange?.(event.currentTarget.value)}
           errorMessage={component.displayNameField.errorMessage}
         />
         <FormTextField
           label={component.componentKeyField.label}
+          description="Stable component key used in the configuration payload."
+          mono
           value={component.componentKeyField.value}
           onChange={(event) => component.componentKeyField.onChange?.(event.currentTarget.value)}
           errorMessage={component.componentKeyField.errorMessage}
@@ -92,6 +124,7 @@ export function EditableProjectComponentCard({
         />
         <FormTextField
           label={component.localPathField.label}
+          mono
           value={component.localPathField.value}
           onChange={(event) => component.localPathField.onChange?.(event.currentTarget.value)}
           errorMessage={component.localPathField.errorMessage}
@@ -99,6 +132,7 @@ export function EditableProjectComponentCard({
         />
         <FormTextField
           label={component.gitUrlField.label}
+          mono
           value={component.gitUrlField.value}
           onChange={(event) => component.gitUrlField.onChange?.(event.currentTarget.value)}
           errorMessage={component.gitUrlField.errorMessage}
@@ -106,6 +140,8 @@ export function EditableProjectComponentCard({
         />
         <FormTextField
           label={component.defaultRefField.label}
+          description="Branch, tag, or ref Keystone should prefer when it opens this repository."
+          mono
           value={component.defaultRefField.value}
           onChange={(event) => component.defaultRefField.onChange?.(event.currentTarget.value)}
           errorMessage={component.defaultRefField.errorMessage}
@@ -113,11 +149,17 @@ export function EditableProjectComponentCard({
       </div>
 
       <div className="component-card-rule-overrides">
-        <p className="form-field-label">Optional rule override</p>
+        <div className="component-card-subsection">
+          <p className="form-field-label">Optional rule override</p>
+          <p className="form-field-description">
+            Add component-specific review or test instructions only when they differ from the project defaults.
+          </p>
+        </div>
 
         <div className="component-card-overrides">
           <TextListField
             label={component.reviewInstructions.label}
+            description="Focused review guidance for this component."
             items={component.reviewInstructions.items}
             onAdd={component.reviewInstructions.onAdd}
             onChange={component.reviewInstructions.onChange}
@@ -128,6 +170,7 @@ export function EditableProjectComponentCard({
           />
           <TextListField
             label={component.testInstructions.label}
+            description="Targeted validation steps for this component."
             items={component.testInstructions.items}
             onAdd={component.testInstructions.onAdd}
             onChange={component.testInstructions.onChange}
@@ -140,9 +183,9 @@ export function EditableProjectComponentCard({
       </div>
 
       <div className="project-form-actions">
-        <button type="button" className="ghost-button" onClick={component.onRemove}>
+        <Button type="button" variant="outline" onClick={component.onRemove}>
           Remove
-        </button>
+        </Button>
       </div>
     </article>
   );
@@ -156,8 +199,14 @@ export function ReadonlyProjectComponentCard({
   return (
     <article className="component-card">
       <div className="component-card-header">
-        <div>
+        <div className="component-card-copy">
           <h3 className="page-section-title">{component.heading}</h3>
+          <p className="workspace-panel-summary">
+            Component configuration is read-only in this scaffold preview.
+          </p>
+        </div>
+        <div className="component-card-meta">
+          <Badge variant="outline">{getProjectComponentKindLabel(component.kind)}</Badge>
         </div>
       </div>
 
@@ -169,30 +218,45 @@ export function ReadonlyProjectComponentCard({
           disabled
         />
         <FormTextField label="Name" value={component.displayName} readOnly />
-        <FormTextField label="Key" value={component.componentKey} readOnly />
+        <FormTextField label="Key" value={component.componentKey} mono readOnly />
         <SourceModeField
           componentId={component.componentId}
           sourceMode={component.sourceMode}
           readOnly
         />
-        <FormTextField label="Local path" value={component.localPath} readOnly />
-        <FormTextField label="Git URL" value={component.gitUrl} readOnly />
-        <FormTextField label="Default ref" value={component.defaultRef} readOnly />
+        <FormTextField label="Local path" value={component.localPath} mono readOnly />
+        <FormTextField label="Git URL" value={component.gitUrl} mono readOnly />
+        <FormTextField label="Default ref" value={component.defaultRef} mono readOnly />
       </div>
 
       <div className="component-card-rule-overrides">
-        <p className="form-field-label">Optional rule override</p>
+        <div className="component-card-subsection">
+          <p className="form-field-label">Optional rule override</p>
+          <p className="form-field-description">
+            Component-specific guidance is shown here when present.
+          </p>
+        </div>
 
         <div className="component-card-overrides">
-          <TextListField label="Review" items={component.reviewInstructions} readOnly />
-          <TextListField label="Test" items={component.testInstructions} readOnly />
+          <TextListField
+            label="Review"
+            description="Focused review guidance for this component."
+            items={component.reviewInstructions}
+            readOnly
+          />
+          <TextListField
+            label="Test"
+            description="Targeted validation steps for this component."
+            items={component.testInstructions}
+            readOnly
+          />
         </div>
       </div>
 
       <div className="project-form-actions">
-        <button type="button" className="ghost-button" disabled>
+        <Button type="button" variant="outline" disabled>
           Remove
-        </button>
+        </Button>
       </div>
     </article>
   );

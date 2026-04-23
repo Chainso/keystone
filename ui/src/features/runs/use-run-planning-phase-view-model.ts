@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 import { useUnsavedChangesGuard } from "../../shared/navigation/use-unsaved-changes-guard";
+import { buildMarkdownSourceSaveDraft } from "../../shared/markdown/source-markdown";
 import {
   useReadyRunDetail
 } from "./use-ready-run-detail";
@@ -136,6 +137,11 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   const pendingEditorSourceKeyRef = useRef<string | null>(null);
   const createInFlightRef = useRef(false);
   const saveInFlightRef = useRef(false);
+  const savedSourceDraft = buildMarkdownSourceSaveDraft(sourceDraft);
+  const savedDraft = buildMarkdownSourceSaveDraft({
+    body,
+    title
+  });
 
   useEffect(() => {
     const shouldEnterEditor = pendingEditorSourceKeyRef.current === sourceKey;
@@ -196,10 +202,12 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     setTitle(sourceDraft.title);
   }
 
-  const hasUnsavedChanges = body !== sourceDraft.body || title !== sourceDraft.title;
+  const hasUnsavedChanges =
+    savedDraft.body !== savedSourceDraft.body ||
+    savedDraft.title !== savedSourceDraft.title;
   const canSave =
-    title.trim().length > 0 &&
-    body.trim().length > 0 &&
+    savedDraft.title.length > 0 &&
+    savedDraft.body.trim().length > 0 &&
     hasUnsavedChanges &&
     !isSubmitting;
   const hasPendingChanges = isEditing && (hasUnsavedChanges || isSubmitting);
@@ -210,11 +218,11 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   });
 
   async function saveChanges() {
-    const trimmedTitle = title.trim();
     const canSaveNow =
-      trimmedTitle.length > 0 &&
-      body.trim().length > 0 &&
-      hasUnsavedChanges;
+      savedDraft.title.length > 0 &&
+      savedDraft.body.trim().length > 0 &&
+      (savedDraft.body !== savedSourceDraft.body ||
+        savedDraft.title !== savedSourceDraft.title);
 
     if (!canSaveNow || saveInFlightRef.current) {
       return;
@@ -226,8 +234,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
 
     try {
       await actions.savePlanningDocument(phaseId, {
-        body,
-        title: trimmedTitle
+        body: savedDraft.body,
+        title: savedDraft.title
       });
     } catch (error) {
       setIsSubmitting(false);
@@ -255,8 +263,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
       hasUnsavedChanges,
       helperMessage:
         planningState.status === "ready"
-          ? "Saving creates a new current revision for this run document."
-          : "Saving creates the first current revision for this run document.",
+          ? "Markdown stays canonical. Save creates a new current revision and refreshes the Plate document surface from that source."
+          : "Markdown stays canonical. Save creates the first current revision and loads the Plate document surface from that source.",
       isSubmitting,
       panelTitle: title.trim() || base.panelTitle,
       phaseSummary: base.phaseSummary,
@@ -276,7 +284,7 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   if (planningState.status === "ready") {
     return {
       conversationLocator: base.conversationLocator,
-      documentLines: planningState.content.split(/\r?\n/),
+      documentMarkdown: planningState.content,
       documentPath: base.documentPath,
       editDocument: startEditing,
       panelTitle: planningState.revision.title,

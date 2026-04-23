@@ -17,6 +17,7 @@ import type {
   TaskResource,
   WorkflowGraphResource
 } from "../../../../src/http/api/v1/runs/contracts";
+import { type RunPlanningDocumentKind } from "../../../../src/lib/documents/model";
 import {
   createBrowserRunManagementApi,
   RunManagementApiError,
@@ -108,7 +109,7 @@ const browserRunManagementApi = createBrowserRunManagementApi();
 const RunManagementApiContext = createContext<RunManagementApi | null>(null);
 const RunDetailContext = createContext<RunDetailValue | null>(null);
 
-const planningPhaseDocumentKind: Record<RunPlanningPhaseId, DocumentResource["kind"]> = {
+const planningPhaseDocumentKind: Record<RunPlanningPhaseId, RunPlanningDocumentKind> = {
   specification: "specification",
   architecture: "architecture",
   "execution-plan": "execution_plan"
@@ -321,6 +322,10 @@ export function RunDetailProvider({
     phaseId: RunPlanningPhaseId,
     planningDocumentState: RunPlanningDocumentState
   ) {
+    if (!isMountedRef.current || valueRef.current.meta.runId !== runId) {
+      return;
+    }
+
     setValue((current) => {
       if (current.meta.status !== "ready") {
         return current;
@@ -343,7 +348,9 @@ export function RunDetailProvider({
     const documents = await api.listRunDocuments(runId);
     const planningDocumentState = await loadPlanningDocumentState(api, runId, phaseId, documents);
 
-    setPlanningDocumentState(phaseId, planningDocumentState);
+    if (isMountedRef.current && valueRef.current.meta.runId === runId) {
+      setPlanningDocumentState(phaseId, planningDocumentState);
+    }
 
     return planningDocumentState;
   }
@@ -581,13 +588,15 @@ export function RunDetailProvider({
           path: canonicalDocumentPathByPhase[phaseId]
         });
 
-        setPlanningDocumentState(phaseId, {
-          document: createdDocument,
-          phaseId,
-          reason: "missing_revision",
-          revision: null,
-          status: "empty"
-        });
+        if (isMountedRef.current && valueRef.current.meta.runId === runId) {
+          setPlanningDocumentState(phaseId, {
+            document: createdDocument,
+            phaseId,
+            reason: "missing_revision",
+            revision: null,
+            status: "empty"
+          });
+        }
 
         return createdDocument;
       } catch (error) {
@@ -643,16 +652,18 @@ export function RunDetailProvider({
         title: input.title
       });
 
-      setPlanningDocumentState(phaseId, {
-        content: input.body,
-        document: {
-          ...planningDocument,
-          currentRevisionId: revision.documentRevisionId
-        },
-        phaseId,
-        revision,
-        status: "ready"
-      });
+      if (isMountedRef.current && valueRef.current.meta.runId === runId) {
+        setPlanningDocumentState(phaseId, {
+          content: input.body,
+          document: {
+            ...planningDocument,
+            currentRevisionId: revision.documentRevisionId
+          },
+          phaseId,
+          revision,
+          status: "ready"
+        });
+      }
 
       return revision;
     })();
@@ -773,6 +784,9 @@ export function RunDetailProvider({
       isMountedRef.current = false;
       requestIdRef.current += 1;
       taskArtifactRequestIdsRef.current.clear();
+      createPlanningDocumentRequestsRef.current.clear();
+      savePlanningDocumentRequestsRef.current.clear();
+      compileRunRequestRef.current = null;
       refreshRunDetailRequestRef.current = null;
     };
   }, [api, runId]);

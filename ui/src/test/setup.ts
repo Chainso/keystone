@@ -47,7 +47,61 @@ function installStorage(name: "localStorage" | "sessionStorage") {
 installStorage("localStorage");
 installStorage("sessionStorage");
 
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  const matchMedia = (query: string): MediaQueryList => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent() {
+      return false;
+    }
+  });
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: matchMedia
+  });
+  Object.defineProperty(globalThis, "matchMedia", {
+    configurable: true,
+    value: matchMedia
+  });
+}
+
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserver {
+    disconnect() {}
+
+    observe() {}
+
+    unobserve() {}
+  }
+
+  Object.defineProperty(window, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserver
+  });
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserver
+  });
+}
+
+if (typeof window !== "undefined" && typeof window.HTMLElement.prototype.scrollIntoView !== "function") {
+  window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
+if (typeof window !== "undefined" && typeof window.HTMLElement.prototype.scrollTo !== "function") {
+  window.HTMLElement.prototype.scrollTo = function scrollTo() {};
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
+  document.documentElement.classList.remove("dark", "light");
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.colorScheme = "";
 });

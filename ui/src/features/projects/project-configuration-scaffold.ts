@@ -13,34 +13,41 @@ export type ProjectComponentScaffold = ResourceProjectConfigurationComponent;
 export interface ProjectConfigurationTabDefinition {
   tabId: ProjectConfigurationTabId;
   label: string;
+  summary: string;
 }
 
 export interface ProjectComponentTypeOption {
+  description?: string;
   kindId: ProjectComponentKindId;
   label: string;
 }
 
 export const projectConfigurationTabs: ProjectConfigurationTabDefinition[] = [
   {
-    tabId: "overview",
-    label: "Overview"
+    label: "Overview",
+    summary: "Project identity and operator-facing context.",
+    tabId: "overview"
   },
   {
-    tabId: "components",
-    label: "Components"
+    label: "Components",
+    summary: "Repository-backed components and source selection.",
+    tabId: "components"
   },
   {
-    tabId: "rules",
-    label: "Rules"
+    label: "Rules",
+    summary: "Review and test guidance as checklist items.",
+    tabId: "rules"
   },
   {
-    tabId: "environment",
-    label: "Environment"
+    label: "Environment",
+    summary: "Non-secret project environment variables.",
+    tabId: "environment"
   }
 ];
 
 export const projectComponentTypeOptions: ProjectComponentTypeOption[] = [
   {
+    description: "Connect a repository by Git URL or a local workspace path.",
     kindId: "git_repository",
     label: "Git repository"
   }

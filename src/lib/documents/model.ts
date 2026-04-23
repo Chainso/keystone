@@ -8,6 +8,12 @@ export const documentKindValues = [
 
 export type DocumentScopeType = (typeof documentScopeTypeValues)[number];
 export type DocumentKind = (typeof documentKindValues)[number];
+export type RunPlanningDocumentKind = Exclude<DocumentKind, "other">;
+
+export interface DocumentConversationLocator {
+  conversationAgentClass: string;
+  conversationAgentName: string;
+}
 
 const projectScopedCanonicalPaths = {
   specification: "product/specification",
@@ -24,6 +30,8 @@ const allowedKindsByScope = {
   project: new Set<DocumentKind>(["specification", "architecture", "other"]),
   run: new Set<DocumentKind>(["specification", "architecture", "execution_plan", "other"])
 } as const;
+
+export const planningDocumentConversationAgentClass = "PlanningDocumentAgent";
 
 const documentPathPattern = /^[a-z0-9]+(?:[a-z0-9/_-]*[a-z0-9])?$/;
 
@@ -55,6 +63,20 @@ export function normalizeDocumentPath(path: string) {
   return path.trim().replace(/^\/+|\/+$/g, "");
 }
 
+export function isRunPlanningDocumentKind(kind: DocumentKind): kind is RunPlanningDocumentKind {
+  return kind === "specification" || kind === "architecture" || kind === "execution_plan";
+}
+
+export function isRunPlanningDocument(input: {
+  kind: DocumentKind;
+  scopeType: DocumentScopeType;
+}): input is {
+  kind: RunPlanningDocumentKind;
+  scopeType: "run";
+} {
+  return input.scopeType === "run" && isRunPlanningDocumentKind(input.kind);
+}
+
 export function validateDocumentPath(path: string) {
   const normalizedPath = normalizeDocumentPath(path);
 
@@ -69,6 +91,43 @@ export function validateDocumentPath(path: string) {
   }
 
   return normalizedPath;
+}
+
+export function buildRunPlanningConversationLocator(input: {
+  kind: RunPlanningDocumentKind;
+  path?: string | undefined;
+  runId: string;
+  tenantId: string;
+}): DocumentConversationLocator {
+  const canonicalPath = validateDocumentKindPath(
+    "run",
+    input.kind,
+    input.path ?? getCanonicalDocumentPath("run", input.kind) ?? input.kind
+  );
+
+  return {
+    conversationAgentClass: planningDocumentConversationAgentClass,
+    conversationAgentName: `tenant:${input.tenantId}:run:${input.runId}:document:${canonicalPath}`
+  };
+}
+
+export function getRunPlanningConversationLocator(input: {
+  kind: DocumentKind;
+  path: string;
+  runId: string | null;
+  scopeType: DocumentScopeType;
+  tenantId: string;
+}) {
+  if (!input.runId || !isRunPlanningDocument(input)) {
+    return null;
+  }
+
+  return buildRunPlanningConversationLocator({
+    tenantId: input.tenantId,
+    runId: input.runId,
+    kind: input.kind,
+    path: input.path
+  });
 }
 
 export function validateDocumentKindPath(

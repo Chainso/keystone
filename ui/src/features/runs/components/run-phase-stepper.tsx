@@ -20,17 +20,21 @@ export function RunPhaseStepper({ steps }: RunPhaseStepperProps) {
             key={phase.phaseId}
             to={phase.href}
             end={phase.phaseId !== "execution"}
+            aria-label={phase.label}
             className={getStepLinkClassName}
           >
             <span className="run-step-link-label">{phase.label}</span>
+            <span className="run-step-link-summary">{phase.summary}</span>
           </NavLink>
         ) : (
           <span
             key={phase.phaseId}
-            className="run-step-link"
+            aria-label={phase.label}
+            className="run-step-link is-disabled"
             aria-disabled="true"
           >
             <span className="run-step-link-label">{phase.label}</span>
+            <span className="run-step-link-summary">{phase.summary}</span>
           </span>
         )
       )}

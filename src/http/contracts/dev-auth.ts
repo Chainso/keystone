@@ -30,6 +30,9 @@ export type DevAuthFailure = {
 
 export type DevAuthResult = DevAuthFailure | DevAuthSuccess;
 
+export const devAuthQueryTokenParam = "keystoneToken";
+export const devAuthQueryTenantParam = "keystoneTenantId";
+
 function constantTimeEqual(left: string, right: string) {
   const encoder = new TextEncoder();
   const leftBytes = encoder.encode(left);
@@ -112,4 +115,25 @@ export function parseDevAuth(
       tokenFingerprint: fingerprintToken(providedToken)
     }
   };
+}
+
+export function parseDevAuthRequest(
+  request: Request,
+  env: DevAuthBindings
+): DevAuthResult {
+  const headers = new Headers(request.headers);
+  const url = new URL(request.url);
+  const queryToken = url.searchParams.get(devAuthQueryTokenParam)?.trim();
+  const queryTenantId = url.searchParams.get(devAuthQueryTenantParam)?.trim();
+  const allowQueryFallback = url.pathname === "/agents" || url.pathname.startsWith("/agents/");
+
+  if (allowQueryFallback && !headers.get("authorization") && queryToken) {
+    headers.set("authorization", `Bearer ${queryToken}`);
+  }
+
+  if (allowQueryFallback && !headers.get("x-keystone-tenant-id") && queryTenantId) {
+    headers.set("x-keystone-tenant-id", queryTenantId);
+  }
+
+  return parseDevAuth(headers, env);
 }

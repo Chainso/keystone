@@ -12,6 +12,8 @@ import { createWorkerDatabaseClient } from "../../../../lib/db/client";
 import {
   createDocument,
   createDocumentRevision,
+  ensureRunPlanningConversationLocator,
+  ensureRunPlanningConversationLocators,
   getDocumentWithCurrentRevision,
   getProjectDocument,
   getRunDocument,
@@ -369,10 +371,16 @@ async function loadRunDocument(
       return null;
     }
 
-    return await getDocumentWithCurrentRevision(client, {
+    const documentWithRevision = await getDocumentWithCurrentRevision(client, {
       tenantId: auth.tenantId,
       documentId: document.documentId
     });
+
+    if (!documentWithRevision) {
+      return null;
+    }
+
+    return await ensureRunPlanningConversationLocator(client, documentWithRevision);
   } finally {
     await client.close();
   }
@@ -589,12 +597,13 @@ export async function listRunDocumentsHandler(context: Context<AppEnv>) {
       tenantId: parent.tenantId,
       runId: parent.runId
     });
+    const documentsWithConversation = await ensureRunPlanningConversationLocators(client, documents);
 
     return context.json(
       documentCollectionEnvelopeSchema.parse({
         data: {
-          items: documents.map(serializeDocumentResource),
-          total: documents.length
+          items: documentsWithConversation.map(serializeDocumentResource),
+          total: documentsWithConversation.length
         },
         meta: {
           apiVersion: "v1",

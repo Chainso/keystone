@@ -9,7 +9,7 @@ Keystone is a single Cloudflare Worker project that currently proves:
 - sandboxed execution with one sandbox per run and task-specific worktrees inside that sandbox
 - provider-backed compile and Think live-model turns using the local OpenAI-compatible chat-completions endpoint at `http://localhost:10531`
 - an `executionEngine` selector that defaults project-backed run creation to `think_live`, keeps explicit `scripted` and `think_mock` paths available, and leaves the zero-argument `demo:run` helper on `scripted` until host-local live proof is reliable
-- a structure-first React workspace shell served from the same Worker deployable, now including minimal board-shaped `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces over the canonical route tree
+- a Tailwind/shadcn React workspace shell served from the same Worker deployable, with Plate-backed document surfaces, assistant-ui planning and task conversations over Cloudflare, and the canonical route tree for `Runs`, `Documentation`, `Workstreams`, `New project`, and `Project settings`
 
 The authoritative target-model contract for contributors is [.ultrakit/developer-docs/keystone-target-model-handoff.md](./.ultrakit/developer-docs/keystone-target-model-handoff.md). Read that first before changing persistence, API, run orchestration, or document behavior.
 
@@ -56,22 +56,21 @@ Current UI scope:
 - a live `Runs` index with a real `+ New run` action
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
-- explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail artifact review with supported text preview plus compatibility messaging for unsupported content
-- live `Workstreams` loading through the project tasks API, with server-backed filter and pagination URL state
+- planning and task detail conversations rendered through assistant-ui over the persisted Cloudflare conversation locator contract exposed at `/agents/*`
+- explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail review that infers changed files from text task artifacts while keeping non-diff outputs as metadata-only support records
 - live `Workstreams` loading through `GET /v1/projects/:projectId/tasks` with server-side filtering, pagination, and direct links back into `Runs > Execution`
-- board-shaped `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
-- an explicit compatibility state for `Documentation` when the selected live project is not present in the scaffold dataset
-- an explicit compatibility state for `Documentation` when the selected live project is not present in the scaffold dataset
+- workspace-style `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
+- `Documentation` remains scaffold-backed, renders through the shared Plate document viewer, and shows an explicit compatibility state when the selected live project is not present in the scaffold dataset
 
 Current UI non-goals:
 
 - live backend loading for `Documentation`
-- real task conversations, streaming execution updates, or live review diff synthesis beyond artifact metadata plus supported text preview
+- conversation persistence changes or a second chat authority beyond the current Cloudflare-backed planning/task panes
+- streaming execution updates or backend-owned review diff metadata beyond the current text-artifact seam
 - persisted documentation or workstream editing
 - final visual polish
 - auth-specific UI flows or tenant-selection controls
-- destination-specific behavior beyond the current live project-management, workstreams, and runs surfaces
-- destination-specific behavior beyond the current live project-management, runs, and Workstreams surfaces
+- destination-specific behavior beyond the current live project-management, runs, and `Workstreams` surfaces
 
 ## UI Architecture
 
@@ -90,8 +89,9 @@ Current UI boundary:
 - the scaffold is served from the same Worker deployable as the `v1` API
 - the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, the full `Runs` destination, and `Workstreams`
 - `Runs` is now truthful end to end for project-scoped index, run creation, planning authoring, explicit compile, execution DAG, and task artifact review
+- planning and task panes now reconnect through persisted locators and render assistant-ui surfaces over the Cloudflare agent transport exposed at `/agents/*`
 - `Workstreams` now follows the selected project through the real project-tasks API with server-backed filter and pagination state
-- `Documentation` still relies on scaffold-backed selectors and renders an explicit compatibility state for non-scaffold live projects
+- `Documentation` still relies on scaffold-backed selectors, renders through the shared Plate viewer, and keeps its explicit compatibility state for non-scaffold live projects
 - documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree
 
 ## Project-Backed Backend

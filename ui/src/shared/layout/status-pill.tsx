@@ -1,4 +1,15 @@
+import { Badge } from "../../components/ui/badge";
+import { cn } from "../../lib/utils";
+
 export type StatusTone = "active" | "blocked" | "complete" | "neutral" | "queued";
+
+const toneClassName: Record<StatusTone, string> = {
+  active: "status-pill-active",
+  blocked: "status-pill-blocked",
+  complete: "status-pill-complete",
+  neutral: "",
+  queued: "status-pill-queued"
+};
 
 export function inferStatusTone(label: string): StatusTone {
   const normalized = label.toLowerCase();
@@ -34,5 +45,12 @@ interface StatusPillProps {
 export function StatusPill({ label, tone }: StatusPillProps) {
   const resolvedTone = tone ?? inferStatusTone(label);
 
-  return <span className={`status-pill status-pill-${resolvedTone}`}>{label}</span>;
+  return (
+    <Badge
+      variant="outline"
+      className={cn("status-pill", toneClassName[resolvedTone])}
+    >
+      {label}
+    </Badge>
+  );
 }

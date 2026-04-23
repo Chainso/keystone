@@ -8,7 +8,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/v1/*", "/internal/*", "/healthz"]
+    "run_worker_first": ["/v1/*", "/internal/*", "/healthz", "/agents/*"]
   },
   "containers": [
     {
@@ -27,6 +27,10 @@
       {
         "name": "KEYSTONE_THINK_AGENT",
         "class_name": "KeystoneThinkAgent"
+      },
+      {
+        "name": "PlanningDocumentAgent",
+        "class_name": "PlanningDocumentAgent"
       },
       {
         "name": "SANDBOX",
@@ -62,6 +66,10 @@
     {
       "tag": "v4",
       "deleted_classes": ["RunCoordinatorDO"]
+    },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["PlanningDocumentAgent"]
     }
   ],
   "vars": {

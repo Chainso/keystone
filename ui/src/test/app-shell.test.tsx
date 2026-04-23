@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+
+import { AppProviders } from "../app/app-providers";
+import { useTheme } from "../app/theme-provider";
+import { themePreferenceStorageKey } from "../app/theme";
+import { Button } from "../components/ui/button";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
+import { selectCurrentProjectSummary } from "../features/resource-model/selectors";
 import { resolveRunsSnapshotForProject } from "../features/runs/use-runs-index-view-model";
 import { renderRoute } from "./render-route";
 import {
@@ -12,6 +20,18 @@ import {
 } from "../../../src/http/api/v1/projects/contracts";
 
 const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
+const themeBootstrapScriptMatch = readFileSync(
+  resolve(process.cwd(), "ui/index.html"),
+  "utf8"
+).match(/<script id="keystone-theme-bootstrap">([\s\S]*?)<\/script>/);
+const windowLocalStorageDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+const globalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+
+if (!themeBootstrapScriptMatch) {
+  throw new Error("Missing the head-level Keystone theme bootstrap script in ui/index.html.");
+}
+
+const themeBootstrapScript = themeBootstrapScriptMatch[1];
 
 interface LiveRunFixture {
   compiledFrom: {
@@ -31,6 +51,128 @@ interface LiveRunFixture {
 
 type ResponseFactory = () => Promise<Response> | Response;
 
+function createMatchMediaController(initialMatches = false) {
+  let matches = initialMatches;
+  const listeners = new Set<
+    EventListenerOrEventListenerObject | ((event: MediaQueryListEvent) => void)
+  >();
+  const mediaQueryList: MediaQueryList = {
+    get matches() {
+      return matches;
+    },
+    media: "(prefers-color-scheme: dark)",
+    onchange: null,
+    addEventListener(_type: string, listener: EventListenerOrEventListenerObject | null) {
+      if (listener) {
+        listeners.add(listener);
+      }
+    },
+    removeEventListener(_type: string, listener: EventListenerOrEventListenerObject | null) {
+      if (listener) {
+        listeners.delete(listener);
+      }
+    },
+    addListener(listener: ((event: MediaQueryListEvent) => void) | null) {
+      if (listener) {
+        listeners.add(listener);
+      }
+    },
+    removeListener(listener: ((event: MediaQueryListEvent) => void) | null) {
+      if (listener) {
+        listeners.delete(listener);
+      }
+    },
+    dispatchEvent() {
+      return true;
+    }
+  };
+
+  return {
+    matchMedia: vi.fn().mockImplementation(() => mediaQueryList),
+    setMatches(nextMatches: boolean) {
+      matches = nextMatches;
+      const event = {
+        matches: nextMatches,
+        media: mediaQueryList.media
+      } as MediaQueryListEvent;
+
+      listeners.forEach((listener) => {
+        if (typeof listener === "function") {
+          listener(event);
+          return;
+        }
+
+        listener.handleEvent(event);
+      });
+    }
+  };
+}
+
+function ThemeHarness() {
+  const { actions, meta, state } = useTheme();
+
+  return (
+    <div>
+      <p data-testid="theme-preference">{state.preference}</p>
+      <p data-testid="resolved-theme">{state.resolvedTheme}</p>
+      <p data-testid="system-theme">{meta.systemTheme}</p>
+      <button
+        type="button"
+        onClick={() => {
+          actions.setThemePreference("dark");
+        }}
+      >
+        Dark theme
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          actions.setThemePreference("system");
+        }}
+      >
+        System theme
+      </button>
+    </div>
+  );
+}
+
+function renderThemeHarness() {
+  return render(
+    <AppProviders project={selectCurrentProjectSummary()}>
+      <ThemeHarness />
+    </AppProviders>
+  );
+}
+
+function runThemeBootstrapScript() {
+  new Function("window", "document", themeBootstrapScript)(window, document);
+}
+
+async function withUnavailableLocalStorage<T>(run: () => T | Promise<T>) {
+  const error = new DOMException("Blocked by the browser.", "SecurityError");
+  const throwingDescriptor = {
+    configurable: true,
+    get() {
+      throw error;
+    }
+  };
+
+  Object.defineProperty(window, "localStorage", throwingDescriptor);
+  Object.defineProperty(globalThis, "localStorage", throwingDescriptor);
+
+  try {
+    return await run();
+  } finally {
+    if (windowLocalStorageDescriptor) {
+      Object.defineProperty(window, "localStorage", windowLocalStorageDescriptor);
+    }
+
+    if (globalLocalStorageDescriptor) {
+      Object.defineProperty(globalThis, "localStorage", globalLocalStorageDescriptor);
+    }
+  }
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -40,12 +182,130 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
+describe("theme provider", () => {
+  it("runs the real head bootstrap before app mount and honors a stored dark preference", () => {
+    const controller = createMatchMediaController(false);
+
+    window.localStorage.setItem(themePreferenceStorageKey, "dark");
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+
+    runThemeBootstrapScript();
+
+    expect(controller.matchMedia).toHaveBeenCalledWith("(prefers-color-scheme: dark)");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement).not.toHaveClass("light");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+  });
+
+  it("defaults to the system theme on first load", () => {
+    const controller = createMatchMediaController(true);
+
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    renderThemeHarness();
+
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("system");
+    expect(screen.getByTestId("resolved-theme")).toHaveTextContent("dark");
+    expect(screen.getByTestId("system-theme")).toHaveTextContent("dark");
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBeNull();
+  });
+
+  it("prefers an explicit stored theme over the system theme", () => {
+    const controller = createMatchMediaController(true);
+
+    window.localStorage.setItem(themePreferenceStorageKey, "light");
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    renderThemeHarness();
+
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("light");
+    expect(screen.getByTestId("resolved-theme")).toHaveTextContent("light");
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+  });
+
+  it("stays usable when browser storage access throws", async () => {
+    const controller = createMatchMediaController(false);
+
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+
+    await withUnavailableLocalStorage(async () => {
+      runThemeBootstrapScript();
+      renderThemeHarness();
+
+      expect(screen.getByTestId("theme-preference")).toHaveTextContent("system");
+      expect(screen.getByTestId("resolved-theme")).toHaveTextContent("light");
+      expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
+      fireEvent.click(screen.getByRole("button", { name: "Dark theme" }));
+
+      expect(screen.getByTestId("theme-preference")).toHaveTextContent("dark");
+      expect(screen.getByTestId("resolved-theme")).toHaveTextContent("dark");
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+  });
+
+  it("persists explicit theme changes and can return to system tracking", async () => {
+    const controller = createMatchMediaController(false);
+
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    renderThemeHarness();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dark theme" }));
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBe("dark");
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+
+    fireEvent.click(screen.getByRole("button", { name: "System theme" }));
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBeNull();
+    expect(screen.getByTestId("theme-preference")).toHaveTextContent("system");
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
+    controller.setMatches(true);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("resolved-theme")).toHaveTextContent("dark");
+      expect(screen.getByTestId("system-theme")).toHaveTextContent("dark");
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+  });
+
+  it("keeps seeded shadcn consumers on semantic theme tokens", () => {
+    const controller = createMatchMediaController(true);
+
+    window.localStorage.setItem(themePreferenceStorageKey, "dark");
+    vi.stubGlobal("matchMedia", controller.matchMedia);
+    render(
+      <AppProviders project={selectCurrentProjectSummary()}>
+        <Button>Launch run</Button>
+      </AppProviders>
+    );
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(screen.getByRole("button", { name: "Launch run" })).toHaveClass(
+      "bg-primary",
+      "text-primary-foreground"
+    );
+  });
+});
+
 function expectShellLinkTarget(name: string, href: string) {
   expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
 }
 
+function expectWorkspaceLocation(projectName: string, destinationName: string) {
+  expect(screen.queryByLabelText("Workspace location")).not.toBeInTheDocument();
+  expect(getProjectSelector()).toHaveDisplayValue(projectName);
+  expect(screen.getByRole("link", { name: destinationName })).toHaveAttribute("aria-current", "page");
+}
+
 function getProjectSelector() {
   return screen.getByRole("combobox", { name: "Project" });
+}
+
+function getThemePreferencePanel() {
+  return screen.getByRole("group", { name: "Theme preference" }).closest(".shell-theme-panel");
 }
 
 function buildProjectsResponse(projects: CurrentProject[]) {
@@ -548,7 +808,13 @@ describe("App shell", () => {
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
-    expect(screen.getByText("wf-run-104")).toBeInTheDocument();
+    expectWorkspaceLocation("Keystone Cloudflare", "Runs");
+    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Open a row to move through the four-stage run workspace without leaving the selected project."
+      )
+    ).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
     expectShellLinkTarget("Workstreams", "/workstreams");
@@ -562,6 +828,30 @@ describe("App shell", () => {
     expect(
       screen.queryByText(/Open the run index, nested stepper phases, and execution scaffold./i)
     ).not.toBeInTheDocument();
+  });
+
+  it("falls back to the project key in the sidebar when the current project description is blank", async () => {
+    const projectWithBlankDescription: CurrentProject = {
+      projectId: "project-fallback",
+      projectKey: "fallback-project-key",
+      displayName: "Fallback Project",
+      description: ""
+    };
+
+    stubProjectListFetch([projectWithBlankDescription]);
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
+
+    const projectPanel = getProjectSelector().closest("section");
+
+    expect(projectPanel).not.toBeNull();
+    expect(
+      within(projectPanel as HTMLElement).getAllByText(projectWithBlankDescription.projectKey, {
+        selector: "p"
+      })
+    ).toHaveLength(2);
   });
 
   it("renders a coherent no-project shell state when the API returns no projects", async () => {
@@ -771,6 +1061,41 @@ describe("App shell", () => {
     });
   });
 
+  it("keeps the workspace-location chrome visible on nested run detail routes", async () => {
+    const project: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+    const run = createLiveRunFixture(project.projectId, {
+      runId: "run-104",
+      workflowInstanceId: "wf-run-104"
+    });
+
+    stubRunCreationFetch({
+      createRunResponses: [
+        () =>
+          createErrorResponse({
+            code: "unexpected_create",
+            message: "Create run should not be called for this test.",
+            status: 500
+          })
+      ],
+      initialRuns: [run],
+      knownRunsById: {
+        [run.runId]: run
+      },
+      project
+    });
+
+    renderRoute("/runs/run-104/specification", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Workspace location")).not.toBeInTheDocument();
+  });
+
   it("does not navigate into a stale run when the current project changes before + New run resolves", async () => {
     const projects: CurrentProject[] = [
       {
@@ -971,6 +1296,7 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    expectWorkspaceLocation("Alt Project", "Runs");
     expect(screen.getByText("Alt Project does not have any recorded runs yet.")).toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
@@ -1034,6 +1360,7 @@ describe("App shell", () => {
     });
 
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    expectWorkspaceLocation("Alt Project", "Runs");
     expect(await screen.findByRole("heading", { name: "Loading runs" })).toBeInTheDocument();
     expect(screen.getByText("Keystone is loading runs for Alt Project.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
@@ -1042,9 +1369,40 @@ describe("App shell", () => {
       createJsonResponse(buildRunsResponse(alternateRuns))
     );
 
-    expect(await screen.findByText("run-alt-301")).toBeInTheDocument();
+    await screen.findByRole("link", { name: "run-alt-301" });
+    expect(screen.getByRole("link", { name: "run-alt-301" })).toBeInTheDocument();
     expect(screen.queryByText("run-104")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
+  });
+
+  it("keeps the theme preference toggle in the sidebar and applies the selected theme", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+
+    stubProjectListFetch([scaffoldProject]);
+
+    renderRoute("/documentation", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expectWorkspaceLocation("Keystone Cloudflare", "Documentation");
+
+    const themePreferencePanel = getThemePreferencePanel();
+
+    expect(themePreferencePanel).not.toBeNull();
+    expect(themePreferencePanel?.closest("aside")?.lastElementChild).toBe(themePreferencePanel);
+
+    const themePreference = within(themePreferencePanel as HTMLElement).getByRole("group", {
+      name: "Theme preference"
+    });
+
+    fireEvent.click(within(themePreference).getByRole("radio", { name: "Dark" }));
+
+    expect(window.localStorage.getItem(themePreferenceStorageKey)).toBe("dark");
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   });
 
   it("renders the settings load error state and recovers after retry", async () => {
@@ -1116,6 +1474,86 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("waits for the real project selection before loading live project settings", async () => {
+    const projects: CurrentProject[] = [
+      {
+        projectId: "project-keystone-cloudflare",
+        projectKey: "keystone-cloudflare",
+        displayName: "Keystone Cloudflare",
+        description: "Internal operator workspace for the Keystone Cloudflare project."
+      },
+      {
+        projectId: "project-alt",
+        projectKey: "alt-project",
+        displayName: "Alt Project",
+        description: "Alternate operator workspace."
+      }
+    ];
+    const alternateProjectDetail = {
+      projectId: "project-alt",
+      projectKey: "alt-project",
+      displayName: "Alt Project",
+      description: "Alternate operator workspace.",
+      ruleSet: {
+        reviewInstructions: ["Review the alternate project carefully."],
+        testInstructions: ["Run the alternate smoke test suite."]
+      },
+      components: [
+        {
+          componentKey: "alt-api",
+          displayName: "Alt API",
+          kind: "git_repository" as const,
+          config: {
+            gitUrl: "https://github.com/keystone/alt-api.git",
+            ref: "main"
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "ALT_RUNTIME",
+          value: "workers"
+        }
+      ]
+    };
+    const deferredProjectsResponse = createDeferredResponse();
+    const deferredDetailResponse = createDeferredResponse();
+
+    window.localStorage.setItem(currentProjectStorageKey, "project-alt");
+    const fetchMock = stubProjectManagementFetch({
+      projectResponses: [() => deferredProjectsResponse.promise],
+      projectDetailsByProjectId: {
+        "project-alt": [() => deferredDetailResponse.promise]
+      }
+    });
+
+    renderRoute("/settings", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Loading projects" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Loading project settings" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([request]) =>
+      typeof request === "string" ? request : request.toString()
+    )).toEqual(["/v1/projects"]);
+
+    deferredProjectsResponse.resolve(createJsonResponse(buildProjectsResponse(projects)));
+
+    expect(
+      await screen.findByRole("heading", { name: "Loading project settings" })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([request]) =>
+      typeof request === "string" ? request : request.toString()
+    )).toEqual(["/v1/projects", "/v1/projects/project-alt"]);
+
+    deferredDetailResponse.resolve(createJsonResponse(buildProjectDetailResponse(alternateProjectDetail)));
+
+    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
   });
 
   it("keeps the settings route safe when a switched project detail is missing", async () => {
@@ -1206,22 +1644,26 @@ describe("App shell", () => {
 
   it.each([
     {
+      destination: "Documentation",
       path: "/documentation",
       heading: "Project documentation"
     },
     {
+      destination: "Workstreams",
       path: "/workstreams",
       heading: "Project work across runs"
     },
     {
+      destination: "New project",
       path: "/projects/new",
       heading: "New project"
     },
     {
+      destination: "Project settings",
       path: "/settings",
       heading: "Project settings: Keystone Cloudflare"
     }
-  ])("mounts the $heading scaffold route inside the shared shell", async ({ path, heading }) => {
+  ])("mounts the $heading scaffold route inside the shared shell", async ({ path, heading, destination }) => {
     const scaffoldProject: CurrentProject = {
       projectId: "project-keystone-cloudflare",
       projectKey: "keystone-cloudflare",
@@ -1274,6 +1716,7 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
+    expectWorkspaceLocation("Keystone Cloudflare", destination);
     expectShellLinkTarget("Runs", "/runs");
     expectShellLinkTarget("Documentation", "/documentation");
     expectShellLinkTarget("Workstreams", "/workstreams");

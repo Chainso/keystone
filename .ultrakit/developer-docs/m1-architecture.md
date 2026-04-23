@@ -27,8 +27,10 @@ The current UI is no longer scaffold-only for project management:
 - `+ New run` now creates real run records through `POST /v1/projects/:projectId/runs` and routes directly into the new run's live `Specification` page without seeding planning documents
 - live run detail under `/runs/:runId/**` now reads real run, planning-document, workflow, task, and task-artifact data through feature-owned UI providers
 - `Specification`, `Architecture`, and `Execution Plan` can create missing run-scoped documents and save new current revisions in place through `POST /v1/runs/:runId/documents` and `POST /v1/runs/:runId/documents/:documentId/revisions`
+- run-scoped planning documents now get deterministic conversation locators on create when the request omits them, and `GET /v1/runs/:runId/documents` plus `GET /v1/runs/:runId/documents/:documentId` lazily backfill missing locators instead of returning locator-less planning resources
 - `Execution Plan` now exposes the explicit `Compile run` action through `POST /v1/runs/:runId/compile`, seeds compile provenance into the live run state immediately after acceptance, and routes into `Execution`, where the UI keeps refreshing until the live workflow graph is available
-- task detail now lists live task artifacts, lazily loads supported text previews through the authenticated run API seam, and shows explicit compatibility messaging for unsupported content types
+- task detail now uses the task conversation plus code-review split: changed files are inferred from text `run_note` and `staged_output` artifacts loaded through the authenticated run API seam when their content parses as unified diff, while the remaining task artifacts stay metadata-only support records in that pane
+- planning and task panes now reconnect from their persisted `conversation` locators and render visible assistant-ui chat surfaces over the Cloudflare `useAgent` / `useAgentChat` bridge, without introducing a second conversation store in Keystone
 - the planning pages keep explicit empty, error, viewer, and editor states in the shared split layout instead of falling back to scaffold placeholders
 
 The current live/scaffold split is still intentional:
@@ -127,6 +129,10 @@ Removed from the backend surface:
 - public task-message write routes
 - evidence / integration / release placeholder routes
 
+Cloudflare-backed chat transport is exposed separately from the `v1` JSON API:
+
+- `ALL /agents/*`
+
 ## Conversation Model
 
 Planning chat is tracked by locator on `documents`:
@@ -138,6 +144,13 @@ Task chat is tracked by locator on `run_tasks`:
 
 - `conversation_agent_class`
 - `conversation_agent_name`
+
+Run-scoped planning locators now follow one deterministic naming contract when Keystone provisions or normalizes them:
+
+- `conversation_agent_class = PlanningDocumentAgent`
+- `conversation_agent_name = tenant:<tenantId>:run:<runId>:document:<canonical-path>`
+
+For run-scoped planning documents, Keystone treats that canonical locator as authoritative on create and on lazy list/detail normalization. It ignores client-supplied planning locator values and rewrites missing or non-canonical planning locators back to the deterministic contract above.
 
 Message history itself lives in Cloudflare Think / Session storage. Keystone does not duplicate those messages in relational tables.
 
@@ -206,6 +219,11 @@ The local UI also depends on the shared dev-auth header seam for protected brows
 
 - `Authorization: Bearer <KEYSTONE_DEV_TOKEN>`
 - `X-Keystone-Tenant-Id: <tenant-id>`
+
+Cloudflare chat agent requests use the same auth values. The browser currently sends them in both places:
+
+- headers for normal protected JSON requests
+- `?keystoneToken=...&keystoneTenantId=...` query params on `/agents/*` so `useAgent` can select a persisted agent instance before `useAgentChat` attaches to it
 
 Local defaults stay aligned with `.dev.vars.example`:
 

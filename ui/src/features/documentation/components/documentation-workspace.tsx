@@ -1,89 +1,147 @@
+import { Link } from "react-router-dom";
+
+import {
+  DocumentFrame,
+  DocumentFrameBody,
+  DocumentFramePath,
+  DocumentFrameRule,
+  DocumentFrameSummary,
+  DocumentFrameTitle
+} from "../../../components/workspace/document-frame";
+import { PlateMarkdownDocument } from "../../../components/editor/plate-markdown-document";
+import {
+  WorkspaceEmptyState,
+  WorkspaceEmptyStateDescription,
+  WorkspaceEmptyStateTitle
+} from "../../../components/workspace/workspace-empty-state";
+import { WorkspacePage } from "../../../components/workspace/workspace-page";
+import {
+  WorkspaceSplit,
+  WorkspaceSplitPane
+} from "../../../components/workspace/workspace-split";
 import type { DocumentationViewModel } from "../use-documentation-view-model";
 
 interface DocumentationWorkspaceProps {
   model: DocumentationViewModel;
 }
 
+function normalizeDocumentLabel(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
 export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
+  const selectedDocumentSummary =
+    model.selectedDocument &&
+    normalizeDocumentLabel(model.selectedDocument.viewerTitle) !==
+      normalizeDocumentLabel(model.selectedDocument.title)
+      ? model.selectedDocument.viewerTitle
+      : null;
+
   return (
-    <div className="page-stage">
-      <section className="workspace-panel">
-        <h1 className="page-title runs-page-title">{model.title}</h1>
+    <WorkspacePage>
+      <div className="workspace-surface-header">
+        <div className="workspace-surface-heading">
+          <h1 className="page-title runs-page-title">{model.title}</h1>
+          <p className="workspace-surface-note documentation-shell-summary">
+            Current project knowledge stays grouped by document category and opens in the shared reader.
+          </p>
+        </div>
+        <div
+          className="workspace-surface-actions documentation-header-meta"
+          aria-label="Documentation metadata"
+          role="group"
+        >
+          <span className="meta-chip">{model.documentCountLabel}</span>
+        </div>
+      </div>
 
-        {model.compatibilityState || !model.selectedDocument ? (
-          <section className="empty-state-card">
-            <h2 className="document-card-title">
+      {model.compatibilityState || !model.selectedDocument ? (
+        <section className="workspace-surface">
+          <WorkspaceEmptyState>
+            <WorkspaceEmptyStateTitle>
               {model.compatibilityState?.heading ?? "No documentation yet"}
-            </h2>
-            <p className="document-card-summary">
+            </WorkspaceEmptyStateTitle>
+            <WorkspaceEmptyStateDescription>
               {model.compatibilityState?.message ?? "This project does not have any documentation yet."}
-            </p>
-          </section>
-        ) : (
-          <div className="workspace-split documentation-grid">
-            <section className="workspace-panel documentation-tree-panel">
-              <header className="workspace-panel-header">
-                <div>
-                  <h2 className="workspace-panel-title">Doc tree</h2>
-                </div>
-              </header>
+            </WorkspaceEmptyStateDescription>
+          </WorkspaceEmptyState>
+        </section>
+      ) : (
+        <WorkspaceSplit className="documentation-grid">
+          <WorkspaceSplitPane>
+            <section className="workspace-surface documentation-tree-panel">
+              <div className="workspace-surface-section-heading">
+                <h2 className="page-section-title">Documentation categories</h2>
+                <p className="page-section-copy">
+                  Browse the current notes and reference documents for this project.
+                </p>
+              </div>
 
-              <div className="documentation-tree" aria-label="Documentation tree">
+              <nav className="documentation-tree" aria-label="Documentation categories">
                 {model.groups.map((group) => (
                   <section key={group.groupId} className="documentation-tree-group">
-                    <h3 className="documentation-tree-group-title">{group.label}</h3>
+                    <div className="documentation-tree-group-header">
+                      <h3 className="documentation-tree-group-title">{group.label}</h3>
+                      <p className="documentation-tree-group-summary">{group.summary}</p>
+                    </div>
 
                     <div className="documentation-tree-items">
-                      {group.documents.map((document) => (
-                        <button
+                      {group.documents.map((document, index) => (
+                        <Link
                           key={document.documentId}
-                          type="button"
+                          to={document.href}
                           className={
                             document.isSelected
                               ? "documentation-tree-item is-active"
                               : "documentation-tree-item"
                           }
                           aria-label={`${document.label} ${document.path}`}
-                          aria-pressed={document.isSelected}
-                          onClick={() => model.selectDocument(document.documentId)}
+                          aria-current={document.isSelected ? "page" : undefined}
                         >
-                          <span className="documentation-tree-item-label">{document.label}</span>
-                          <span className="documentation-tree-item-path">{document.path}</span>
-                        </button>
+                          <span className="documentation-tree-item-branch" aria-hidden="true">
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          <span className="documentation-tree-item-copy">
+                            <span className="documentation-tree-item-label">{document.label}</span>
+                            <span className="documentation-tree-item-path">{document.path}</span>
+                          </span>
+                        </Link>
                       ))}
                     </div>
                   </section>
                 ))}
-              </div>
+              </nav>
             </section>
+          </WorkspaceSplitPane>
 
-            <section className="workspace-panel workspace-panel-document">
-              <header className="workspace-panel-header">
-                <div>
-                  <h2 className="workspace-panel-title">Document viewer</h2>
-                </div>
-              </header>
-
-              <div className="document-card">
-                <h3 className="document-viewer-title">{model.selectedDocument.viewerTitle}</h3>
-                <p className="document-viewer-path">{model.selectedDocument.path}</p>
-                <div className="document-rule" aria-hidden="true" />
-
-                <div className="document-copy">
-                  {model.selectedDocument.contentLines.map((line, index) => (
-                    <p
-                      key={`${model.selectedDocument?.documentId ?? "document"}:${index}`}
-                      className="document-line"
-                    >
-                      {line}
-                    </p>
-                  ))}
-                </div>
+          <WorkspaceSplitPane>
+            <section className="workspace-surface workspace-panel-document">
+              <div className="workspace-surface-section-heading">
+                <h2 className="page-section-title">Current document</h2>
+                <p className="page-section-copy">
+                  Read the current document for the selected category without leaving the active project.
+                </p>
               </div>
+
+              <DocumentFrame>
+                <DocumentFramePath>{model.selectedDocument.path}</DocumentFramePath>
+                <DocumentFrameTitle>{model.selectedDocument.title}</DocumentFrameTitle>
+                {selectedDocumentSummary ? (
+                  <DocumentFrameSummary>{selectedDocumentSummary}</DocumentFrameSummary>
+                ) : null}
+                <DocumentFrameRule />
+
+                <DocumentFrameBody>
+                  <PlateMarkdownDocument
+                    label="Documentation document"
+                    markdown={model.selectedDocument.markdown}
+                  />
+                </DocumentFrameBody>
+              </DocumentFrame>
             </section>
-          </div>
-        )}
-      </section>
-    </div>
+          </WorkspaceSplitPane>
+        </WorkspaceSplit>
+      )}
+    </WorkspacePage>
   );
 }

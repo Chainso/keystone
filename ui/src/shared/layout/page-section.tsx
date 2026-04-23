@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { WorkspacePageSection } from "../../components/workspace/workspace-page";
+
 interface PageSectionProps {
   eyebrow: string;
   title: string;
@@ -8,10 +10,10 @@ interface PageSectionProps {
 
 export function PageSection({ eyebrow, title, children }: PageSectionProps) {
   return (
-    <section className="page-section">
+    <WorkspacePageSection>
       <p className="page-section-eyebrow">{eyebrow}</p>
       <h2 className="page-section-title">{title}</h2>
       {children}
-    </section>
+    </WorkspacePageSection>
   );
 }

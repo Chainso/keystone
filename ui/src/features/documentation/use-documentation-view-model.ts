@@ -11,6 +11,7 @@ import { updateSearchParams } from "../../shared/navigation/search-param-state";
 
 export interface DocumentationTreeDocument {
   documentId: string;
+  href: string;
   label: string;
   title: string;
   path: string;
@@ -20,6 +21,7 @@ export interface DocumentationTreeDocument {
 export interface DocumentationTreeGroup {
   groupId: string;
   label: string;
+  summary: string;
   documents: DocumentationTreeDocument[];
 }
 
@@ -28,7 +30,7 @@ export interface DocumentationSelectedDocument {
   title: string;
   path: string;
   viewerTitle: string;
-  contentLines: string[];
+  markdown: string;
 }
 
 export interface DocumentationViewModel {
@@ -36,10 +38,132 @@ export interface DocumentationViewModel {
     heading: string;
     message: string;
   };
+  currentProjectLabel: string;
+  documentCountLabel: string;
   title: string;
   groups: DocumentationTreeGroup[];
   selectedDocument: DocumentationSelectedDocument | null;
   selectDocument: (documentId: string) => void;
+}
+
+function formatDocumentCount(count: number) {
+  return `${count} document${count === 1 ? "" : "s"}`;
+}
+
+function isFenceMarker(line: string) {
+  return /^\s*(```|~~~)/.test(line);
+}
+
+function isHeadingLine(line: string) {
+  return /^\s{0,3}#{1,6}\s+/.test(line);
+}
+
+function isListItemLine(line: string) {
+  return /^\s*(?:[-*+]|\d+[.)])\s+/.test(line);
+}
+
+function isBlockquoteLine(line: string) {
+  return /^\s*>/.test(line);
+}
+
+function isTableLine(line: string) {
+  return /^\s*\|/.test(line);
+}
+
+function isIndentedCodeLine(line: string) {
+  return /^(?: {4}|\t)/.test(line);
+}
+
+function shouldUseSingleLineBreak(input: {
+  currentLine: string;
+  inFence: boolean;
+  previousLine: string;
+}) {
+  const { currentLine, inFence, previousLine } = input;
+
+  if (currentLine.trim().length === 0 || previousLine.trim().length === 0) {
+    return true;
+  }
+
+  if (inFence || isFenceMarker(previousLine) || isFenceMarker(currentLine)) {
+    return true;
+  }
+
+  const previousIsListItem = isListItemLine(previousLine);
+  const currentIsListItem = isListItemLine(currentLine);
+
+  if (previousIsListItem && currentIsListItem) {
+    return true;
+  }
+
+  if (currentIsListItem) {
+    return true;
+  }
+
+  const previousIsBlockquote = isBlockquoteLine(previousLine);
+  const currentIsBlockquote = isBlockquoteLine(currentLine);
+
+  if ((previousIsBlockquote && currentIsBlockquote) || currentIsBlockquote) {
+    return true;
+  }
+
+  const previousIsTable = isTableLine(previousLine);
+  const currentIsTable = isTableLine(currentLine);
+
+  if ((previousIsTable && currentIsTable) || currentIsTable) {
+    return true;
+  }
+
+  if (isHeadingLine(previousLine)) {
+    return true;
+  }
+
+  if (isIndentedCodeLine(previousLine) && isIndentedCodeLine(currentLine)) {
+    return true;
+  }
+
+  return false;
+}
+
+export function buildDocumentationMarkdown(contentLines: string[]) {
+  const lines = contentLines.map((line) => line.replace(/\r/g, ""));
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  let markdown = "";
+  let inFence = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const currentLine = lines[index] ?? "";
+
+    if (markdown.length === 0) {
+      markdown = currentLine;
+
+      if (isFenceMarker(currentLine)) {
+        inFence = !inFence;
+      }
+
+      continue;
+    }
+
+    const previousLine = lines[index - 1] ?? "";
+
+    markdown = `${markdown}${shouldUseSingleLineBreak({
+      currentLine,
+      inFence,
+      previousLine
+    })
+      ? "\n"
+      : "\n\n"}${currentLine}`;
+
+    if (isFenceMarker(currentLine)) {
+      inFence = !inFence;
+    }
+  }
+
+  return markdown;
 }
 
 export function useDocumentationViewModel(): DocumentationViewModel {
@@ -81,6 +205,8 @@ export function useDocumentationViewModel(): DocumentationViewModel {
         message:
           "Project documentation still depends on scaffold-backed data. Switch to a scaffold-backed project to use this screen."
       },
+      currentProjectLabel: project.displayName,
+      documentCountLabel: "Compatibility only",
       title: "Project documentation",
       groups: [],
       selectedDocument: null,
@@ -94,6 +220,8 @@ export function useDocumentationViewModel(): DocumentationViewModel {
         heading: "No project documentation yet",
         message: `${project.displayName} does not have any project-scoped documentation in the scaffold dataset yet.`
       },
+      currentProjectLabel: project.displayName,
+      documentCountLabel: "0 documents",
       title: "Project documentation",
       groups: [],
       selectedDocument: null,
@@ -101,13 +229,24 @@ export function useDocumentationViewModel(): DocumentationViewModel {
     };
   }
 
+  const documentCount = selection.groups.reduce(
+    (count, group) => count + group.documents.length,
+    0
+  );
+
   return {
+    currentProjectLabel: project.displayName,
+    documentCountLabel: formatDocumentCount(documentCount),
     title: "Project documentation",
     groups: selection.groups.map((group) => ({
       groupId: group.groupId,
       label: group.label,
+      summary: formatDocumentCount(group.documents.length),
       documents: group.documents.map((document) => ({
         documentId: document.documentId,
+        href: `?${updateSearchParams(searchParams, {
+          document: document.documentId
+        }).toString()}`,
         label: document.label,
         title: document.title,
         path: document.path,
@@ -119,7 +258,7 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       title: selection.selectedDocument.title,
       path: selection.selectedDocument.path,
       viewerTitle: selection.selectedDocument.viewerTitle,
-      contentLines: selection.selectedDocument.contentLines
+      markdown: buildDocumentationMarkdown(selection.selectedDocument.contentLines)
     },
     selectDocument(documentId: string) {
       setSearchParams(

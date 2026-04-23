@@ -492,6 +492,10 @@ describeIfDatabase("database repositories", () => {
     expect(projectDocument.scopeType).toBe("project");
     expect(projectDocument.runId).toBeNull();
     expect(runDocument.scopeType).toBe("run");
+    expect(runDocument.conversationAgentClass).toBe("PlanningDocumentAgent");
+    expect(runDocument.conversationAgentName).toBe(
+      `tenant:${tenantId}:run:${runId}:document:execution-plan`
+    );
     expect(projectArtifact.runId).toBeNull();
     expect(getArtifactStorageUri(projectArtifact)).toContain(`/documents/project/${project.projectId}/`);
     expect(projectArtifact.etag).toBe("etag-project-spec-1");
