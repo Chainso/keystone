@@ -120,6 +120,10 @@ Alternatives considered:
 - 2026-04-22: Phase 1 closed after review verification. Phase 2 execution is starting with the corrected assumption that run/execution surfaces still carry some selected-project framing and remain responsible for removing it.
 - 2026-04-23: Phase 2 closed after the targeted fix pass resolved the run-stage link mismatch, removed the misleading default-phase abstraction, and added positive coverage for the new run/task-detail behavior. Phase 3 execution is starting from the Plate UI install baseline and the documented renderer/test constraints.
 - 2026-04-23: Phase 3 closed after the targeted fix pass resolved the remaining documentation-copy, save-state, parse-fallback, and coverage issues. Phase 4 execution is starting for closeout truth, durable docs/notes evaluation, and archive readiness.
+- 2026-04-23: Final comprehensive review completed after the targeted closeout pass:
+  - no remaining critical or important findings remained across spec compliance, test quality, code quality, regression safety, integration coherence, or closeout coherence,
+  - the last closeout pass removed the remaining Cloudflare/approval product wording and added the missing shared-surface coverage for fenced code blocks plus fail-closed malformed-markdown behavior,
+  - the plan is now archive-ready.
 - 2026-04-22: Completed Phase 2 run/execution realignment:
   - the live `Runs` index now uses human summary copy plus canonical `Specification` / `Execution` stage labels instead of raw workflow and engine identifiers,
   - `/runs/:runId` now lands on `Specification` as the stable run-entry route instead of inferring a deeper phase from compile state,
@@ -794,6 +798,6 @@ Completion Notes:
 - Closeout validation was refreshed after that pass: the required targeted route suite passed, the direct shared-surface suite passed, sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` restriction again, and the escalated rerun passed (`36 passed | 2 skipped` test files, `332 passed | 21 skipped` tests).
 
 Next Starter Context:
-- The plan is ready for the orchestrator's final comprehensive review. Do not archive it yet.
-- Closeout truth is now explicit: README and the durable developer docs stayed accurate, and the final closeout pass only needed shipped-copy cleanup plus shared-surface coverage additions in UI/tests.
-- If the final review re-runs `rtk npm test` in the sandbox and sees `listen EPERM 127.0.0.1` from `tests/scripts/demo-contracts.test.ts`, treat that as the known environment caveat and rely on the escalated broad-suite proof unless product-facing failures also appear.
+- Final comprehensive review completed cleanly after the targeted closeout pass.
+- Archive bookkeeping is the only remaining step; no additional implementation or review work remains for this plan.
+- If this archived plan is reopened for historical validation and `rtk npm test` in the sandbox hits `listen EPERM 127.0.0.1` from `tests/scripts/demo-contracts.test.ts`, treat that as the known environment caveat and rely on the escalated broad-suite proof unless product-facing failures also appear.

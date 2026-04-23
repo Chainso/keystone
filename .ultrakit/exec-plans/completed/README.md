@@ -6,6 +6,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 
 | Plan | Completed | Summary |
 |------|-----------|---------|
+| [keystone-ui-workspace-spec-realignment](./keystone-ui-workspace-spec-realignment.md) | 2026-04-23 | Realigned the workspace UI to the canonical spec, moved planning/documentation onto shared Plate-backed markdown surfaces, closed the final review gaps, and archived the completed plan. |
 | [keystone-ui-shadcn-tailwind-redesign](./keystone-ui-shadcn-tailwind-redesign.md) | 2026-04-22 | Completed the Tailwind/shadcn workspace redesign, migrated Plate-backed document surfaces, wired Cloudflare-backed assistant-ui chat, and recorded final validation truth. |
 | [keystone-think-live-dag-generalization](./keystone-think-live-dag-generalization.md) | 2026-04-21 | Generalized single-target `think_live` DAG execution, made the public proof DAG-aware, updated durable docs, and recorded the remaining host-local live-proof blocker. |
 | [keystone-ui-composition-bug-fixes](./keystone-ui-composition-bug-fixes.md) | 2026-04-21 | Stabilized the UI harness, fixed navigation/state bugs, unified project configuration, simplified run planning composition, and documented the final validation/build constraints. |
