@@ -67,13 +67,15 @@ export interface RunPlanningPhaseErrorViewModel extends RunPlanningPhaseBaseView
 }
 
 export interface RunPlanningPhaseEditingViewModel extends RunPlanningPhaseBaseViewModel {
-  bodyField: {
-    label: string;
-    onChange: (value: string) => void;
-    value: string;
-  };
   canSave: boolean;
   discardChanges: () => void;
+  documentEditor: {
+    editorLabel: string;
+    markdown: string;
+    markdownSourceKey: string;
+    onChange: (markdown: string) => void;
+    placeholder: string;
+  };
   hasUnsavedChanges: boolean;
   helperMessage: string;
   isSubmitting: boolean;

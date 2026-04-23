@@ -251,20 +251,22 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
 
   if (isEditing) {
     return {
-      bodyField: {
-        label: "Document body",
-        onChange: setBody,
-        value: body
-      },
       canSave,
       conversationLocator: base.conversationLocator,
       discardChanges,
+      documentEditor: {
+        editorLabel: "Document body",
+        markdown: body,
+        markdownSourceKey: sourceKey,
+        onChange: setBody,
+        placeholder: `Write the current ${phase.label.toLowerCase()} in markdown.`,
+      },
       documentPath: base.documentPath,
       hasUnsavedChanges,
       helperMessage:
         planningState.status === "ready"
-          ? "Markdown stays canonical. Save creates a new current revision and refreshes the Plate document surface from that source."
-          : "Markdown stays canonical. Save creates the first current revision and loads the Plate document surface from that source.",
+          ? "Edit the current document directly in Plate while markdown remains the saved source. Save creates a new current revision from that markdown."
+          : "Write the first current document directly in Plate while markdown remains the saved source. Save creates the first current revision from that markdown.",
       isSubmitting,
       panelTitle: title.trim() || base.panelTitle,
       phaseSummary: base.phaseSummary,

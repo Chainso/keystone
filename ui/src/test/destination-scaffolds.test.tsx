@@ -6,7 +6,6 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../components/workspace/entity-table";
 import { DocumentationWorkspace } from "../features/documentation/components/documentation-workspace";
-import { buildDocumentationMarkdown } from "../features/documentation/use-documentation-view-model";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
 import {
@@ -22,6 +21,7 @@ import { ResourceModelProvider } from "../features/resource-model/context";
 import { uiScaffoldDataset } from "../features/resource-model/scaffold-dataset";
 import type { ResourceModelDataset } from "../features/resource-model/types";
 import { DocumentationRoute } from "../routes/documentation/documentation-route";
+import { buildMarkdownSourceFromLines } from "../shared/markdown/source-markdown";
 import { renderRoute } from "./render-route";
 import {
   type ProjectTaskFilter,
@@ -873,7 +873,7 @@ describe("Destination scaffolds", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "Documentation is not available for this project yet"
+        name: "Documentation is not connected for this project yet"
       })
     ).toBeInTheDocument();
     expect(
@@ -927,10 +927,10 @@ describe("Destination scaffolds", () => {
 
     expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Documentation is not available for this project yet" })
+      screen.getByRole("heading", { name: "Documentation is not connected for this project yet" })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Documentation still depends on scaffold-backed data\./i)
+      screen.getByText(/Project-level documents still come from the built-in demo dataset\./i)
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Documentation categories" })
@@ -964,7 +964,7 @@ describe("Destination scaffolds", () => {
             selectDocument: vi.fn(),
             selectedDocument: {
               documentId: "checklist",
-              markdown: buildDocumentationMarkdown([
+              markdown: buildMarkdownSourceFromLines([
                 "# Checklist",
                 "- Preserve scaffold truth",
                 "- Keep list structure"
@@ -1018,7 +1018,7 @@ describe("Destination scaffolds", () => {
             selectDocument: vi.fn(),
             selectedDocument: {
               documentId: "handoff",
-              markdown: buildDocumentationMarkdown([
+              markdown: buildMarkdownSourceFromLines([
                 "# Handoff",
                 "",
                 "| Surface | Status |",
@@ -1096,7 +1096,7 @@ describe("Destination scaffolds", () => {
 
   it("builds markdown with heading, blank-line, ordered-list, and blockquote boundaries preserved", () => {
     expect(
-      buildDocumentationMarkdown([
+      buildMarkdownSourceFromLines([
         "# Decisions pending",
         "Documentation stays scaffold-backed until project APIs are live.",
         "",
@@ -1113,7 +1113,7 @@ describe("Destination scaffolds", () => {
 
   it("builds markdown with fenced code blocks and tables using single-line joins inside each block", () => {
     expect(
-      buildDocumentationMarkdown([
+      buildMarkdownSourceFromLines([
         "```ts",
         'const mode = "scaffold";',
         "```",

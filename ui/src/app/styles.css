@@ -1,4 +1,6 @@
 @import "tailwindcss";
+
+@plugin "tailwind-scrollbar-hide";
 @import "tw-animate-css";
 @import "react-diff-view/style/index.css";
 
@@ -38,6 +40,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-brand: var(--brand);
+  --color-highlight: var(--highlight);
 }
 
 :root {
@@ -121,6 +125,8 @@
   --diff-code-selected-background-color: color-mix(in srgb, var(--accent-fill) 68%, var(--surface-panel));
   --diff-code-selected-text-color: var(--text-primary);
   --diff-omit-gutter-line-color: var(--accent-line);
+  --highlight: oklch(0.852 0.199 91.936);
+  --brand: oklch(0.623 0.214 259.815);
 }
 
 :root.dark {
@@ -966,11 +972,14 @@ pre {
 .planning-conversation-stack,
 .planning-document-editor,
 .planning-document-editor-fields,
-.planning-document-preview,
-.planning-document-preview-header,
+.planning-document-editor-header,
 .markdown-document-surface {
   display: grid;
   gap: 0.85rem;
+}
+
+.markdown-document-surface-shell {
+  width: 100%;
 }
 
 .conversation-composer-placeholder,
@@ -1370,6 +1379,10 @@ pre {
 .markdown-document-surface-content {
   min-height: 12rem;
   color: var(--text-primary);
+}
+
+.markdown-document-editor-content {
+  min-height: 18rem;
 }
 
 .markdown-document-surface-content .slate-h1,
@@ -2533,4 +2546,9 @@ pre {
   .shell-action-row {
     grid-template-columns: 1fr;
   }
+}
+
+.dark {
+  --highlight: oklch(0.852 0.199 91.936);
+  --brand: oklch(0.707 0.165 254.624);
 }

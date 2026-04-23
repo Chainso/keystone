@@ -3,7 +3,6 @@
   "style": "new-york",
   "rsc": false,
   "tsx": true,
-  "iconLibrary": "lucide",
   "tailwind": {
     "config": "",
     "css": "ui/src/app/styles.css",
@@ -11,11 +10,15 @@
     "cssVariables": true,
     "prefix": ""
   },
+  "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
+    "utils": "@/lib/utils",
     "ui": "@/components/ui",
-    "hooks": "@/hooks",
     "lib": "@/lib",
-    "utils": "@/lib/utils"
+    "hooks": "@/hooks"
+  },
+  "registries": {
+    "@plate": "https://platejs.org/r/{name}.json"
   }
 }

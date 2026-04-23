@@ -121,49 +121,31 @@ function compareDocumentationTreeDocuments(
   return left.path.localeCompare(right.path);
 }
 
-function getDocumentationPathSegments(path: string) {
-  return path.split("/").filter(Boolean);
-}
-
-function formatDocumentationGroupLabel(segment: string) {
-  return segment
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
+const documentationGroupOrder = [
+  "product-specifications",
+  "technical-architecture",
+  "miscellaneous-notes"
+] as const;
 
 function getDocumentationGroupDefinition(document: ResourceDocument) {
-  const pathSegments = getDocumentationPathSegments(document.path);
-  const groupSegments = pathSegments.slice(0, -1);
-  const primaryGroupSegment =
-    groupSegments[1] ?? groupSegments[0] ?? document.kind;
-
-  if (primaryGroupSegment === "product") {
-    return {
-      groupId: `${document.scopeType}:docs/product`,
-      label: "Product Specifications"
-    };
+  switch (document.kind) {
+    case "product-specification":
+      return {
+        groupId: `${document.scopeType}:product-specifications`,
+        label: "Product Specifications"
+      };
+    case "technical-architecture":
+      return {
+        groupId: `${document.scopeType}:technical-architecture`,
+        label: "Technical Architecture"
+      };
+    case "miscellaneous-note":
+    default:
+      return {
+        groupId: `${document.scopeType}:miscellaneous-notes`,
+        label: "Miscellaneous Notes"
+      };
   }
-
-  if (primaryGroupSegment === "architecture") {
-    return {
-      groupId: `${document.scopeType}:docs/architecture`,
-      label: "Technical Architecture"
-    };
-  }
-
-  if (primaryGroupSegment === "notes") {
-    return {
-      groupId: `${document.scopeType}:docs/notes`,
-      label: "Miscellaneous Notes"
-    };
-  }
-
-  return {
-    groupId: `${document.scopeType}:${groupSegments.join("/") || document.kind}`,
-    label: formatDocumentationGroupLabel(primaryGroupSegment)
-  };
 }
 
 export function listProjects(dataset: ResourceModelDataset = uiScaffoldDataset) {
@@ -397,7 +379,16 @@ export function listProjectDocumentationGroups(
   return [...groups.values()].map((group) => ({
     ...group,
     documents: [...group.documents].sort(compareDocumentationTreeDocuments)
-  }));
+  })).sort((left, right) => {
+    const leftOrder = documentationGroupOrder.indexOf(
+      left.groupId.replace(/^project:/, "") as (typeof documentationGroupOrder)[number]
+    );
+    const rightOrder = documentationGroupOrder.indexOf(
+      right.groupId.replace(/^project:/, "") as (typeof documentationGroupOrder)[number]
+    );
+
+    return leftOrder - rightOrder;
+  });
 }
 
 export function getDocumentationDocument(

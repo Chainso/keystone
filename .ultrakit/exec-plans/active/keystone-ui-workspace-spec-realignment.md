@@ -118,6 +118,7 @@ Alternatives considered:
   - updated the directly affected destination-scaffold assertions,
   - reran validation: targeted `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed, sandbox `rtk npm test` hit the known `tests/scripts/demo-contracts.test.ts` `listen EPERM 127.0.0.1` blocker again, and the escalated rerun passed (`35 passed | 2 skipped` test files, `325 passed | 21 skipped` tests).
 - 2026-04-22: Phase 1 closed after review verification. Phase 2 execution is starting with the corrected assumption that run/execution surfaces still carry some selected-project framing and remain responsible for removing it.
+- 2026-04-23: Phase 2 closed after the targeted fix pass resolved the run-stage link mismatch, removed the misleading default-phase abstraction, and added positive coverage for the new run/task-detail behavior. Phase 3 execution is starting from the Plate UI install baseline and the documented renderer/test constraints.
 - 2026-04-22: Completed Phase 2 run/execution realignment:
   - the live `Runs` index now uses human summary copy plus canonical `Specification` / `Execution` stage labels instead of raw workflow and engine identifiers,
   - `/runs/:runId` now lands on `Specification` as the stable run-entry route instead of inferring a deeper phase from compile state,
@@ -134,6 +135,16 @@ Alternatives considered:
   - the bare `/runs/:runId` redirect still lands on `Specification`, but the misleading `useRunDefaultPhasePath` abstraction is gone and the route now redirects there directly.
   - added row-level live-run summary assertions, a positive run-header activity assertion, and a positive `Code review` heading assertion.
   - reran validation: `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` passed (`86 passed`), sandbox `rtk npm test` hit the known `tests/scripts/demo-contracts.test.ts` `listen EPERM 127.0.0.1` blocker again, and the escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- 2026-04-23: Completed Phase 3 document-surface and documentation-model realignment:
+  - deleted the repo-owned `plate-markdown-document` wrapper and replaced it with a shared Plate-first markdown surface built on generated `Editor` / `EditorStatic` components plus the installed Plate kits.
+  - kept markdown as the persisted boundary by centralizing markdown normalization, deserialization, and serialization in the shared editor/viewer path rather than introducing persisted Plate JSON.
+  - replaced the planning `textarea + preview` split with a real Plate editor while keeping labeled document regions and markdown save semantics intact.
+  - collapsed Documentation grouping to the canonical `Product Specifications`, `Technical Architecture`, and `Miscellaneous Notes` categories and rewrote the compatibility state in product-facing language.
+  - updated route and selector tests to match the new document surface and canonical documentation model, including a Plate-editor test double in route tests so jsdom keeps asserting save/load behavior without depending on contenteditable internals.
+- 2026-04-23: Validated Phase 3 with:
+  - `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` -> passed (`3 passed` test files, `109 passed` tests).
+  - sandbox `rtk npm test` -> failed again in `tests/scripts/demo-contracts.test.ts` with the known `listen EPERM 127.0.0.1` restriction.
+  - escalated host `rtk npm test` -> passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 
 ## Progress
 
@@ -146,7 +157,7 @@ Alternatives considered:
 - [x] 2026-04-22 Phase 1 targeted fix pass: remove the remaining selected-project wording from project configuration and Workstreams destination copy.
 - [x] 2026-04-22 Phase 2: realign run and execution flow behavior with the workspace spec.
 - [x] 2026-04-23 Phase 2 targeted fix pass: align run-index deep links with displayed stages, remove the misleading default-phase hook, and add the missing coverage.
-- [ ] Phase 3: realign documentation model and documentation surface framing with the workspace spec.
+- [x] 2026-04-23 Phase 3: realign documentation model and document surfaces with the workspace spec.
 - [ ] Phase 4: evaluate doc / notes impact, run closeout validation, and archive the plan.
 
 ## Surprises & Discoveries
@@ -167,6 +178,7 @@ Alternatives considered:
 - Parallel explorer audit found additional drift beyond the first-pass copy review:
   - `Project settings` defaults to `Components` instead of sharing the same tabbed entry behavior as `New project`.
   - `Project settings` repeats selected-project context inside the destination even though project selection is global.
+- Plate UI's generated `EditorContainer` is bound to `PlateContainer`, so the shared read-only viewer could not reuse it outside a live `Plate` context. The static document surface needs its own shell wrapper around `EditorStatic` instead of reusing the editable container component.
   - the live `Runs` index collapses stage to `Planning` vs `Execution` and uses internal runtime metadata as the summary field.
   - opening `/runs/:runId` auto-redirects to `Execution` or the first incomplete planning phase instead of a stable run-detail landing behavior.
   - `Execution Plan` breaks the shared planning layout by rendering a separate compile accessory beneath the right pane.
@@ -225,6 +237,17 @@ Alternatives considered:
   - Phase 2 targeted fix pass `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` passed (`86 passed`).
   - Both Phase 2 broad sandbox `rtk npm test` runs hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
   - The initial escalated host rerun passed after hardening one transient create-run assertion (`35 passed | 2 skipped` test files, `328 passed | 21 skipped` tests), and the fix-pass rerun passed on the host with the new assertions (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- Phase 3 completed on 2026-04-23.
+- Result:
+  - Planning and documentation now share a Plate-first markdown surface built from the generated Plate UI editor/static shells plus the installed markdown/basic/code/link/list/math/table kits.
+  - The old repo-owned Plate wrapper is gone, markdown remains the authoritative save/load contract, and the planning workspace now edits directly in Plate instead of mirroring a textarea into a separate preview.
+  - Documentation categories now collapse to the canonical workspace-spec group set: `Product Specifications`, `Technical Architecture`, and `Miscellaneous Notes`.
+  - Documentation compatibility copy now explains the current scaffold-backed behavior in product terms rather than implementation jargon.
+  - Route tests preserve the user-facing save/load contract with a focused editor test double, while static rendering keeps the real Plate viewer semantics and accessible document-region labels.
+- Validation:
+  - `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed (`3 passed` test files, `109 passed` tests).
+  - Phase 3 sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
+  - The escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 
 ## Context and Orientation
 
@@ -544,7 +567,7 @@ Completion Notes:
 - The bare `/runs/:runId` route now lands on `Specification` for a stable run-entry experience across compiled, uncompiled, and materializing runs, and the redirect no longer hides that behavior behind a misleading default-phase hook.
 - Run header meta no longer foregrounds workflow ids or engine metadata, and task detail copy now describes conversation plus code review without approval framing.
 - `Execution Plan` compile controls now sit inside the shared planning document pane, keeping the planning split layout intact.
-- Updated `app-shell`, `runs-routes`, and the directly affected task-detail scaffold assertion for the new route/copy contract; also added explicit coverage for live-run summary branches, the run-header activity line, and the `Code review` rail heading.
+- Updated `app-shell`, `runs-routes`, and the directly affected task-detail scaffold assertion for the new route/copy contract across the Phase 2 implementation and fix pass; also added explicit coverage for live-run summary branches, the run-header activity line, and the `Code review` rail heading.
 
 Next Starter Context:
 - Phase 3 can assume the run/execution shell contract is now stable: canonical run-stage labels in `Runs`, stage-matched run-index deep links, bare `/runs/:runId -> /specification` landing, workflow metadata removed from the run header, and task detail framed as conversation plus code review.
@@ -647,13 +670,17 @@ Known Constraints / Baseline Failures:
 - Broad build remains subject to the sandbox Wrangler / Docker caveat.
 
 Status:
-- Pending
+- Completed
 
 Completion Notes:
-- None yet.
+- Completed on 2026-04-23.
+- Deleted `ui/src/components/editor/plate-markdown-document.tsx` in favor of a shared `markdown-document-surface` built on generated Plate UI editor/static shells and the installed markdown/basic/code/link/list/math/table kits.
+- Planning now edits the execution-plan document in Plate while keeping markdown as the persisted source of truth.
+- Documentation grouping now maps resources into the canonical three workspace-spec categories and uses product-facing compatibility copy.
+- Targeted Phase 3 validation passed, sandbox broad validation hit the known localhost bind restriction, and the escalated host rerun passed.
 
 Next Starter Context:
-- Treat the Plate UI install as complete and stable. The next execution step is not more registry work; it is deleting `ui/src/components/editor/plate-markdown-document.tsx`, wiring planning onto Plate UI's editable `Editor` path, wiring documentation onto Plate UI's static/editor path, and updating consumers to use the generated kits directly. After that, remove the path-derived documentation grouping behavior in favor of an explicit canonical mapping.
+- Phase 4 should stay focused on documentation and closeout truth: update any affected developer docs, run the closeout validation required by the plan, and archive the execution plan once the documentation surface/model changes are reflected in durable docs.
 
 ## Phase 4 - Documentation and closeout truth
 

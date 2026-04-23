@@ -7,7 +7,10 @@ import {
   DocumentFrameRule,
   DocumentFrameSummary
 } from "../../../components/workspace/document-frame";
-import { PlateMarkdownDocument } from "../../../components/editor/plate-markdown-document";
+import {
+  MarkdownDocumentEditor,
+  MarkdownDocumentViewer
+} from "../../../components/editor/markdown-document-surface";
 import {
   WorkspaceEmptyState,
   WorkspaceEmptyStateActions,
@@ -25,7 +28,7 @@ import {
   WorkspaceSplit,
   WorkspaceSplitPane
 } from "../../../components/workspace/workspace-split";
-import { FormTextAreaField, FormTextField } from "../../../shared/forms/form-field";
+import { FormTextField } from "../../../shared/forms/form-field";
 import { AssistantChatSurface } from "../../conversations/assistant-chat-surface";
 import type { RunPlanningPhaseViewModel } from "../use-run-view-model";
 
@@ -75,7 +78,7 @@ function PlanningDocumentPanel(
         {props.state === "ready" ? (
           <>
             <DocumentFrameBody>
-              <PlateMarkdownDocument
+              <MarkdownDocumentViewer
                 label={`${props.panelTitle} document`}
                 markdown={props.documentMarkdown}
               />
@@ -99,6 +102,12 @@ function PlanningDocumentPanel(
               <p className="form-field-error">{props.submitErrorMessage}</p>
             ) : null}
             <div className="planning-document-editor">
+              <div className="planning-document-editor-header">
+                <p className="document-name">Document editor</p>
+                <p className="planning-document-preview-summary">
+                  Write the current document directly in Plate while markdown remains the saved source.
+                </p>
+              </div>
               <div className="planning-document-editor-fields">
                 <FormTextField
                   label={props.titleField.label}
@@ -106,28 +115,16 @@ function PlanningDocumentPanel(
                   onChange={(event) => props.titleField.onChange(event.currentTarget.value)}
                   disabled={props.isSubmitting}
                 />
-                <FormTextAreaField
-                  label={props.bodyField.label}
-                  value={props.bodyField.value}
-                  onChange={(event) => props.bodyField.onChange(event.currentTarget.value)}
-                  disabled={props.isSubmitting}
-                />
               </div>
-
-              <section className="planning-document-preview">
-                <div className="planning-document-preview-header">
-                  <p className="document-name">Live preview</p>
-                  <p className="planning-document-preview-summary">
-                    Plate renders the current markdown source while markdown remains the canonical document format.
-                  </p>
-                </div>
-                <DocumentFrameRule />
-                <PlateMarkdownDocument
-                  label="Document preview"
-                  markdown={props.bodyField.value}
-                  emptyMessage="Start writing markdown to preview this document."
-                />
-              </section>
+              <DocumentFrameRule />
+              <MarkdownDocumentEditor
+                label={`${props.panelTitle} document`}
+                markdown={props.documentEditor.markdown}
+                markdownSourceKey={props.documentEditor.markdownSourceKey}
+                onMarkdownChange={props.documentEditor.onChange}
+                editorLabel={props.documentEditor.editorLabel}
+                placeholder={props.documentEditor.placeholder}
+              />
             </div>
             <div className="shell-state-actions">
               <button

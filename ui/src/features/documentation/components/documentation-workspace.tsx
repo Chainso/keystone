@@ -8,7 +8,7 @@ import {
   DocumentFrameSummary,
   DocumentFrameTitle
 } from "../../../components/workspace/document-frame";
-import { PlateMarkdownDocument } from "../../../components/editor/plate-markdown-document";
+import { MarkdownDocumentViewer } from "../../../components/editor/markdown-document-surface";
 import {
   WorkspaceEmptyState,
   WorkspaceEmptyStateDescription,
@@ -43,7 +43,7 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
         <div className="workspace-surface-heading">
           <h1 className="page-title runs-page-title">{model.title}</h1>
           <p className="workspace-surface-note documentation-shell-summary">
-            Current project knowledge stays grouped by document category and opens in the shared reader.
+            Project-level knowledge stays organized as Product Specifications, Technical Architecture, and Miscellaneous Notes.
           </p>
         </div>
         <div
@@ -73,7 +73,7 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
               <div className="workspace-surface-section-heading">
                 <h2 className="page-section-title">Documentation categories</h2>
                 <p className="page-section-copy">
-                  Browse the current notes and reference documents for this project.
+                  Browse the current project documents by category.
                 </p>
               </div>
 
@@ -119,7 +119,7 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
               <div className="workspace-surface-section-heading">
                 <h2 className="page-section-title">Current document</h2>
                 <p className="page-section-copy">
-                  Read the current document for the selected category without leaving the active project.
+                  Read the current project document selected from the category list.
                 </p>
               </div>
 
@@ -132,7 +132,7 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
                 <DocumentFrameRule />
 
                 <DocumentFrameBody>
-                  <PlateMarkdownDocument
+                  <MarkdownDocumentViewer
                     label="Documentation document"
                     markdown={model.selectedDocument.markdown}
                   />

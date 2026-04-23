@@ -193,6 +193,41 @@ vi.mock("@cloudflare/ai-chat/react", () => ({
   useAgentChat: cloudflareConversationMocks.useAgentChat
 }));
 
+vi.mock("../components/editor/markdown-document-surface", async () => {
+  const actual = await vi.importActual<typeof import("../components/editor/markdown-document-surface")>(
+    "../components/editor/markdown-document-surface"
+  );
+
+  return {
+    ...actual,
+    MarkdownDocumentEditor: ({
+      editorLabel,
+      label,
+      markdown,
+      onMarkdownChange,
+      placeholder
+    }: {
+      editorLabel: string;
+      label: string;
+      markdown: string;
+      onMarkdownChange: (markdown: string) => void;
+      placeholder?: string;
+    }) => (
+      <section role="region" aria-label={label} className="markdown-document-surface">
+        <textarea
+          aria-label={editorLabel}
+          className="conversation-composer-input"
+          placeholder={placeholder}
+          value={markdown}
+          onChange={(event) => {
+            onMarkdownChange(event.currentTarget.value);
+          }}
+        />
+      </section>
+    )
+  };
+});
+
 import type { RunManagementApi, StaticRunDetailRecord } from "../features/runs/run-management-api";
 import {
   createStaticRunManagementApi,
@@ -2118,7 +2153,7 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document title" }), {
       target: {
         value: "Run Specification v2"
       }
@@ -2128,9 +2163,12 @@ describe("Run routes", () => {
         value: updatedBody
       }
     });
-    expectPlanningDocumentHeading("Document preview", "Specification");
-    expectPlanningDocumentToContain("Document preview", "Save current revisions without route churn.");
-    expectPlanningDocumentToContain("Document preview", "Preserve task lists in saved markdown.");
+    expect(
+      within(screen.getByRole("region", { name: "Run Specification v2 document" })).getByRole(
+        "textbox",
+        { name: "Document body" }
+      )
+    ).toHaveValue(updatedBody);
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2487,9 +2525,11 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
 
-    expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
-      "Run Architecture"
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue(
+        "Run Architecture"
+      );
+    });
     fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
       target: {
         value: "# Architecture\n- Discarded draft changes.\n"
