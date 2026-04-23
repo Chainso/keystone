@@ -71,6 +71,33 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   });
 }
 
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserver {
+    disconnect() {}
+
+    observe() {}
+
+    unobserve() {}
+  }
+
+  Object.defineProperty(window, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserver
+  });
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserver
+  });
+}
+
+if (typeof window !== "undefined" && typeof window.HTMLElement.prototype.scrollIntoView !== "function") {
+  window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
+if (typeof window !== "undefined" && typeof window.HTMLElement.prototype.scrollTo !== "function") {
+  window.HTMLElement.prototype.scrollTo = function scrollTo() {};
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();

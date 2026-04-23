@@ -28,9 +28,8 @@ import {
   WorkspaceSplitPane
 } from "../../../components/workspace/workspace-split";
 import { StatusPill } from "../../../shared/layout/status-pill";
-import { ConversationBindingHost } from "../../conversations/conversation-binding-host";
+import { AssistantChatSurface } from "../../conversations/assistant-chat-surface";
 import type {
-  TaskConversationEntryViewModel,
   TaskDependencyViewModel,
   TaskDetailViewModel
 } from "../use-execution-view-model";
@@ -66,23 +65,6 @@ function TaskDependencyList({
   );
 }
 
-function TaskConversationEntries({
-  entries
-}: {
-  entries: TaskConversationEntryViewModel[];
-}) {
-  return (
-    <div className="task-conversation-stack" aria-label="Task conversation timeline">
-      {entries.map((entry) => (
-        <article key={entry.speaker} className="message-card">
-          <p className="message-card-speaker">{entry.speaker}</p>
-          <p className="message-card-body">{entry.body}</p>
-        </article>
-      ))}
-    </div>
-  );
-}
-
 export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
   return (
     <WorkspacePage>
@@ -108,22 +90,25 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
       <WorkspaceSplit className="task-detail-split">
         <WorkspaceSplitPane>
           <WorkspacePanel>
-            <ConversationBindingHost
-              locator={model.state === "ready" ? model.conversationLocator : null}
-            />
-
             <WorkspacePanelHeader>
               <WorkspacePanelHeading>
                 <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
               </WorkspacePanelHeading>
               <WorkspacePanelSummary>
-                Task handoff, execution notes, and the current live-chat gap for this task.
+                Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation.
               </WorkspacePanelSummary>
             </WorkspacePanelHeader>
 
             {model.state === "ready" ? (
               <div className="task-detail-pane-body">
-                <TaskConversationEntries entries={model.conversationEntries} />
+                <AssistantChatSurface
+                  composerPlaceholder="Continue this task conversation with Keystone."
+                  emptyMessage="This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+                  emptyTitle="Task conversation ready"
+                  locator={model.conversationLocator}
+                  unavailableMessage="Task chat becomes available after the run task record provisions a Cloudflare conversation locator."
+                  unavailableTitle="No task conversation attached"
+                />
 
                 <ReviewSection>
                   <ReviewSectionLabel>Task scope</ReviewSectionLabel>
@@ -135,11 +120,6 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
                 <div className="task-context-grid">
                   <TaskDependencyList label="Depends on" tasks={model.dependsOn} />
                   <TaskDependencyList label="Downstream tasks" tasks={model.downstreamTasks} />
-                </div>
-
-                <div className="conversation-composer-placeholder">
-                  Live task conversation remains out of scope in this phase. This frame will accept
-                  real messages once the chat runtime is wired.
                 </div>
               </div>
             ) : (

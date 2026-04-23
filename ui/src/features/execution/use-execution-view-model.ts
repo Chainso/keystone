@@ -190,17 +190,11 @@ export interface TaskArtifactsViewModel {
   state: "loading" | "ready" | "empty" | "error";
 }
 
-export interface TaskConversationEntryViewModel {
-  body: string;
-  speaker: string;
-}
-
 export interface TaskDetailReadyViewModel {
   activityLabel: string;
   artifacts: TaskArtifactsViewModel;
   backPath: string;
   conversationLocator: ConversationLocator | null;
-  conversationEntries: TaskConversationEntryViewModel[];
   dependsOn: TaskDependencyViewModel[];
   description: string;
   downstreamTasks: TaskDependencyViewModel[];
@@ -469,31 +463,6 @@ function buildTaskReviewSummary(taskArtifacts: TaskArtifactsViewModel) {
   }
 
   return `${summaryParts.join(" and ")} from the current task outputs.`;
-}
-
-function buildTaskConversationEntries(input: {
-  activityLabel: string;
-  conversationLocator: ConversationLocator | null;
-  description: string;
-  statusLabel: string;
-}): TaskConversationEntryViewModel[] {
-  return [
-    {
-      body: input.description,
-      speaker: "Task handoff"
-    },
-    {
-      body: `${input.statusLabel}. ${input.activityLabel}`,
-      speaker: "Execution state"
-    },
-    {
-      body:
-        input.conversationLocator !== null
-          ? "A live conversation is attached to this task. Messages will render here when task chat is wired."
-          : "No live conversation is attached to this task yet. This pane stays read-only until task chat is wired.",
-      speaker: "Conversation status"
-    }
-  ];
 }
 
 function buildExecutionSummaryGroups(tasks: ExecutionTaskRecord[], runId: string): ExecutionSummaryGroupViewModel[] {
@@ -880,19 +849,12 @@ export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
               state: "ready"
             };
   const activityLabel = buildTaskDetailActivityLabel(task);
-  const conversationEntries = buildTaskConversationEntries({
-    activityLabel,
-    conversationLocator: task.conversation ?? null,
-    description: task.description,
-    statusLabel: getTaskStatusPresentation(task.status).statusLabel
-  });
 
   return {
     activityLabel,
     artifacts: artifactsViewModel,
     backPath,
     conversationLocator: task.conversation ?? null,
-    conversationEntries,
     dependsOn,
     description: task.description,
     downstreamTasks,

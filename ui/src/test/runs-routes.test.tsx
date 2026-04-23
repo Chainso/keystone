@@ -2,6 +2,40 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import type { UIMessage } from "ai";
+
+function createCloudflareChatMock(overrides: Partial<ReturnType<typeof defaultCloudflareChatMock>> = {}) {
+  return {
+    ...defaultCloudflareChatMock(),
+    ...overrides
+  };
+}
+
+function defaultCloudflareChatMock() {
+  return {
+    addToolApprovalResponse: vi.fn(),
+    addToolOutput: vi.fn(),
+    append: vi.fn(),
+    clearError: vi.fn(),
+    clearHistory: vi.fn(),
+    data: [],
+    error: undefined,
+    handleInputChange: vi.fn(),
+    handleSubmit: vi.fn(),
+    input: "",
+    isServerStreaming: false,
+    isStreaming: false,
+    messages: [] as UIMessage[],
+    reload: vi.fn(),
+    resumeStream: vi.fn(),
+    sendMessage: vi.fn(),
+    setData: vi.fn(),
+    setInput: vi.fn(),
+    setMessages: vi.fn(),
+    status: "idle" as const,
+    stop: vi.fn()
+  };
+}
 
 const cloudflareConversationMocks = vi.hoisted(() => ({
   useAgent: vi.fn((options: { agent: string; name?: string; query?: Record<string, string> }) => ({
@@ -20,28 +54,7 @@ const cloudflareConversationMocks = vi.hoisted(() => ({
     agent: options.agent,
     name: options.name ?? "default"
   })),
-  useAgentChat: vi.fn(() => ({
-    addToolOutput: vi.fn(),
-    append: vi.fn(),
-    clearError: vi.fn(),
-    clearHistory: vi.fn(),
-    data: [],
-    error: undefined,
-    handleInputChange: vi.fn(),
-    handleSubmit: vi.fn(),
-    input: "",
-    isServerStreaming: false,
-    isStreaming: false,
-    messages: [],
-    reload: vi.fn(),
-    resumeStream: vi.fn(),
-    sendMessage: vi.fn(),
-    setData: vi.fn(),
-    setInput: vi.fn(),
-    setMessages: vi.fn(),
-    status: "ready",
-    stop: vi.fn()
-  }))
+  useAgentChat: vi.fn(() => createCloudflareChatMock())
 }));
 
 type WindowWithDevAuth = Window & {
@@ -71,6 +84,7 @@ import { renderRoute } from "./render-route";
 afterEach(() => {
   cleanup();
   cloudflareConversationMocks.useAgent.mockClear();
+  cloudflareConversationMocks.useAgentChat.mockImplementation(() => createCloudflareChatMock());
   cloudflareConversationMocks.useAgentChat.mockClear();
   (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = undefined;
   vi.unstubAllGlobals();
@@ -126,6 +140,32 @@ function expectPlanningDocumentToContain(documentLabel: string, expectedText: st
     .find((item) => normalizeRenderedText(item.textContent).includes(normalizedExpectedText));
 
   expect(matchingListItem).toBeTruthy();
+}
+
+function expectPlanningChatSurface() {
+  expect(screen.getByText("Planning conversation ready")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "This document already has a persisted Cloudflare conversation. Send the next planning turn here."
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Continue the planning conversation with Keystone.")
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+}
+
+function expectTaskChatSurface() {
+  expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("Continue this task conversation with Keystone.")
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
 }
 
 function createRunFixture(
@@ -1757,9 +1797,7 @@ describe("Run routes", () => {
       expect(screen.getByRole("heading", { name: phaseHeading })).toBeInTheDocument();
       expect(screen.getByRole("region", { name: `${revisionTitle} document` })).toBeInTheDocument();
       expect(screen.getByText(documentPath)).toBeInTheDocument();
-      expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-        "Conversation attached to this document."
-      );
+      expectPlanningChatSurface();
       expectPlanningDocumentHeading(`${revisionTitle} document`, documentHeading);
       expectPlanningDocumentToContain(`${revisionTitle} document`, expectedLine);
     }
@@ -1775,9 +1813,7 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Chat placeholder")).toBeInTheDocument();
-    expect(screen.getByText("Message composer placeholder")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /send/i })).not.toBeInTheDocument();
+    expectPlanningChatSurface();
 
     await waitFor(() => {
       expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(
@@ -1823,9 +1859,7 @@ describe("Run routes", () => {
     expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Run Specification document" })).toBeInTheDocument();
     expect(screen.getByText("specification")).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation status")).toHaveTextContent(
-      "Conversation attached to this document."
-    );
+    expectPlanningChatSurface();
     expectPlanningDocumentHeading("Run Specification document", "Specification");
     expectPlanningDocumentToContain(
       "Run Specification document",
@@ -2988,7 +3022,12 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
-    expect(screen.getByText("A live conversation is attached to this task. Messages will render here when task chat is wired.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation."
+      )
+    ).toBeInTheDocument();
+    expectTaskChatSurface();
     expect(screen.getByText("Task scope")).toBeInTheDocument();
     expect(await screen.findByText("Modified files")).toBeInTheDocument();
     expect(screen.getByText("Added files")).toBeInTheDocument();
@@ -3025,10 +3064,10 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expectTaskChatSurface();
     expect(
-      screen.getByText(/Live task conversation remains out of scope in this phase/i)
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /send/i })).not.toBeInTheDocument();
+      screen.queryByText(/Live task conversation remains out of scope in this phase/i)
+    ).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(

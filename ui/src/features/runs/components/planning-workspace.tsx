@@ -24,7 +24,7 @@ import {
   WorkspaceSplitPane
 } from "../../../components/workspace/workspace-split";
 import { FormTextAreaField, FormTextField } from "../../../shared/forms/form-field";
-import { ConversationBindingHost } from "../../conversations/conversation-binding-host";
+import { AssistantChatSurface } from "../../conversations/assistant-chat-surface";
 import type { RunPlanningPhaseViewModel } from "../use-run-view-model";
 
 function PlanningConversationPanel({
@@ -34,8 +34,6 @@ function PlanningConversationPanel({
 }: Pick<RunPlanningPhaseViewModel, "phaseSummary" | "phaseTitle" | "conversationLocator">) {
   return (
     <WorkspacePanel>
-      <ConversationBindingHost locator={conversationLocator} />
-
       <WorkspacePanelHeader>
         <WorkspacePanelHeading>
           <WorkspacePanelTitle>{phaseTitle}</WorkspacePanelTitle>
@@ -43,32 +41,14 @@ function PlanningConversationPanel({
         <WorkspacePanelSummary>{phaseSummary}</WorkspacePanelSummary>
       </WorkspacePanelHeader>
 
-      <div className="planning-conversation-stack">
-        {conversationLocator ? (
-          <article className="message-card" aria-label="Conversation status">
-            <p className="message-card-speaker">Conversation status</p>
-            <p className="message-card-body">Conversation attached to this document.</p>
-            <DocumentFrameSummary>
-              Live message history will resolve through the attached conversation when chat transport is added.
-            </DocumentFrameSummary>
-          </article>
-        ) : (
-          <article className="message-card" aria-label="Conversation status">
-            <p className="message-card-speaker">Conversation status</p>
-            <p className="message-card-body">No conversation is attached to this document yet.</p>
-          </article>
-        )}
-
-        <article className="message-card" aria-label="Chat placeholder">
-          <p className="message-card-speaker">Chat placeholder</p>
-          <p className="message-card-body">
-            Live planning chat lands in a later phase. This pane keeps the final split and document focus stable for now.
-          </p>
-          <div className="conversation-composer-placeholder" aria-hidden="true">
-            Message composer placeholder
-          </div>
-        </article>
-      </div>
+      <AssistantChatSurface
+        composerPlaceholder="Continue the planning conversation with Keystone."
+        emptyMessage="This document already has a persisted Cloudflare conversation. Send the next planning turn here."
+        emptyTitle="Planning conversation ready"
+        locator={conversationLocator}
+        unavailableMessage="Create or attach a planning conversation before sending messages from this document."
+        unavailableTitle="No planning conversation attached"
+      />
     </WorkspacePanel>
   );
 }
