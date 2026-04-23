@@ -36,6 +36,13 @@ function convertToolPart(part: UIMessage["parts"][number]) {
                 reason: part.approval?.reason ?? null
               }
             }
+          : part.state === "approval-requested"
+            ? {
+                approvalRequest: {
+                  id: part.approval?.id ?? null,
+                  reason: part.approval?.reason ?? null
+                }
+              }
           : undefined;
 
   return [

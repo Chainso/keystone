@@ -273,6 +273,12 @@ function useTaskReviewDiffContent(artifacts: TaskArtifactViewModel[]) {
         status: "ready"
       });
     });
+
+    return () => {
+      if (requestIdRef.current === requestId) {
+        requestIdRef.current += 1;
+      }
+    };
   }, [api, reviewCandidateSignature, reviewCandidates, retryToken]);
 
   return {

@@ -448,7 +448,9 @@ const mocked = vi.hoisted(() => {
       createDocumentRepositoryClient(projectDocumentRepositoryFixture, close)
     ),
     deleteArtifactRef: vi.fn(async () => null),
-    getArtifactText: vi.fn(async (): Promise<string | null> => null),
+    getArtifactText: vi.fn(
+      async (_bucket: R2Bucket, _key: string): Promise<string | null> => null
+    ),
     routeAgentRequest: vi.fn(async (): Promise<Response | null> => null),
     createArtifactRef: vi.fn(async (_client, input) => ({
       tenantId: input.tenantId,

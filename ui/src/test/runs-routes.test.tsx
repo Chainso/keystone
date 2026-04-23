@@ -4,14 +4,38 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { UIMessage } from "ai";
 
-function createCloudflareChatMock(overrides: Partial<ReturnType<typeof defaultCloudflareChatMock>> = {}) {
+interface CloudflareChatMock {
+  addToolApprovalResponse: ReturnType<typeof vi.fn>;
+  addToolOutput: ReturnType<typeof vi.fn>;
+  append: ReturnType<typeof vi.fn>;
+  clearError: ReturnType<typeof vi.fn>;
+  clearHistory: ReturnType<typeof vi.fn>;
+  data: unknown[];
+  error: unknown;
+  handleInputChange: ReturnType<typeof vi.fn>;
+  handleSubmit: ReturnType<typeof vi.fn>;
+  input: string;
+  isServerStreaming: boolean;
+  isStreaming: boolean;
+  messages: UIMessage[];
+  reload: ReturnType<typeof vi.fn>;
+  resumeStream: ReturnType<typeof vi.fn>;
+  sendMessage: ReturnType<typeof vi.fn>;
+  setData: ReturnType<typeof vi.fn>;
+  setInput: ReturnType<typeof vi.fn>;
+  setMessages: ReturnType<typeof vi.fn>;
+  status: "error" | "idle" | "streaming" | "submitted";
+  stop: ReturnType<typeof vi.fn>;
+}
+
+function createCloudflareChatMock(overrides: Partial<CloudflareChatMock> = {}) {
   return {
     ...defaultCloudflareChatMock(),
     ...overrides
   };
 }
 
-function defaultCloudflareChatMock() {
+function defaultCloudflareChatMock(): CloudflareChatMock {
   return {
     addToolApprovalResponse: vi.fn(),
     addToolOutput: vi.fn(),
@@ -32,7 +56,7 @@ function defaultCloudflareChatMock() {
     setData: vi.fn(),
     setInput: vi.fn(),
     setMessages: vi.fn(),
-    status: "idle" as const,
+    status: "idle",
     stop: vi.fn()
   };
 }
@@ -63,6 +87,23 @@ function createAssistantTranscriptMessages(): UIMessage[] {
         type: "text"
       },
       {
+        text: "Inspect the planning note before requesting host access.",
+        type: "reasoning"
+      },
+      {
+        sourceId: "source-agents-docs",
+        title: "Cloudflare Agents docs",
+        type: "source-url",
+        url: "https://developers.cloudflare.com/agents/"
+      },
+      {
+        filename: "planning-context.md",
+        mediaType: "text/markdown",
+        sourceId: "source-planning-context",
+        title: "Planning context bundle",
+        type: "source-document"
+      },
+      {
         data: {
           activeTasks: 1,
           updatedFiles: 2
@@ -91,6 +132,18 @@ function createAssistantTranscriptMessages(): UIMessage[] {
         state: "output-denied",
         toolCallId: "tool-denied-1",
         toolName: "request_host_access",
+        type: "dynamic-tool"
+      },
+      {
+        approval: {
+          id: "approval-requested-1"
+        },
+        input: {
+          cmd: "rtk npm run typecheck"
+        },
+        state: "approval-requested",
+        toolCallId: "tool-approval-1",
+        toolName: "request_human_approval",
         type: "dynamic-tool"
       },
       {
@@ -1869,6 +1922,46 @@ describe("Run routes", () => {
     }
   );
 
+  it("renders planning markdown tables through the shared Plate document surface", async () => {
+    const fixtures = cloneRunFixtures();
+    const runFixture = fixtures["run-104"];
+
+    if (!runFixture) {
+      throw new Error("Missing run-104 fixture.");
+    }
+
+    if (!runFixture.documents || !runFixture.revisions) {
+      throw new Error("Missing planning document fixtures for run-104.");
+    }
+
+    const specificationDocument = runFixture.documents.find(
+      (document) => document.kind === "specification"
+    );
+    const specificationRevision = runFixture.revisions.find(
+      (candidate) => candidate.documentId === specificationDocument?.documentId
+    );
+
+    if (!specificationRevision) {
+      throw new Error("Missing specification revision fixture for run-104.");
+    }
+
+    specificationRevision.content =
+      "# Specification\n\n| Surface | Status |\n| --- | --- |\n| Planning | Live |\n| Documentation | Shared |\n";
+
+    renderRunRoute("/runs/run-104/specification", createRunApiFromFixtures(fixtures));
+
+    const documentRegion = await screen.findByRole("region", {
+      name: "Run Specification document"
+    });
+    const table = within(documentRegion).getByRole("table");
+
+    expect(within(table).getByRole("columnheader", { name: "Surface" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(within(table).getByText("Planning")).toBeInTheDocument();
+    expect(within(table).getByText("Documentation")).toBeInTheDocument();
+    expect(within(table).getByText("Shared")).toBeInTheDocument();
+  });
+
   it("binds a planning page to the persisted Cloudflare conversation locator", async () => {
     const browserAuth = {
       token: "browser-agent-token",
@@ -1935,16 +2028,16 @@ describe("Run routes", () => {
     expect(cloudflareConversationMocks.useAgentChat).not.toHaveBeenCalled();
   });
 
-  it("renders non-empty planning transcripts with markdown and structured tool outcomes", async () => {
+  it("renders planning transcripts with reasoning, sources, approvals, and structured tool outcomes", async () => {
     const sendMessage = vi.fn();
-    cloudflareConversationMocks.useAgentChat.mockImplementation(() =>
-      createCloudflareChatMock({
-        error: new Error("Cloudflare stream lost."),
-        messages: createAssistantTranscriptMessages(),
-        sendMessage,
-        status: "error" as const
-      })
-    );
+    const chatMock = createCloudflareChatMock({
+      addToolApprovalResponse: vi.fn(),
+      error: new Error("Cloudflare stream lost."),
+      messages: createAssistantTranscriptMessages(),
+      sendMessage,
+      status: "error" as const
+    });
+    cloudflareConversationMocks.useAgentChat.mockImplementation(() => chatMock);
 
     renderRunRoute("/runs/run-104/specification");
 
@@ -1957,10 +2050,20 @@ describe("Run routes", () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Summarize the current planning state.")).toBeInTheDocument();
+    expect(screen.getByText("Reasoning")).toBeInTheDocument();
+    expect(
+      screen.getByText("Inspect the planning note before requesting host access.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Cloudflare Agents docs/i })
+    ).toHaveAttribute("href", "https://developers.cloudflare.com/agents/");
+    expect(screen.getByText("source document")).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("planning-context.md"))).toBeInTheDocument();
     expect(screen.getByText(/execution metrics/i)).toBeInTheDocument();
     expect(screen.getByText("plan.diff")).toBeInTheDocument();
     expect(screen.getByText("run_command")).toBeInTheDocument();
     expect(screen.getByText("request_host_access")).toBeInTheDocument();
+    expect(screen.getByText("request_human_approval")).toBeInTheDocument();
     expect(screen.getAllByText("Outcome")).toHaveLength(2);
     expect(
       screen.getByText((content) => content.includes("Host shell unavailable."))
@@ -1968,6 +2071,21 @@ describe("Run routes", () => {
     expect(
       screen.getByText((content) => content.includes("User rejected host access."))
     ).toBeInTheDocument();
+
+    const approveButton = screen.getByRole("button", { name: "Approve" });
+    const rejectButton = screen.getByRole("button", { name: "Reject" });
+
+    fireEvent.click(approveButton);
+    expect(chatMock.addToolApprovalResponse).toHaveBeenCalledWith({
+      approved: true,
+      id: "approval-requested-1"
+    });
+
+    fireEvent.click(rejectButton);
+    expect(chatMock.addToolApprovalResponse).toHaveBeenCalledWith({
+      approved: false,
+      id: "approval-requested-1"
+    });
 
     fireEvent.change(screen.getByPlaceholderText("Continue the planning conversation with Keystone."), {
       target: {

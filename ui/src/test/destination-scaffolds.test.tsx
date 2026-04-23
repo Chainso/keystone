@@ -996,6 +996,60 @@ describe("Destination scaffolds", () => {
     ).toEqual(["Preserve scaffold truth", "Keep list structure"]);
   });
 
+  it("renders documentation markdown tables through the shared Plate document surface", () => {
+    render(
+      <DocumentationWorkspace
+        model={{
+          currentProjectLabel: "Keystone Cloudflare",
+          documentCountLabel: "1 document",
+          groups: [
+            {
+              groupId: "notes",
+              label: "Miscellaneous Notes",
+              summary: "1 document",
+              documents: [
+                {
+                  documentId: "handoff",
+                  isSelected: true,
+                  label: "Handoff",
+                  path: "docs/notes/handoff.md",
+                  title: "Handoff"
+                }
+              ]
+            }
+          ],
+          selectDocument: vi.fn(),
+          selectedDocument: {
+            documentId: "handoff",
+            markdown: buildDocumentationMarkdown([
+              "# Handoff",
+              "",
+              "| Surface | Status |",
+              "| --- | --- |",
+              "| Documentation | Shared |",
+              "| Planning | Live |"
+            ]),
+            path: "docs/notes/handoff.md",
+            title: "Handoff",
+            viewerTitle: "handoff"
+          },
+          title: "Project documentation"
+        }}
+      />
+    );
+
+    const documentationRegion = screen.getByRole("region", {
+      name: "Documentation document"
+    });
+    const table = within(documentationRegion).getByRole("table");
+
+    expect(within(table).getByRole("columnheader", { name: "Surface" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(within(table).getByText("Documentation")).toBeInTheDocument();
+    expect(within(table).getByText("Planning")).toBeInTheDocument();
+    expect(within(table).getByText("Shared")).toBeInTheDocument();
+  });
+
   it("exercises the real documentation route and view-model wiring through Plate markdown structure", async () => {
     renderDocumentationRouteHarness({
       dataset: createDocumentationDataset({

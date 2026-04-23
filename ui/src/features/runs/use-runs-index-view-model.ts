@@ -116,6 +116,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
   const runApi = useRunManagementApi();
   const { state } = useProjectManagement();
   const currentProject = state.currentProject;
+  const isMountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const createRunRequestIdRef = useRef(0);
   const createRunRequestRef = useRef<Promise<string | null> | null>(null);
@@ -149,7 +150,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
     try {
       const runs = await api.listProjectRuns(projectId);
 
-      if (requestIdRef.current !== requestId) {
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
         return;
       }
 
@@ -163,7 +164,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
         status: runs.length > 0 ? "ready" : "empty"
       });
     } catch (error) {
-      if (requestIdRef.current !== requestId) {
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
         return;
       }
 
@@ -200,7 +201,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
       try {
         const run = await runApi.createRun(currentProject.projectId);
 
-        if (createRunRequestIdRef.current === requestId) {
+        if (isMountedRef.current && createRunRequestIdRef.current === requestId) {
           setCreateRunState({
             errorMessage: null,
             status: "idle"
@@ -211,7 +212,7 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
 
         return null;
       } catch (error) {
-        if (createRunRequestIdRef.current === requestId) {
+        if (isMountedRef.current && createRunRequestIdRef.current === requestId) {
           setCreateRunState({
             errorMessage: getRunsErrorMessage(error),
             status: "idle"
@@ -232,6 +233,17 @@ export function useRunsIndexViewModel(): RunsIndexViewModel {
       }
     }
   }
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      requestIdRef.current += 1;
+      createRunRequestIdRef.current += 1;
+      createRunRequestRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     createRunRequestIdRef.current += 1;

@@ -64,6 +64,36 @@ function formatStructuredValue(value: unknown) {
   }
 }
 
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getApprovalRequestResult(value: unknown) {
+  if (!isJsonRecord(value)) {
+    return undefined;
+  }
+
+  const approvalRequest = value.approvalRequest;
+
+  if (!isJsonRecord(approvalRequest)) {
+    return undefined;
+  }
+
+  return {
+    id: typeof approvalRequest.id === "string" ? approvalRequest.id : undefined,
+    reason:
+      typeof approvalRequest.reason === "string" ? approvalRequest.reason : undefined
+  };
+}
+
+function getApprovalReason(value: unknown) {
+  if (!isJsonRecord(value) || typeof value.reason !== "string") {
+    return null;
+  }
+
+  return value.reason;
+}
+
 function findOriginalToolPart(messages: UIMessage[] | undefined, toolCallId: string) {
   for (const message of messages ?? []) {
     const messageParts = Array.isArray(message.parts) ? message.parts : [];
@@ -188,12 +218,21 @@ function ConversationToolPart({
     () => findOriginalToolPart(originalMessages, toolCallId),
     [originalMessages, toolCallId]
   );
-  const toolState = originalPart ? getToolPartState(originalPart) : isError ? "error" : "complete";
-  const approval = originalPart ? getToolApproval(originalPart) : undefined;
+  const fallbackApprovalRequest = getApprovalRequestResult(result);
+  const toolState = originalPart
+    ? getToolPartState(originalPart)
+    : fallbackApprovalRequest
+      ? "waiting-approval"
+      : isError
+        ? "error"
+        : "complete";
+  const approval = originalPart ? getToolApproval(originalPart) : fallbackApprovalRequest;
   const input = originalPart ? getToolInput(originalPart) : undefined;
   const output = originalPart ? getToolOutput(originalPart) ?? result : result;
   const formattedInput = formatStructuredValue(input);
   const formattedOutput = formatStructuredValue(output);
+  const approvalId = typeof approval?.id === "string" ? approval.id : null;
+  const approvalReason = getApprovalReason(approval);
 
   return (
     <section className="conversation-tool-card">
@@ -225,12 +264,13 @@ function ConversationToolPart({
         </div>
       ) : null}
 
-      {toolState === "waiting-approval" && approval ? (
+      {toolState === "waiting-approval" && approvalId ? (
         <div className="conversation-tool-section">
           <p className="conversation-tool-section-label">Approval required</p>
           <p className="conversation-tool-help">
             This tool call is waiting on a human decision before the Cloudflare conversation can continue.
           </p>
+          {approvalReason ? <p className="conversation-tool-help">{approvalReason}</p> : null}
           <div className="conversation-tool-actions">
             <Button
               size="sm"
@@ -238,7 +278,7 @@ function ConversationToolPart({
               onClick={() => {
                 chat.addToolApprovalResponse({
                   approved: true,
-                  id: approval.id
+                  id: approvalId
                 });
               }}
             >
@@ -252,7 +292,7 @@ function ConversationToolPart({
               onClick={() => {
                 chat.addToolApprovalResponse({
                   approved: false,
-                  id: approval.id
+                  id: approvalId
                 });
               }}
             >

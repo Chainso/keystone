@@ -271,6 +271,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
   const api = useProjectManagementApi();
   const projectManagement = useProjectManagement();
   const currentProject = projectManagement.state.currentProject;
+  const isMountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const previousProjectIdRef = useRef<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -352,7 +353,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         pageSize
       })
       .then((nextPage) => {
-        if (requestIdRef.current !== requestId) {
+        if (!isMountedRef.current || requestIdRef.current !== requestId) {
           return;
         }
 
@@ -371,7 +372,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         });
       })
       .catch((error) => {
-        if (requestIdRef.current !== requestId) {
+        if (!isMountedRef.current || requestIdRef.current !== requestId) {
           return;
         }
 
@@ -383,6 +384,15 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
         });
       });
   }
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      requestIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     previousProjectIdRef.current = currentProjectId;
