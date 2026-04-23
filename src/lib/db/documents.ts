@@ -97,6 +97,18 @@ function assertDocumentScope(input: CreateDocumentInput) {
 }
 
 function resolveDocumentConversationLocator(input: CreateDocumentInput) {
+  const planningLocator = getRunPlanningConversationLocator({
+    tenantId: input.tenantId,
+    scopeType: input.scopeType,
+    runId: input.runId ?? null,
+    kind: input.kind,
+    path: input.path
+  });
+
+  if (planningLocator) {
+    return planningLocator;
+  }
+
   if (input.conversationAgentClass && input.conversationAgentName) {
     return {
       conversationAgentClass: input.conversationAgentClass,
@@ -104,13 +116,7 @@ function resolveDocumentConversationLocator(input: CreateDocumentInput) {
     };
   }
 
-  return getRunPlanningConversationLocator({
-    tenantId: input.tenantId,
-    scopeType: input.scopeType,
-    runId: input.runId ?? null,
-    kind: input.kind,
-    path: input.path
-  });
+  return null;
 }
 
 function assertRevisionArtifactBoundary(document: DocumentRow, artifact: ArtifactRefRow) {
@@ -448,18 +454,6 @@ export async function ensureRunPlanningConversationLocator(
   client: DatabaseClient,
   document: DocumentWithCurrentRevision
 ): Promise<DocumentWithCurrentRevision> {
-  const existingLocator =
-    document.conversationAgentClass && document.conversationAgentName
-      ? {
-          conversationAgentClass: document.conversationAgentClass,
-          conversationAgentName: document.conversationAgentName
-        }
-      : null;
-
-  if (existingLocator) {
-    return document;
-  }
-
   const nextLocator = getRunPlanningConversationLocator({
     tenantId: document.tenantId,
     scopeType: document.scopeType,
@@ -469,6 +463,14 @@ export async function ensureRunPlanningConversationLocator(
   });
 
   if (!nextLocator) {
+    return document;
+  }
+
+  const isCanonicalLocator =
+    document.conversationAgentClass === nextLocator.conversationAgentClass &&
+    document.conversationAgentName === nextLocator.conversationAgentName;
+
+  if (isCanonicalLocator) {
     return document;
   }
 

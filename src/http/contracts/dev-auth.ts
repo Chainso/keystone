@@ -125,12 +125,13 @@ export function parseDevAuthRequest(
   const url = new URL(request.url);
   const queryToken = url.searchParams.get(devAuthQueryTokenParam)?.trim();
   const queryTenantId = url.searchParams.get(devAuthQueryTenantParam)?.trim();
+  const allowQueryFallback = url.pathname === "/agents" || url.pathname.startsWith("/agents/");
 
-  if (!headers.get("authorization") && queryToken) {
+  if (allowQueryFallback && !headers.get("authorization") && queryToken) {
     headers.set("authorization", `Bearer ${queryToken}`);
   }
 
-  if (!headers.get("x-keystone-tenant-id") && queryTenantId) {
+  if (allowQueryFallback && !headers.get("x-keystone-tenant-id") && queryTenantId) {
     headers.set("x-keystone-tenant-id", queryTenantId);
   }
 

@@ -97,10 +97,12 @@ The locator fields are:
 - `conversation_agent_class`
 - `conversation_agent_name`
 
-Run-scoped planning documents now default to this locator contract when missing:
+Run-scoped planning documents now normalize to this locator contract:
 
 - `conversation_agent_class = PlanningDocumentAgent`
 - `conversation_agent_name = tenant:<tenantId>:run:<runId>:document:<canonical-path>`
+
+Keystone ignores client-supplied planning locator values and rewrites missing or non-canonical planning locators to that deterministic contract.
 
 `TaskWorkflow` remains the authority for task locators and still provisions them only for non-`scripted` tasks.
 

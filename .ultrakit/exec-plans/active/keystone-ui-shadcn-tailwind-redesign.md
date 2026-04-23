@@ -365,6 +365,11 @@ Baseline compatibility facts already captured:
   **Decision:** Exposed `/agents/*` through the Worker with shared dev-auth enforcement and added query-param auth fallback for local browser agent requests, while keeping Cloudflare as the only conversation authority.
   **Rationale:** `useAgent({ agent, name })` must select a persisted agent instance explicitly, and the frontend binding would remain inert unless the Worker handled agent traffic and asset routing let those requests reach the Worker first.
 
+- **Date:** 2026-04-22
+  **Phase:** Phase 12 targeted fix pass
+  **Decision:** Made the deterministic planning locator authoritative for run-scoped planning documents on both create and lazy list/detail normalization, restricted query-param dev auth to `/agents/*` only, and removed the frontend's planning-create locator payload while strengthening the focused HTTP/UI tests around those runtime seams.
+  **Rationale:** Review found that Phase 12 still trusted caller-controlled planning locator values, accepted query auth too broadly for protected `/v1` routes, and did not yet prove the real create-path provisioning branch or the browser binding hook's emitted auth contract.
+
 ## Progress
 
 - [x] 2026-04-21 Discovery completed.
@@ -397,6 +402,7 @@ Baseline compatibility facts already captured:
 - [x] 2026-04-22 Phase 11 completed: `Documentation` now uses the workspace header language, grouped category navigation, and a shared Plate document viewer while preserving the exact scaffold-backed compatibility gate and non-live-project honesty.
 - [x] 2026-04-22 Phase 11 targeted fix pass completed: documentation tests now drive the real `useDocumentationViewModel` -> `PlateMarkdownDocument` seam through the route layer, and `contentLines[] -> markdown` coverage now proves headings, blank lines, ordered lists, blockquotes, fenced code, and tables.
 - [x] 2026-04-22 Phase 12 completed: planning locators now auto-provision/backfill, `/agents/*` is bound through the Worker, and placeholder planning/task panes attach to persisted Cloudflare agent instances without a visible chat cutover.
+- [x] 2026-04-22 Phase 12 targeted fix pass completed: run-planning locators are now canonical on create and lazy normalization, query-param dev auth is limited to `/agents/*`, and focused HTTP/UI coverage now proves the real provisioning plus placeholder-framed browser binding contract.
 - [x] Phase 1: dependency install and build bootstrap.
 - [x] Phase 2: theme tokens, root theme provider, and direct-Radix bootstrap exit.
 - [x] Phase 3: Keystone wrapper inventory and workspace primitives.
@@ -444,6 +450,7 @@ Baseline compatibility facts already captured:
 - Project-scoped documentation scaffold data still arrives as `contentLines[]`, not canonical markdown. Plate-backed documentation therefore needs a small projection seam that preserves list blocks and blank-line truth before rendering, and the route tests should keep asserting against the named document region rather than raw text-node shape.
 - `useCurrentProject()` also falls back cleanly to the resource-model provider when no project-management context is mounted, which makes it possible to exercise the real `DocumentationRoute` and `useDocumentationViewModel` chain against a custom scaffold dataset in focused tests without adding a new runtime seam.
 - Cloudflare agent hooks were not enough on their own: the Worker also needed a real `/agents/*` handler and Wrangler `run_worker_first` coverage for `/agents/*`, otherwise the browser binding layer would attach to locators that could never reach the Worker transport.
+- The original Phase 12 HTTP create-path test was still mocking `createDocument`, which hid both the real locator-authority behavior and the repository fixture defaults that the route serializer expects. The targeted fix pass needed the fixture-backed insert path to exercise actual provisioning.
 
 ## Outcomes & Retrospective
 
@@ -559,6 +566,8 @@ Phase 12 outcome on 2026-04-22:
 - the frontend now has a small `ui/src/features/conversations/*` binding layer and mounts it from both planning and task placeholder panes, keeping the visible frames unchanged while making the runtime plumbing real
 - Phase 12 also added a real `PlanningDocumentAgent` class and corresponding binding/export/config so planning locators resolve to an actual Cloudflare agent class rather than placeholder-only identity
 - `rtk npm run build:ui` and `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx` pass on the Phase 12 implementation; `rtk npm run typecheck` still fails on unrelated existing UI typing drift in `ui/src/components/workspace/entity-table.tsx`, `ui/src/features/execution/components/task-review-sidebar.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/runs/components/runs-index-workspace.tsx`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/shared/forms/text-list-field.tsx`, and `ui/src/test/app-shell.test.tsx`
+- the targeted fix pass tightened the runtime contract instead of widening scope: run planning documents now ignore caller-supplied locator values in favor of the canonical tenant/run/document-kind locator, lazy list/detail reads rewrite missing or non-canonical planning locators, protected `/v1` routes stay header-auth only while `/agents/*` keeps the browser query-auth seam, and the focused route tests now prove both the emitted `useAgent` query plus `useAgentChat` headers and that planning/task panes remain placeholder-framed in Phase 12
+- `rtk npm run build:ui`, `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx`, and the additional focused `rtk npm run test -- tests/http/dev-auth.test.ts` all pass on the fix-pass head; `rtk npm run typecheck` was not rerun because the change stayed within the locked Phase 12 validation set and did not touch the known baseline typecheck failures
 
 ## Context and Orientation
 
@@ -953,7 +962,7 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22.
 - **Goal:** Apply Plate-backed document surfaces to the project-scoped `Documentation` destination while preserving its current compatibility truth.
 - **Scope Boundary:** In scope are documentation layout, category navigation framing, document rendering, and compatibility states. Out of scope are new backend documentation capabilities and chat UI.
 - **Read First:** `design/workspace-spec.md`, `.ultrakit/developer-docs/m1-architecture.md`, `ui/src/features/documentation/components/documentation-workspace.tsx`, `ui/src/features/documentation/use-documentation-view-model.ts`.
@@ -970,18 +979,18 @@ Finally, the plan resolves live conversation behavior in two phases. Phase 12 fi
 
 #### Phase Handoff
 
-- **Status:** Complete on 2026-04-22.
+- **Status:** Complete on 2026-04-22; targeted fix pass completed on 2026-04-22.
 - **Goal:** Ensure planning documents have stable conversation locators and add the frontend binding layer that connects planning/task resources to Cloudflare `useAgent` and `useAgentChat`.
 - **Scope Boundary:** In scope are planning-document locator provisioning and lazy backfill, deterministic resource-scoped conversation identity, and frontend Cloudflare binding helpers. Out of scope are final visible assistant-ui panes and any second conversation store.
 - **Read First:** `.ultrakit/developer-docs/m1-architecture.md`, `.ultrakit/developer-docs/think-runtime-architecture.md`, `src/http/api/v1/runs/contracts.ts`, `src/http/api/v1/documents/contracts.ts`, `src/http/api/v1/documents/handlers.ts`, `src/workflows/TaskWorkflow.ts`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `ui/src/features/execution/use-execution-view-model.ts`.
 - **Files Expected To Change:** `src/http/api/v1/documents/contracts.ts`, `src/http/api/v1/documents/handlers.ts`, related tests under `tests/http/*` if planning locator behavior changes, new `ui/src/features/conversations/*`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `ui/src/features/execution/use-execution-view-model.ts`.
-- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx`; `rtk npm run typecheck`.
+- **Validation:** `rtk npm run build:ui`; `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx`; additional focused `rtk npm run test -- tests/http/dev-auth.test.ts`.
 - **Plan / Docs To Update:** `Progress`, `Execution Log`, `Surprises & Discoveries`, this phase handoff, and durable docs if the planning locator contract changes materially.
 - **Deliverables:** planning documents and tasks both expose usable Cloudflare conversation identities, and the browser can bind directly from persisted locators to Cloudflare chat agents without duplicating transcript history into Keystone tables.
 - **Commit Expectation:** `bind resources to cloudflare chat agents`
 - **Known Constraints / Baseline Failures:** do not synthesize fake task conversations; do not introduce a generic second conversation authority.
-- **Completion Notes:** Added deterministic planning locator helpers under `src/lib/documents/model.ts` and used them in `src/lib/db/documents.ts` so run-scoped planning documents get `PlanningDocumentAgent` locators on create when missing, while list/detail handlers now lazily backfill missing planning locators and preserve any existing fully populated locator. Exposed authenticated `/agents/*` routing from the Worker, added query-param dev-auth fallback for browser agent requests, and updated Wrangler/Worker bindings so both task locators and planning locators point at real Cloudflare agent classes. On the frontend, introduced `ui/src/features/conversations/*` plus shared browser auth helpers, passed deterministic planning locators from `run-detail-context.tsx` into document creation, and mounted the Cloudflare binding host in the existing placeholder planning/task panes without changing their visible placeholder framing. Added HTTP and route coverage proving planning locator backfill, deterministic planning create payloads, authenticated agent routing, and resource-to-agent binding for both planning documents and tasks. `rtk npm run build:ui` passed, `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx` passed, and `rtk npm run typecheck` still failed only on unrelated existing UI typing drift in `ui/src/components/workspace/entity-table.tsx`, `ui/src/features/execution/components/task-review-sidebar.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/features/runs/components/runs-index-workspace.tsx`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/shared/forms/text-list-field.tsx`, and `ui/src/test/app-shell.test.tsx`.
-- **Next Starter Context:** Phase 13 should treat the locator contract, `/agents/*` transport, shared browser dev-auth helpers, `ui/src/features/conversations/*`, and the placeholder-framed planning/task panes as stable runtime plumbing. Replace only the visible placeholder panes with assistant-ui surfaces over those bindings; do not add a second conversation store or reopen planning/task resource identity.
+- **Completion Notes:** Added deterministic planning locator helpers under `src/lib/documents/model.ts` and used them in `src/lib/db/documents.ts` so run-scoped planning documents now normalize to the authoritative `PlanningDocumentAgent` tenant/run/document locator on create and on lazy list/detail reads. The targeted fix pass removed the old caller-controlled branch: create no longer trusts client-supplied planning locator values, list/detail normalization rewrites missing or non-canonical planning locators back to the deterministic contract, and the frontend no longer sends planning locator payloads when creating missing planning documents. Exposed authenticated `/agents/*` routing from the Worker, then tightened the local browser dev-auth seam so query-param fallback is limited to `/agents/*` while protected `/v1` JSON routes remain header-auth only. On the frontend, `ui/src/features/conversations/*` and the placeholder planning/task panes still mount the Cloudflare binding host without changing their visible placeholder framing; the focused route tests now assert the emitted `useAgent` query, `useAgentChat` headers, and the continued placeholder-only planning/task panes for Phase 12. The HTTP suite now exercises the real create-path provisioning behavior through the repository fixture instead of a fabricated `createDocument` mock, and it covers missing-locator backfill, non-canonical normalization, canonical-locator preservation, authoritative planning create responses, authenticated `/agents/*` routing, and `/v1` query-auth rejection. Validation passed with `rtk npm run build:ui`, `rtk npm run test -- tests/http/app.test.ts ui/src/test/runs-routes.test.tsx`, and the additional focused `rtk npm run test -- tests/http/dev-auth.test.ts`.
+- **Next Starter Context:** Phase 13 should treat the authoritative planning locator contract, `/agents/*` transport, shared browser dev-auth helpers, `ui/src/features/conversations/*`, and the placeholder-framed planning/task panes as stable runtime plumbing. Replace only the visible placeholder panes with assistant-ui surfaces over those bindings; do not add a second conversation store, reopen planning/task resource identity, or broaden query-param auth beyond `/agents/*`.
 
 ### Phase 13: assistant-ui Planning And Task Chat Cutover
 

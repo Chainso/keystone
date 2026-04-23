@@ -66,4 +66,17 @@ describe("parseDevAuthRequest", () => {
       expect(result.auth.tenantId).toBe("tenant-query");
     }
   });
+
+  it("rejects query-parameter auth on protected v1 routes", () => {
+    const request = new Request(
+      "http://example.com/v1/runs/run-123/documents?keystoneToken=secret-dev-token&keystoneTenantId=tenant-query"
+    );
+
+    const result = parseDevAuthRequest(request, baseEnv);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "missing_token"
+    });
+  });
 });

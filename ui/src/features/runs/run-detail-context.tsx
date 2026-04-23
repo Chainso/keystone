@@ -17,11 +17,7 @@ import type {
   TaskResource,
   WorkflowGraphResource
 } from "../../../../src/http/api/v1/runs/contracts";
-import {
-  buildRunPlanningConversationLocator,
-  type RunPlanningDocumentKind
-} from "../../../../src/lib/documents/model";
-import { resolveBrowserDevAuth } from "../../shared/api/browser-dev-auth";
+import { type RunPlanningDocumentKind } from "../../../../src/lib/documents/model";
 import {
   createBrowserRunManagementApi,
   RunManagementApiError,
@@ -581,20 +577,9 @@ export function RunDetailProvider({
 
     const createRequest = (async () => {
       try {
-        const auth = resolveBrowserDevAuth();
-        const conversationLocator = buildRunPlanningConversationLocator({
-          tenantId: auth.tenantId,
-          runId,
-          kind: planningPhaseDocumentKind[phaseId],
-          path: canonicalDocumentPathByPhase[phaseId]
-        });
         const createdDocument = await api.createRunDocument(runId, {
           kind: planningPhaseDocumentKind[phaseId],
-          path: canonicalDocumentPathByPhase[phaseId],
-          conversation: {
-            agentClass: conversationLocator.conversationAgentClass,
-            agentName: conversationLocator.conversationAgentName
-          }
+          path: canonicalDocumentPathByPhase[phaseId]
         });
 
         setPlanningDocumentState(phaseId, {

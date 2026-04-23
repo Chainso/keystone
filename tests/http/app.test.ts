@@ -12,7 +12,8 @@ const executionPlanDocument = {
   path: "execution-plan",
   currentRevisionId: "revision-run-plan-v1",
   conversationAgentClass: "PlanningDocumentAgent" as string | null,
-  conversationAgentName: "run-execution-plan" as string | null,
+  conversationAgentName:
+    "tenant:tenant-fixture:run:run-123:document:execution-plan" as string | null,
   createdAt: new Date("2026-04-14T00:01:00.000Z"),
   updatedAt: new Date("2026-04-14T00:05:00.000Z")
 };
@@ -36,7 +37,8 @@ const specificationDocument = {
   path: "specification",
   currentRevisionId: "revision-run-specification-v1",
   conversationAgentClass: "PlanningDocumentAgent" as string | null,
-  conversationAgentName: "run-specification" as string | null,
+  conversationAgentName:
+    "tenant:tenant-fixture:run:run-123:document:specification" as string | null,
   createdAt: new Date("2026-04-14T00:01:00.000Z"),
   updatedAt: new Date("2026-04-14T00:05:00.000Z")
 };
@@ -60,7 +62,8 @@ const architectureDocument = {
   path: "architecture",
   currentRevisionId: "revision-run-architecture-v1",
   conversationAgentClass: "PlanningDocumentAgent" as string | null,
-  conversationAgentName: "run-architecture" as string | null,
+  conversationAgentName:
+    "tenant:tenant-fixture:run:run-123:document:architecture" as string | null,
   createdAt: new Date("2026-04-14T00:01:00.000Z"),
   updatedAt: new Date("2026-04-14T00:05:00.000Z")
 };
@@ -76,7 +79,12 @@ const architectureRevision = {
 
 function buildRunDocumentRepositoryFixture(includeRequiredPlanningDocuments = false) {
   return {
-    projects: [],
+    projects: [
+      {
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture"
+      }
+    ],
     runs: [
       {
         tenantId: "tenant-fixture",
@@ -276,36 +284,6 @@ const mocked = vi.hoisted(() => {
       body: new TextEncoder().encode("# planning document\n"),
       contentType: "text/markdown; charset=utf-8"
     })),
-    createDocument: vi.fn(async (_client, input) => {
-      const planningConversation =
-        input.scopeType === "run" &&
-        input.runId &&
-        (input.kind === "specification" ||
-          input.kind === "architecture" ||
-          input.kind === "execution_plan")
-          ? {
-              conversationAgentClass: "PlanningDocumentAgent",
-              conversationAgentName: `tenant:${input.tenantId}:run:${input.runId}:document:${input.path}`
-            }
-          : null;
-
-      return {
-        tenantId: input.tenantId,
-        projectId: input.projectId,
-        documentId: input.path === "notes/compile-issues" ? "doc-run-notes" : "doc-run-generated",
-        runId: input.runId ?? null,
-        scopeType: input.scopeType,
-        kind: input.kind,
-        path: input.path,
-        currentRevisionId: null,
-        conversationAgentClass:
-          input.conversationAgentClass ?? planningConversation?.conversationAgentClass ?? null,
-        conversationAgentName:
-          input.conversationAgentName ?? planningConversation?.conversationAgentName ?? null,
-        createdAt: new Date("2026-04-14T00:02:00.000Z"),
-        updatedAt: new Date("2026-04-14T00:02:00.000Z")
-      };
-    }),
     createDocumentRevision: vi.fn(async (_client, input) => ({
       documentRevisionId: input.documentRevisionId ?? "revision-run-plan-v2",
       documentId: input.documentId,
@@ -404,7 +382,6 @@ vi.mock("../../src/lib/db/documents", async () => {
 
   return {
     ...actual,
-    createDocument: mocked.createDocument,
     createDocumentRevision: mocked.createDocumentRevision
   };
 });
@@ -902,6 +879,70 @@ describe("app", () => {
     });
   });
 
+  it("normalizes non-canonical planning conversation locators on the run document detail path", async () => {
+    const fixture = buildRunDocumentRepositoryFixture(false);
+    fixture.documents = [
+      {
+        ...executionPlanDocument,
+        conversationAgentClass: "PlanningDocumentAgent",
+        conversationAgentName: "legacy-execution-plan-conversation"
+      }
+    ];
+    mocked.createWorkerDatabaseClient.mockImplementation(() =>
+      createDocumentRepositoryClient(fixture, mocked.close)
+    );
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        documentId: "doc-run-plan",
+        conversation: {
+          agentClass: "PlanningDocumentAgent",
+          agentName: "tenant:tenant-fixture:run:run-123:document:execution-plan"
+        }
+      }
+    });
+    expect(fixture.documents[0]).toMatchObject({
+      conversationAgentClass: "PlanningDocumentAgent",
+      conversationAgentName: "tenant:tenant-fixture:run:run-123:document:execution-plan"
+    });
+  });
+
+  it("preserves canonical planning locators without rewriting them", async () => {
+    const fixture = buildRunDocumentRepositoryFixture(false);
+    const onUpdateDocument = vi.fn();
+    mocked.createWorkerDatabaseClient.mockImplementation(() =>
+      createDocumentRepositoryClient(fixture, mocked.close, {
+        onUpdateDocument
+      })
+    );
+
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents/doc-run-plan",
+      {
+        headers: {
+          Authorization: "Bearer secret-dev-token",
+          "X-Keystone-Tenant-Id": "tenant-fixture"
+        }
+      },
+      env
+    );
+
+    expect(response.status).toBe(200);
+    expect(onUpdateDocument).not.toHaveBeenCalled();
+  });
+
   it("creates a run-scoped document identity", async () => {
     const response = await app.request(
       "http://example.com/v1/runs/run-123/documents",
@@ -927,7 +968,7 @@ describe("app", () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        documentId: "doc-run-notes",
+        documentId: expect.any(String),
         scopeType: "run",
         kind: "other",
         path: "notes/compile-issues",
@@ -943,7 +984,12 @@ describe("app", () => {
     });
   });
 
-  it("creates planning documents with a deterministic conversation locator when the request omits one", async () => {
+  it("creates planning documents with the authoritative deterministic conversation locator", async () => {
+    const fixture = buildRunDocumentRepositoryFixture(false);
+    mocked.createWorkerDatabaseClient.mockImplementation(() =>
+      createDocumentRepositoryClient(fixture, mocked.close)
+    );
+
     const response = await app.request(
       "http://example.com/v1/runs/run-123/documents",
       {
@@ -955,7 +1001,11 @@ describe("app", () => {
         },
         body: JSON.stringify({
           kind: "architecture",
-          path: "architecture"
+          path: "architecture",
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: "browser-controlled-locator"
+          }
         })
       },
       env
@@ -964,7 +1014,7 @@ describe("app", () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        documentId: "doc-run-generated",
+        documentId: expect.any(String),
         kind: "architecture",
         path: "architecture",
         conversation: {
@@ -972,6 +1022,12 @@ describe("app", () => {
           agentName: "tenant:tenant-fixture:run:run-123:document:architecture"
         }
       }
+    });
+    expect(
+      fixture.documents.find((document) => document.path === "architecture")
+    ).toMatchObject({
+      conversationAgentClass: "PlanningDocumentAgent",
+      conversationAgentName: "tenant:tenant-fixture:run:run-123:document:architecture"
     });
   });
 
@@ -1425,6 +1481,17 @@ describe("app", () => {
       ok: true
     });
     expect(mocked.routeAgentRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects query-param auth on protected v1 routes", async () => {
+    const response = await app.request(
+      "http://example.com/v1/runs/run-123/documents?keystoneToken=secret-dev-token&keystoneTenantId=tenant-fixture",
+      {},
+      env
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocked.routeAgentRequest).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated agent traffic before routing", async () => {

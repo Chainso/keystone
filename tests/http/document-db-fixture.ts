@@ -10,6 +10,11 @@ export interface DocumentRepositoryFixture {
   documentRevisions: FixtureRow[];
 }
 
+interface DocumentRepositoryFixtureOptions {
+  onInsertDocument?: ((row: FixtureRow) => void) | undefined;
+  onUpdateDocument?: ((rows: FixtureRow[]) => void) | undefined;
+}
+
 function columnNameToPropertyName(columnName: string) {
   return columnName.replace(/_([a-z])/g, (_match, character: string) => character.toUpperCase());
 }
@@ -78,7 +83,10 @@ function buildQueryTable(rows: FixtureRow[]) {
   };
 }
 
-function buildUpdateTable(rows: FixtureRow[]) {
+function buildUpdateTable(
+  rows: FixtureRow[],
+  options?: DocumentRepositoryFixtureOptions | undefined
+) {
   return {
     set(values: FixtureRow) {
       return {
@@ -86,6 +94,8 @@ function buildUpdateTable(rows: FixtureRow[]) {
           const updatedRows = rows
             .filter((row) => matchesWhere(row, where))
             .map((row) => Object.assign(row, values));
+
+          options?.onUpdateDocument?.(updatedRows);
 
           return {
             returning: async () => updatedRows
@@ -96,9 +106,33 @@ function buildUpdateTable(rows: FixtureRow[]) {
   };
 }
 
+function buildInsertTable(
+  rows: FixtureRow[],
+  options?: DocumentRepositoryFixtureOptions | undefined
+) {
+  return {
+    values(values: FixtureRow) {
+      const timestamp = new Date();
+      const insertedRow = {
+        currentRevisionId: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        ...values
+      };
+      rows.push(insertedRow);
+      options?.onInsertDocument?.(insertedRow);
+
+      return {
+        returning: async () => [insertedRow]
+      };
+    }
+  };
+}
+
 export function createDocumentRepositoryClient(
   fixture: DocumentRepositoryFixture,
-  close: () => Promise<void> | void = async () => undefined
+  close: () => Promise<void> | void = async () => undefined,
+  options?: DocumentRepositoryFixtureOptions | undefined
 ): DatabaseClient {
   return {
     connectionString: "postgres://test",
@@ -112,10 +146,17 @@ export function createDocumentRepositoryClient(
       },
       update(table: unknown) {
         if (table === documents) {
-          return buildUpdateTable(fixture.documents);
+          return buildUpdateTable(fixture.documents, options);
         }
 
         throw new Error("Unsupported update table in document repository fixture.");
+      },
+      insert(table: unknown) {
+        if (table === documents) {
+          return buildInsertTable(fixture.documents, options);
+        }
+
+        throw new Error("Unsupported insert table in document repository fixture.");
       }
     } as DatabaseClient["db"],
     close: async () => {

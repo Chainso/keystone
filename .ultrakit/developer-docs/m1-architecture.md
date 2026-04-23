@@ -143,12 +143,12 @@ Task chat is tracked by locator on `run_tasks`:
 - `conversation_agent_class`
 - `conversation_agent_name`
 
-Run-scoped planning locators now follow one deterministic naming contract when Keystone provisions them:
+Run-scoped planning locators now follow one deterministic naming contract when Keystone provisions or normalizes them:
 
 - `conversation_agent_class = PlanningDocumentAgent`
 - `conversation_agent_name = tenant:<tenantId>:run:<runId>:document:<canonical-path>`
 
-Keystone preserves any existing fully populated locator and only auto-fills planning locators when the document is missing one or both locator fields.
+For run-scoped planning documents, Keystone treats that canonical locator as authoritative on create and on lazy list/detail normalization. It ignores client-supplied planning locator values and rewrites missing or non-canonical planning locators back to the deterministic contract above.
 
 Message history itself lives in Cloudflare Think / Session storage. Keystone does not duplicate those messages in relational tables.
 

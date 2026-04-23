@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 const cloudflareConversationMocks = vi.hoisted(() => ({
-  useAgent: vi.fn((options: { agent: string; name?: string }) => ({
+  useAgent: vi.fn((options: { agent: string; name?: string; query?: Record<string, string> }) => ({
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     send: vi.fn(),
@@ -44,6 +44,15 @@ const cloudflareConversationMocks = vi.hoisted(() => ({
   }))
 }));
 
+type WindowWithDevAuth = Window & {
+  __KESTONE_UI_DEV_AUTH__?:
+    | {
+        tenantId?: string;
+        token?: string;
+      }
+    | undefined;
+};
+
 vi.mock("agents/react", () => ({
   useAgent: cloudflareConversationMocks.useAgent
 }));
@@ -63,6 +72,7 @@ afterEach(() => {
   cleanup();
   cloudflareConversationMocks.useAgent.mockClear();
   cloudflareConversationMocks.useAgentChat.mockClear();
+  (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = undefined;
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -1022,6 +1032,16 @@ function expectDevAuthHeaders(request: RequestInfo | URL, init?: RequestInit) {
   expect(headers.get("x-keystone-tenant-id")).toBe("tenant-dev-local");
 }
 
+function expectConversationBindingHeaders(
+  headers: HeadersInit | undefined,
+  auth: { tenantId: string; token: string }
+) {
+  const normalizedHeaders = new Headers(headers);
+
+  expect(normalizedHeaders.get("authorization")).toBe(`Bearer ${auth.token}`);
+  expect(normalizedHeaders.get("x-keystone-tenant-id")).toBe(auth.tenantId);
+}
+
 function createErrorResponse(input: { code: string; message: string; status: number }) {
   return createJsonResponse(
     {
@@ -1746,15 +1766,28 @@ describe("Run routes", () => {
   );
 
   it("binds a planning page to the persisted Cloudflare conversation locator", async () => {
+    const browserAuth = {
+      token: "browser-agent-token",
+      tenantId: "tenant-browser"
+    };
+    (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = browserAuth;
+
     renderRunRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Chat placeholder")).toBeInTheDocument();
+    expect(screen.getByText("Message composer placeholder")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /send/i })).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           agent: "PlanningDocumentAgent",
-          name: "run-104-specification-conversation"
+          name: "run-104-specification-conversation",
+          query: {
+            keystoneTenantId: browserAuth.tenantId,
+            keystoneToken: browserAuth.token
+          }
         })
       );
     });
@@ -1772,6 +1805,12 @@ describe("Run routes", () => {
         agent: planningAgentHandle
       })
     );
+    const planningChatBinding = cloudflareConversationMocks.useAgentChat.mock.calls.find(
+      ([options]) => options?.agent === planningAgentHandle
+    )?.[0];
+
+    expectConversationBindingHeaders(planningChatBinding?.headers, browserAuth);
+    expect(planningChatBinding?.credentials).toBe("same-origin");
   });
 
   it("loads the current specification revision, preserves source markdown in the save payload, and stays on-route", async () => {
@@ -2079,10 +2118,6 @@ describe("Run routes", () => {
       );
       expectFetchJsonRequest(requestLog, {
         jsonBody: {
-          conversation: {
-            agentClass: "PlanningDocumentAgent",
-            agentName: `tenant:tenant-dev-local:run:run-106:document:${documentPath}`
-          },
           kind: documentKind,
           path: documentPath
         },
@@ -2981,15 +3016,29 @@ describe("Run routes", () => {
   });
 
   it("binds task detail to the persisted Cloudflare conversation locator without synthesizing a fallback", async () => {
+    const browserAuth = {
+      token: "browser-task-token",
+      tenantId: "tenant-task-browser"
+    };
+    (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = browserAuth;
+
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Live task conversation remains out of scope in this phase/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /send/i })).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           agent: "KeystoneThinkAgent",
-          name: "tenant:tenant-dev-local:run:run-104:task:task-032"
+          name: "tenant:tenant-dev-local:run:run-104:task:task-032",
+          query: {
+            keystoneTenantId: browserAuth.tenantId,
+            keystoneToken: browserAuth.token
+          }
         })
       );
     });
@@ -3007,6 +3056,12 @@ describe("Run routes", () => {
         agent: taskAgentHandle
       })
     );
+    const taskChatBinding = cloudflareConversationMocks.useAgentChat.mock.calls.find(
+      ([options]) => options?.agent === taskAgentHandle
+    )?.[0];
+
+    expectConversationBindingHeaders(taskChatBinding?.headers, browserAuth);
+    expect(taskChatBinding?.credentials).toBe("same-origin");
   });
 
   it("keeps non-diff review candidates as supporting metadata when no unified diff can be parsed", async () => {
