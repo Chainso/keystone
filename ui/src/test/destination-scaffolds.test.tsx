@@ -1060,7 +1060,11 @@ describe("Destination scaffolds", () => {
           "1. Preserve the compatibility gate",
           "2. Keep category navigation grouped",
           "",
-          "> Use the shared Plate viewer instead of a line-by-line scaffold renderer."
+          "> Use the shared Plate viewer instead of a line-by-line scaffold renderer.",
+          "",
+          "```ts",
+          'const destination = "documentation";',
+          "```"
         ]
       }),
       initialEntry: "/documentation?document=project-open-questions"
@@ -1094,6 +1098,11 @@ describe("Destination scaffolds", () => {
         "Use the shared Plate viewer instead of a line-by-line scaffold renderer."
       )
     ).toBeInTheDocument();
+    const codeBlock = documentationRegion.querySelector("pre");
+
+    expect(codeBlock).not.toBeNull();
+    expect(codeBlock).toHaveTextContent('const destination = "documentation";');
+    expect(codeBlock?.querySelector("code")).not.toBeNull();
   });
 
   it("builds markdown with heading, blank-line, ordered-list, and blockquote boundaries preserved", () => {

@@ -159,6 +159,16 @@ Alternatives considered:
 - 2026-04-23: Validated Phase 4 with:
   - sandbox `rtk npm test` -> failed in `tests/scripts/demo-contracts.test.ts` with the known `listen EPERM 127.0.0.1` restriction.
   - escalated host `rtk npm test` -> passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- 2026-04-23: Completed the one allowed final whole-plan closeout pass:
+  - planning conversation empty-state copy now uses product language (`attached planning conversation`) instead of `Cloudflare conversation`,
+  - shared assistant tool cards now say `Waiting for decision` / `Decision needed` and describe the pause as a generic human decision instead of approval/Cloudflare transport wording,
+  - documentation route coverage now proves fenced code blocks render through the shared Plate viewer, and the planning save/reopen route now proves fenced code blocks persist and render through the same shared surface,
+  - added direct shared-surface coverage in `ui/src/test/markdown-document-surface.test.tsx` for fenced code blocks plus fail-closed viewer/editor behavior when markdown deserialization rejects malformed input.
+- 2026-04-23: Validated the final whole-plan closeout pass with:
+  - `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` -> passed (`3 passed` test files, `109 passed` tests).
+  - `rtk npm test -- ui/src/test/markdown-document-surface.test.tsx` -> passed (`1 passed` test file, `3 passed` tests).
+  - sandbox `rtk npm test` -> failed in `tests/scripts/demo-contracts.test.ts` with the known `listen EPERM 127.0.0.1` restriction.
+  - escalated host `rtk npm test` -> passed (`36 passed | 2 skipped` test files, `332 passed | 21 skipped` tests).
 
 ## Progress
 
@@ -174,10 +184,11 @@ Alternatives considered:
 - [x] 2026-04-23 Phase 3: realign documentation model and document surfaces with the workspace spec.
 - [x] 2026-04-23 Phase 3 targeted fix pass: remove the remaining documentation jargon, fail closed on parse errors, restore planning-editor pending locks, and tighten the real-surface coverage.
 - [x] 2026-04-23 Phase 4: evaluate doc / notes impact, run closeout validation, and leave the plan ready for final review.
+- [x] 2026-04-23 Final whole-plan closeout pass: remove the last Cloudflare/approval copy leaks and close the remaining shared document-surface coverage gaps.
 
 ## Surprises & Discoveries
 
-- Broad `rtk npm test` passes in this worktree after `npm install` when the suite can bind localhost outside the sandbox: `35 passed | 2 skipped` test files and `329 passed | 21 skipped` tests.
+- Broad `rtk npm test` passes in this worktree after `npm install` when the suite can bind localhost outside the sandbox: `36 passed | 2 skipped` test files and `332 passed | 21 skipped` tests.
 - `npm run lint` currently fails for pre-existing non-UI issues in backend and test files, including unused variables and `preserve-caught-error` violations in:
   - `scripts/run-local.ts`
   - `src/http/api/v1/documents/handlers.ts`
@@ -231,6 +242,7 @@ Alternatives considered:
 - Phase 3 fix-pass review confirmed that silent markdown parse fallback is not acceptable at the shared document seam: unsupported markdown must surface as raw source with body editing disabled, otherwise a title-only revisit can silently rewrite the document on the next save.
 - Route tests do not need a full markdown-surface mock to prove planning save/load behavior in jsdom: a test-only source seam inside the real shared component is enough to exercise `markdownSourceKey` resets and pending-state locks without reverting to the old textarea contract.
 - The Phase 4 closeout audit found that `README.md` and the current durable developer docs were already truthful after Phases 1-3; only `.ultrakit/notes.md`, the active plan, and the active-plan index needed closeout maintenance.
+- Plate's markdown deserializer recovers many malformed inputs instead of throwing, so direct fail-closed coverage for `markdown-document-surface` needs a targeted deserializer-throw seam in tests rather than assuming a random malformed string will hit the error branch.
 
 ## Outcomes & Retrospective
 
@@ -275,6 +287,16 @@ Alternatives considered:
 - Validation:
   - Phase 4 sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
   - The escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- Final whole-plan closeout pass completed on 2026-04-23.
+- Result:
+  - The last product-copy leaks are gone from the planning conversation empty state and the shared tool-decision surface; the UI no longer says `Cloudflare conversation`, `Waiting for approval`, or `Approval required`.
+  - Shared document-surface coverage now includes real fenced code-block rendering on both the documentation route and the planning save/reopen path.
+  - The shared `markdown-document-surface` now has direct tests for fenced code blocks plus both fail-closed branches when markdown deserialization rejects malformed input.
+- Validation:
+  - `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed (`3 passed` test files, `109 passed` tests).
+  - `rtk npm test -- ui/src/test/markdown-document-surface.test.tsx` passed (`1 passed` test file, `3 passed` tests).
+  - Sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
+  - The escalated host rerun passed (`36 passed | 2 skipped` test files, `332 passed | 21 skipped` tests).
 
 ## Context and Orientation
 
@@ -768,8 +790,10 @@ Completion Notes:
 - Audited `README.md` and the current durable developer docs against the shipped UI surfaces; they already matched the canonical destination naming, Plate-backed document behavior, assistant-ui conversation surfaces, and scaffold-backed `Documentation` boundary, so no README or developer-doc edits were needed.
 - Updated `.ultrakit/notes.md` to reflect the current validation caveat that broad `rtk npm test` can still fail inside the Codex sandbox on this host with `listen EPERM 127.0.0.1`; the required escalated rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 - Updated `.ultrakit/exec-plans/active/index.md` to mark the plan `Ready for review` and left archive bookkeeping for the final comprehensive review / archive pass.
+- The final whole-plan closeout pass removed the remaining Cloudflare/approval phrasing from shipped planning/conversation copy and added the missing shared document-surface coverage for fenced code blocks plus fail-closed malformed-markdown behavior.
+- Closeout validation was refreshed after that pass: the required targeted route suite passed, the direct shared-surface suite passed, sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` restriction again, and the escalated rerun passed (`36 passed | 2 skipped` test files, `332 passed | 21 skipped` tests).
 
 Next Starter Context:
 - The plan is ready for the orchestrator's final comprehensive review. Do not archive it yet.
-- Closeout truth is now explicit: README and the durable developer docs stayed accurate, only `.ultrakit/notes.md`, the active plan, and the active-plan index needed updates.
+- Closeout truth is now explicit: README and the durable developer docs stayed accurate, and the final closeout pass only needed shipped-copy cleanup plus shared-surface coverage additions in UI/tests.
 - If the final review re-runs `rtk npm test` in the sandbox and sees `listen EPERM 127.0.0.1` from `tests/scripts/demo-contracts.test.ts`, treat that as the known environment caveat and rely on the escalated broad-suite proof unless product-facing failures also appear.

@@ -284,7 +284,7 @@ function expectPlanningChatSurface() {
   expect(screen.getByText("Planning conversation ready")).toBeInTheDocument();
   expect(
     screen.getByText(
-      "This document already has a persisted Cloudflare conversation. Send the next planning turn here."
+      "This document already has an attached planning conversation. Send the next planning turn here."
     )
   ).toBeInTheDocument();
   expect(
@@ -1973,7 +1973,7 @@ describe("Run routes", () => {
     expect(within(table).getByText("Shared")).toBeInTheDocument();
   });
 
-  it("binds a planning page to the persisted Cloudflare conversation locator", async () => {
+  it("binds a planning page to the persisted planning conversation locator", async () => {
     const browserAuth = {
       token: "browser-agent-token",
       tenantId: "tenant-browser"
@@ -2039,7 +2039,7 @@ describe("Run routes", () => {
     expect(cloudflareConversationMocks.useAgentChat).not.toHaveBeenCalled();
   });
 
-  it("renders planning transcripts with reasoning, sources, approvals, and structured tool outcomes", async () => {
+  it("renders planning transcripts with reasoning, sources, decision requests, and structured tool outcomes", async () => {
     const sendMessage = vi.fn();
     const chatMock = createCloudflareChatMock({
       addToolApprovalResponse: vi.fn(),
@@ -2075,6 +2075,13 @@ describe("Run routes", () => {
     expect(screen.getByText("run_command")).toBeInTheDocument();
     expect(screen.getByText("request_host_access")).toBeInTheDocument();
     expect(screen.getByText("request_human_approval")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for decision")).toBeInTheDocument();
+    expect(screen.getByText("Decision needed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This tool call is waiting on a human decision before work can continue."
+      )
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Outcome")).toHaveLength(2);
     expect(
       screen.getByText((content) => content.includes("Host shell unavailable."))
@@ -2122,7 +2129,7 @@ describe("Run routes", () => {
     const { fetchMock, requestLog } = createBrowserRunFetch();
     const { router } = renderRoute("/runs/run-104/specification");
     const updatedBody =
-      "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n- [ ] Preserve task lists in saved markdown.\n- ~~Remove the legacy preview path.~~\n";
+      '# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n\n```ts\nconst stage = "execution";\n```\n';
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
@@ -2155,10 +2162,12 @@ describe("Run routes", () => {
       "Run Specification v2 document",
       "- Save current revisions without route churn."
     );
-    expectPlanningDocumentToContain(
-      "Run Specification v2 document",
-      "Preserve task lists in saved markdown."
-    );
+    const documentRegion = getPlanningDocumentRegion("Run Specification v2 document");
+    const codeBlock = documentRegion.querySelector("pre");
+
+    expect(codeBlock).not.toBeNull();
+    expect(codeBlock).toHaveTextContent('const stage = "execution";');
+    expect(codeBlock?.querySelector("code")).not.toBeNull();
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
@@ -2254,7 +2263,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document title" }), {
       target: {
         value: "Run Specification v2"
       }

@@ -48,7 +48,7 @@ function PlanningConversationPanel({
 
       <AssistantChatSurface
         composerPlaceholder="Continue the planning conversation with Keystone."
-        emptyMessage="This document already has a persisted Cloudflare conversation. Send the next planning turn here."
+        emptyMessage="This document already has an attached planning conversation. Send the next planning turn here."
         emptyTitle="Planning conversation ready"
         locator={conversationLocator}
         unavailableMessage="Create or attach a planning conversation before sending messages from this document."
