@@ -57,6 +57,7 @@ Current UI scope:
 - nested run detail routes for `Specification`, `Architecture`, `Execution Plan`, and `Execution`
 - live planning authoring for `Specification`, `Architecture`, and `Execution Plan`
 - planning and task detail conversations rendered through assistant-ui over the persisted Cloudflare conversation locator contract exposed at `/agents/*`
+- run planning chats now get run-scoped sandbox inspection context too: specification, architecture, and execution-plan agents can inspect `/workspace`, projected run artifacts, and project env-backed bash output while keeping distinct planning responsibilities
 - explicit compile on `Execution Plan`, live `Execution` DAG loading, and task-detail review that infers changed files from text task artifacts while keeping non-diff outputs as metadata-only support records
 - live `Workstreams` loading through `GET /v1/projects/:projectId/tasks` with server-side filtering, pagination, and direct links back into `Runs > Execution`
 - workspace-style `Documentation`, `Workstreams`, `New project`, and `Project settings` surfaces with no extra hero, aside, or right-rail chrome
@@ -90,6 +91,7 @@ Current UI boundary:
 - the live project-management loop is real across the shell/sidebar, `New project`, `Project settings`, the full `Runs` destination, and `Workstreams`
 - `Runs` is now truthful end to end for project-scoped index, run creation, planning authoring, explicit compile, execution DAG, and task artifact review
 - planning and task panes now reconnect through persisted locators and render assistant-ui surfaces over the Cloudflare agent transport exposed at `/agents/*`
+- planning chats now reuse the shared run sandbox via deterministic planning-session ids, so the planning agents can ground their guidance in the current repository and run artifacts instead of acting as chat-only assistants
 - `Workstreams` now follows the selected project through the real project-tasks API with server-backed filter and pagination state
 - `Documentation` still relies on scaffold-backed selectors, renders through the shared Plate viewer, and keeps its explicit compatibility state for non-scaffold live projects
 - documentation collections, evidence, integration, and release flows remain unwired behind the stable route tree
