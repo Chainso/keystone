@@ -14,9 +14,14 @@ These notes help future agents work effectively without rediscovering project-sp
 ## Project Notes
 
 - Local Worker dev on this host must run outside the Codex sandbox boundary; otherwise `wrangler dev` fails before serving traffic with `uv_interface_addresses returned Unknown system error 1`.
+- When a task requires driving an interactive CLI or TUI, manage it through `tmux` rather than attaching directly in the Codex shell.
+- UI theming should be centralized through Tailwind/shadcn theme tokens; feature components should not each invent or own their own theming rules.
+- Prefer Keystone-owned higher-level UI components built on top of shadcn primitives for recurring product patterns instead of wiring raw shadcn pieces ad hoc in feature code.
+- For this UI redesign, the user's explicit guidance plus `design/workspace-spec.md` and `design/design-guidelines.md` are more authoritative than the target images; treat those images as loose inspiration only.
+- After any context compaction before resuming ultrakit execution, reload both orchestrator skills (`ultrakit:orchestrator:orchestrate` and `ultrakit:orchestrator:execute`) and re-read the entire active plan before proceeding.
 - Local Wrangler startup on this host still has to run outside the Codex sandbox boundary, but it no longer needs a host `CLOUDFLARE_API_TOKEN` just for Think model access because the Worker no longer binds Cloudflare `AI` for local validation.
 - `npm run build` still needs a host shell on this machine: on 2026-04-21 final validation, `vite build` completed, then Wrangler hit `EROFS` writing `~/.config/.wrangler/logs/...` and reported that the Docker CLI could not be launched. Use a host shell when you need the full build proof.
-- Broad `npm test` now also needs a host-permitted run on this host when `tests/scripts/demo-contracts.test.ts` binds `127.0.0.1`; sandboxed runs fail with `listen EPERM`.
+- Broad `rtk npm test` currently passes in the sandbox on this host, including `tests/scripts/demo-contracts.test.ts` binding `127.0.0.1`; do not assume a host rerun is required unless a fresh `listen EPERM` regression reappears.
 - The local chat-completions backend is plain HTTP at `http://localhost:10531`, streams SSE chunks by default, and is the shared backend for M1 compile plus the live Think model path.
 - The fixture happy path depends on `npm test` inside the sandboxed task worktree; task workflows assume the target repo can run that command.
 - The operator-facing demo shortcut lives in `.keystone/demo-last-run.json`: `demo:run` only updates it after a successful archived run, and `demo:validate` ignores it whenever `--run-id` or `KEYSTONE_RUN_ID` is supplied.
@@ -25,6 +30,7 @@ These notes help future agents work effectively without rediscovering project-sp
 - Project-backed compile currently requires exactly one explicit executable target. Multi-component projects materialize correctly for task workspaces, but compile-time selection fails clearly until a product-level selector exists.
 - `npm run run:local` is a project-scoped create-run helper against `POST /v1/projects/:projectId/runs`; it expects an existing project id (default `project-fixture`) and prints the next document/compile endpoints rather than seeding planning docs for you.
 - `TaskSessionDO` still exists as the internal sandbox bridge, but that seam is implementation plumbing rather than a product-level return to session-centric state.
+- Visible planning and task chat is now real: `ui/src/features/conversations/*` layers assistant-ui on top of `useAgent` / `useAgentChat`, so future UI work should not reintroduce placeholder chat panes or synthesized transcripts.
 - If port `8787` is already occupied, `wrangler dev` may bind another local port. Use Wrangler's `Ready on ...` URL via `KEYSTONE_BASE_URL` or the scripts' `--base-url=` flag instead of assuming `127.0.0.1:8787`.
 - The current UI scaffold contract is minimal-board-first: keep `ui/src/routes/` as thin route/layout containers, keep destination rendering under `ui/src/features/**/components/`, and do not reintroduce hero/aside/right-rail narration unless `design/workspace-spec.md` changes.
 - The only checked-in UI scaffold source of truth is `ui/src/features/resource-model/`; if a future UI pass needs placeholder data, extend selectors or the normalized dataset there instead of recreating destination-local scaffold files.

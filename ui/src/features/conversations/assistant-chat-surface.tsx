@@ -21,7 +21,7 @@ import {
 } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, type UIMessage } from "ai";
 import { AlertTriangleIcon, BotIcon, CheckIcon, LoaderCircleIcon, UserIcon, XIcon } from "lucide-react";
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo } from "react";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "../../components/ui/button";

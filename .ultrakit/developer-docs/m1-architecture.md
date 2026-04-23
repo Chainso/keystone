@@ -30,7 +30,7 @@ The current UI is no longer scaffold-only for project management:
 - run-scoped planning documents now get deterministic conversation locators on create when the request omits them, and `GET /v1/runs/:runId/documents` plus `GET /v1/runs/:runId/documents/:documentId` lazily backfill missing locators instead of returning locator-less planning resources
 - `Execution Plan` now exposes the explicit `Compile run` action through `POST /v1/runs/:runId/compile`, seeds compile provenance into the live run state immediately after acceptance, and routes into `Execution`, where the UI keeps refreshing until the live workflow graph is available
 - task detail now uses the task conversation plus code-review split: changed files are inferred from text `run_note` and `staged_output` artifacts loaded through the authenticated run API seam when their content parses as unified diff, while the remaining task artifacts stay metadata-only support records in that pane
-- planning and task placeholder panes now mount the Cloudflare chat binding layer from their persisted `conversation` locators, but the visible assistant-ui chat cutover is still deferred
+- planning and task panes now reconnect from their persisted `conversation` locators and render visible assistant-ui chat surfaces over the Cloudflare `useAgent` / `useAgentChat` bridge, without introducing a second conversation store in Keystone
 - the planning pages keep explicit empty, error, viewer, and editor states in the shared split layout instead of falling back to scaffold placeholders
 
 The current live/scaffold split is still intentional:

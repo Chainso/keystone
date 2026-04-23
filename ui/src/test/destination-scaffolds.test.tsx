@@ -29,6 +29,42 @@ import {
   serializeProjectResource
 } from "../../../src/http/api/v1/projects/contracts";
 
+const cloudflareConversationMocks = vi.hoisted(() => ({
+  useConversation: vi.fn(() => ({
+    agent: {
+      addEventListener: vi.fn(),
+      agent: "KeystoneThinkAgent",
+      call: vi.fn(),
+      close: vi.fn(),
+      getHttpUrl: () => "http://example.com/agents/KeystoneThinkAgent/default",
+      identified: true,
+      name: "default",
+      ready: Promise.resolve(),
+      reconnect: vi.fn(),
+      removeEventListener: vi.fn(),
+      send: vi.fn(),
+      setState: vi.fn(),
+      state: undefined,
+      stub: {}
+    },
+    chat: {
+      addToolApprovalResponse: vi.fn(),
+      addToolOutput: vi.fn(),
+      error: undefined,
+      isServerStreaming: false,
+      isStreaming: false,
+      messages: [],
+      sendMessage: vi.fn(),
+      status: "idle" as const,
+      stop: vi.fn()
+    }
+  }))
+}));
+
+vi.mock("../features/conversations/use-cloudflare-conversation", () => ({
+  useCloudflareConversation: cloudflareConversationMocks.useConversation
+}));
+
 const defaultTimestamp = new Date("2026-04-20T12:00:00.000Z");
 const scaffoldProject: CurrentProject = {
   projectId: "project-keystone-cloudflare",
@@ -99,6 +135,7 @@ type ResponseFactory = () => Promise<Response> | Response;
 
 afterEach(() => {
   cleanup();
+  cloudflareConversationMocks.useConversation.mockClear();
   vi.unstubAllGlobals();
 });
 
@@ -2149,10 +2186,11 @@ describe("Destination scaffolds", () => {
       expect(router.state.location.pathname).toBe("/runs/run-101/execution/tasks/task-019");
     });
     expect(await screen.findByRole("heading", { name: "run-101 / task-019" })).toBeInTheDocument();
-    expect(screen.getByText("Conversation status")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Task conversation" })).toBeInTheDocument();
+    expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "A live conversation is attached to this task. Messages will render here when task chat is wired."
+        "This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
       )
     ).toBeInTheDocument();
     expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();

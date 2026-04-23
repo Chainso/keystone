@@ -108,6 +108,8 @@ Keystone ignores client-supplied planning locator values and rewrites missing or
 
 This lets the UI reconnect through `useAgent({ agent, name })` and `useAgentChat({ agent })` without duplicating the messages into relational tables or inventing a second conversation store.
 
+The visible planning and task panes now layer assistant-ui's external-store runtime on top of that bridge, so assistant-ui owns rendering and composer behavior while Cloudflare still owns persistence, sync, and message authority.
+
 The Worker now exposes `/agents/*` as the browser transport entrypoint for those Cloudflare agent conversations, protected by the same dev-auth seam as the JSON API.
 
 ## Artifact Flow
