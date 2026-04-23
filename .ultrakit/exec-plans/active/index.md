@@ -6,8 +6,6 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 ## Active Plans
 
-There are currently no active plans.
-
 Add active plans in priority order using this format:
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
