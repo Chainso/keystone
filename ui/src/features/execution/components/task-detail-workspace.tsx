@@ -28,6 +28,7 @@ import {
   WorkspaceSplitPane
 } from "../../../components/workspace/workspace-split";
 import { StatusPill } from "../../../shared/layout/status-pill";
+import { ConversationBindingHost } from "../../conversations/conversation-binding-host";
 import type {
   TaskConversationEntryViewModel,
   TaskDependencyViewModel,
@@ -107,6 +108,10 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
       <WorkspaceSplit className="task-detail-split">
         <WorkspaceSplitPane>
           <WorkspacePanel>
+            <ConversationBindingHost
+              locator={model.state === "ready" ? model.conversationLocator : null}
+            />
+
             <WorkspacePanelHeader>
               <WorkspacePanelHeading>
                 <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>

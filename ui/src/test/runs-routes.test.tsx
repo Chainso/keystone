@@ -3,6 +3,55 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
+const cloudflareConversationMocks = vi.hoisted(() => ({
+  useAgent: vi.fn((options: { agent: string; name?: string }) => ({
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    send: vi.fn(),
+    close: vi.fn(),
+    reconnect: vi.fn(),
+    ready: Promise.resolve(),
+    identified: true,
+    state: undefined,
+    setState: vi.fn(),
+    call: vi.fn(),
+    stub: {},
+    getHttpUrl: () => `http://example.com/agents/${options.agent}/${options.name ?? "default"}`,
+    agent: options.agent,
+    name: options.name ?? "default"
+  })),
+  useAgentChat: vi.fn(() => ({
+    addToolOutput: vi.fn(),
+    append: vi.fn(),
+    clearError: vi.fn(),
+    clearHistory: vi.fn(),
+    data: [],
+    error: undefined,
+    handleInputChange: vi.fn(),
+    handleSubmit: vi.fn(),
+    input: "",
+    isServerStreaming: false,
+    isStreaming: false,
+    messages: [],
+    reload: vi.fn(),
+    resumeStream: vi.fn(),
+    sendMessage: vi.fn(),
+    setData: vi.fn(),
+    setInput: vi.fn(),
+    setMessages: vi.fn(),
+    status: "ready",
+    stop: vi.fn()
+  }))
+}));
+
+vi.mock("agents/react", () => ({
+  useAgent: cloudflareConversationMocks.useAgent
+}));
+
+vi.mock("@cloudflare/ai-chat/react", () => ({
+  useAgentChat: cloudflareConversationMocks.useAgentChat
+}));
+
 import type { RunManagementApi, StaticRunDetailRecord } from "../features/runs/run-management-api";
 import {
   createStaticRunManagementApi,
@@ -12,6 +61,8 @@ import { renderRoute } from "./render-route";
 
 afterEach(() => {
   cleanup();
+  cloudflareConversationMocks.useAgent.mockClear();
+  cloudflareConversationMocks.useAgentChat.mockClear();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -1694,6 +1745,35 @@ describe("Run routes", () => {
     }
   );
 
+  it("binds a planning page to the persisted Cloudflare conversation locator", async () => {
+    renderRunRoute("/runs/run-104/specification");
+
+    expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent: "PlanningDocumentAgent",
+          name: "run-104-specification-conversation"
+        })
+      );
+    });
+
+    const planningAgentHandle = cloudflareConversationMocks.useAgent.mock.results.find(
+      (result) =>
+        result.type === "return" &&
+        result.value?.agent === "PlanningDocumentAgent" &&
+        result.value?.name === "run-104-specification-conversation"
+    )?.value;
+
+    expect(planningAgentHandle).toBeTruthy();
+    expect(cloudflareConversationMocks.useAgentChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: planningAgentHandle
+      })
+    );
+  });
+
   it("loads the current specification revision, preserves source markdown in the save payload, and stays on-route", async () => {
     const { fetchMock, requestLog } = createBrowserRunFetch();
     const { router } = renderRoute("/runs/run-104/specification");
@@ -1946,8 +2026,20 @@ describe("Run routes", () => {
   ])(
     "creates and saves a missing planning document for $path without route churn",
     async ({ defaultTitle, documentId, emptyTitle, expectedLine, path }) => {
-      const { fetchMock } = createBrowserRunFetch();
+      const { fetchMock, requestLog } = createBrowserRunFetch();
       const { router } = renderRoute(path);
+      const documentPath =
+        path === "/runs/run-106/specification"
+          ? "specification"
+          : path === "/runs/run-106/architecture"
+            ? "architecture"
+            : "execution-plan";
+      const documentKind =
+        documentPath === "specification"
+          ? "specification"
+          : documentPath === "architecture"
+            ? "architecture"
+            : "execution_plan";
 
       expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
       expect(screen.getByText(emptyTitle)).toBeInTheDocument();
@@ -1985,6 +2077,18 @@ describe("Run routes", () => {
           })
         ])
       );
+      expectFetchJsonRequest(requestLog, {
+        jsonBody: {
+          conversation: {
+            agentClass: "PlanningDocumentAgent",
+            agentName: `tenant:tenant-dev-local:run:run-106:document:${documentPath}`
+          },
+          kind: documentKind,
+          path: documentPath
+        },
+        method: "POST",
+        url: "/v1/runs/run-106/documents"
+      });
     }
   );
 
@@ -2145,7 +2249,8 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
+    await screen.findByRole("textbox", { name: "Document title" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
       target: {
         value: "# Architecture\n- Warn before unload.\n"
       }
@@ -2875,10 +2980,45 @@ describe("Run routes", () => {
     expect(screen.queryByText("Artifacts and review")).not.toBeInTheDocument();
   });
 
+  it("binds task detail to the persisted Cloudflare conversation locator without synthesizing a fallback", async () => {
+    renderRunRoute("/runs/run-104/execution/tasks/task-032");
+
+    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(cloudflareConversationMocks.useAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agent: "KeystoneThinkAgent",
+          name: "tenant:tenant-dev-local:run:run-104:task:task-032"
+        })
+      );
+    });
+
+    const taskAgentHandle = cloudflareConversationMocks.useAgent.mock.results.find(
+      (result) =>
+        result.type === "return" &&
+        result.value?.agent === "KeystoneThinkAgent" &&
+        result.value?.name === "tenant:tenant-dev-local:run:run-104:task:task-032"
+    )?.value;
+
+    expect(taskAgentHandle).toBeTruthy();
+    expect(cloudflareConversationMocks.useAgentChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: taskAgentHandle
+      })
+    );
+  });
+
   it("keeps non-diff review candidates as supporting metadata when no unified diff can be parsed", async () => {
     const fixtures = cloneRunFixtures();
-    fixtures["run-104"].artifactContents = {
-      ...(fixtures["run-104"].artifactContents ?? {}),
+    const runFixture = fixtures["run-104"];
+
+    if (!runFixture) {
+      throw new Error("Missing run-104 fixture.");
+    }
+
+    runFixture.artifactContents = {
+      ...(runFixture.artifactContents ?? {}),
       "/v1/artifacts/artifact-task-032-review/content":
         "# Review note\n\nNo patch was attached to this task output.\n"
     };
@@ -2969,7 +3109,9 @@ describe("Run routes", () => {
     const { router } = renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
-    expect(screen.getByText("Loading changed files from the current task artifacts.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Loading changed files from the current task artifacts.")
+    ).toBeInTheDocument();
 
     fireEvent.click(
       within(screen.getByRole("list", { name: "Depends on" })).getByRole("link", {

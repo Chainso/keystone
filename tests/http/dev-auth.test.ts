@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDevAuth } from "../../src/http/contracts/dev-auth";
+import { parseDevAuth, parseDevAuthRequest } from "../../src/http/contracts/dev-auth";
 
 const baseEnv = {
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
@@ -49,5 +49,21 @@ describe("parseDevAuth", () => {
       ok: false,
       reason: "invalid_token"
     });
+  });
+});
+
+describe("parseDevAuthRequest", () => {
+  it("accepts dev auth from query parameters when headers are unavailable", () => {
+    const request = new Request(
+      "http://example.com/agents/planning-document-agent/default/get-messages?keystoneToken=secret-dev-token&keystoneTenantId=tenant-query"
+    );
+
+    const result = parseDevAuthRequest(request, baseEnv);
+
+    expect(result.ok).toBe(true);
+
+    if (result.ok) {
+      expect(result.auth.tenantId).toBe("tenant-query");
+    }
   });
 });

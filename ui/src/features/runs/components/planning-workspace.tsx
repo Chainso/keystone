@@ -24,6 +24,7 @@ import {
   WorkspaceSplitPane
 } from "../../../components/workspace/workspace-split";
 import { FormTextAreaField, FormTextField } from "../../../shared/forms/form-field";
+import { ConversationBindingHost } from "../../conversations/conversation-binding-host";
 import type { RunPlanningPhaseViewModel } from "../use-run-view-model";
 
 function PlanningConversationPanel({
@@ -33,6 +34,8 @@ function PlanningConversationPanel({
 }: Pick<RunPlanningPhaseViewModel, "phaseSummary" | "phaseTitle" | "conversationLocator">) {
   return (
     <WorkspacePanel>
+      <ConversationBindingHost locator={conversationLocator} />
+
       <WorkspacePanelHeader>
         <WorkspacePanelHeading>
           <WorkspacePanelTitle>{phaseTitle}</WorkspacePanelTitle>

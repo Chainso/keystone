@@ -12,6 +12,9 @@ export interface WorkerBindings extends Env {
   KEYSTONE_THINK_AGENT: DurableObjectNamespace<
     import("./keystone/agents/base/KeystoneThinkAgent").KeystoneThinkAgent
   >;
+  PlanningDocumentAgent: DurableObjectNamespace<
+    import("./keystone/agents/planning/PlanningDocumentAgent").PlanningDocumentAgent
+  >;
   TASK_SESSION: DurableObjectNamespace<import("./durable-objects/TaskSessionDO").TaskSessionDO>;
   RUN_WORKFLOW: Workflow<import("./workflows/RunWorkflow").RunWorkflowParams>;
   TASK_WORKFLOW: Workflow<import("./workflows/TaskWorkflow").TaskWorkflowParams>;

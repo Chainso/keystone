@@ -18,6 +18,11 @@ import type {
   WorkflowGraphResource
 } from "../../../../src/http/api/v1/runs/contracts";
 import {
+  buildRunPlanningConversationLocator,
+  type RunPlanningDocumentKind
+} from "../../../../src/lib/documents/model";
+import { resolveBrowserDevAuth } from "../../shared/api/browser-dev-auth";
+import {
   createBrowserRunManagementApi,
   RunManagementApiError,
   type RunManagementApi
@@ -108,7 +113,7 @@ const browserRunManagementApi = createBrowserRunManagementApi();
 const RunManagementApiContext = createContext<RunManagementApi | null>(null);
 const RunDetailContext = createContext<RunDetailValue | null>(null);
 
-const planningPhaseDocumentKind: Record<RunPlanningPhaseId, DocumentResource["kind"]> = {
+const planningPhaseDocumentKind: Record<RunPlanningPhaseId, RunPlanningDocumentKind> = {
   specification: "specification",
   architecture: "architecture",
   "execution-plan": "execution_plan"
@@ -576,9 +581,20 @@ export function RunDetailProvider({
 
     const createRequest = (async () => {
       try {
-        const createdDocument = await api.createRunDocument(runId, {
+        const auth = resolveBrowserDevAuth();
+        const conversationLocator = buildRunPlanningConversationLocator({
+          tenantId: auth.tenantId,
+          runId,
           kind: planningPhaseDocumentKind[phaseId],
           path: canonicalDocumentPathByPhase[phaseId]
+        });
+        const createdDocument = await api.createRunDocument(runId, {
+          kind: planningPhaseDocumentKind[phaseId],
+          path: canonicalDocumentPathByPhase[phaseId],
+          conversation: {
+            agentClass: conversationLocator.conversationAgentClass,
+            agentName: conversationLocator.conversationAgentName
+          }
         });
 
         setPlanningDocumentState(phaseId, {

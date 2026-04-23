@@ -72,10 +72,10 @@ export function createDatabaseClientFromSource(
 }
 
 export function createWorkerDatabaseClient(
-  env: Pick<
-    WorkerBindings,
-    "HYPERDRIVE" | "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE"
-  >
+  env: Pick<WorkerBindings, "HYPERDRIVE"> &
+    Partial<
+      Pick<WorkerBindings, "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE">
+    >
 ) {
   if (env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE) {
     // Local Wrangler dev exposes a plain Postgres connection string. Close the

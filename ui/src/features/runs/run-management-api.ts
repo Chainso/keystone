@@ -25,7 +25,7 @@ import {
   type TaskResource,
   type WorkflowGraphResource
 } from "../../../../src/http/api/v1/runs/contracts";
-import { buildProtectedBrowserHeaders } from "../projects/project-management-api";
+import { buildProtectedBrowserHeaders } from "../../shared/api/browser-dev-auth";
 
 export interface StaticRunDocumentRevisionRecord {
   content: string;

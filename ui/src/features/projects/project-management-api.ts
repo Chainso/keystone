@@ -18,6 +18,7 @@ import {
   listRunSummaries
 } from "../resource-model/selectors";
 import type { ResourceModelDataset } from "../resource-model/types";
+import { buildProtectedBrowserHeaders } from "../../shared/api/browser-dev-auth";
 
 export interface CurrentProjectRecord {
   projectId: string;
@@ -140,41 +141,6 @@ export interface ProjectManagementApi {
 }
 
 const currentFetchImplementation: typeof fetch = (...args) => fetch(...args);
-const defaultBrowserDevAuth = {
-  token: "change-me-local-token",
-  tenantId: "tenant-dev-local"
-} as const;
-
-declare global {
-  interface Window {
-    __KESTONE_UI_DEV_AUTH__?:
-      | {
-          token?: string;
-          tenantId?: string;
-        }
-      | undefined;
-  }
-}
-
-function resolveBrowserDevAuth() {
-  const providedAuth =
-    typeof window === "undefined" ? undefined : window.__KESTONE_UI_DEV_AUTH__;
-
-  return {
-    token: providedAuth?.token?.trim() || defaultBrowserDevAuth.token,
-    tenantId: providedAuth?.tenantId?.trim() || defaultBrowserDevAuth.tenantId
-  };
-}
-
-export function buildProtectedBrowserHeaders(headers?: HeadersInit) {
-  const nextHeaders = new Headers(headers);
-  const auth = resolveBrowserDevAuth();
-
-  nextHeaders.set("Authorization", `Bearer ${auth.token}`);
-  nextHeaders.set("X-Keystone-Tenant-Id", auth.tenantId);
-
-  return nextHeaders;
-}
 
 function normalizeProjectRecord(project: {
   projectId: string;

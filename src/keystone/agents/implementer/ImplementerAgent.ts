@@ -5,7 +5,10 @@ import type { LanguageModel } from "ai";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 
-import type { AgentRuntimeArtifactKind } from "../../../lib/artifacts/model";
+import {
+  artifactKindSchema,
+  type AgentRuntimeArtifactKind
+} from "../../../lib/artifacts/model";
 import type { AgentTurnContext, AgentRuntimeArtifact } from "../../../maestro/agent-runtime";
 import type { SandboxAgentBridge } from "../../../lib/workspace/init";
 import { execSandboxAgentBash } from "../tools/bash";
@@ -92,7 +95,7 @@ const baseBridgeSchema = z.object({
   projectedArtifacts: z.array(
     z.object({
       artifactRefId: z.string().trim().min(1),
-      kind: z.string().trim().min(1),
+      kind: artifactKindSchema,
       contentType: z.string().trim().min(1),
       storageUri: z.string().trim().min(1),
       projectedPath: z.string().trim().min(1),

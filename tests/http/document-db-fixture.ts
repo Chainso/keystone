@@ -1,4 +1,5 @@
 import type { DatabaseClient } from "../../src/lib/db/client";
+import { documents } from "../../src/lib/db/schema";
 
 type FixtureRow = Record<string, unknown>;
 
@@ -77,6 +78,24 @@ function buildQueryTable(rows: FixtureRow[]) {
   };
 }
 
+function buildUpdateTable(rows: FixtureRow[]) {
+  return {
+    set(values: FixtureRow) {
+      return {
+        where(where: unknown) {
+          const updatedRows = rows
+            .filter((row) => matchesWhere(row, where))
+            .map((row) => Object.assign(row, values));
+
+          return {
+            returning: async () => updatedRows
+          };
+        }
+      };
+    }
+  };
+}
+
 export function createDocumentRepositoryClient(
   fixture: DocumentRepositoryFixture,
   close: () => Promise<void> | void = async () => undefined
@@ -90,6 +109,13 @@ export function createDocumentRepositoryClient(
         runs: buildQueryTable(fixture.runs),
         documents: buildQueryTable(fixture.documents),
         documentRevisions: buildQueryTable(fixture.documentRevisions)
+      },
+      update(table: unknown) {
+        if (table === documents) {
+          return buildUpdateTable(fixture.documents);
+        }
+
+        throw new Error("Unsupported update table in document repository fixture.");
       }
     } as DatabaseClient["db"],
     close: async () => {
