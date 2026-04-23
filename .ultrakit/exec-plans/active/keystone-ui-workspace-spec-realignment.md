@@ -119,6 +119,7 @@ Alternatives considered:
   - reran validation: targeted `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed, sandbox `rtk npm test` hit the known `tests/scripts/demo-contracts.test.ts` `listen EPERM 127.0.0.1` blocker again, and the escalated rerun passed (`35 passed | 2 skipped` test files, `325 passed | 21 skipped` tests).
 - 2026-04-22: Phase 1 closed after review verification. Phase 2 execution is starting with the corrected assumption that run/execution surfaces still carry some selected-project framing and remain responsible for removing it.
 - 2026-04-23: Phase 2 closed after the targeted fix pass resolved the run-stage link mismatch, removed the misleading default-phase abstraction, and added positive coverage for the new run/task-detail behavior. Phase 3 execution is starting from the Plate UI install baseline and the documented renderer/test constraints.
+- 2026-04-23: Phase 3 closed after the targeted fix pass resolved the remaining documentation-copy, save-state, parse-fallback, and coverage issues. Phase 4 execution is starting for closeout truth, durable docs/notes evaluation, and archive readiness.
 - 2026-04-22: Completed Phase 2 run/execution realignment:
   - the live `Runs` index now uses human summary copy plus canonical `Specification` / `Execution` stage labels instead of raw workflow and engine identifiers,
   - `/runs/:runId` now lands on `Specification` as the stable run-entry route instead of inferring a deeper phase from compile state,
@@ -151,6 +152,13 @@ Alternatives considered:
   - planning editors now disable both title/body editing while a save is in flight so users cannot type changes that would be lost behind the pending request,
   - `runs-routes` now exercises the real shared markdown surface through a test-only keyed source seam, asserts reinitialization after save/reopen plus in-flight disabled behavior, and `resource-model-selectors` now fails if documentation grouping ever expands beyond the canonical three groups,
   - reran validation: `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed (`3 passed` test files, `109 passed` tests), sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker again, and the escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- 2026-04-23: Completed Phase 4 documentation and closeout truth:
+  - audited `README.md` plus the current durable developer docs against the shipped UI surfaces and confirmed they already describe the canonical destination language, shared Plate-backed document surfaces, assistant-ui conversations, and scaffold-backed `Documentation` boundary truthfully,
+  - updated `.ultrakit/notes.md` to reflect that broad `rtk npm test` is still unreliable inside the Codex sandbox on this host because the script suite can fail with `listen EPERM 127.0.0.1`,
+  - updated the active-plan index to mark this plan `Ready for review` while leaving archive and completed-index bookkeeping for the final comprehensive review / archive pass.
+- 2026-04-23: Validated Phase 4 with:
+  - sandbox `rtk npm test` -> failed in `tests/scripts/demo-contracts.test.ts` with the known `listen EPERM 127.0.0.1` restriction.
+  - escalated host `rtk npm test` -> passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 
 ## Progress
 
@@ -165,11 +173,11 @@ Alternatives considered:
 - [x] 2026-04-23 Phase 2 targeted fix pass: align run-index deep links with displayed stages, remove the misleading default-phase hook, and add the missing coverage.
 - [x] 2026-04-23 Phase 3: realign documentation model and document surfaces with the workspace spec.
 - [x] 2026-04-23 Phase 3 targeted fix pass: remove the remaining documentation jargon, fail closed on parse errors, restore planning-editor pending locks, and tighten the real-surface coverage.
-- [ ] Phase 4: evaluate doc / notes impact, run closeout validation, and archive the plan.
+- [x] 2026-04-23 Phase 4: evaluate doc / notes impact, run closeout validation, and leave the plan ready for final review.
 
 ## Surprises & Discoveries
 
-- `npm test` passes in this worktree after `npm install`: `35 passed | 2 skipped` test files and `325 passed | 21 skipped` tests.
+- Broad `rtk npm test` passes in this worktree after `npm install` when the suite can bind localhost outside the sandbox: `35 passed | 2 skipped` test files and `329 passed | 21 skipped` tests.
 - `npm run lint` currently fails for pre-existing non-UI issues in backend and test files, including unused variables and `preserve-caught-error` violations in:
   - `scripts/run-local.ts`
   - `src/http/api/v1/documents/handlers.ts`
@@ -222,6 +230,7 @@ Alternatives considered:
 - Review follow-up clarified that the run-index stage column and the bare `/runs/:runId` route serve different jobs: the table should preserve current-stage semantics, while the route should stay a stable specification landing. The least misleading fix is stage-specific row deep links rather than changing the stable bare route.
 - Phase 3 fix-pass review confirmed that silent markdown parse fallback is not acceptable at the shared document seam: unsupported markdown must surface as raw source with body editing disabled, otherwise a title-only revisit can silently rewrite the document on the next save.
 - Route tests do not need a full markdown-surface mock to prove planning save/load behavior in jsdom: a test-only source seam inside the real shared component is enough to exercise `markdownSourceKey` resets and pending-state locks without reverting to the old textarea contract.
+- The Phase 4 closeout audit found that `README.md` and the current durable developer docs were already truthful after Phases 1-3; only `.ultrakit/notes.md`, the active plan, and the active-plan index needed closeout maintenance.
 
 ## Outcomes & Retrospective
 
@@ -258,6 +267,14 @@ Alternatives considered:
   - `rtk npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx` passed (`3 passed` test files, `109 passed` tests).
   - Phase 3 sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
   - The escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- Phase 4 completed on 2026-04-23.
+- Result:
+  - The closeout audit confirmed that `README.md` and the current durable developer docs already matched the shipped workspace language and document-surface behavior, so they did not need churn edits.
+  - `.ultrakit/notes.md` now states the current validation truth: broad `rtk npm test` can still fail inside the Codex sandbox on this host with `listen EPERM 127.0.0.1`, so final broad proof may require an escalated or host rerun.
+  - The active-plan index now marks this plan `Ready for review`, and the plan itself is left archive-ready for the orchestrator's final comprehensive review rather than being archived early.
+- Validation:
+  - Phase 4 sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
+  - The escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 
 ## Context and Orientation
 
@@ -287,8 +304,8 @@ Key files and responsibilities:
   Workstreams page title and summary copy.
 - `ui/src/features/workstreams/components/workstreams-board.tsx`
   Workstreams heading + table chrome.
-- `ui/src/components/editor/plate-markdown-document.tsx`
-  Current low-level Plate wrapper built on `createPlateEditor` and `PlateContent`.
+- `ui/src/components/editor/markdown-document-surface.tsx`
+  Shared Plate-first markdown editor/viewer surface that keeps markdown as the saved source of truth for planning and `Documentation`.
 - `ui/src/components/ui/editor.tsx`
   Generated Plate UI editor shell that should replace direct `PlateContent` usage in product code.
 - `ui/src/components/ui/editor-static.tsx`
@@ -303,7 +320,7 @@ Key files and responsibilities:
 - `ui/src/components/editor/plugins/table-kit.tsx`
   Generated Plate UI feature kits that should be composed into the shared document/editor surface instead of maintaining a repo-owned plugin array.
 - `ui/src/features/runs/use-run-planning-phase-view-model.ts`
-  Planning edit-mode contract that currently exposes textarea-style fields instead of a shared editor state.
+  Planning edit-mode contract that now owns the shared markdown editor state and save boundary for each run planning document.
 - `ui/src/features/projects/project-configuration-scaffold.ts`
   Project configuration default-tab behavior for `New project` vs `Project settings`.
 - `ui/src/features/projects/project-settings-context.tsx`
@@ -315,13 +332,13 @@ Key files and responsibilities:
 - `ui/src/features/documentation/components/documentation-workspace.tsx`
   Documentation destination shell that consumes the shared document surface.
 - `ui/src/features/runs/components/planning-workspace.tsx`
-  Planning-phase document surface and preview/edit rendering.
+  Planning-phase split layout that renders the assistant-ui conversation plus the shared Plate-backed markdown document surface.
 - `ui/src/features/runs/run-detail-context.tsx`
   Loads raw markdown for planning docs and is the cleaner source side of the planning document pipeline.
 - `ui/src/shared/markdown/source-markdown.ts`
   Existing shared markdown helper seam that may be the right home for shared markdown/document adapters.
 - `ui/src/features/resource-model/selectors.ts`
-  Documentation grouping logic that currently derives groups from path segments.
+  Documentation grouping logic that now locks scaffold documents to the canonical three groups by document kind.
 - `ui/src/test/app-shell.test.tsx`
 - `ui/src/test/destination-scaffolds.test.tsx`
 - `ui/src/test/runs-routes.test.tsx`
@@ -744,10 +761,15 @@ Known Constraints / Baseline Failures:
 - Broad build remains subject to the sandbox Wrangler / Docker caveat.
 
 Status:
-- Pending
+- Completed
 
 Completion Notes:
-- None yet.
+- Completed on 2026-04-23.
+- Audited `README.md` and the current durable developer docs against the shipped UI surfaces; they already matched the canonical destination naming, Plate-backed document behavior, assistant-ui conversation surfaces, and scaffold-backed `Documentation` boundary, so no README or developer-doc edits were needed.
+- Updated `.ultrakit/notes.md` to reflect the current validation caveat that broad `rtk npm test` can still fail inside the Codex sandbox on this host with `listen EPERM 127.0.0.1`; the required escalated rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
+- Updated `.ultrakit/exec-plans/active/index.md` to mark the plan `Ready for review` and left archive bookkeeping for the final comprehensive review / archive pass.
 
 Next Starter Context:
-- If the implementation phases only change shipped UI framing, document surfaces, and tests, Phase 4 may still be a no-op for durable docs other than the plan itself; record that explicitly rather than leaving the closeout ambiguous.
+- The plan is ready for the orchestrator's final comprehensive review. Do not archive it yet.
+- Closeout truth is now explicit: README and the durable developer docs stayed accurate, only `.ultrakit/notes.md`, the active plan, and the active-plan index needed updates.
+- If the final review re-runs `rtk npm test` in the sandbox and sees `listen EPERM 127.0.0.1` from `tests/scripts/demo-contracts.test.ts`, treat that as the known environment caveat and rely on the escalated broad-suite proof unless product-facing failures also appear.
