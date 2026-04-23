@@ -129,6 +129,11 @@ Alternatives considered:
   - sandbox `rtk npm test` -> failed again in `tests/scripts/demo-contracts.test.ts` with `listen EPERM 127.0.0.1`, so broad validation moved to a host-shell rerun.
   - first escalated host `rtk npm test` -> exposed one transient app-shell assertion that relied on the short-lived `Creating run...` label.
   - final escalated host `rtk npm test` -> passed after hardening that assertion (`35 passed | 2 skipped` test files, `328 passed | 21 skipped` tests).
+- 2026-04-23: Completed the one allowed Phase 2 targeted fix pass:
+  - `Runs` index rows now deep-link to the stage they display so the visible stage label matches the opened run surface for both live and scaffold rows.
+  - the bare `/runs/:runId` redirect still lands on `Specification`, but the misleading `useRunDefaultPhasePath` abstraction is gone and the route now redirects there directly.
+  - added row-level live-run summary assertions, a positive run-header activity assertion, and a positive `Code review` heading assertion.
+  - reran validation: `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` passed (`86 passed`), sandbox `rtk npm test` hit the known `tests/scripts/demo-contracts.test.ts` `listen EPERM 127.0.0.1` blocker again, and the escalated host rerun passed (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 
 ## Progress
 
@@ -140,6 +145,7 @@ Alternatives considered:
 - [x] 2026-04-22 Phase 1: align destination and project-configuration framing with the workspace spec.
 - [x] 2026-04-22 Phase 1 targeted fix pass: remove the remaining selected-project wording from project configuration and Workstreams destination copy.
 - [x] 2026-04-22 Phase 2: realign run and execution flow behavior with the workspace spec.
+- [x] 2026-04-23 Phase 2 targeted fix pass: align run-index deep links with displayed stages, remove the misleading default-phase hook, and add the missing coverage.
 - [ ] Phase 3: realign documentation model and documentation surface framing with the workspace spec.
 - [ ] Phase 4: evaluate doc / notes impact, run closeout validation, and archive the plan.
 
@@ -194,6 +200,7 @@ Alternatives considered:
 - Broad `rtk npm test` can still regress inside the sandbox on this host with `listen EPERM 127.0.0.1` from `tests/scripts/demo-contracts.test.ts`, even though an earlier baseline passed there. If that happens during closeout, rerun the broad suite outside the sandbox instead of treating it as a product regression.
 - Host broad validation exposed one transient assertion in `ui/src/test/runs-routes.test.tsx`: the compile flow can navigate quickly enough that `Compiling run...` disappears before Testing Library observes it. Counting the compile `POST` plus the execution redirect is a more stable proof for that path.
 - Phase 2 host broad validation exposed the same kind of timing issue in `ui/src/test/app-shell.test.tsx`: the in-flight create-run request can resolve quickly enough that the `Creating run...` label disappears before Testing Library observes it. Asserting the single `POST /v1/projects/:projectId/runs` call is the more stable proof of request reuse.
+- Review follow-up clarified that the run-index stage column and the bare `/runs/:runId` route serve different jobs: the table should preserve current-stage semantics, while the route should stay a stable specification landing. The least misleading fix is stage-specific row deep links rather than changing the stable bare route.
 
 ## Outcomes & Retrospective
 
@@ -209,13 +216,15 @@ Alternatives considered:
 - Phase 2 completed on 2026-04-22.
 - Result:
   - `Runs` now keeps project context in the shell, uses human run summaries, and shows canonical stage labels instead of raw workflow metadata.
-  - `/runs/:runId` now has a stable `Specification` landing route while still exposing `Execution` through the top rail when compile data exists.
+  - The targeted fix pass aligned row navigation with those stage labels: live and scaffold rows now deep-link to the stage they display, while bare `/runs/:runId` still lands on `Specification`.
+  - The old default-phase hook is gone; the redirect route now encodes the stable specification landing directly.
   - Run header copy now centers the run workspace and activity timing, and task detail now frames chat plus code review without approval/transport language.
   - `Execution Plan` now keeps compile controls inside the shared planning document pane, preserving the left-chat/right-document planning shape.
 - Validation:
-  - `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` passed.
-  - Phase 2 sandbox `rtk npm test` hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
-  - Escalated host `rtk npm test` passed after hardening one transient create-run assertion (`35 passed | 2 skipped` test files, `328 passed | 21 skipped` tests).
+  - Initial Phase 2 `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` passed (`85 passed`).
+  - Phase 2 targeted fix pass `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx` passed (`86 passed`).
+  - Both Phase 2 broad sandbox `rtk npm test` runs hit the known `listen EPERM 127.0.0.1` blocker in `tests/scripts/demo-contracts.test.ts`.
+  - The initial escalated host rerun passed after hardening one transient create-run assertion (`35 passed | 2 skipped` test files, `328 passed | 21 skipped` tests), and the fix-pass rerun passed on the host with the new assertions (`35 passed | 2 skipped` test files, `329 passed | 21 skipped` tests).
 
 ## Context and Orientation
 
@@ -530,14 +539,15 @@ Status:
 
 Completion Notes:
 - Completed on 2026-04-22.
-- Live run rows now summarize planning/execution state in product language, and their stage column now uses canonical run-step nouns.
-- `/runs/:runId` now lands on `Specification` for a stable run-entry experience across compiled, uncompiled, and materializing runs.
+- Targeted fix pass completed on 2026-04-23.
+- Live run rows now summarize planning/execution state in product language, and live/scaffold index rows deep-link to the stage they display while keeping canonical run-step nouns in the stage column.
+- The bare `/runs/:runId` route now lands on `Specification` for a stable run-entry experience across compiled, uncompiled, and materializing runs, and the redirect no longer hides that behavior behind a misleading default-phase hook.
 - Run header meta no longer foregrounds workflow ids or engine metadata, and task detail copy now describes conversation plus code review without approval framing.
 - `Execution Plan` compile controls now sit inside the shared planning document pane, keeping the planning split layout intact.
-- Updated `app-shell`, `runs-routes`, and the directly affected task-detail scaffold assertion for the new route/copy contract; also hardened one broad-only transient create-run assertion.
+- Updated `app-shell`, `runs-routes`, and the directly affected task-detail scaffold assertion for the new route/copy contract; also added explicit coverage for live-run summary branches, the run-header activity line, and the `Code review` rail heading.
 
 Next Starter Context:
-- Phase 3 can assume the run/execution shell contract is now stable: canonical run-stage labels in `Runs`, stable `/runs/:runId -> /specification` landing, workflow metadata removed from the run header, and task detail framed as conversation plus code review.
+- Phase 3 can assume the run/execution shell contract is now stable: canonical run-stage labels in `Runs`, stage-matched run-index deep links, bare `/runs/:runId -> /specification` landing, workflow metadata removed from the run header, and task detail framed as conversation plus code review.
 - Next focus: replace the remaining repo-owned Plate wrapper / textarea planning seams, move planning/document panes onto the installed Plate UI primitives, and lock `Documentation` to the three canonical project-level groups from the workspace spec.
 
 ## Phase 3 - Standardize Plate document surfaces and realign documentation model

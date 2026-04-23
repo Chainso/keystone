@@ -89,9 +89,3 @@ export function useRunDetailLayoutViewModel(): RunDetailLayoutViewModel {
     state: "ready"
   };
 }
-
-export function useRunDefaultPhasePath() {
-  const { meta } = useRunDetail();
-
-  return buildRunPhasePath(meta.runId, "specification");
-}

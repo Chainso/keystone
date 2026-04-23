@@ -15,6 +15,6 @@ export type {
   RunPlanningPhaseReadyViewModel,
   RunPlanningPhaseViewModel
 } from "./run-view-model-types";
-export { useRunDetailLayoutViewModel, useRunDefaultPhasePath } from "./use-run-detail-view-model";
+export { useRunDetailLayoutViewModel } from "./use-run-detail-view-model";
 export { useRunPlanningPhaseViewModel } from "./use-run-planning-phase-view-model";
 export { useExecutionPlanWorkspaceViewModel } from "./use-execution-plan-workspace-view-model";

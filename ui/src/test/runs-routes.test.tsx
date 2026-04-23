@@ -1818,6 +1818,7 @@ describe("Run routes", () => {
         "Move between specification, architecture, execution plan, and execution from this run workspace."
       )
     ).toBeInTheDocument();
+    expect(screen.getByText("Started 2026-04-20 12:30 UTC")).toBeInTheDocument();
     expect(screen.queryByText("Workflow wf-run-104")).not.toBeInTheDocument();
     expect(screen.queryByText("Engine Think Live")).not.toBeInTheDocument();
     const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
@@ -3264,6 +3265,7 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Code review" })).toBeInTheDocument();
     expect(
       screen.getByText(
         "Continue the task conversation here while changed files, diffs, and review notes stay in the sidebar."
@@ -3542,7 +3544,7 @@ describe("Run routes", () => {
     fireEvent.click(within(row as HTMLElement).getByText("Project workspace navigation"));
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+      expect(router.state.location.pathname).toBe("/runs/run-104/execution");
     });
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
   });

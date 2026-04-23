@@ -20,7 +20,10 @@ import type {
   ResourceProjectEnvironmentVariable,
   ResourceProject
 } from "./types";
-import { buildRunPath, buildRunTaskPath } from "../../shared/navigation/run-phases";
+import {
+  buildRunPhasePath,
+  buildRunTaskPath
+} from "../../shared/navigation/run-phases";
 
 export interface CurrentProjectSummary {
   projectId: string;
@@ -312,14 +315,16 @@ export function getRunSummary(
     return null;
   }
 
+  const defaultPhaseId = getRunDefaultPhaseId(run.runId, dataset);
+
   return {
     runId: run.runId,
     displayId: run.displayId,
     summary: run.summary,
     status: run.status,
     updatedLabel: run.updatedLabel,
-    detailPath: buildRunPath(run.runId),
-    defaultPhaseId: getRunDefaultPhaseId(run.runId, dataset)
+    detailPath: buildRunPhasePath(run.runId, defaultPhaseId),
+    defaultPhaseId
   };
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { buildRunPath } from "../../shared/navigation/run-phases";
+import { buildRunPhasePath } from "../../shared/navigation/run-phases";
 import {
   useProjectManagement,
   useProjectManagementApi
@@ -75,6 +75,10 @@ function getLiveRunStageLabel(run: ApiProjectRunRecord) {
   return run.compiledFrom ? "Execution" : "Specification";
 }
 
+function getLiveRunDetailPath(run: ApiProjectRunRecord) {
+  return buildRunPhasePath(run.runId, run.compiledFrom ? "execution" : "specification");
+}
+
 function buildLiveRunSummary(run: ApiProjectRunRecord) {
   const normalizedStatus = normalizeStatus(run.status);
 
@@ -129,7 +133,7 @@ function buildLiveRunSummary(run: ApiProjectRunRecord) {
 
 function normalizeLiveRuns(runs: ApiProjectRunRecord[]): LiveRunRowViewModel[] {
   return runs.map((run) => ({
-    detailPath: buildRunPath(run.runId),
+    detailPath: getLiveRunDetailPath(run),
     latestActivityLabel: buildRunActivityLabel({
       compiledAt: run.compiledFrom?.compiledAt ?? null,
       endedAt: run.endedAt,
