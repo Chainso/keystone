@@ -203,11 +203,11 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       compatibilityState: {
         heading: "Documentation is not available for this project yet",
         message:
-          "Project documentation still depends on scaffold-backed data. Switch to a scaffold-backed project to use this screen."
+          "Documentation still depends on scaffold-backed data. Switch to a scaffold-backed project to use this screen."
       },
       currentProjectLabel: project.displayName,
       documentCountLabel: "Compatibility only",
-      title: "Project documentation",
+      title: "Documentation",
       groups: [],
       selectedDocument: null,
       selectDocument() {}
@@ -217,12 +217,12 @@ export function useDocumentationViewModel(): DocumentationViewModel {
   if (!selection) {
     return {
       compatibilityState: {
-        heading: "No project documentation yet",
+        heading: "No documentation yet",
         message: `${project.displayName} does not have any project-scoped documentation in the scaffold dataset yet.`
       },
       currentProjectLabel: project.displayName,
       documentCountLabel: "0 documents",
-      title: "Project documentation",
+      title: "Documentation",
       groups: [],
       selectedDocument: null,
       selectDocument() {}
@@ -237,7 +237,7 @@ export function useDocumentationViewModel(): DocumentationViewModel {
   return {
     currentProjectLabel: project.displayName,
     documentCountLabel: formatDocumentCount(documentCount),
-    title: "Project documentation",
+    title: "Documentation",
     groups: selection.groups.map((group) => ({
       groupId: group.groupId,
       label: group.label,

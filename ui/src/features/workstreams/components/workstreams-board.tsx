@@ -123,7 +123,7 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
         </div>
 
         <EntityTable
-          ariaLabel="Project work across runs"
+          ariaLabel="Workstreams"
           columns={columns}
           emptyState={
             model.contentState

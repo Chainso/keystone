@@ -1,0 +1,665 @@
+# Keystone UI Workspace Spec Realignment
+
+## Purpose / Big Picture
+
+Bring the shipped React workspace back into line with `design/workspace-spec.md` and `design/design-guidelines.md` as a UI-only change. After this work lands, the operator-facing UI should consistently use the canonical destination and run-flow language from the spec, avoid leaking workflow / approval / Cloudflare transport terminology into the product surface, and present run/task state in a calmer, product-first way.
+
+Concretely, the user should be able to open the shell, `Runs`, `Documentation`, `Workstreams`, and task detail views and see the same product model described in the workspace spec: one selected project, one stable sidebar, one run stepper, DAG-first execution, and task detail as conversation plus code review, all without machine-oriented labels dominating the interface.
+
+## Backward Compatibility
+
+API compatibility is required for this pass. Route paths, route composition, UI abstractions, component seams, and renderer implementations may change if that is the cleanest way to match the workspace spec.
+
+Constraints:
+
+- Do not change the current project-management or run-management API contracts.
+- Preserve the product intent from `design/workspace-spec.md` and `design/design-guidelines.md`, not the current UI implementation structure.
+- Prefer the cleanest UI/component shape even if it breaks existing component boundaries, renderer implementations, or test assumptions.
+
+## Design Decisions
+
+### 2026-04-22 - Treat the workspace spec and design guidelines as the product source of truth
+
+Decision:
+Use `design/workspace-spec.md` and `design/design-guidelines.md` as the authority for shipped UI wording and destination framing when they disagree with current implementation copy.
+
+Rationale:
+The repo notes already state that these documents are more authoritative than the target images for this redesign, and the user explicitly asked to bring the UI back in line with them.
+
+Alternatives considered:
+- Leave the current UI wording alone and rely on future visual polish to close the gap.
+- Use the target reference images as the primary arbiter.
+
+### 2026-04-22 - Optimize for the target model within the current API boundaries
+
+Decision:
+Keep the current API contracts fixed, but freely replace routes, UI seams, view-model shaping, and renderer implementations to reach the target product model. Deriving fallback copy from existing fields is acceptable when it remains the best UI design.
+
+Rationale:
+The user clarified that this is still a UI-only change, but routes are part of the UI and may change if the workspace spec calls for it. Backend and API contracts should stay stable; frontend structure should not be preserved just because it already exists.
+
+Alternatives considered:
+- Change routes or APIs to get to the target model faster.
+- Restrict changes to copy-only realignment.
+
+### 2026-04-22 - Align destination titles with canonical destination nouns
+
+Decision:
+Use the exact destination names `Documentation` and `Workstreams` in the destination view models and headings instead of `Project documentation` and `Project work across runs`.
+
+Rationale:
+The workspace spec defines the top-level product model around these exact destinations. The current expanded titles weaken the stable shell model and make the product feel less consistent across screens.
+
+Alternatives considered:
+- Keep the expanded titles because they are descriptive.
+- Rename the sidebar destinations instead of the page titles.
+
+### 2026-04-22 - Standardize document surfaces on a Plate-first shared component
+
+Decision:
+Scrap the current repo-owned Plate rendering path entirely and rebuild the planning/documentation surfaces on Plate UI's generated primitives: `Editor`, `EditorContainer`, `EditorStatic`, `MarkdownKit`, and the generated feature kits. Do not preserve `PlateMarkdownDocument` as an implementation seam.
+
+Rationale:
+The repo already depends on Plate packages, but current document surfaces are only using `createPlateEditor` plus `PlateContent` in a custom wrapper. The user explicitly rejected that path and asked to scrap it in favor of what Plate recommends out of the box. The Plate markdown docs provided in-thread point to `MarkdownKit` as the default compatibility path, and after install the repo now has local Plate UI source files for `Editor`, `EditorContainer`, `EditorStatic`, `MarkdownKit`, and the basic/code/link/list/math/table kits under `ui/src/components/`. The correct next step is therefore to delete the repo-owned wrapper path and wire product surfaces directly onto those generated Plate UI sources.
+
+Alternatives considered:
+- Keep the existing `PlateMarkdownDocument` wrapper and only adjust copy around it.
+- Build a larger custom Plate preset from scratch without using `MarkdownKit`.
+- Replace Plate entirely with another markdown renderer.
+- Continue with separate per-screen document rendering logic.
+
+### 2026-04-22 - Preserve markdown as the saved source of truth at the Plate boundary
+
+Decision:
+Keep markdown as the persisted document format for planning and documentation while moving the editing/viewing experience onto Plate UI. Deserialize markdown into Plate for display/editing, and serialize back to markdown on save instead of introducing Plate JSON persistence or a second canonical document format.
+
+Rationale:
+The current run/document APIs already persist markdown content, the planning/documentation features are built around markdown revisions, and the user asked to keep the setup basic. A Plate-first UI should therefore replace the authoring/rendering path, not the storage contract.
+
+Alternatives considered:
+- Persist Plate JSON alongside markdown.
+- Keep textarea editing for planning and only replace the read-only viewer.
+- Introduce a separate transform layer that treats Plate JSON as the new feature-local source of truth.
+
+### 2026-04-22 - Update tests in the same pass as product-copy changes
+
+Decision:
+Treat route and shell tests as part of the acceptance criteria for this work and update any assertions that currently encode the out-of-spec copy.
+
+Rationale:
+This repo already has broad UI route coverage. Keeping those tests aligned with the workspace spec is the cheapest way to prevent the product language from drifting back.
+
+Alternatives considered:
+- Only update the UI implementation and leave tests for a later cleanup.
+- Reduce assertion coverage around headings and copy to avoid maintenance work.
+
+## Execution Log
+
+- 2026-04-22: Completed discovery and baseline validation for the shell/run/documentation alignment pass.
+- 2026-04-22: Installed Plate UI source components and kits via shadcn CLI as a prerequisite for the document-surface rewrite:
+  - added Plate UI core CSS variables and editor shell files,
+  - generated local Plate UI source for `MarkdownKit`, basic nodes, code block, link, list, math, and table kits,
+  - updated shared `tooltip`, `separator`, `dropdown-menu`, `dialog`, `checkbox`, and `command` primitives to the registry versions those kits expect,
+  - left `popover`, `button`, and `input` untouched because the registry reported them as identical / skippable.
+- 2026-04-22: Waited on explorer audits after the Plate install to refine the execution plan before wiring the generated Plate UI sources into product code.
+- 2026-04-22: Execution started under the UI-only boundary: keep API contracts stable, allow route/UI seam changes, and begin with Phase 1 destination/project-configuration framing.
+- 2026-04-22: Completed Phase 1 destination/project-configuration framing:
+  - `Documentation` and `Workstreams` now use the canonical workspace-spec destination headings.
+  - `/settings` now redirects to `Overview`, matching `New project` instead of defaulting to `Components`.
+  - `Project settings` no longer repeats the selected project name in the destination title, and project-configuration shell copy now frames `New project` and `Project settings` as the same tabbed configuration surface with create/save differences.
+- 2026-04-22: Validated Phase 1 with:
+  - `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` -> passed (`69 passed`).
+  - initial sandbox `rtk npm test` -> failed in `tests/scripts/demo-contracts.test.ts` with `listen EPERM 127.0.0.1`, so broad validation moved to a host-shell rerun.
+  - `rtk npm test -- ui/src/test/runs-routes.test.tsx` -> passed after hardening one transient compile-button assertion exposed by the first host rerun.
+  - final host `rtk npm test` -> passed (`35 passed | 2 skipped` test files, `325 passed | 21 skipped` tests).
+
+## Progress
+
+- [x] 2026-04-22 Audit the current shell, run detail, execution, documentation, and workstreams surfaces against the workspace spec and design guidelines.
+- [x] 2026-04-22 Run baseline validation once before execution and record the current repo state.
+- [x] 2026-04-22 Create the active execution plan and register it in `.ultrakit/exec-plans/active/index.md`.
+- [x] 2026-04-22 Run a deeper parallel discovery pass with explorer subagents for shell/configuration, runs, and execution/documentation/workstreams.
+- [x] 2026-04-22 Install Plate UI source components and feature kits needed to replace the repo-owned Plate wrapper with the registry-based baseline.
+- [x] 2026-04-22 Phase 1: align destination and project-configuration framing with the workspace spec.
+- [ ] Phase 2: realign run and execution flow behavior with the workspace spec.
+- [ ] Phase 3: realign documentation model and documentation surface framing with the workspace spec.
+- [ ] Phase 4: evaluate doc / notes impact, run closeout validation, and archive the plan.
+
+## Surprises & Discoveries
+
+- `npm test` passes in this worktree after `npm install`: `35 passed | 2 skipped` test files and `325 passed | 21 skipped` tests.
+- `npm run lint` currently fails for pre-existing non-UI issues in backend and test files, including unused variables and `preserve-caught-error` violations in:
+  - `scripts/run-local.ts`
+  - `src/http/api/v1/documents/handlers.ts`
+  - `src/keystone/integration/finalize-run.ts`
+  - `src/lib/db/schema.ts`
+  - `src/lib/workspace/init.ts`
+  - `tests/http/projects.test.ts`
+  - `tests/lib/project-workspace-materialization.test.ts`
+  - `tests/lib/run-records.test.ts`
+- `npm run typecheck` currently fails before this work begins, including pre-existing issues in conversation, execution, workstreams, and test files. This alignment pass must not claim a clean broad typecheck baseline.
+- `npm run build` currently completes the Vite UI build, then fails inside Wrangler because the sandbox cannot write `~/.config/.wrangler/logs/...` and Docker build state (`EROFS` / read-only filesystem). This is a known environment caveat already reflected in `.ultrakit/notes.md`.
+- The live project-runs API record does not expose a user-facing `summary` field; current live rows in `Runs` are compensating by showing `workflowInstanceId` and engine strings instead.
+- Parallel explorer audit found additional drift beyond the first-pass copy review:
+  - `Project settings` defaults to `Components` instead of sharing the same tabbed entry behavior as `New project`.
+  - `Project settings` repeats selected-project context inside the destination even though project selection is global.
+  - the live `Runs` index collapses stage to `Planning` vs `Execution` and uses internal runtime metadata as the summary field.
+  - opening `/runs/:runId` auto-redirects to `Execution` or the first incomplete planning phase instead of a stable run-detail landing behavior.
+  - `Execution Plan` breaks the shared planning layout by rendering a separate compile accessory beneath the right pane.
+  - documentation grouping is path-derived and can surface categories beyond the three canonical groups from the workspace spec.
+- Plate-specific audit found that the repo is using Plate only through a custom low-level wrapper in `ui/src/components/editor/plate-markdown-document.tsx`; there is no shared `EditorKit` / `EditorContainer`-style document surface in the repo today, and planning/documentation screens both depend on that wrapper.
+- A second Plate-focused audit narrowed the concrete custom seams to remove or absorb into a shared document surface:
+  - `ui/src/features/documentation/use-documentation-view-model.ts` reconstructs markdown from `contentLines` with feature-local rules.
+  - `ui/src/features/runs/components/planning-workspace.tsx` uses textarea fields for authoring and Plate only for preview.
+  - `ui/src/features/runs/use-run-planning-phase-view-model.ts` bakes textarea editing semantics into the feature contract.
+  - `ui/src/components/editor/plate-markdown-document.tsx` is reusable in intent but only owns a read-only render path, not a broader document UI contract.
+- The user explicitly asked for a basic Plate integration that uses `MarkdownKit` and includes the plugins the repo already has installed, rather than growing a more ambitious custom editor stack.
+- Shadcn skill / CLI discovery originally confirmed the repo’s shadcn context is Vite + Tailwind v4 + `new-york` style + radix base. After installation, the repo now contains local Plate UI source for:
+  - `ui/src/components/ui/editor.tsx`
+  - `ui/src/components/ui/editor-static.tsx`
+  - `ui/src/components/editor/plugins/markdown-kit.tsx`
+  - `ui/src/components/editor/plugins/basic-nodes-kit.tsx`
+  - `ui/src/components/editor/plugins/code-block-kit.tsx`
+  - `ui/src/components/editor/plugins/link-kit.tsx`
+  - `ui/src/components/editor/plugins/list-classic-kit.tsx`
+  - `ui/src/components/editor/plugins/math-kit.tsx`
+  - `ui/src/components/editor/plugins/table-kit.tsx`
+- The Plate UI install added 11 dependencies and 11 lines of app-level style configuration, plus generated 52 new source files and updated 6 shared primitives. This work should be treated as the baseline for Phase 3 rather than additional optional exploration.
+- Explorer audit confirmed the main Plate replacement seam is still `ui/src/components/editor/plate-markdown-document.tsx`, with the planning textarea contract in `ui/src/features/runs/use-run-planning-phase-view-model.ts` / `ui/src/features/runs/components/planning-workspace.tsx` as the second major seam.
+- Explorer audit also narrowed the renderer-coupled regression surface to `ui/src/test/destination-scaffolds.test.tsx` and `ui/src/test/runs-routes.test.tsx`, especially for:
+  - the labeled outer document region,
+  - native table and column-header roles,
+  - list-item semantics,
+  - blockquote semantics,
+  - the separate `Document preview` region in planning edit mode.
+- `vitest run ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx` passes at baseline before the Plate UI consumer rewrite: `91/91`.
+- Broad `rtk npm test` can still regress inside the sandbox on this host with `listen EPERM 127.0.0.1` from `tests/scripts/demo-contracts.test.ts`, even though an earlier baseline passed there. If that happens during closeout, rerun the broad suite outside the sandbox instead of treating it as a product regression.
+- Host broad validation exposed one transient assertion in `ui/src/test/runs-routes.test.tsx`: the compile flow can navigate quickly enough that `Compiling run...` disappears before Testing Library observes it. Counting the compile `POST` plus the execution redirect is a more stable proof for that path.
+
+## Outcomes & Retrospective
+
+- Phase 1 completed on 2026-04-22.
+- Result:
+  - Top-level `Documentation` and `Workstreams` framing now matches the workspace spec.
+  - `Project settings` now shares the same overview-first tab entry behavior as `New project`.
+  - Project configuration surfaces no longer repeat the selected project name in the page title, leaving the global shell as the owner of project context.
+- Validation:
+  - `rtk npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed.
+  - `rtk npm test` passed on the host after rerunning outside the sandbox and hardening one transient `runs-routes` assertion.
+
+## Context and Orientation
+
+This UI pass stays inside the existing React shell under `ui/`.
+
+Key files and responsibilities:
+
+- `design/workspace-spec.md`
+  The authoritative product structure for the shell, run stepper, documentation, workstreams, and project configuration screens.
+- `design/design-guidelines.md`
+  The authoritative tone, navigation, and consistency rules for the UI shell and per-destination behavior.
+- `.ultrakit/developer-docs/keystone-target-model-handoff.md`
+  The current product-model boundary; specifically, avoid reintroducing approval/session/event concepts into shipped UI copy.
+- `ui/src/shared/layout/shell-sidebar.tsx`
+  Stable left-sidebar shell and destination framing.
+- `ui/src/features/runs/components/runs-index-workspace.tsx`
+  `Runs` index table and create-run button copy.
+- `ui/src/features/runs/use-run-detail-view-model.ts`
+  Run header view-model summary and meta text.
+- `ui/src/features/runs/components/run-detail-scaffold.tsx`
+  Run detail top rail and run-level meta copy.
+- `ui/src/features/execution/components/task-detail-workspace.tsx`
+  Task detail conversation + review split and the most visible execution copy.
+- `ui/src/features/documentation/use-documentation-view-model.ts`
+  Documentation page title and compatibility-state wording.
+- `ui/src/features/workstreams/use-workstreams-view-model.ts`
+  Workstreams page title and summary copy.
+- `ui/src/features/workstreams/components/workstreams-board.tsx`
+  Workstreams heading + table chrome.
+- `ui/src/components/editor/plate-markdown-document.tsx`
+  Current low-level Plate wrapper built on `createPlateEditor` and `PlateContent`.
+- `ui/src/components/ui/editor.tsx`
+  Generated Plate UI editor shell that should replace direct `PlateContent` usage in product code.
+- `ui/src/components/ui/editor-static.tsx`
+  Generated Plate UI static renderer that should replace the custom read-only viewer path for persisted documents.
+- `ui/src/components/editor/plugins/markdown-kit.tsx`
+  Generated `MarkdownKit` source and the new baseline markdown plugin seam.
+- `ui/src/components/editor/plugins/basic-nodes-kit.tsx`
+- `ui/src/components/editor/plugins/code-block-kit.tsx`
+- `ui/src/components/editor/plugins/link-kit.tsx`
+- `ui/src/components/editor/plugins/list-classic-kit.tsx`
+- `ui/src/components/editor/plugins/math-kit.tsx`
+- `ui/src/components/editor/plugins/table-kit.tsx`
+  Generated Plate UI feature kits that should be composed into the shared document/editor surface instead of maintaining a repo-owned plugin array.
+- `ui/src/features/runs/use-run-planning-phase-view-model.ts`
+  Planning edit-mode contract that currently exposes textarea-style fields instead of a shared editor state.
+- `ui/src/features/projects/project-configuration-scaffold.ts`
+  Project configuration default-tab behavior for `New project` vs `Project settings`.
+- `ui/src/features/projects/project-settings-context.tsx`
+  Project-settings mode title and per-destination framing.
+- `ui/src/features/projects/components/project-configuration-shell.tsx`
+  Project configuration shell summary and heading framing.
+- `ui/src/features/runs/components/execution-plan-workspace.tsx`
+  `Execution Plan` compile affordance placement inside the planning layout.
+- `ui/src/features/documentation/components/documentation-workspace.tsx`
+  Documentation destination shell that consumes the shared document surface.
+- `ui/src/features/runs/components/planning-workspace.tsx`
+  Planning-phase document surface and preview/edit rendering.
+- `ui/src/features/runs/run-detail-context.tsx`
+  Loads raw markdown for planning docs and is the cleaner source side of the planning document pipeline.
+- `ui/src/shared/markdown/source-markdown.ts`
+  Existing shared markdown helper seam that may be the right home for shared markdown/document adapters.
+- `ui/src/features/resource-model/selectors.ts`
+  Documentation grouping logic that currently derives groups from path segments.
+- `ui/src/test/app-shell.test.tsx`
+- `ui/src/test/destination-scaffolds.test.tsx`
+- `ui/src/test/runs-routes.test.tsx`
+- `ui/src/test/resource-model-selectors.test.tsx`
+  Existing UI regression coverage that will need assertion updates for the aligned product copy.
+
+Important product-model constraints for execution:
+
+- Keep the shell stable and sidebar-driven.
+- Preserve the four run phases: `Specification`, `Architecture`, `Execution Plan`, `Execution`.
+- Preserve execution as DAG-first with task detail under `Runs > Execution`.
+- Preserve documentation as project-scoped current knowledge, even if it still shows a compatibility state for live projects.
+- Do not expose removed approval-gated or session-centric concepts as if they were product surfaces.
+
+## Plan of Work
+
+First, fix the shell-adjacent framing drift that is small in code surface but broad in product effect: canonical destination headings, `Project settings` entry behavior, and project-settings framing that currently repeats global project context inside the destination itself. Prefer the cleanest UI/layout refactor, including route changes if that better matches the workspace spec.
+
+Second, fix the run-flow drift that affects behavior as well as wording: live run summary/stage presentation, the default landing behavior for `/runs/:runId`, and the shared planning-layout promise that `Execution Plan` currently breaks with a separate compile follow-up block. If the cleanest solution requires reshaping routes, frontend view models, or presentation logic, do that, but keep APIs stable.
+
+Third, fix the documentation and planning document-surface drift by standardizing on a basic shared Plate-first component built around `MarkdownKit` and removing the current custom low-level markdown rendering path. This phase should also lock project documentation into the three canonical groups from the workspace spec and rewrite the compatibility copy so it stays honest without leaking scaffold-internal jargon.
+
+Finally, evaluate whether any durable repo docs or notes now misdescribe the UI surface after the implementation passes. If they do, update them in the same closeout phase; if they do not, record that determination in the plan and archive cleanly.
+
+## Concrete Steps
+
+Run from repo root `/home/chanzo/.codex/worktrees/cc75/keystone-cloudflare` unless noted otherwise.
+
+```bash
+npm install
+npm test
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Implementation / verification commands expected during execution:
+
+```bash
+npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx
+npm test
+```
+
+Optional broad checks after the UI pass if time permits:
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Expected interpretation:
+
+- targeted UI tests and broad `npm test` should pass,
+- `npm run lint` and `npm run typecheck` are currently pre-existing red baselines unless unrelated issues were fixed elsewhere,
+- `npm run build` may still fail after the Vite build completes because Wrangler needs host-writable paths and Docker access.
+
+## Validation and Acceptance
+
+Acceptance is met when all of the following are true:
+
+- `Runs`, `Documentation`, `Workstreams`, and task detail use the canonical workspace-spec language instead of machine-heavy workflow / approval / transport copy.
+- The `Runs` index no longer uses raw workflow and engine identifiers as the primary live-row summary text.
+- The run detail header no longer foregrounds raw workflow identifiers.
+- Task detail no longer claims that approvals are part of the user-facing conversation model.
+- Destination headings for `Documentation` and `Workstreams` match the canonical destination labels from the workspace spec.
+- `Project settings` behaves like the same configuration surface as `New project`, including shared tabbed entry expectations and less repeated project-context framing.
+- Planning and documentation document panes use a shared Plate-first document surface built around `MarkdownKit` rather than bespoke rendering logic around `PlateContent`.
+- Documentation groups are limited to `Product Specifications`, `Technical Architecture`, and `Miscellaneous Notes`.
+- The `Execution Plan` screen honors the shared planning-layout rule or otherwise exposes compile controls without breaking the documented left/right planning structure.
+- The affected UI tests are updated and pass.
+- Broad `npm test` still passes.
+
+Known non-blocking baseline caveats:
+
+- Broad `lint` is red before this work for unrelated files.
+- Broad `typecheck` is red before this work for unrelated and pre-existing UI/test issues.
+- Broad `build` is blocked by sandboxed Wrangler / Docker filesystem limitations after the frontend build step.
+
+## Idempotence and Recovery
+
+This plan is safe to retry because it is limited to UI copy, view-model framing, and related tests. If a pass is interrupted:
+
+- re-read the design docs and the files listed in `Context and Orientation`,
+- inspect the current diff in the UI files listed under the active phase,
+- rerun the targeted UI tests before making more edits,
+- update `Progress`, `Execution Log`, `Surprises & Discoveries`, and the active phase handoff before handing the work to another contributor.
+
+No data migrations, route renames, or destructive operations are part of this plan.
+
+## Dependencies and Reuse
+
+The Plate UI registry install has already added the source components and dependencies needed for this pass. Reuse the existing React route/view-model structure, shared workspace components, generated Plate UI source under `ui/src/components/`, and current test harnesses. This pass should not introduce another UI data abstraction or a parallel copy system. For Plate work, prefer the generated local source components, use `MarkdownKit` as the baseline, keep the implementation basic, and avoid speculative MDX feature work that is not required by the current product surfaces.
+
+## Phase 1 - Align destination and project-configuration framing
+
+### Phase Handoff
+
+Goal:
+Bring the top-level destination and project-configuration framing back in line with the workspace spec using the cleanest UI implementation while keeping APIs stable.
+
+Scope Boundary:
+In scope:
+- canonical destination headings for `Documentation` and `Workstreams`,
+- `Project settings` entry behavior and in-page framing,
+- reducing repeated project-context language inside project configuration surfaces where the global shell already owns that context,
+- related UI test assertion updates.
+
+Out of scope:
+- run/execution behavior changes,
+- documentation grouping logic,
+- unrelated lint / typecheck cleanup.
+
+Read First:
+- `design/workspace-spec.md`
+- `design/design-guidelines.md`
+- `.ultrakit/developer-docs/keystone-target-model-handoff.md`
+- `ui/src/shared/layout/shell-sidebar.tsx`
+- `ui/src/features/documentation/use-documentation-view-model.ts`
+- `ui/src/features/workstreams/use-workstreams-view-model.ts`
+- `ui/src/features/workstreams/components/workstreams-board.tsx`
+- `ui/src/features/projects/project-configuration-scaffold.ts`
+- `ui/src/features/projects/project-settings-context.tsx`
+- `ui/src/features/projects/components/project-configuration-shell.tsx`
+- `ui/src/test/app-shell.test.tsx`
+- `ui/src/test/destination-scaffolds.test.tsx`
+
+Files Expected To Change:
+- `ui/src/features/documentation/use-documentation-view-model.ts`
+- `ui/src/features/workstreams/use-workstreams-view-model.ts`
+- `ui/src/features/workstreams/components/workstreams-board.tsx`
+- `ui/src/features/projects/project-configuration-scaffold.ts`
+- `ui/src/features/projects/project-settings-context.tsx`
+- `ui/src/features/projects/components/project-configuration-shell.tsx`
+- `ui/src/test/app-shell.test.tsx`
+- `ui/src/test/destination-scaffolds.test.tsx`
+- `.ultrakit/exec-plans/active/keystone-ui-workspace-spec-realignment.md`
+
+Validation:
+- Run `npm test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx`.
+- Run `npm test`.
+- Success means the targeted UI suite and the broad test suite pass without introducing new failures.
+
+Plan / Docs To Update:
+- Update `Execution Log`, `Progress`, `Surprises & Discoveries`, and this phase handoff in the active plan.
+- Update `Outcomes & Retrospective` with the Phase 1 result when closing the phase.
+
+Deliverables:
+- UI framing alignment across top-level destinations and project configuration.
+- Updated route / shell tests that enforce the aligned language.
+- Validation evidence for targeted UI tests and broad `npm test`.
+
+Commit Expectation:
+- `Align destination and project settings framing`
+
+Known Constraints / Baseline Failures:
+- Do not change backend contracts in this phase.
+- `npm run lint` is currently red before this work for unrelated files.
+- `npm run typecheck` is currently red before this work for unrelated files.
+- `npm run build` is currently blocked by sandbox Wrangler / Docker filesystem constraints after the Vite build finishes.
+
+Status:
+- Completed
+
+Completion Notes:
+- Completed on 2026-04-22.
+- `Documentation` and `Workstreams` now render the canonical destination headings from the workspace spec.
+- `/settings` now redirects to `/settings/overview`, and `Project settings` keeps a stable title instead of repeating the selected project name.
+- `New project` and `Project settings` shell summaries now frame the same tabbed configuration surface with direct create/save semantics.
+- Updated shell/destination tests for the aligned copy and routing; additionally hardened `ui/src/test/runs-routes.test.tsx` after host broad validation exposed a transient compile-button assertion.
+
+Next Starter Context:
+- Phase 2 can assume canonical destination naming and overview-first project settings routing are in place.
+- Next focus: realign the `Runs` index summary/stage presentation, the default landing behavior for `/runs/:runId`, execution/task-detail copy, and the `Execution Plan` layout without changing backend contracts.
+
+## Phase 2 - Realign run and execution flow behavior
+
+### Phase Handoff
+
+Goal:
+Bring the `Runs` index, run landing behavior, and execution-facing copy/layout back in line with the workspace spec using the cleanest frontend implementation while keeping APIs unchanged.
+
+Scope Boundary:
+In scope:
+- live run summary / stage presentation in the `Runs` index,
+- run header meta copy,
+- task-detail conversation framing,
+- default landing behavior for `/runs/:runId`,
+- `Execution Plan` layout so it still reads as the shared planning workspace.
+
+Out of scope:
+- backend API expansion,
+- documentation grouping logic,
+- unrelated execution engine behavior changes.
+
+Read First:
+- `design/workspace-spec.md`
+- `design/design-guidelines.md`
+- `.ultrakit/developer-docs/keystone-target-model-handoff.md`
+- `ui/src/features/runs/components/runs-index-workspace.tsx`
+- `ui/src/features/runs/use-runs-index-view-model.ts`
+- `ui/src/features/runs/use-run-detail-view-model.ts`
+- `ui/src/features/runs/components/run-detail-scaffold.tsx`
+- `ui/src/features/runs/components/planning-workspace.tsx`
+- `ui/src/features/runs/components/execution-plan-workspace.tsx`
+- `ui/src/features/execution/components/task-detail-workspace.tsx`
+- `ui/src/test/app-shell.test.tsx`
+- `ui/src/test/runs-routes.test.tsx`
+
+Files Expected To Change:
+- `ui/src/features/runs/components/runs-index-workspace.tsx`
+- `ui/src/features/runs/use-runs-index-view-model.ts`
+- `ui/src/features/runs/use-run-detail-view-model.ts`
+- `ui/src/features/runs/components/run-detail-scaffold.tsx`
+- `ui/src/features/runs/components/planning-workspace.tsx`
+- `ui/src/features/runs/components/execution-plan-workspace.tsx`
+- `ui/src/features/execution/components/task-detail-workspace.tsx`
+- `ui/src/test/app-shell.test.tsx`
+- `ui/src/test/runs-routes.test.tsx`
+- `.ultrakit/exec-plans/active/keystone-ui-workspace-spec-realignment.md`
+
+Validation:
+- Run `npm test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx`.
+- Run `npm test`.
+- Success means the targeted run/execution suite and the broad test suite pass without introducing new failures.
+
+Plan / Docs To Update:
+- Update `Execution Log`, `Progress`, `Surprises & Discoveries`, and this phase handoff in the active plan.
+- Update `Outcomes & Retrospective` with the Phase 2 result when closing the phase.
+
+Deliverables:
+- Runs/execution UI behavior and copy aligned to the documented product model.
+- Updated route tests that enforce the corrected run/execution behavior and language.
+- Validation evidence for targeted tests and broad `npm test`.
+
+Commit Expectation:
+- `Realign run and execution workspace flow`
+
+Known Constraints / Baseline Failures:
+- Keep API contracts stable in this phase.
+- Broad lint / typecheck remain pre-existing red baselines.
+- Broad build remains blocked by sandbox Wrangler / Docker constraints.
+
+Status:
+- Pending
+
+Completion Notes:
+- None yet.
+
+Next Starter Context:
+- The key design question is how to expose compile controls without breaking the shared planning layout; resolve that within the existing route/component seam rather than adding a new page state.
+
+## Phase 3 - Standardize Plate document surfaces and realign documentation model
+
+### Phase Handoff
+
+Goal:
+Standardize planning/documentation document panes by deleting the current repo-owned Plate wrapper path and rebuilding those surfaces on the installed Plate UI editor/static shells plus `MarkdownKit`, lock the Documentation surface to the canonical project-level category model from the workspace spec, and remove implementation-jargon framing from the user-facing documentation experience.
+
+Scope Boundary:
+In scope:
+- deleting `ui/src/components/editor/plate-markdown-document.tsx` and replacing it with Plate UI's generated editor/static components,
+- removing the repo-owned plugin array in `ui/src/components/editor/plate-markdown-document.tsx` in favor of the generated Plate UI kit files,
+- planning/documentation document rendering and preview integration,
+- replacing the planning `textarea + Plate preview` split with a Plate editor while keeping markdown as the save/load boundary,
+- composing the generated Plate kits that match the current markdown surface: `basic-nodes-kit`, `code-block-kit`, `link-kit`, `list-classic-kit`, `math-kit`, `table-kit`, and `markdown-kit`,
+- documentation grouping logic,
+- documentation compatibility-state copy,
+- any tests that currently assert path-derived or scaffold-jargon behavior,
+- preserving the current accessible region labels and semantic roles that the explorer audit identified as the renderer contract.
+
+Out of scope:
+- live documentation backend work,
+- adding mention, column, or other MDX-specific features that are not already backed by installed Plate packages in this repo,
+- broader shell or run-flow work already covered by earlier phases.
+
+Read First:
+- `design/workspace-spec.md`
+- `design/design-guidelines.md`
+- the Plate markdown docs and `MarkdownKit` guidance provided in the current thread
+- `ui/src/components/editor/plate-markdown-document.tsx`
+- `ui/src/components/ui/editor.tsx`
+- `ui/src/components/ui/editor-static.tsx`
+- `ui/src/components/editor/plugins/markdown-kit.tsx`
+- `ui/src/components/editor/plugins/basic-nodes-kit.tsx`
+- `ui/src/components/editor/plugins/code-block-kit.tsx`
+- `ui/src/components/editor/plugins/link-kit.tsx`
+- `ui/src/components/editor/plugins/list-classic-kit.tsx`
+- `ui/src/components/editor/plugins/math-kit.tsx`
+- `ui/src/components/editor/plugins/table-kit.tsx`
+- `ui/src/features/runs/components/planning-workspace.tsx`
+- `ui/src/features/runs/use-run-planning-phase-view-model.ts`
+- `ui/src/features/runs/run-detail-context.tsx`
+- `ui/src/shared/markdown/source-markdown.ts`
+- `ui/src/features/resource-model/selectors.ts`
+- `ui/src/features/documentation/use-documentation-view-model.ts`
+- `ui/src/features/documentation/components/documentation-workspace.tsx`
+- `ui/src/test/destination-scaffolds.test.tsx`
+- `ui/src/test/runs-routes.test.tsx`
+- `ui/src/test/resource-model-selectors.test.tsx`
+
+Files Expected To Change:
+- `ui/src/components/editor/plate-markdown-document.tsx`
+- `ui/src/components/editor/plugins/markdown-kit.tsx`
+- `ui/src/components/ui/editor.tsx`
+- `ui/src/components/ui/editor-static.tsx`
+- `ui/src/features/runs/components/planning-workspace.tsx`
+- `ui/src/features/runs/use-run-planning-phase-view-model.ts`
+- `ui/src/features/documentation/use-documentation-view-model.ts`
+- `ui/src/features/documentation/components/documentation-workspace.tsx`
+- `ui/src/shared/markdown/source-markdown.ts`
+- `ui/src/features/resource-model/selectors.ts`
+- `ui/src/test/destination-scaffolds.test.tsx`
+- `ui/src/test/runs-routes.test.tsx`
+- `ui/src/test/resource-model-selectors.test.tsx`
+- `.ultrakit/exec-plans/active/keystone-ui-workspace-spec-realignment.md`
+
+Validation:
+- Run `npm test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/resource-model-selectors.test.tsx`.
+- Run `npm test`.
+- Success means the targeted documentation suite and the broad test suite pass without introducing new failures.
+
+Plan / Docs To Update:
+- Update `Execution Log`, `Progress`, `Surprises & Discoveries`, and this phase handoff in the active plan.
+- Update `Outcomes & Retrospective` with the Phase 3 result when closing the phase.
+
+Deliverables:
+- Current repo-owned Plate wrapper path deleted and replaced with Plate UI's generated `Editor`, `EditorContainer`, `EditorStatic`, and `MarkdownKit` path.
+- Shared basic Plate-first document surface built around the installed Plate UI editor/static shells and `MarkdownKit` adopted by planning/documentation panes.
+- Repo-owned Plate plugin assembly and direct `PlateContent` wrapper logic removed rather than preserved as a compatibility layer.
+- Planning editing moves from `textarea + preview` to a real Plate editor while markdown remains the serialized save/load boundary.
+- Shared document surface preserves:
+  - native table / column-header semantics,
+  - list-item semantics,
+  - blockquote semantics,
+  - labeled document / preview regions used by current route tests.
+- Documentation grouping fixed to the canonical category set.
+- Documentation compatibility state rewritten in product-facing language.
+- Updated tests reflecting the corrected documentation model and Plate surface usage expectations.
+
+Commit Expectation:
+- `Standardize Plate document surfaces`
+
+Known Constraints / Baseline Failures:
+- Documentation remains scaffold-backed for non-scaffold live projects.
+- Broad lint / typecheck remain pre-existing red baselines.
+- Broad build remains subject to the sandbox Wrangler / Docker caveat.
+
+Status:
+- Pending
+
+Completion Notes:
+- None yet.
+
+Next Starter Context:
+- Treat the Plate UI install as complete and stable. The next execution step is not more registry work; it is deleting `ui/src/components/editor/plate-markdown-document.tsx`, wiring planning onto Plate UI's editable `Editor` path, wiring documentation onto Plate UI's static/editor path, and updating consumers to use the generated kits directly. After that, remove the path-derived documentation grouping behavior in favor of an explicit canonical mapping.
+
+## Phase 4 - Documentation and closeout truth
+
+### Phase Handoff
+
+Goal:
+Close the alignment pass by updating any durable docs or notes that became inaccurate, re-running final validation, and preparing the plan for archive.
+
+Scope Boundary:
+In scope:
+- evaluate README / notes impact from Phase 1,
+- update any durable docs that became inaccurate because of the shipped UI wording changes,
+- final plan closeout and archive readiness.
+
+Out of scope:
+- new product work,
+- unrelated README cleanup,
+- unrelated note churn.
+
+Read First:
+- `README.md`
+- `.ultrakit/notes.md`
+- `.ultrakit/exec-plans/active/keystone-ui-workspace-spec-realignment.md`
+- any files changed in Phases 1-3
+
+Files Expected To Change:
+- `.ultrakit/exec-plans/active/keystone-ui-workspace-spec-realignment.md`
+- `.ultrakit/notes.md`
+- `README.md`
+
+Validation:
+- Run `npm test`.
+- If a touched doc references a changed UI label, confirm the final wording matches the shipped UI.
+
+Plan / Docs To Update:
+- Update `Execution Log`, `Progress`, `Outcomes & Retrospective`, and the Phase 4 handoff state.
+- Update `.ultrakit/notes.md` only if the execution work surfaces durable project knowledge that future contributors would need.
+
+Deliverables:
+- Any necessary doc / notes updates, or an explicit record that none were needed.
+- Final validation evidence and archive-ready plan state.
+
+Commit Expectation:
+- `Close out workspace spec alignment`
+
+Known Constraints / Baseline Failures:
+- Broad lint / typecheck remain pre-existing red baselines unless fixed separately.
+- Broad build remains subject to the sandbox Wrangler / Docker caveat.
+
+Status:
+- Pending
+
+Completion Notes:
+- None yet.
+
+Next Starter Context:
+- If the implementation phases only change shipped UI framing, document surfaces, and tests, Phase 4 may still be a no-op for durable docs other than the plan itself; record that explicitly rather than leaving the closeout ambiguous.

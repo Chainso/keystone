@@ -54,7 +54,11 @@ export const projectComponentTypeOptions: ProjectComponentTypeOption[] = [
 ];
 
 export function getProjectConfigurationDefaultTab(mode: ProjectConfigurationMode) {
-  return mode === "new" ? "overview" : "components";
+  switch (mode) {
+    case "new":
+    case "settings":
+      return "overview";
+  }
 }
 
 export function buildProjectConfigurationPath(

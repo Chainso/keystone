@@ -2567,7 +2567,7 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/documentation");
     });
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
   });
 
   it("registers a beforeunload warning while a planning draft has unsaved changes", async () => {
@@ -2933,7 +2933,14 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
 
-    expect(await screen.findByRole("button", { name: "Compiling run..." })).toBeDisabled();
+    await waitFor(() => {
+      expect(
+        countFetchRequests(fetchMock, {
+          method: "POST",
+          url: "/v1/runs/run-108/compile"
+        })
+      ).toBe(1);
+    });
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-108/execution");

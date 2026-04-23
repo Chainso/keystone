@@ -867,7 +867,7 @@ describe("App shell", () => {
         .getAllByRole("link", { name: "New project" })
         .some((link) => link.getAttribute("href") === "/projects/new")
     ).toBe(true);
-    expect(screen.queryByRole("heading", { name: "Project documentation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Documentation" })).not.toBeInTheDocument();
   });
 
   it("renders the loading state before the project list resolves", async () => {
@@ -1387,7 +1387,7 @@ describe("App shell", () => {
 
     renderRoute("/documentation", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expectWorkspaceLocation("Keystone Cloudflare", "Documentation");
 
     const themePreferencePanel = getThemePreferencePanel();
@@ -1463,7 +1463,7 @@ describe("App shell", () => {
 
     renderRoute("/settings", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("heading", { name: "Project settings: Alt Project" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
@@ -1471,8 +1471,8 @@ describe("App shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Alt Project");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -1542,9 +1542,7 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Loading project settings" })
     ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([request]) =>
       typeof request === "string" ? request : request.toString()
@@ -1552,8 +1550,8 @@ describe("App shell", () => {
 
     deferredDetailResponse.resolve(createJsonResponse(buildProjectDetailResponse(alternateProjectDetail)));
 
-    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Alt Project");
   });
 
   it("keeps the settings route safe when a switched project detail is missing", async () => {
@@ -1632,9 +1630,9 @@ describe("App shell", () => {
       }
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    });
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
@@ -1646,12 +1644,12 @@ describe("App shell", () => {
     {
       destination: "Documentation",
       path: "/documentation",
-      heading: "Project documentation"
+      heading: "Documentation"
     },
     {
       destination: "Workstreams",
       path: "/workstreams",
-      heading: "Project work across runs"
+      heading: "Workstreams"
     },
     {
       destination: "New project",
@@ -1661,7 +1659,7 @@ describe("App shell", () => {
     {
       destination: "Project settings",
       path: "/settings",
-      heading: "Project settings: Keystone Cloudflare"
+      heading: "Project settings"
     }
   ])("mounts the $heading scaffold route inside the shared shell", async ({ path, heading, destination }) => {
     const scaffoldProject: CurrentProject = {

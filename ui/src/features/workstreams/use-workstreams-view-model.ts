@@ -26,7 +26,7 @@ const defaultFilterId: WorkstreamFilterId = "active";
 const pageSize = 25;
 const pageSearchParamKey = "page";
 const filterSearchParamKey = "filter";
-const workstreamsTitle = "Project work across runs";
+const workstreamsTitle = "Workstreams";
 
 const filterDefinitions: Array<{
   description: string;
