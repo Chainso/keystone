@@ -155,7 +155,10 @@ const mocked = vi.hoisted(() => {
         cancelledTasks
       };
     }),
-    finalizeRun: vi.fn(async (_env, _client, input) => {
+    finalizeRun: vi.fn(async (env, client, input) => {
+      void env;
+      void client;
+      void input;
       const failedTasks = mocked.runTasks.filter((task) => task.status !== "completed");
       const finalStatus = failedTasks.length === 0 ? "archived" : "failed";
 
@@ -666,6 +669,36 @@ describe("RunWorkflow authoritative DAG scheduling", () => {
     const result = await workflow.run(createWorkflowEvent() as never, step as never);
 
     expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
+    expect(mocked.compileRunPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        projectId: "project-fixture",
+        runId: "run-123",
+        planningDocuments: {
+          specification: {
+            revisionId: "spec-rev-1",
+            path: "specification",
+            body: "# Run specification"
+          },
+          architecture: {
+            revisionId: "arch-rev-1",
+            path: "architecture",
+            body: "# Run architecture"
+          },
+          executionPlan: {
+            revisionId: "plan-rev-1",
+            path: "execution-plan",
+            body: "# Execution plan"
+          }
+        }
+      })
+    );
+    const compileRunPlanCalls = mocked.compileRunPlan.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const compileCall = compileRunPlanCalls[0]?.[0];
+
+    expect(compileCall).not.toHaveProperty("repo");
     expect(taskWorkflow.createBatch).toHaveBeenCalledTimes(2);
     expect(taskWorkflow.createBatch.mock.calls[0]?.[0]).toEqual([
       expect.objectContaining({

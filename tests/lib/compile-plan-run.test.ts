@@ -304,11 +304,6 @@ function createCompileInput() {
     tenantId: "tenant-fixture",
     projectId: "project-fixture",
     runId: "run-123",
-    repo: {
-      source: "localPath" as const,
-      localPath: "./fixtures/demo-target",
-      ref: "main"
-    },
     planningDocuments
   };
 }
@@ -382,6 +377,30 @@ describe("plan-run compile metadata", () => {
         })
       ])
     );
+
+    const createChatCompletionCalls = mocked.createChatCompletion.mock.calls as unknown as Array<
+      [{ messages?: Array<{ content?: string }> }]
+    >;
+    const request = createChatCompletionCalls[0]?.[0];
+    const promptPayload = JSON.parse(String(request?.messages?.[1]?.content)) as Record<string, unknown>;
+
+    expect(promptPayload).not.toHaveProperty("repo");
+    expect(promptPayload).toMatchObject({
+      planningDocuments: {
+        specification: {
+          path: planningDocuments.specification.path,
+          body: planningDocuments.specification.body
+        },
+        architecture: {
+          path: planningDocuments.architecture.path,
+          body: planningDocuments.architecture.body
+        },
+        executionPlan: {
+          path: planningDocuments.executionPlan.path,
+          body: planningDocuments.executionPlan.body
+        }
+      }
+    });
   });
 
   it("persists multi-node live compile dependencies into the DAG and task handoffs", async () => {

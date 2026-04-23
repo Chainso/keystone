@@ -38,8 +38,7 @@ import { loadExistingRunPlan } from "../lib/workflows/idempotency";
 import { buildRunSandboxId } from "../lib/workspace/worktree";
 import {
   compileDemoFixtureRunPlan,
-  compileRunPlan,
-  type CompileRepoSource
+  compileRunPlan
 } from "../keystone/compile/plan-run";
 import { finalizeRun } from "../keystone/integration/finalize-run";
 import {
@@ -87,7 +86,6 @@ interface TaskWorkflowFanoutEntry {
 interface RunContextSnapshot {
   workflowInstanceId: string;
   sandboxId: string;
-  compileRepo: CompileRepoSource;
   projectExecution: ProjectExecutionSnapshot;
   executionEngine: ExecutionEngine;
   preserveSandbox: boolean;
@@ -95,10 +93,6 @@ interface RunContextSnapshot {
 
 function isMissingWorkflowInstanceStatus(status: WorkflowInstanceStatus) {
   return status === "unknown";
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 type RunTaskRows = Awaited<ReturnType<typeof listRunTasks>>;
@@ -414,13 +408,14 @@ async function cancelBlockedRunTasks(
 }
 
 export function shouldUseFixtureCompileForRun(
-  repo: CompileRepoSource,
+  projectExecution: ProjectExecutionSnapshot,
   executionEngine: ExecutionEngine
 ) {
   return (
     isMockThinkExecution(executionEngine) &&
-    repo.source === "localPath" &&
-    repo.localPath.endsWith("fixtures/demo-target")
+    projectExecution.components.length === 1 &&
+    projectExecution.components[0]?.type === "inline" &&
+    projectExecution.components[0].repoUrl === "fixture://demo-target"
   );
 }
 
@@ -449,17 +444,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
             );
           }
 
-          const projectExecution = buildProjectExecutionSnapshot(project, {
-            requireCompileTarget: true
-          });
-
-          if (!projectExecution.compileRepo) {
-            throw new Error(
-              `Project ${project.projectId} did not resolve a compile target after validation.`
-            );
-          }
-
-          const compileRepo = projectExecution.compileRepo;
+          const projectExecution = buildProjectExecutionSnapshot(project);
           const existingRunRecord = await getRunRecord(client, {
             tenantId: event.payload.tenantId,
             runId: event.payload.runId
@@ -497,7 +482,6 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           return {
             workflowInstanceId,
             sandboxId,
-            compileRepo,
             projectExecution,
             executionEngine,
             preserveSandbox
@@ -599,7 +583,7 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           }
 
           const compile = shouldUseFixtureCompileForRun(
-            runContext.compileRepo,
+            runContext.projectExecution,
             runContext.executionEngine
           )
             ? compileDemoFixtureRunPlan
@@ -610,7 +594,6 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
             tenantId: event.payload.tenantId,
             projectId: event.payload.projectId,
             runId: event.payload.runId,
-            repo: runContext.compileRepo,
             planningDocuments: {
               specification: {
                 revisionId: planningDocuments.specification.revisionId,

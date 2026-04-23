@@ -41,7 +41,7 @@ When project-backed run creation omits `executionEngine`, the API/runtime defaul
 
 `think_mock` is the deterministic fixture-scoped Think-backed validation path.
 
-`think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend. It now accepts any compiled handoff that resolves exactly one compile repo before `TaskWorkflow`.
+`think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend. It executes compiled handoffs against the full materialized project workspace, including multi-component projects.
 
 ## Scheduler Contract
 
@@ -81,7 +81,7 @@ The current Think-backed task role is `implementer`.
 - `src/keystone/agents/base/KeystoneThinkAgent.ts` implements the Think-backed adapter
 - `src/keystone/agents/implementer/ImplementerAgent.ts` defines the implementer prompt and bridge-backed tools
 - the main capabilities are filesystem reads/writes and shell execution against the task worktree
-- the current implementer prompt expects the agent to commit workspace changes in the task worktree before staging its handoff note
+- the current implementer prompt expects the agent to commit in each changed component repo/worktree before staging its handoff note
 
 `TaskWorkflow` is responsible for:
 
@@ -132,5 +132,7 @@ These are runtime facts, not future design goals:
 - the API/runtime default execution engine is `think_live`
 - the zero-argument `npm run demo:run` helper intentionally remains `scripted` until host-local live proof archives reliably again
 - `think_mock` remains the deterministic fixture-scoped Think validation path
-- `think_live` is broader than the old fixture-only proof, but project-backed compile still requires exactly one executable component
+- compile is document-first and no longer requires a project-level compile target
+- `think_live` is the multi-component project-backed execution path
+- `scripted` remains intentionally single-component only
 - compile still expects the three run planning documents to exist before execution

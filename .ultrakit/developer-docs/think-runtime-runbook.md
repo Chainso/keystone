@@ -20,6 +20,8 @@ All three flows use the same document-first run contract:
 6. poll the run to terminal state
 7. validate compile provenance and task/task-conversation outputs
 
+Compile is document-first in all three flows. Project components matter at execution time, not at compile time. For multi-component projects, use `think_live`; `scripted` intentionally remains a single-component path.
+
 ## Prerequisites
 
 - Docker with the local Postgres container available

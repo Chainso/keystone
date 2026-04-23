@@ -33,12 +33,12 @@ New entries should follow this format:
 1. **ID:** `TD-2026-04-17-002`
 2. **Date Added:** `2026-04-17`
 3. **Area:** `Project-backed compile target selection`
-4. **Description:** Project-backed runs now fail clearly when a project defines multiple executable components because Phase 4 introduced no explicit product concept for selecting which component should drive compile-time repo resolution.
-5. **Impact:** Multi-component projects can materialize and execute at task time, but they cannot enter the compile path unless exactly one executable component exists.
-6. **Owner:** `keystone-project-model-foundation`
-7. **Proposed Fix:** Add an explicit compile-target concept to the project or run contract, then update `RunWorkflow`, validation, and demo tooling to resolve compile routing without hidden component ordering.
-8. **Target Window:** `next project/workflow modeling cycle`
-9. **Status:** `open`
+4. **Description:** Historical note: project-backed runs used to fail clearly when a project defined multiple executable components because compile still collapsed project config down to one repo-level target.
+5. **Impact:** Contributors previously could materialize multi-component workspaces at task time but could not enter the compile path without exactly one executable component.
+6. **Owner:** `multi-component-compile-runtime-generalization`
+7. **Proposed Fix:** Completed in the multi-component generalization plan: compile is now document-first, `think_live` executes against the full project workspace, and `scripted` fails fast for multi-component projects instead of guessing.
+8. **Target Window:** `completed 2026-04-22`
+9. **Status:** `closed (2026-04-22)`
 
 1. **ID:** `TD-2026-04-17-003`
 2. **Date Added:** `2026-04-17`

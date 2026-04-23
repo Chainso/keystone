@@ -23,6 +23,7 @@ Plans listed here have met their acceptance criteria and been archived from `act
 | [keystone-ui-first-api-scaffold](./keystone-ui-first-api-scaffold.md) | 2026-04-18 | Reworked the public API around the UI-first resource model, migrated the demo/tests/docs, and left the remaining backend gaps as explicit typed stubs. |
 | [keystone-ui-structure-scaffold](./keystone-ui-structure-scaffold.md) | 2026-04-18 | Delivered the Worker-served React workspace scaffold, route/module boundaries, durable docs, and final validation proof. |
 | [keystone-ui-ascii-alignment-reset](./keystone-ui-ascii-alignment-reset.md) | 2026-04-18 | Realigned the shipped UI to the canonical ASCII boards, updated durable docs/notes, and closed the corrective scaffold pass. |
+| [multi-component-compile-runtime-generalization](./multi-component-compile-runtime-generalization.md) | 2026-04-22 | Made compile document-first, enabled multi-component `think_live` execution, kept `scripted` explicitly single-component, updated durable docs, and archived the plan with residual broad-validation debt classified. |
 
 Add completed plans using this format:
 

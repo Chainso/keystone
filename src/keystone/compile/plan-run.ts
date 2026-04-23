@@ -19,25 +19,12 @@ import {
 } from "./contracts";
 import { assertCompiledPlanIsInternallyConsistent } from "../tasks/load-task-contracts";
 
-export type CompileRepoSource =
-  | {
-      source: "localPath";
-      localPath: string;
-      ref?: string | undefined;
-    }
-  | {
-      source: "gitUrl";
-      gitUrl: string;
-      ref?: string | undefined;
-    };
-
 export interface CompileRunPlanInput {
   env: WorkerBindings;
   client: DatabaseClient;
   tenantId: string;
   projectId: string;
   runId: string;
-  repo: CompileRepoSource;
   planningDocuments: CompilePlanningDocuments;
 }
 
@@ -60,8 +47,6 @@ interface PreviousCompiledPlanState {
   compiledAt: Date | null;
 }
 
-type CompileMode = "fixture" | "live";
-
 const compiledRunPlanResponseSchema = compiledRunPlanSchema.omit({
   sourceRevisionIds: true
 });
@@ -72,22 +57,6 @@ function requireArtifactRef<T>(artifactRef: T | undefined, kind: ArtifactKind): 
   }
 
   return artifactRef;
-}
-
-function buildRepoPointer(repo: CompileRepoSource) {
-  if (repo.source === "localPath") {
-    return {
-      source: repo.source,
-      localPath: repo.localPath,
-      ref: repo.ref ?? null
-    };
-  }
-
-  return {
-    source: repo.source,
-    gitUrl: repo.gitUrl,
-    ref: repo.ref ?? null
-  };
 }
 
 async function persistCompiledPlanGraph(
@@ -139,7 +108,7 @@ function buildSourceRevisionIds(
   };
 }
 
-function buildCompileMessages(repo: CompileRepoSource, planningDocuments: CompilePlanningDocuments) {
+function buildCompileMessages(planningDocuments: CompilePlanningDocuments) {
   return [
     {
       role: "system" as const,
@@ -168,12 +137,12 @@ function buildCompileMessages(repo: CompileRepoSource, planningDocuments: Compil
               "Return valid JSON that matches the schema exactly.",
               "Use the execution plan as the primary task breakdown.",
               "Use specification and architecture as product and implementation context.",
+              "Treat the three planning documents as the full compile context.",
               "Keep the task graph small, implementation-oriented, and executable.",
               "Do not invent dependencies unless they are necessary.",
               "Each task summary must stay short."
             ]
           },
-          repo: buildRepoPointer(repo),
           planningDocuments: {
             specification: {
               path: planningDocuments.specification.path,
@@ -453,14 +422,13 @@ export async function compileRunPlan(input: CompileRunPlanInput): Promise<Compil
     tenantId: input.tenantId,
     runId: input.runId
   });
-  const compileMode: CompileMode = "live";
   let parsedPlan: CompiledRunPlan | null = null;
   const writtenArtifacts: CompiledPlanArtifactWrite[] = [];
 
   try {
     const completion = await createChatCompletion({
       env: input.env,
-      messages: buildCompileMessages(input.repo, planningDocuments),
+      messages: buildCompileMessages(planningDocuments),
       temperature: 0
     });
     parsedPlan = compiledRunPlanSchema.parse({
@@ -555,7 +523,6 @@ export async function compileDemoFixtureRunPlan(
     tenantId: input.tenantId,
     runId: input.runId
   });
-  const compileMode: CompileMode = "fixture";
   const parsedPlan = buildDemoFixtureCompiledPlan(planningDocuments);
   const writtenArtifacts: CompiledPlanArtifactWrite[] = [];
   const completion = {

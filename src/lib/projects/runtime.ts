@@ -1,4 +1,3 @@
-import type { CompileRepoSource } from "../../keystone/compile/plan-run";
 import type {
   ProjectComponent,
   ProjectRuleSet,
@@ -17,15 +16,10 @@ export interface ProjectExecutionSnapshot {
   projectId: string;
   projectKey: string;
   displayName: string;
-  compileRepo?: CompileRepoSource | undefined;
   components: WorkspaceMaterializationSource[];
   environment: Record<string, string>;
   ruleSet: ProjectRuleSet;
   componentRuleOverrides: ProjectExecutionRuleOverride[];
-}
-
-interface BuildProjectExecutionSnapshotOptions {
-  requireCompileTarget?: boolean | undefined;
 }
 
 function isFixtureLocalComponent(component: ProjectComponent) {
@@ -33,30 +27,6 @@ function isFixtureLocalComponent(component: ProjectComponent) {
     component.kind === "git_repository" &&
     component.config.localPath?.endsWith("fixtures/demo-target") === true
   );
-}
-
-function resolveCompileRepo(component: ProjectComponent): CompileRepoSource {
-  if (component.kind !== "git_repository") {
-    throw new Error(`Unsupported project component kind ${String(component.kind)}.`);
-  }
-
-  if (component.config.gitUrl) {
-    return {
-      source: "gitUrl",
-      gitUrl: component.config.gitUrl,
-      ref: component.config.ref
-    };
-  }
-
-  if (component.config.localPath) {
-    return {
-      source: "localPath",
-      localPath: component.config.localPath,
-      ref: component.config.ref
-    };
-  }
-
-  throw new Error(`Project component ${component.componentKey} is missing a repository source.`);
 }
 
 function resolveWorkspaceComponent(
@@ -101,30 +71,14 @@ function resolveWorkspaceComponent(
 }
 
 export function buildProjectExecutionSnapshot(
-  project: StoredProject,
-  options: BuildProjectExecutionSnapshotOptions = {}
+  project: StoredProject
 ): ProjectExecutionSnapshot {
   const components = project.components.map(resolveWorkspaceComponent);
-  const compileComponents = project.components.filter(
-    (component) => component.kind === "git_repository"
-  );
-
-  if (compileComponents.length === 0) {
-    throw new Error(`Project ${project.projectId} does not define any executable components.`);
-  }
-
-  if (options.requireCompileTarget && compileComponents.length > 1) {
-    throw new Error(
-      `Project ${project.projectId} defines multiple executable components; compile requires an explicit target component when more than one executable component exists.`
-    );
-  }
 
   return {
     projectId: project.projectId,
     projectKey: project.projectKey,
     displayName: project.displayName,
-    compileRepo:
-      compileComponents.length === 1 ? resolveCompileRepo(compileComponents[0]!) : undefined,
     components,
     environment: Object.fromEntries(
       project.envVars.map((envVar) => [envVar.name, envVar.value])
