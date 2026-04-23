@@ -7,6 +7,7 @@ import {
 } from "../resource-model/selectors";
 import { useResourceModel } from "../resource-model/context";
 import { useCurrentProject } from "../projects/project-context";
+import { buildMarkdownSourceFromLines } from "../../shared/markdown/source-markdown";
 import { updateSearchParams } from "../../shared/navigation/search-param-state";
 
 export interface DocumentationTreeDocument {
@@ -50,122 +51,6 @@ function formatDocumentCount(count: number) {
   return `${count} document${count === 1 ? "" : "s"}`;
 }
 
-function isFenceMarker(line: string) {
-  return /^\s*(```|~~~)/.test(line);
-}
-
-function isHeadingLine(line: string) {
-  return /^\s{0,3}#{1,6}\s+/.test(line);
-}
-
-function isListItemLine(line: string) {
-  return /^\s*(?:[-*+]|\d+[.)])\s+/.test(line);
-}
-
-function isBlockquoteLine(line: string) {
-  return /^\s*>/.test(line);
-}
-
-function isTableLine(line: string) {
-  return /^\s*\|/.test(line);
-}
-
-function isIndentedCodeLine(line: string) {
-  return /^(?: {4}|\t)/.test(line);
-}
-
-function shouldUseSingleLineBreak(input: {
-  currentLine: string;
-  inFence: boolean;
-  previousLine: string;
-}) {
-  const { currentLine, inFence, previousLine } = input;
-
-  if (currentLine.trim().length === 0 || previousLine.trim().length === 0) {
-    return true;
-  }
-
-  if (inFence || isFenceMarker(previousLine) || isFenceMarker(currentLine)) {
-    return true;
-  }
-
-  const previousIsListItem = isListItemLine(previousLine);
-  const currentIsListItem = isListItemLine(currentLine);
-
-  if (previousIsListItem && currentIsListItem) {
-    return true;
-  }
-
-  if (currentIsListItem) {
-    return true;
-  }
-
-  const previousIsBlockquote = isBlockquoteLine(previousLine);
-  const currentIsBlockquote = isBlockquoteLine(currentLine);
-
-  if ((previousIsBlockquote && currentIsBlockquote) || currentIsBlockquote) {
-    return true;
-  }
-
-  const previousIsTable = isTableLine(previousLine);
-  const currentIsTable = isTableLine(currentLine);
-
-  if ((previousIsTable && currentIsTable) || currentIsTable) {
-    return true;
-  }
-
-  if (isHeadingLine(previousLine)) {
-    return true;
-  }
-
-  if (isIndentedCodeLine(previousLine) && isIndentedCodeLine(currentLine)) {
-    return true;
-  }
-
-  return false;
-}
-
-export function buildDocumentationMarkdown(contentLines: string[]) {
-  const lines = contentLines.map((line) => line.replace(/\r/g, ""));
-
-  if (lines.length === 0) {
-    return "";
-  }
-
-  let markdown = "";
-  let inFence = false;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const currentLine = lines[index] ?? "";
-
-    if (markdown.length === 0) {
-      markdown = currentLine;
-
-      if (isFenceMarker(currentLine)) {
-        inFence = !inFence;
-      }
-
-      continue;
-    }
-
-    const previousLine = lines[index - 1] ?? "";
-
-    markdown = `${markdown}${shouldUseSingleLineBreak({
-      currentLine,
-      inFence,
-      previousLine
-    })
-      ? "\n"
-      : "\n\n"}${currentLine}`;
-
-    if (isFenceMarker(currentLine)) {
-      inFence = !inFence;
-    }
-  }
-
-  return markdown;
-}
-
 export function useDocumentationViewModel(): DocumentationViewModel {
   const { state } = useResourceModel();
   const project = useCurrentProject();
@@ -201,13 +86,13 @@ export function useDocumentationViewModel(): DocumentationViewModel {
   if (!scaffoldProject) {
     return {
       compatibilityState: {
-        heading: "Documentation is not available for this project yet",
+        heading: "Documentation is not connected for this project yet",
         message:
-          "Project documentation still depends on scaffold-backed data. Switch to a scaffold-backed project to use this screen."
+          "Project documentation is currently available only for the sample Keystone Cloudflare project. Switch to that project to review the current Documentation surface."
       },
       currentProjectLabel: project.displayName,
-      documentCountLabel: "Compatibility only",
-      title: "Project documentation",
+      documentCountLabel: "Sample project only",
+      title: "Documentation",
       groups: [],
       selectedDocument: null,
       selectDocument() {}
@@ -217,12 +102,12 @@ export function useDocumentationViewModel(): DocumentationViewModel {
   if (!selection) {
     return {
       compatibilityState: {
-        heading: "No project documentation yet",
-        message: `${project.displayName} does not have any project-scoped documentation in the scaffold dataset yet.`
+        heading: "No documentation yet",
+        message: `${project.displayName} does not have any project documentation yet.`
       },
       currentProjectLabel: project.displayName,
       documentCountLabel: "0 documents",
-      title: "Project documentation",
+      title: "Documentation",
       groups: [],
       selectedDocument: null,
       selectDocument() {}
@@ -237,7 +122,7 @@ export function useDocumentationViewModel(): DocumentationViewModel {
   return {
     currentProjectLabel: project.displayName,
     documentCountLabel: formatDocumentCount(documentCount),
-    title: "Project documentation",
+    title: "Documentation",
     groups: selection.groups.map((group) => ({
       groupId: group.groupId,
       label: group.label,
@@ -258,7 +143,7 @@ export function useDocumentationViewModel(): DocumentationViewModel {
       title: selection.selectedDocument.title,
       path: selection.selectedDocument.path,
       viewerTitle: selection.selectedDocument.viewerTitle,
-      markdown: buildDocumentationMarkdown(selection.selectedDocument.contentLines)
+      markdown: buildMarkdownSourceFromLines(selection.selectedDocument.contentLines)
     },
     selectDocument(documentId: string) {
       setSearchParams(

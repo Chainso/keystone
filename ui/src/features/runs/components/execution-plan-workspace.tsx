@@ -70,7 +70,7 @@ export function ExecutionPlanWorkspace({ model }: { model: ExecutionPlanWorkspac
   return (
     <PlanningWorkspaceFrame
       {...model.planning}
-      documentAccessory={<ExecutionPlanCompileSection model={model.compile} />}
+      documentFollowup={<ExecutionPlanCompileSection model={model.compile} />}
     />
   );
 }

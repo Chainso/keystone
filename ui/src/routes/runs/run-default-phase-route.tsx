@@ -1,9 +1,13 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 
-import { useRunDefaultPhasePath } from "../../features/runs/use-run-view-model";
+import { buildRunPhasePath } from "../../shared/navigation/run-phases";
 
 export function RunDefaultPhaseRoute() {
-  const defaultPhasePath = useRunDefaultPhasePath();
+  const { runId } = useParams<{ runId: string }>();
 
-  return <Navigate to={defaultPhasePath} replace />;
+  if (!runId) {
+    return <Navigate to="/runs" replace />;
+  }
+
+  return <Navigate to={buildRunPhasePath(runId, "specification")} replace />;
 }

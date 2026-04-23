@@ -4,12 +4,10 @@ import type { ConversationLocator } from "./run-types";
 
 export interface RunHeaderViewModel {
   displayId: string;
-  executionEngineLabel: string;
   statusLabel: string;
   statusTone: StatusTone;
   summary: string;
   updatedLabel: string;
-  workflowInstanceId: string;
 }
 
 export interface RunPhaseStepViewModel {
@@ -69,13 +67,16 @@ export interface RunPlanningPhaseErrorViewModel extends RunPlanningPhaseBaseView
 }
 
 export interface RunPlanningPhaseEditingViewModel extends RunPlanningPhaseBaseViewModel {
-  bodyField: {
-    label: string;
-    onChange: (value: string) => void;
-    value: string;
-  };
   canSave: boolean;
   discardChanges: () => void;
+  documentEditor: {
+    disabled: boolean;
+    editorLabel: string;
+    markdown: string;
+    markdownSourceKey: string;
+    onChange: (markdown: string) => void;
+    placeholder: string;
+  };
   hasUnsavedChanges: boolean;
   helperMessage: string;
   isSubmitting: boolean;

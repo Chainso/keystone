@@ -81,7 +81,7 @@ function ProjectConfigurationOverviewTab() {
           />
           <FormTextAreaField
             label={model.descriptionField.label}
-            description="Short operator-facing context for the selected project."
+            description="Short operator-facing context shown in the sidebar and project switcher."
             value={model.descriptionField.value}
             onChange={(event) => model.descriptionField.onChange?.(event.currentTarget.value)}
             errorMessage={model.descriptionField.errorMessage}

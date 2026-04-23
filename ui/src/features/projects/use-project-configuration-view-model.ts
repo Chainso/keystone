@@ -311,10 +311,10 @@ export function useProjectConfigurationShellViewModel(): ProjectConfigurationShe
     title: meta.mode.title,
     tabs: meta.status === "ready" ? buildProjectConfigurationTabs(meta.mode.id) : [],
     ...(meta.status === "loading"
-      ? {
+        ? {
           shellState: {
             heading: "Loading project settings",
-            message: "Keystone is loading the selected project's settings."
+            message: "Keystone is loading project settings."
           }
         }
       : meta.status === "error"
@@ -322,7 +322,7 @@ export function useProjectConfigurationShellViewModel(): ProjectConfigurationShe
             shellState: {
               actionLabel: "Retry",
               heading: "Unable to load project settings",
-              message: meta.loadError ?? "Keystone could not load the selected project's settings.",
+              message: meta.loadError ?? "Keystone could not load project settings.",
               onAction: actions.retryLoad
             }
           }
@@ -401,7 +401,7 @@ export function useProjectConfigurationComponentsViewModel(): ProjectConfigurati
       components: [],
       emptyState:
         configuration.meta.mode.id === "settings"
-          ? "Keystone is loading the selected project's components."
+          ? "Keystone is loading project components."
           : configuration.meta.mode.componentEmptyState,
       footerActions,
       heading: "Components",

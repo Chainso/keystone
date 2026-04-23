@@ -26,7 +26,7 @@ const defaultFilterId: WorkstreamFilterId = "active";
 const pageSize = 25;
 const pageSearchParamKey = "page";
 const filterSearchParamKey = "filter";
-const workstreamsTitle = "Project work across runs";
+const workstreamsTitle = "Workstreams";
 
 const filterDefinitions: Array<{
   description: string;
@@ -195,24 +195,24 @@ function isOutOfRangePage(page: ProjectTaskCollectionRecord) {
 
 function buildWorkstreamsSummary(
   filterId: WorkstreamFilterId,
-  projectName: string | null
+  hasCurrentProject: boolean
 ) {
-  if (!projectName) {
+  if (!hasCurrentProject) {
     return "Choose a project to inspect task execution across runs.";
   }
 
   switch (filterId) {
     case "all":
-      return `Review every recorded task across every run in ${projectName}.`;
+      return "Review every recorded task across every run.";
     case "running":
-      return `Monitor work that is currently executing across every run in ${projectName}.`;
+      return "Monitor work that is currently executing across every run.";
     case "queued":
-      return `Inspect ready and pending work that is waiting to enter execution in ${projectName}.`;
+      return "Inspect ready and pending work that is waiting to enter execution.";
     case "blocked":
-      return `Surface blocked work that needs intervention across every run in ${projectName}.`;
+      return "Surface blocked work that needs intervention across every run.";
     case "active":
     default:
-      return `Track running, queued, and blocked work across every run in ${projectName}.`;
+      return "Track running, queued, and blocked work across every run.";
   }
 }
 
@@ -239,21 +239,20 @@ function buildRecordSummaryLabel(
 }
 
 export function buildEmptyState(
-  filterId: WorkstreamFilterId,
-  projectName: string
+  filterId: WorkstreamFilterId
 ): WorkstreamsContentState {
   switch (filterId) {
     case "all":
       return {
         heading: "No workstreams yet",
         kind: "empty",
-        message: `${projectName} does not have any recorded tasks yet.`
+        message: "No recorded tasks yet."
       };
     case "active":
       return {
         heading: "No active workstreams",
         kind: "empty",
-        message: `${projectName} does not have any running, queued, or blocked tasks right now.`
+        message: "No running, queued, or blocked tasks right now."
       };
     default: {
       const filter = filterDefinitions.find((candidate) => candidate.filterId === filterId);
@@ -443,9 +442,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       ? ({
           heading: "Loading workstreams",
           kind: "loading",
-          message: currentProject
-            ? `Keystone is loading project tasks for ${currentProject.displayName}.`
-            : "Keystone is loading project tasks."
+          message: "Keystone is loading project tasks."
         } satisfies WorkstreamsContentState)
       : visibleStatus === "error"
         ? ({
@@ -459,7 +456,7 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
           } satisfies WorkstreamsContentState)
         : visibleStatus === "empty"
           ? currentProject
-            ? buildEmptyState(activeFilterId, currentProject.displayName)
+            ? buildEmptyState(activeFilterId)
             : ({
                 heading: "No projects yet",
                 kind: "empty",
@@ -524,14 +521,14 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
       void projectManagement.actions.reloadProjects();
     },
     routeGuidance:
-      "Rows open the matching task inside Runs > Execution without leaving the selected project.",
+      "Rows open the matching task under Runs > Execution.",
     rows,
     setActiveFilter(filterId) {
       startTransition(() => {
         setWorkstreamsSearchState(filterId, 1);
       });
     },
-    summary: buildWorkstreamsSummary(activeFilterId, currentProjectName),
+    summary: buildWorkstreamsSummary(activeFilterId, Boolean(currentProjectName)),
     title: workstreamsTitle
   };
 }

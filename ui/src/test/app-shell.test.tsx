@@ -304,6 +304,13 @@ function getProjectSelector() {
   return screen.getByRole("combobox", { name: "Project" });
 }
 
+async function findRunIndexRow(runId: string) {
+  const row = (await screen.findByRole("link", { name: runId })).closest("tr");
+
+  expect(row).not.toBeNull();
+  return row as HTMLElement;
+}
+
 function getThemePreferencePanel() {
   return screen.getByRole("group", { name: "Theme preference" }).closest(".shell-theme-panel");
 }
@@ -803,16 +810,17 @@ describe("App shell", () => {
     });
     expect(await screen.findByRole("link", { name: "run-104" })).toHaveAttribute(
       "href",
-      "/runs/run-104"
+      "/runs/run-104/specification"
     );
 
     expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expectWorkspaceLocation("Keystone Cloudflare", "Runs");
-    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
+    expect(screen.getByText("Planning is in progress.")).toBeInTheDocument();
+    expect(screen.getByText("Specification")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Open a row to move through the four-stage run workspace without leaving the selected project."
+        "Open a row to step into the run workspace and move across the four stages."
       )
     ).toBeInTheDocument();
     expectShellLinkTarget("Runs", "/runs");
@@ -867,7 +875,7 @@ describe("App shell", () => {
         .getAllByRole("link", { name: "New project" })
         .some((link) => link.getAttribute("href") === "/projects/new")
     ).toBe(true);
-    expect(screen.queryByRole("heading", { name: "Project documentation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Documentation" })).not.toBeInTheDocument();
   });
 
   it("renders the loading state before the project list resolves", async () => {
@@ -1035,8 +1043,9 @@ describe("App shell", () => {
     fireEvent.click(createButton);
     fireEvent.click(createButton);
 
-    expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
-    expect(createRunBodies).toEqual([{ executionEngine: "think_live" }]);
+    await waitFor(() => {
+      expect(createRunBodies).toEqual([{ executionEngine: "think_live" }]);
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       `/v1/projects/${project.projectId}/runs`,
       expect.objectContaining({
@@ -1268,6 +1277,135 @@ describe("App shell", () => {
     expect(screen.getByText("No recorded activity yet")).toBeInTheDocument();
   });
 
+  it("links live runs to the stage they advertise and summarizes each planning/execution branch", async () => {
+    const scaffoldProject: CurrentProject = {
+      projectId: "project-keystone-cloudflare",
+      projectKey: "keystone-cloudflare",
+      displayName: "Keystone Cloudflare",
+      description: "Internal operator workspace for the Keystone Cloudflare project."
+    };
+
+    stubProjectListFetch([scaffoldProject], {
+      [scaffoldProject.projectId]: [
+        createLiveRunFixture(scaffoldProject.projectId, {
+          compiledFrom: {
+            specificationRevisionId: "spec-execution-active",
+            architectureRevisionId: "arch-execution-active",
+            executionPlanRevisionId: "plan-execution-active",
+            compiledAt: "2026-04-20T13:40:00.000Z"
+          },
+          runId: "run-execution-active"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          compiledFrom: {
+            specificationRevisionId: "spec-execution-needs-attention",
+            architectureRevisionId: "arch-execution-needs-attention",
+            executionPlanRevisionId: "plan-execution-needs-attention",
+            compiledAt: "2026-04-20T13:35:00.000Z"
+          },
+          runId: "run-execution-needs-attention",
+          status: "failed"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          compiledFrom: {
+            specificationRevisionId: "spec-execution-complete",
+            architectureRevisionId: "arch-execution-complete",
+            executionPlanRevisionId: "plan-execution-complete",
+            compiledAt: "2026-04-20T13:30:00.000Z"
+          },
+          endedAt: "2026-04-20T13:45:00.000Z",
+          runId: "run-execution-complete",
+          status: "archived"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          runId: "run-planning-active",
+          status: "review"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          runId: "run-planning-needs-attention",
+          status: "blocked"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          endedAt: "2026-04-20T13:10:00.000Z",
+          runId: "run-planning-complete",
+          status: "archived"
+        }),
+        createLiveRunFixture(scaffoldProject.projectId, {
+          runId: "run-planning-idle",
+          startedAt: null,
+          status: "queued"
+        })
+      ]
+    });
+
+    renderRoute("/runs", { useBrowserProjectApi: true });
+
+    const executionActiveRow = await findRunIndexRow("run-execution-active");
+    expect(within(executionActiveRow).getByText("Execution")).toBeInTheDocument();
+    expect(
+      within(executionActiveRow).getByText("Execution is the current stage for this run.")
+    ).toBeInTheDocument();
+    expect(within(executionActiveRow).getByRole("link", { name: "run-execution-active" })).toHaveAttribute(
+      "href",
+      "/runs/run-execution-active/execution"
+    );
+
+    const executionNeedsAttentionRow = await findRunIndexRow("run-execution-needs-attention");
+    expect(
+      within(executionNeedsAttentionRow).getByText("Execution needs attention.")
+    ).toBeInTheDocument();
+    expect(
+      within(executionNeedsAttentionRow).getByRole("link", {
+        name: "run-execution-needs-attention"
+      })
+    ).toHaveAttribute("href", "/runs/run-execution-needs-attention/execution");
+
+    const executionCompleteRow = await findRunIndexRow("run-execution-complete");
+    expect(
+      within(executionCompleteRow).getByText("Execution completed for this run.")
+    ).toBeInTheDocument();
+    expect(within(executionCompleteRow).getByRole("link", { name: "run-execution-complete" })).toHaveAttribute(
+      "href",
+      "/runs/run-execution-complete/execution"
+    );
+
+    const planningActiveRow = await findRunIndexRow("run-planning-active");
+    expect(within(planningActiveRow).getByText("Specification")).toBeInTheDocument();
+    expect(within(planningActiveRow).getByText("Planning is in progress.")).toBeInTheDocument();
+    expect(within(planningActiveRow).getByRole("link", { name: "run-planning-active" })).toHaveAttribute(
+      "href",
+      "/runs/run-planning-active/specification"
+    );
+
+    const planningNeedsAttentionRow = await findRunIndexRow("run-planning-needs-attention");
+    expect(
+      within(planningNeedsAttentionRow).getByText("Planning needs attention before compile.")
+    ).toBeInTheDocument();
+    expect(
+      within(planningNeedsAttentionRow).getByRole("link", {
+        name: "run-planning-needs-attention"
+      })
+    ).toHaveAttribute("href", "/runs/run-planning-needs-attention/specification");
+
+    const planningCompleteRow = await findRunIndexRow("run-planning-complete");
+    expect(
+      within(planningCompleteRow).getByText("Planning closed before execution started.")
+    ).toBeInTheDocument();
+    expect(within(planningCompleteRow).getByRole("link", { name: "run-planning-complete" })).toHaveAttribute(
+      "href",
+      "/runs/run-planning-complete/specification"
+    );
+
+    const planningIdleRow = await findRunIndexRow("run-planning-idle");
+    expect(
+      within(planningIdleRow).getByText("Continue planning before compiling into execution.")
+    ).toBeInTheDocument();
+    expect(within(planningIdleRow).getByRole("link", { name: "run-planning-idle" })).toHaveAttribute(
+      "href",
+      "/runs/run-planning-idle/specification"
+    );
+  });
+
   it("rehydrates a valid stored project id on startup", async () => {
     const projects: CurrentProject[] = [
       {
@@ -1297,7 +1435,11 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expectWorkspaceLocation("Alt Project", "Runs");
-    expect(screen.getByText("Alt Project does not have any recorded runs yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Create the first run to work through specification, architecture, execution plan, and execution."
+      )
+    ).toBeInTheDocument();
     expect(window.localStorage.getItem(currentProjectStorageKey)).toBe("project-alt");
   });
 
@@ -1362,7 +1504,7 @@ describe("App shell", () => {
     expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
     expectWorkspaceLocation("Alt Project", "Runs");
     expect(await screen.findByRole("heading", { name: "Loading runs" })).toBeInTheDocument();
-    expect(screen.getByText("Keystone is loading runs for Alt Project.")).toBeInTheDocument();
+    expect(screen.getByText("Keystone is loading runs for this workspace.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "run-104" })).not.toBeInTheDocument();
 
     deferredAlternateRunsResponse.resolve(
@@ -1387,7 +1529,7 @@ describe("App shell", () => {
 
     renderRoute("/documentation", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expectWorkspaceLocation("Keystone Cloudflare", "Documentation");
 
     const themePreferencePanel = getThemePreferencePanel();
@@ -1463,7 +1605,7 @@ describe("App shell", () => {
 
     renderRoute("/settings", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("heading", { name: "Project settings: Alt Project" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
@@ -1471,8 +1613,8 @@ describe("App shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Alt Project");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -1542,9 +1684,7 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Loading project settings" })
     ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Project name" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([request]) =>
       typeof request === "string" ? request : request.toString()
@@ -1552,8 +1692,8 @@ describe("App shell", () => {
 
     deferredDetailResponse.resolve(createJsonResponse(buildProjectDetailResponse(alternateProjectDetail)));
 
-    expect(await screen.findByRole("heading", { name: "Components" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Alt API");
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Alt Project");
   });
 
   it("keeps the settings route safe when a switched project detail is missing", async () => {
@@ -1632,9 +1772,9 @@ describe("App shell", () => {
       }
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    });
     expect(
       await screen.findByRole("heading", { name: "Unable to load project settings" })
     ).toBeInTheDocument();
@@ -1646,12 +1786,12 @@ describe("App shell", () => {
     {
       destination: "Documentation",
       path: "/documentation",
-      heading: "Project documentation"
+      heading: "Documentation"
     },
     {
       destination: "Workstreams",
       path: "/workstreams",
-      heading: "Project work across runs"
+      heading: "Workstreams"
     },
     {
       destination: "New project",
@@ -1661,7 +1801,7 @@ describe("App shell", () => {
     {
       destination: "Project settings",
       path: "/settings",
-      heading: "Project settings: Keystone Cloudflare"
+      heading: "Project settings"
     }
   ])("mounts the $heading scaffold route inside the shared shell", async ({ path, heading, destination }) => {
     const scaffoldProject: CurrentProject = {

@@ -6,7 +6,6 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../components/workspace/entity-table";
 import { DocumentationWorkspace } from "../features/documentation/components/documentation-workspace";
-import { buildDocumentationMarkdown } from "../features/documentation/use-documentation-view-model";
 import { currentProjectStorageKey, type CurrentProject } from "../features/projects/project-context";
 import { createStaticProjectManagementApi } from "../features/projects/project-management-api";
 import {
@@ -22,6 +21,7 @@ import { ResourceModelProvider } from "../features/resource-model/context";
 import { uiScaffoldDataset } from "../features/resource-model/scaffold-dataset";
 import type { ResourceModelDataset } from "../features/resource-model/types";
 import { DocumentationRoute } from "../routes/documentation/documentation-route";
+import { buildMarkdownSourceFromLines } from "../shared/markdown/source-markdown";
 import { renderRoute } from "./render-route";
 import {
   type ProjectTaskFilter,
@@ -722,7 +722,7 @@ describe("Destination scaffolds", () => {
   it("renders derived documentation groups and switches selection structurally", async () => {
     const { router } = renderRoute("/documentation");
 
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current product specification" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Documentation categories" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current document" })).toBeInTheDocument();
@@ -858,7 +858,7 @@ describe("Destination scaffolds", () => {
       useBrowserProjectApi: true
     });
 
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open questions docs/notes/open-questions.md" })
@@ -873,7 +873,7 @@ describe("Destination scaffolds", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "Documentation is not available for this project yet"
+        name: "Documentation is not connected for this project yet"
       })
     ).toBeInTheDocument();
     expect(
@@ -893,7 +893,7 @@ describe("Destination scaffolds", () => {
   it("canonicalizes an unknown documentation deep link to the default document", async () => {
     const { router } = renderRoute("/documentation?document=missing-document");
 
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Current product specification" })).toBeInTheDocument();
 
     await waitFor(() => {
@@ -925,12 +925,14 @@ describe("Destination scaffolds", () => {
 
     renderRoute("/documentation", { useBrowserProjectApi: true });
 
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Documentation is not available for this project yet" })
+      screen.getByRole("heading", { name: "Documentation is not connected for this project yet" })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Project documentation still depends on scaffold-backed data\./i)
+      screen.getByText(
+        /Project documentation is currently available only for the sample Keystone Cloudflare project\./i
+      )
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Documentation categories" })
@@ -964,7 +966,7 @@ describe("Destination scaffolds", () => {
             selectDocument: vi.fn(),
             selectedDocument: {
               documentId: "checklist",
-              markdown: buildDocumentationMarkdown([
+              markdown: buildMarkdownSourceFromLines([
                 "# Checklist",
                 "- Preserve scaffold truth",
                 "- Keep list structure"
@@ -973,7 +975,7 @@ describe("Destination scaffolds", () => {
               title: "Checklist",
               viewerTitle: "checklist"
             },
-            title: "Project documentation"
+            title: "Documentation"
           }}
         />
       </MemoryRouter>
@@ -1018,7 +1020,7 @@ describe("Destination scaffolds", () => {
             selectDocument: vi.fn(),
             selectedDocument: {
               documentId: "handoff",
-              markdown: buildDocumentationMarkdown([
+              markdown: buildMarkdownSourceFromLines([
                 "# Handoff",
                 "",
                 "| Surface | Status |",
@@ -1030,7 +1032,7 @@ describe("Destination scaffolds", () => {
               title: "Handoff",
               viewerTitle: "handoff"
             },
-            title: "Project documentation"
+            title: "Documentation"
           }}
         />
       </MemoryRouter>
@@ -1058,13 +1060,17 @@ describe("Destination scaffolds", () => {
           "1. Preserve the compatibility gate",
           "2. Keep category navigation grouped",
           "",
-          "> Use the shared Plate viewer instead of a line-by-line scaffold renderer."
+          "> Use the shared Plate viewer instead of a line-by-line scaffold renderer.",
+          "",
+          "```ts",
+          'const destination = "documentation";',
+          "```"
         ]
       }),
       initialEntry: "/documentation?document=project-open-questions"
     });
 
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Open questions" })).toBeInTheDocument();
 
     const documentationRegion = screen.getByRole("region", {
@@ -1092,11 +1098,16 @@ describe("Destination scaffolds", () => {
         "Use the shared Plate viewer instead of a line-by-line scaffold renderer."
       )
     ).toBeInTheDocument();
+    const codeBlock = documentationRegion.querySelector("pre");
+
+    expect(codeBlock).not.toBeNull();
+    expect(codeBlock).toHaveTextContent('const destination = "documentation";');
+    expect(codeBlock?.querySelector("code")).not.toBeNull();
   });
 
   it("builds markdown with heading, blank-line, ordered-list, and blockquote boundaries preserved", () => {
     expect(
-      buildDocumentationMarkdown([
+      buildMarkdownSourceFromLines([
         "# Decisions pending",
         "Documentation stays scaffold-backed until project APIs are live.",
         "",
@@ -1113,7 +1124,7 @@ describe("Destination scaffolds", () => {
 
   it("builds markdown with fenced code blocks and tables using single-line joins inside each block", () => {
     expect(
-      buildDocumentationMarkdown([
+      buildMarkdownSourceFromLines([
         "```ts",
         'const mode = "scaffold";',
         "```",
@@ -1131,18 +1142,18 @@ describe("Destination scaffolds", () => {
     renderRoute("/workstreams");
 
     expect(
-      await screen.findByRole("heading", { name: "Project work across runs" })
+      await screen.findByRole("heading", { name: "Workstreams" })
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-032" });
     expect(screen.getByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expect(
-      screen.getByText("Track running, queued, and blocked work across every run in Keystone Cloudflare.")
+      screen.getByText("Track running, queued, and blocked work across every run.")
     ).toBeInTheDocument();
     expectWorkstreamsSummary(["5 matching tasks", "25 per page"]);
     expectActiveWorkstreamFilter("Active");
     expect(
       screen.getByText(
-      "Rows open the matching task inside Runs > Execution without leaving the selected project."
+        "Rows open the matching task under Runs > Execution."
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
@@ -1256,7 +1267,7 @@ describe("Destination scaffolds", () => {
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
     expect(
-      await screen.findByRole("heading", { name: "Project work across runs" })
+      await screen.findByRole("heading", { name: "Workstreams" })
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-LIVE-001" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
@@ -1452,8 +1463,8 @@ describe("Destination scaffolds", () => {
           activeFilterDescription:
             "Show work that is ready or pending while it waits to enter execution.",
           currentProjectLabel: "Keystone Cloudflare",
-          title: "Project work across runs",
-          summary: "Inspect ready and pending work that is waiting to enter execution in Keystone Cloudflare.",
+          title: "Workstreams",
+          summary: "Inspect ready and pending work that is waiting to enter execution.",
           filters: [
             {
               filterId: "all",
@@ -1500,8 +1511,7 @@ describe("Destination scaffolds", () => {
           pageSizeLabel: "25 per page",
           recordSummaryLabel: "0 matching tasks",
           retry() {},
-          routeGuidance:
-            "Rows open the matching task inside Runs > Execution without leaving the selected project.",
+          routeGuidance: "Rows open the matching task under Runs > Execution.",
           setActiveFilter
         }}
       />
@@ -1528,9 +1538,8 @@ describe("Destination scaffolds", () => {
             activeFilterDescription:
               "Show blocked work that is waiting on unresolved blockers or prerequisites.",
             currentProjectLabel: "Keystone Cloudflare",
-            title: "Project work across runs",
-            summary:
-              "Surface blocked work that needs intervention across every run in Keystone Cloudflare.",
+            title: "Workstreams",
+            summary: "Surface blocked work that needs intervention across every run.",
             filters: [
               {
                 filterId: "all",
@@ -1593,8 +1602,7 @@ describe("Destination scaffolds", () => {
             pageSizeLabel: "25 per page",
             recordSummaryLabel: "2 matching tasks",
             retry() {},
-            routeGuidance:
-              "Rows open the matching task inside Runs > Execution without leaving the selected project.",
+            routeGuidance: "Rows open the matching task under Runs > Execution.",
             setActiveFilter() {}
           }}
         />
@@ -1632,7 +1640,7 @@ describe("Destination scaffolds", () => {
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
     expect(
-      await screen.findByRole("heading", { name: "Project work across runs" })
+      await screen.findByRole("heading", { name: "Workstreams" })
     ).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Loading workstreams" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -1662,11 +1670,11 @@ describe("Destination scaffolds", () => {
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
     expect(
-      await screen.findByRole("heading", { name: "Project work across runs" })
+      await screen.findByRole("heading", { name: "Workstreams" })
     ).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "No active workstreams" })).toBeInTheDocument();
     expect(
-      screen.getByText("Keystone Cloudflare does not have any running, queued, or blocked tasks right now.")
+      screen.getByText("No running, queued, or blocked tasks right now.")
     ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Workstreams pagination")).toHaveTextContent(
@@ -1702,7 +1710,7 @@ describe("Destination scaffolds", () => {
     renderRoute("/workstreams", { useBrowserProjectApi: true });
 
     expect(
-      await screen.findByRole("heading", { name: "Project work across runs" })
+      await screen.findByRole("heading", { name: "Workstreams" })
     ).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Unable to load workstreams" })).toBeInTheDocument();
     expect(screen.getByText("Workstreams failed.")).toBeInTheDocument();
@@ -1939,7 +1947,7 @@ describe("Destination scaffolds", () => {
     });
 
     expect(
-      await screen.findByRole("heading", { name: "Project work across runs" })
+      await screen.findByRole("heading", { name: "Workstreams" })
     ).toBeInTheDocument();
     expectActiveWorkstreamFilter("All");
     expect(
@@ -2198,18 +2206,17 @@ describe("Destination scaffolds", () => {
   it("covers the workstreams fallback and empty-state helpers", () => {
     expect(resolveTaskDisplayId("   ", "task-live-002")).toBe("task-live-002");
     expect(resolveTaskDisplayId("TASK-LIVE-002", "task-live-002")).toBe("TASK-LIVE-002");
-    expect(buildEmptyState("all", "Keystone Cloudflare")).toMatchObject({
+    expect(buildEmptyState("all")).toMatchObject({
       heading: "No workstreams yet",
       kind: "empty",
-      message: "Keystone Cloudflare does not have any recorded tasks yet."
+      message: "No recorded tasks yet."
     });
-    expect(buildEmptyState("active", "Keystone Cloudflare")).toMatchObject({
+    expect(buildEmptyState("active")).toMatchObject({
       heading: "No active workstreams",
       kind: "empty",
-      message:
-        "Keystone Cloudflare does not have any running, queued, or blocked tasks right now."
+      message: "No running, queued, or blocked tasks right now."
     });
-    expect(buildEmptyState("blocked", "Keystone Cloudflare")).toMatchObject({
+    expect(buildEmptyState("blocked")).toMatchObject({
       heading: "No workstreams match this filter",
       kind: "empty",
       message: "No workstreams match the blocked filter right now."
@@ -2220,7 +2227,7 @@ describe("Destination scaffolds", () => {
     const { router } = renderRoute("/workstreams", { runApi: workstreamRunApi });
 
     expect(
-      await screen.findByRole("heading", { name: "Project work across runs" })
+      await screen.findByRole("heading", { name: "Workstreams" })
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-019" });
     expect(screen.getByRole("link", { name: "TASK-019" })).toBeInTheDocument();
@@ -2239,7 +2246,7 @@ describe("Destination scaffolds", () => {
     expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+        "This task already has an attached conversation. Send the next implementation turn here."
       )
     ).toBeInTheDocument();
     expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
@@ -2299,7 +2306,7 @@ describe("Destination scaffolds", () => {
     expect(descriptionField).toHaveValue("Internal operator workspace for the Keystone Cloudflare project.");
     expectDescribedByText(
       descriptionField,
-      "Short operator-facing context for the selected project."
+      "Short operator-facing context shown in the sidebar and project switcher."
     );
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
@@ -2784,7 +2791,7 @@ describe("Destination scaffolds", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("loads live project settings, redirects to components, and keeps the tabs editable", async () => {
+  it("loads live project settings, redirects to overview, and keeps the tabs editable", async () => {
     const liveProjectDetail: ProjectDetailFixture = {
       projectId: scaffoldProject.projectId,
       projectKey: scaffoldProject.projectKey,
@@ -2824,15 +2831,28 @@ describe("Destination scaffolds", () => {
 
     const { container, router } = renderRoute("/settings", { useBrowserProjectApi: true });
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expectProjectConfigurationChromeRemoved(container);
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/settings/overview");
+    });
+
+    const projectTabs = screen.getByRole("navigation", { name: "Project configuration tabs" });
+
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue(
+      "Keystone Cloudflare"
+    );
+    expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("keystone-cloudflare");
+    expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue(
+      "Internal operator workspace for runs, documentation, and workstreams."
+    );
+
+    fireEvent.click(getLinkByHref(projectTabs, "/settings/components"));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/settings/components");
     });
 
-    const projectTabs = screen.getByRole("navigation", { name: "Project configuration tabs" });
     const currentComponentCard = getComponentCard("Component 1");
     const typeField = currentComponentCard.queries.getByRole("combobox", { name: "Type" });
     const sourceModeField = currentComponentCard.queries.getByRole("radio", { name: "Local path" });
@@ -2855,7 +2875,6 @@ describe("Destination scaffolds", () => {
     expect(
       currentComponentCard.queries.getAllByRole("button", { name: "Remove" }).at(-1)
     ).toBeEnabled();
-
     fireEvent.click(getLinkByHref(projectTabs, "/settings/environment"));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/settings/environment");
@@ -2864,7 +2883,6 @@ describe("Destination scaffolds", () => {
     expect(screen.getByRole("heading", { name: "Environment" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("KEYSTONE_AGENT_RUNTIME");
     expect(screen.getByRole("textbox", { name: "Value" })).toHaveValue("scripted");
-
     fireEvent.click(getLinkByHref(projectTabs, "/settings/overview"));
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/settings/overview");
@@ -2922,9 +2940,7 @@ describe("Destination scaffolds", () => {
 
     const { router } = renderRoute("/settings/overview", { useBrowserProjectApi: true });
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
       "Keystone Cloudflare"
     );
@@ -3035,9 +3051,7 @@ describe("Destination scaffolds", () => {
 
     const { router } = renderRoute("/settings/overview", { useBrowserProjectApi: true });
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "Project name" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), {
@@ -3111,10 +3125,10 @@ describe("Destination scaffolds", () => {
     expect(resolvePatchResponse).not.toBeNull();
     resolvePatchResponse!(createJsonResponse(buildProjectDetailResponse(updatedProjectDetail)));
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Keystone Edge Control" })
-    ).toBeInTheDocument();
-    expect(getProjectSelector()).toHaveDisplayValue("Keystone Edge Control");
+    await waitFor(() => {
+      expect(getProjectSelector()).toHaveDisplayValue("Keystone Edge Control");
+    });
+    expect(screen.getByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(
       screen
         .getAllByRole("textbox", { name: "Name" })
@@ -3274,9 +3288,7 @@ describe("Destination scaffolds", () => {
 
     renderRoute("/settings/overview", { useBrowserProjectApi: true });
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Keystone Cloudflare" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Project settings" })).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
       "Keystone Cloudflare"
     );
@@ -3308,9 +3320,9 @@ describe("Destination scaffolds", () => {
       }
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "Project settings: Alt Project" })
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getProjectSelector()).toHaveDisplayValue("Alt Project");
+    });
     expect(
       await screen.findByRole("heading", { name: "Loading project settings" })
     ).toBeInTheDocument();

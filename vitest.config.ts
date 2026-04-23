@@ -17,6 +17,7 @@ export default defineConfig({
       defineProject({
         resolve: {
           alias: {
+            "katex/dist/katex.min.css": resolve(uiSrcRoot, "test/style-stub.ts"),
             "@": resolve(uiSrcRoot)
           }
         },
@@ -28,6 +29,11 @@ export default defineConfig({
             }
           },
           include: ["ui/src/test/**/*.test.tsx"],
+          server: {
+            deps: {
+              inline: ["@platejs/math", "katex"]
+            }
+          },
           setupFiles: ["./ui/src/test/setup.ts"]
         }
       })

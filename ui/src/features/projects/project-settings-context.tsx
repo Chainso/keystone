@@ -486,9 +486,7 @@ export function ProjectSettingsConfigurationProvider({
       hasUnsavedChanges: !areDraftsEqual(currentDraft, currentLoadedDraft),
       isSubmitting: effectiveIsSubmitting,
       loadError,
-      mode: buildProjectConfigurationModeMeta("settings", {
-        title: project ? `Project settings: ${project.displayName}` : "Project settings"
-      }),
+      mode: buildProjectConfigurationModeMeta("settings"),
       status: effectiveStatus,
       submitError: effectiveSubmitError
     }

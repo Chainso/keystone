@@ -4,8 +4,7 @@ import {
 } from "../../shared/navigation/run-phases";
 import { useRunDetail } from "./run-detail-context";
 import { hasCompileProvenance } from "./run-execution-state";
-import { getDefaultRunPlanningPhaseId } from "./run-planning-config";
-import { buildRunActivityLabel, formatMachineLabel, getRunStatusPresentation } from "./run-status";
+import { buildRunActivityLabel, getRunStatusPresentation } from "./run-status";
 import { useReadyRunDetail } from "./use-ready-run-detail";
 import type {
   RunDetailLayoutViewModel,
@@ -20,16 +19,15 @@ function buildHeaderViewModel(run: ReadyRun): RunHeaderViewModel {
 
   return {
     displayId: run.runId,
-    executionEngineLabel: formatMachineLabel(run.executionEngine),
     statusLabel: status.statusLabel,
     statusTone: status.statusTone,
-    summary: "Open the stage rail to move through the current run workspace.",
+    summary:
+      "Move between specification, architecture, execution plan, and execution from this run workspace.",
     updatedLabel: buildRunActivityLabel({
       compiledAt: run.compiledFrom?.compiledAt ?? null,
       endedAt: run.endedAt,
       startedAt: run.startedAt
-    }),
-    workflowInstanceId: run.workflowInstanceId
+    })
   };
 }
 
@@ -90,19 +88,4 @@ export function useRunDetailLayoutViewModel(): RunDetailLayoutViewModel {
     phaseSteps: buildPhaseStepperViewModel(state.run),
     state: "ready"
   };
-}
-
-export function useRunDefaultPhasePath() {
-  const { state } = useReadyRunDetail();
-  const run = state.run!;
-
-  if (hasCompileProvenance(run)) {
-    return buildRunPhasePath(run.runId, "execution");
-  }
-
-  const firstIncompletePhase = getDefaultRunPlanningPhaseId(
-    (phaseId) => !!state.planningDocuments[phaseId].document?.currentRevisionId
-  );
-
-  return buildRunPhasePath(run.runId, firstIncompletePhase);
 }

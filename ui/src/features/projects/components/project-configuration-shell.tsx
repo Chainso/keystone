@@ -27,13 +27,13 @@ const projectConfigurationShellContent = {
     eyebrow: "New project",
     modeLabel: "New project",
     summary:
-      "Set the project overview, repositories, rules, and environment in one tabbed workspace before creating the project."
+      "Set the overview, components, rules, and environment in one tabbed workspace before creating the project."
   },
   settings: {
     eyebrow: "Project settings",
     modeLabel: "Project settings",
     summary:
-      "Update the selected project's repositories, review rules, and environment without leaving the current workspace."
+      "Update the overview, components, rules, and environment in one tabbed workspace, then save the changes directly."
   }
 } satisfies Record<
   ProjectConfigurationMode,

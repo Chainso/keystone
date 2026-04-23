@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { UIMessage } from "ai";
+import { MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID } from "../components/editor/markdown-document-surface";
 
 interface CloudflareChatMock {
   addToolApprovalResponse: ReturnType<typeof vi.fn>;
@@ -239,6 +240,24 @@ function getPlanningDocumentRegion(documentLabel: string) {
   return screen.getByRole("region", { name: documentLabel });
 }
 
+function getPlanningDocumentBodyInput() {
+  return screen.getByTestId(
+    MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID
+  ) as HTMLTextAreaElement;
+}
+
+function changePlanningDocumentBody(markdown: string) {
+  fireEvent.change(getPlanningDocumentBodyInput(), {
+    target: {
+      value: markdown
+    }
+  });
+}
+
+function expectPlanningDocumentBodyValue(markdown: string) {
+  expect(getPlanningDocumentBodyInput()).toHaveValue(markdown);
+}
+
 function normalizeRenderedText(text: string | null | undefined) {
   return text?.replace(/\s+/g, " ").trim() ?? "";
 }
@@ -265,7 +284,7 @@ function expectPlanningChatSurface() {
   expect(screen.getByText("Planning conversation ready")).toBeInTheDocument();
   expect(
     screen.getByText(
-      "This document already has a persisted Cloudflare conversation. Send the next planning turn here."
+      "This document already has an attached planning conversation. Send the next planning turn here."
     )
   ).toBeInTheDocument();
   expect(
@@ -278,7 +297,7 @@ function expectTaskChatSurface() {
   expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
   expect(
     screen.getByText(
-      "This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+      "This task already has an attached conversation. Send the next implementation turn here."
     )
   ).toBeInTheDocument();
   expect(
@@ -1752,51 +1771,37 @@ function createBrowserRunFetch(
 }
 
 describe("Run routes", () => {
-  it("redirects /runs/:runId to execution when compiled workflow data exists", async () => {
+  it("redirects /runs/:runId to specification as the stable run landing", async () => {
     const { router } = renderRunRoute("/runs/run-104");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-104/execution");
+      expect(router.state.location.pathname).toBe("/runs/run-104/specification");
     });
     expect(
       within(screen.getByRole("navigation", { name: "Run phases" })).getByRole("link", {
         name: "Execution"
       })
     ).toHaveAttribute("href", "/runs/run-104/execution");
-    expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
   });
 
-  it("redirects an uncompiled run to the first incomplete planning step", async () => {
-    const { router: planRouter } = renderRunRoute("/runs/run-102");
+  it.each(["run-101", "run-102", "run-103", "run-107"])(
+    "keeps %s on specification instead of inferring a deeper run phase",
+    async (runId) => {
+      const { router } = renderRunRoute(`/runs/${runId}`);
 
-    expect(await screen.findByRole("heading", { name: "run-102" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(planRouter.state.location.pathname).toBe("/runs/run-102/execution-plan");
-    });
+      expect(await screen.findByRole("heading", { name: runId })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe(`/runs/${runId}/specification`);
+      });
+      expect(await screen.findByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+    }
+  );
 
-    const { router: architectureRouter } = renderRunRoute("/runs/run-103");
+  it("keeps the execution materializing state available on the execution route", async () => {
+    renderRunRoute("/runs/run-107/execution");
 
-    expect(await screen.findByRole("heading", { name: "run-103" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(architectureRouter.state.location.pathname).toBe("/runs/run-103/execution-plan");
-    });
-
-    const { router: specificationRouter } = renderRunRoute("/runs/run-101");
-
-    expect(await screen.findByRole("heading", { name: "run-101" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(specificationRouter.state.location.pathname).toBe("/runs/run-101/architecture");
-    });
-  });
-
-  it("redirects a compiled run with a materializing workflow into execution", async () => {
-    const { router } = renderRunRoute("/runs/run-107");
-
-    expect(await screen.findByRole("heading", { name: "run-107" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/runs/run-107/execution");
-    });
     expect(await screen.findByText("Execution is materializing")).toBeInTheDocument();
     expect(
       await screen.findByText(
@@ -1811,7 +1816,7 @@ describe("Run routes", () => {
     ).toHaveAttribute("href", "/runs/run-107/execution");
   });
 
-  it("redirects a brand-new run with no planning documents to specification", async () => {
+  it("keeps a brand-new run with no planning documents on specification", async () => {
     const { router } = renderRunRoute("/runs/run-106");
 
     expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
@@ -1822,13 +1827,19 @@ describe("Run routes", () => {
     expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
   });
 
-  it("renders the run workspace frame with back-link, metadata, and stage summaries", async () => {
+  it("renders the run workspace frame with back-link, concise meta copy, and stage summaries", async () => {
     renderRunRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
-    expect(screen.getByText("Workflow wf-run-104")).toBeInTheDocument();
-    expect(screen.getByText("Engine Think Live")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Move between specification, architecture, execution plan, and execution from this run workspace."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Started 2026-04-20 12:30 UTC")).toBeInTheDocument();
+    expect(screen.queryByText("Workflow wf-run-104")).not.toBeInTheDocument();
+    expect(screen.queryByText("Engine Think Live")).not.toBeInTheDocument();
     const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
 
     expect(within(phaseNavigation).getByText("Agent chat plus the living product spec.")).toBeInTheDocument();
@@ -1970,21 +1981,17 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Specification\n\nBefore divider\n\n---\n\nAfter divider\n"
-      }
-    });
+    changePlanningDocumentBody("# Specification\n\nBefore divider\n\n---\n\nAfter divider\n");
 
     const previewRegion = screen.getByRole("region", {
-      name: "Document preview"
+      name: "Run Specification document"
     });
 
     expect(within(previewRegion).getByRole("separator")).toBeInTheDocument();
     expect(within(previewRegion).getByText("After divider")).toBeInTheDocument();
   });
 
-  it("binds a planning page to the persisted Cloudflare conversation locator", async () => {
+  it("binds a planning page to the persisted planning conversation locator", async () => {
     const browserAuth = {
       token: "browser-agent-token",
       tenantId: "tenant-browser"
@@ -2050,7 +2057,7 @@ describe("Run routes", () => {
     expect(cloudflareConversationMocks.useAgentChat).not.toHaveBeenCalled();
   });
 
-  it("renders planning transcripts with reasoning, sources, approvals, and structured tool outcomes", async () => {
+  it("renders planning transcripts with reasoning, sources, decision requests, and structured tool outcomes", async () => {
     const sendMessage = vi.fn();
     const chatMock = createCloudflareChatMock({
       addToolApprovalResponse: vi.fn(),
@@ -2086,6 +2093,13 @@ describe("Run routes", () => {
     expect(screen.getByText("run_command")).toBeInTheDocument();
     expect(screen.getByText("request_host_access")).toBeInTheDocument();
     expect(screen.getByText("request_human_approval")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for decision")).toBeInTheDocument();
+    expect(screen.getByText("Decision needed")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This tool call is waiting on a human decision before work can continue."
+      )
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Outcome")).toHaveLength(2);
     expect(
       screen.getByText((content) => content.includes("Host shell unavailable."))
@@ -2133,7 +2147,7 @@ describe("Run routes", () => {
     const { fetchMock, requestLog } = createBrowserRunFetch();
     const { router } = renderRoute("/runs/run-104/specification");
     const updatedBody =
-      "# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n- [ ] Preserve task lists in saved markdown.\n- ~~Remove the legacy preview path.~~\n";
+      '# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n\n```ts\nconst stage = "execution";\n```\n';
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
@@ -2148,19 +2162,13 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document title" }), {
       target: {
         value: "Run Specification v2"
       }
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: updatedBody
-      }
-    });
-    expectPlanningDocumentHeading("Document preview", "Specification");
-    expectPlanningDocumentToContain("Document preview", "Save current revisions without route churn.");
-    expectPlanningDocumentToContain("Document preview", "Preserve task lists in saved markdown.");
+    changePlanningDocumentBody(updatedBody);
+    expectPlanningDocumentBodyValue(updatedBody);
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2172,11 +2180,20 @@ describe("Run routes", () => {
       "Run Specification v2 document",
       "- Save current revisions without route churn."
     );
-    expectPlanningDocumentToContain(
-      "Run Specification v2 document",
-      "Preserve task lists in saved markdown."
-    );
+    const documentRegion = getPlanningDocumentRegion("Run Specification v2 document");
+    const codeBlock = documentRegion.querySelector("pre");
+
+    expect(codeBlock).not.toBeNull();
+    expect(codeBlock).toHaveTextContent('const stage = "execution";');
+    expect(codeBlock?.querySelector("code")).not.toBeNull();
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
+    await screen.findByRole("region", { name: "Run Specification v2 document" });
+    expectPlanningDocumentBodyValue(updatedBody);
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    await screen.findByRole("button", { name: "Edit document" });
+
     expectFetchJsonRequest(requestLog, {
       jsonBody: {
         body: updatedBody,
@@ -2264,16 +2281,12 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit document" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Document title" }), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Document title" }), {
       target: {
         value: "Run Specification v2"
       }
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Specification\n- Retry the save after a transient failure.\n"
-      }
-    });
+    changePlanningDocumentBody("# Specification\n- Retry the save after a transient failure.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2286,7 +2299,7 @@ describe("Run routes", () => {
     expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue(
       "Run Specification v2"
     );
-    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
+    expectPlanningDocumentBodyValue(
       "# Specification\n- Retry the save after a transient failure.\n"
     );
     expect(router.state.location.pathname).toBe("/runs/run-104/specification");
@@ -2322,11 +2335,9 @@ describe("Run routes", () => {
       "Run Specification"
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Specification\n- Single-flight planning mutations prevent duplicates.\n"
-      }
-    });
+    changePlanningDocumentBody(
+      "# Specification\n- Single-flight planning mutations prevent duplicates.\n"
+    );
 
     const saveButton = screen.getByRole("button", { name: "Save changes" });
     fireEvent.click(saveButton);
@@ -2403,11 +2414,7 @@ describe("Run routes", () => {
         defaultTitle
       );
 
-      fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-        target: {
-          value: `${defaultTitle}\n${expectedLine}\n`
-        }
-      });
+      changePlanningDocumentBody(`${defaultTitle}\n${expectedLine}\n`);
 
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2517,26 +2524,23 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
 
-    expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
-      "Run Architecture"
-    );
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Discarded draft changes.\n"
-      }
+    await waitFor(() => {
+      expect(screen.getByRole("textbox", { name: "Document title" })).toHaveValue(
+        "Run Architecture"
+      );
     });
+    changePlanningDocumentBody("# Architecture\n- Discarded draft changes.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
 
     expect(screen.getByText("No current architecture revision")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Document body" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId(MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID)
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Save the first architecture revision.\n"
-      }
-    });
+    expectPlanningDocumentBodyValue("");
+    changePlanningDocumentBody("# Architecture\n- Save the first architecture revision.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -2564,11 +2568,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    fireEvent.change(await screen.findByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Guard this draft.\n"
-      }
-    });
+    changePlanningDocumentBody("# Architecture\n- Guard this draft.\n");
 
     fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
 
@@ -2578,9 +2578,7 @@ describe("Run routes", () => {
       );
     });
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
-    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
-      "# Architecture\n- Guard this draft.\n"
-    );
+    expectPlanningDocumentBodyValue("# Architecture\n- Guard this draft.\n");
 
     confirmMock.mockReturnValue(true);
 
@@ -2589,7 +2587,7 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/documentation");
     });
-    expect(await screen.findByRole("heading", { name: "Project documentation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Documentation" })).toBeInTheDocument();
   });
 
   it("registers a beforeunload warning while a planning draft has unsaved changes", async () => {
@@ -2599,11 +2597,7 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
     await screen.findByRole("textbox", { name: "Document title" });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Warn before unload.\n"
-      }
-    });
+    changePlanningDocumentBody("# Architecture\n- Warn before unload.\n");
 
     const beforeUnloadEvent = new Event("beforeunload", {
       cancelable: true
@@ -2663,16 +2657,14 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
     await screen.findByRole("textbox", { name: "Document title" });
-    fireEvent.change(screen.getByRole("textbox", { name: "Document body" }), {
-      target: {
-        value: "# Architecture\n- Save is still pending.\n"
-      }
-    });
+    changePlanningDocumentBody("# Architecture\n- Save is still pending.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("button", { name: "Saving changes..." })).toBeDisabled();
     expect(createRunDocumentRevision).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("textbox", { name: "Document title" })).toBeDisabled();
+    expect(getPlanningDocumentBodyInput()).toBeDisabled();
 
     fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
 
@@ -2682,9 +2674,7 @@ describe("Run routes", () => {
       );
     });
     expect(router.state.location.pathname).toBe("/runs/run-105/architecture");
-    expect(screen.getByRole("textbox", { name: "Document body" })).toHaveValue(
-      "# Architecture\n- Save is still pending.\n"
-    );
+    expectPlanningDocumentBodyValue("# Architecture\n- Save is still pending.\n");
 
     pendingSave.resolve(undefined);
 
@@ -2955,7 +2945,14 @@ describe("Run routes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Compile run" }));
 
-    expect(await screen.findByRole("button", { name: "Compiling run..." })).toBeDisabled();
+    await waitFor(() => {
+      expect(
+        countFetchRequests(fetchMock, {
+          method: "POST",
+          url: "/v1/runs/run-108/compile"
+        })
+      ).toBe(1);
+    });
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-108/execution");
@@ -3284,17 +3281,19 @@ describe("Run routes", () => {
     expect(executionStep).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("renders changed-file groups and unified diffs through the authenticated run API seam", async () => {
+  it("renders task conversation and code review without approval framing", async () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Code review" })).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation."
+        "Continue the task conversation here while changed files, diffs, and review notes stay in the sidebar."
       )
     ).toBeInTheDocument();
     expectTaskChatSurface();
-    expect(screen.getByText("Task scope")).toBeInTheDocument();
+    expect(screen.getByText("Task workspace")).toBeInTheDocument();
+    expect(screen.queryByText(/approvals/i)).not.toBeInTheDocument();
     expect(await screen.findByText("Modified files")).toBeInTheDocument();
     expect(screen.getByText("Added files")).toBeInTheDocument();
     expect(screen.getByText("ui/src/features/execution/components/task-detail-workspace.tsx")).toBeInTheDocument();
@@ -3320,7 +3319,7 @@ describe("Run routes", () => {
     expect(screen.queryByText("Artifacts and review")).not.toBeInTheDocument();
   });
 
-  it("binds task detail to the persisted Cloudflare conversation locator without synthesizing a fallback", async () => {
+  it("binds task detail to the persisted task conversation locator without synthesizing a fallback", async () => {
     const browserAuth = {
       token: "browser-task-token",
       tenantId: "tenant-task-browser"

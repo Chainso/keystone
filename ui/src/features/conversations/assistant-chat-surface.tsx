@@ -241,9 +241,9 @@ function ConversationToolPart({
           <p className="conversation-tool-name">{toolName}</p>
           <p className="conversation-tool-status">
             {toolState === "waiting-approval"
-              ? "Waiting for approval"
+              ? "Waiting for decision"
               : toolState === "approved"
-                ? "Approval submitted"
+                ? "Decision submitted"
                 : toolState === "denied"
                   ? "Denied"
                   : toolState === "error"
@@ -266,9 +266,9 @@ function ConversationToolPart({
 
       {toolState === "waiting-approval" && approvalId ? (
         <div className="conversation-tool-section">
-          <p className="conversation-tool-section-label">Approval required</p>
+          <p className="conversation-tool-section-label">Decision needed</p>
           <p className="conversation-tool-help">
-            This tool call is waiting on a human decision before the Cloudflare conversation can continue.
+            This tool call is waiting on a human decision before work can continue.
           </p>
           {approvalReason ? <p className="conversation-tool-help">{approvalReason}</p> : null}
           <div className="conversation-tool-actions">

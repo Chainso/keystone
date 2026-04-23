@@ -62,7 +62,7 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
             <div className="task-detail-pane-body">
               <section className="task-context-bar" aria-label="Task context">
                 <div className="task-context-copy">
-                  <p className="review-sidebar-label">Task scope</p>
+                  <p className="review-sidebar-label">Task workspace</p>
                   <h2 className="run-detail-title">
                     {model.runDisplayId} / {model.taskDisplayId}
                   </h2>
@@ -101,16 +101,16 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
                     <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
                   </WorkspacePanelHeading>
                   <WorkspacePanelSummary>
-                    Task handoff, execution notes, and live approvals all run through the attached Cloudflare conversation.
+                    Continue the task conversation here while changed files, diffs, and review notes stay in the sidebar.
                   </WorkspacePanelSummary>
                 </WorkspacePanelHeader>
 
                 <AssistantChatSurface
                   composerPlaceholder="Continue this task conversation with Keystone."
-                  emptyMessage="This task already has a persisted Cloudflare conversation. Send the next implementation turn here."
+                  emptyMessage="This task already has an attached conversation. Send the next implementation turn here."
                   emptyTitle="Task conversation ready"
                   locator={model.conversationLocator}
-                  unavailableMessage="Task chat becomes available after the run task record provisions a Cloudflare conversation locator."
+                  unavailableMessage="Task conversation becomes available after the run task record is ready."
                   unavailableTitle="No task conversation attached"
                 />
                 </>
