@@ -122,6 +122,15 @@ Alternatives considered:
   - `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `87 passed` tests.
   - `rtk git diff --check` passed.
 - 2026-04-24: Closed Phase 3 after the single review/fix cycle and moved the active execution focus to Phase 4.
+- 2026-04-24: Phase 4 implementation pass removed project configuration shell summaries, hidden tab summaries, section summaries, and obvious field helper copy while preserving constraints, validation, actions, and route behavior.
+- 2026-04-24: Phase 4 implementation validation:
+  - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `70 passed` tests.
+  - `rtk git diff --check` passed.
+- 2026-04-24: Phase 4 review produced important findings that visible Components-tab instructional blurbs remained, live settings removal coverage was incomplete, and source-mode radio context had been removed from the accessibility tree. The one allowed targeted fix pass removed the remaining visible Components-tab helper blurbs, restored source-mode screen-reader descriptions, and added live settings remove coverage.
+- 2026-04-24: Phase 4 targeted fix validation:
+  - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `71 passed` tests.
+  - `rtk git diff --check` passed.
+- 2026-04-24: Closed Phase 4 after the single review/fix cycle and moved the active execution focus to Phase 5.
 - 2026-04-24: Phase 4 implementation pass removed project configuration shell summary prose, hidden tab summary plumbing, section summaries, and redundant form helper copy while preserving tab navigation, direct create/save/discard/remove actions, validation errors, empty states, Git-repository-only component constraint copy, and non-secret environment warnings.
 - 2026-04-24: Phase 4 implementation validation:
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `70 passed` tests.
@@ -130,6 +139,13 @@ Alternatives considered:
 - 2026-04-24: Phase 4 targeted fix validation:
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `71 passed` tests.
   - `rtk git diff --check` passed.
+- 2026-04-24: Phase 5 closeout validation first exposed planning-editor timing sensitivity in two guard tests when the full targeted UI suite ran together. The tests passed in isolation; the closeout pass added explicit waits for the editor title/source before mutating first-revision drafts.
+- 2026-04-24: Phase 5 final validation:
+  - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed on rerun after the test wait stabilization: `3 passed` files, `127 passed` tests.
+  - `rtk npm run test` passed: `38 passed | 2 skipped` files, `338 passed | 21 skipped` tests.
+  - `rtk npm run build:ui` passed with the known non-blocking Vite large-chunk warning.
+  - `rtk git diff --check` passed.
+- 2026-04-24: Evaluated `README.md`, `.ultrakit/developer-docs/README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `design/workspace-spec.md`, `design/design-guidelines.md`, and `.ultrakit/notes.md`. No durable docs/notes changes were needed because the cleanup changed presentation chrome and test waits, not architecture, contracts, route ownership, backend/API behavior, or durable local workflow guidance.
 
 ## Progress
 
@@ -142,7 +158,7 @@ Alternatives considered:
 - [x] Phase 2: Simplify top-level destination boards. Completed 2026-04-24 after the targeted review fix pass.
 - [x] Phase 3: Simplify run detail, planning, execution, and task panes. Completed 2026-04-24 after the targeted review fix pass.
 - [x] Phase 4: Simplify project configuration tabs/forms. Completed 2026-04-24 after the targeted review fix pass.
-- [ ] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness.
+- [x] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness. Completed 2026-04-24.
 
 ## Surprises & Discoveries
 
@@ -155,6 +171,7 @@ Alternatives considered:
 - During the Phase 2 targeted fix pass, the first required combined app-shell plus destination-scaffold validation run hit an unrelated app-shell timing failure before the project-detail fetch was observed. The immediate rerun passed without code changes.
 - Phase 3 exposed that the task review sidebar had its own explanatory summary blurbs separate from the task-detail panel summary. Those were removed with the task-pane cleanup while retaining changed-file groups, supporting artifact metadata, loading/error/empty copy, and retry behavior.
 - Phase 4 found that project configuration tab summaries were already visually hidden, but still traveled through the tab definitions, view model, and DOM as aria-hidden text. The implementation removed that dead summary path entirely instead of leaving hidden instructional copy behind.
+- Phase 5 final targeted validation showed the planning-editor guard tests could outrun first-revision editor mount when the larger UI suite ran together. Waiting for both the title field and test-only markdown source keeps those tests aligned with the actual editable surface instead of assuming synchronous mount after the button click.
 
 ## Outcomes & Retrospective
 
@@ -175,6 +192,8 @@ The Phase 3 targeted fix pass closed the review gaps without expanding scope. Di
 The Phase 4 implementation pass made `New project` and `Project settings` read as direct tabbed configuration surfaces. The shell now renders just the screen title and tabs, tab links render only category labels, section headers no longer carry category summaries, and obvious form helper descriptions were removed. The intentionally retained copy is constraint or state copy: `Git repository` remains explicit as the only supported component type, environment values remain labeled as non-secret configuration, and validation, loading, error, empty, create, save, discard, and remove states remain visible.
 
 The Phase 4 targeted fix pass closed the review gaps without broadening scope. The Components tab no longer renders the type-picker description, visible source-mode helper cards, or rule-override explanation blurbs; source-mode radios now keep mode-specific screen-reader context through `aria-describedby`; and live settings tests now exercise removing the only component into the dirty validation path plus removing an environment variable through a saved payload.
+
+Phase 5 closed the workspace chrome reduction with final validation and documentation evaluation. A narrow test-only stabilization made the planning guard tests wait for the first-revision editor before mutating draft body content; no product UI, route, API, persistence, or theme behavior changed in the closeout pass. The README, developer docs, workspace spec, design guidelines, and durable notes still describe the current architecture and UI boundaries accurately, so no durable documentation changes were needed beyond this execution plan.
 
 ## Context and Orientation
 
@@ -647,6 +666,9 @@ Phase 4 is closed in `ui/src/features/projects/components/project-configuration-
 
 ### Phase Handoff
 
+Status:
+Completed - ready for final review.
+
 Goal:
 Verify the full workspace chrome reduction, update durable notes/docs only if needed, and leave the plan ready for final review/archive.
 
@@ -702,3 +724,17 @@ Known Constraints / Baseline Failures:
 - `rtk npm run lint` is a known red baseline.
 - `rtk npm run typecheck` is a known red baseline.
 - `rtk npm run build:ui` currently emits a non-blocking Vite large-chunk warning.
+
+Completion Notes:
+Completed 2026-04-24.
+
+- Ran the final targeted UI suite, broad test suite, UI build, and whitespace check.
+- The first two targeted-suite attempts failed in planning-editor guard tests before the first-revision editor had mounted under full-suite load. Both failing tests passed in isolation, and the closeout pass added a narrow test helper that waits for the editor title and test-only markdown source before changing draft body content.
+- Final targeted validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/runs-routes.test.tsx ui/src/test/destination-scaffolds.test.tsx` (`127 passed`).
+- Broad validation passed with `rtk npm run test` (`338 passed | 21 skipped`).
+- `rtk npm run build:ui` passed with the known Vite large-chunk warning.
+- `rtk git diff --check` passed.
+- Reviewed `README.md`, `.ultrakit/developer-docs/README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `design/workspace-spec.md`, `design/design-guidelines.md`, and `.ultrakit/notes.md`; no durable docs/notes edits were needed because the phase changed presentation chrome and test synchronization only, not architecture, contracts, routes, backend/API behavior, or durable workflow guidance.
+
+Next Starter Context:
+Phase 5 is complete and the active index is set to `Ready for final review`. Final validation passed after the narrow planning-editor test wait stabilization in `ui/src/test/runs-routes.test.tsx`. Leave the plan active for the orchestrator's final comprehensive review and archive step; do not archive it from the implementation pass.

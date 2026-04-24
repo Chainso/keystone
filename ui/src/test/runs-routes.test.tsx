@@ -246,6 +246,22 @@ function getPlanningDocumentBodyInput() {
   ) as HTMLTextAreaElement;
 }
 
+async function waitForPlanningDocumentEditor() {
+  const titleField = await screen.findByRole(
+    "textbox",
+    { name: "Document title" },
+    { timeout: 3000 }
+  );
+
+  await screen.findByTestId(
+    MARKDOWN_DOCUMENT_EDITOR_SOURCE_TEST_ID,
+    {},
+    { timeout: 3000 }
+  );
+
+  return titleField as HTMLInputElement;
+}
+
 function changePlanningDocumentBody(markdown: string) {
   fireEvent.change(getPlanningDocumentBodyInput(), {
     target: {
@@ -2580,6 +2596,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
+    await waitForPlanningDocumentEditor();
     changePlanningDocumentBody("# Architecture\n- Guard this draft.\n");
 
     fireEvent.click(screen.getByRole("link", { name: "Documentation" }));
@@ -2668,7 +2685,7 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
-    await screen.findByRole("textbox", { name: "Document title" });
+    await waitForPlanningDocumentEditor();
     changePlanningDocumentBody("# Architecture\n- Save is still pending.\n");
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
