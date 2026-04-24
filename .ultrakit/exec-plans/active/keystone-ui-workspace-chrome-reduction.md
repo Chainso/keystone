@@ -98,6 +98,10 @@ Alternatives considered:
   - `rtk npm run test -- ui/src/test/runs-routes.test.tsx -t "registers a beforeunload warning while a planning draft has unsaved changes"` passed after the optional combined suite first exposed that planning editor timing failure.
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx -t "hydrates live workstreams from direct search params and canonicalizes an out-of-range page"` passed after the optional combined suite rerun exposed that direct workstreams hydration failure.
   - The optional combined targeted UI suite did not produce a clean full-file pass in this run; it failed on two different non-shell tests across reruns while each failing test passed in isolation.
+- 2026-04-24: Phase 1 review produced important test-quality and integration-coherence findings. The one allowed targeted fix pass replaced brittle exact negative assertions for deleted shell helper strings with compact shell structure assertions, and corrected project overview description copy so it no longer claims descriptions appear in the sidebar or project switcher.
+- 2026-04-24: Phase 1 targeted fix validation:
+  - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed: `2 passed` files, `70 passed` tests.
+  - `rtk git diff --check` passed.
 
 ## Progress
 
@@ -106,7 +110,7 @@ Alternatives considered:
 - [x] 2026-04-24 Incorporate user clarification: ignore theme and focus on layout/components plus excess explanatory chrome.
 - [x] 2026-04-24 Run baseline validation and record known failures.
 - [x] 2026-04-24 Create and register the active execution plan.
-- [x] Phase 1: Simplify the global shell/sidebar and shared chrome vocabulary. Completed 2026-04-24; ready for review.
+- [x] Phase 1: Simplify the global shell/sidebar and shared chrome vocabulary. Completed 2026-04-24 after the targeted review fix pass.
 - [ ] Phase 2: Simplify top-level destination boards.
 - [ ] Phase 3: Simplify run detail, planning, execution, and task panes.
 - [ ] Phase 4: Simplify project configuration tabs/forms.
@@ -126,6 +130,8 @@ Alternatives considered:
 Phase 1 closed with the global shell closer to the canonical workspace board: project selection remains global, the project actions are compact `+` and settings controls with screen-reader labels, global navigation remains stable, and the visible theme panel remains available without explanatory sidebar prose.
 
 The Phase 1 change did not alter route structure, project API behavior, project state handling, or theme provider/storage behavior. The only retained shell copy is structural labeling (`Keystone`, `Operator workspace`, `Project`, `Navigation`) plus existing honest loading, empty, and error state copy outside the sidebar's persistent chrome.
+
+The Phase 1 targeted fix pass resolved the review findings without broadening into later cleanup phases: shell coverage now asserts compact navigation and the visible theme control structure instead of exact deleted helper prose, and project overview copy no longer describes the project description as sidebar or project-switcher content.
 
 ## Context and Orientation
 
@@ -268,7 +274,7 @@ If removing a summary prop from a component would force broad churn, prefer maki
 ### Phase Handoff
 
 Status:
-Completed - ready for review.
+Completed - targeted review fix applied.
 
 Goal:
 Reduce the persistent shell/sidebar to the workspace-spec essentials without changing routes, project selection behavior, or theme implementation internals.
@@ -330,9 +336,11 @@ Completed 2026-04-24.
 - Replaced text-heavy project action links with compact icon links using the existing `lucide-react` plus and settings icons, while preserving accessible names, routes, active styling, and tooltips.
 - Removed the `Destinations` subheading and theme explanatory sentence while keeping the visible theme preference panel and underlying theme provider/storage behavior unchanged.
 - Updated shell tests to assert the compact controls remain accessible and the removed sidebar prose no longer renders.
+- Targeted review fix pass completed 2026-04-24: replaced exact negative assertions for deleted shell helper copy with structure-oriented assertions for the global navigation and visible theme controls.
+- Targeted review fix pass also corrected stale project Overview helper copy so the description is described as saved project context rather than sidebar or project-switcher content, with the matching destination scaffold test updated.
 
 Next Starter Context:
-Phase 1 is implemented in `ui/src/shared/layout/shell-sidebar.tsx`, `ui/src/shared/navigation/destinations.ts`, `ui/src/app/styles.css`, and `ui/src/test/app-shell.test.tsx`. Required validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx` (`31 passed`). The optional combined targeted UI suite was attempted twice but showed non-shell file-level instability; the two failing tests each passed when run in isolation. Phase 2 can start from the top-level destination boards (`Runs`, `Documentation`, `Workstreams`) without revisiting shell internals unless review finds a Phase 1 issue.
+Phase 1 is implemented in `ui/src/shared/layout/shell-sidebar.tsx`, `ui/src/shared/navigation/destinations.ts`, `ui/src/app/styles.css`, and `ui/src/test/app-shell.test.tsx`, with the targeted review fix in `ui/src/test/app-shell.test.tsx`, `ui/src/features/projects/components/project-configuration-tabs.tsx`, and `ui/src/test/destination-scaffolds.test.tsx`. Required fix validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` (`70 passed`) and `rtk git diff --check`. The earlier optional combined targeted UI suite instability remains recorded above, but the required Phase 1 fix-pass validation is clean. Phase 2 can start from the top-level destination boards (`Runs`, `Documentation`, `Workstreams`) without revisiting shell internals.
 
 ## Phase 2 - Simplify Top-Level Destination Boards
 

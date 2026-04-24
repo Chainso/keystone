@@ -58,7 +58,7 @@ function ProjectConfigurationOverviewTab() {
   return (
     <ProjectConfigurationSection
       title={model.heading}
-      summary="Capture the project's public name, stable key, and sidebar description."
+      summary="Capture the project's public name, stable key, and operator-facing context."
     >
       <ProjectConfigurationFormFrame disabled={model.isSubmitting}>
         <ProjectConfigurationError message={model.submitError} />
@@ -81,7 +81,7 @@ function ProjectConfigurationOverviewTab() {
           />
           <FormTextAreaField
             label={model.descriptionField.label}
-            description="Short operator-facing context shown in the sidebar and project switcher."
+            description="Short operator-facing context saved with the project."
             value={model.descriptionField.value}
             onChange={(event) => model.descriptionField.onChange?.(event.currentTarget.value)}
             errorMessage={model.descriptionField.errorMessage}

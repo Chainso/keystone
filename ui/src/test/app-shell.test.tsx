@@ -315,6 +315,37 @@ function getThemePreferencePanel() {
   return screen.getByRole("group", { name: "Theme preference" }).closest(".shell-theme-panel");
 }
 
+function expectCompactShellNavigation() {
+  const globalNavigation = screen.getByRole("navigation", { name: "Global navigation" });
+  const globalNavigationLinks = within(globalNavigation).getAllByRole("link");
+  const expectedLinks = [
+    { href: "/runs", name: "Runs" },
+    { href: "/documentation", name: "Documentation" },
+    { href: "/workstreams", name: "Workstreams" }
+  ];
+
+  expect(globalNavigationLinks).toHaveLength(expectedLinks.length);
+  expectedLinks.forEach((link) => {
+    expect(within(globalNavigation).getByRole("link", { name: link.name })).toHaveAttribute(
+      "href",
+      link.href
+    );
+  });
+}
+
+function expectVisibleThemePreferencePanel() {
+  const themePreferencePanel = getThemePreferencePanel();
+
+  expect(themePreferencePanel).not.toBeNull();
+  expect(themePreferencePanel?.closest("aside")?.lastElementChild).toBe(themePreferencePanel);
+  expect(
+    within(themePreferencePanel as HTMLElement)
+      .getAllByRole("radio")
+      .map((radio) => radio.textContent?.trim())
+  ).toEqual(["System", "Light", "Dark"]);
+  expect(themePreferencePanel?.querySelectorAll("p")).toHaveLength(0);
+}
+
 function buildProjectsResponse(projects: CurrentProject[]) {
   return {
     data: {
@@ -813,7 +844,7 @@ describe("App shell", () => {
       "/runs/run-104/specification"
     );
 
-    expect(screen.getByRole("navigation", { name: "Global navigation" })).toBeInTheDocument();
+    expectCompactShellNavigation();
     expect(getProjectSelector()).toHaveDisplayValue("Keystone Cloudflare");
     expectWorkspaceLocation("Keystone Cloudflare", "Runs");
     expect(screen.getByText("Planning is in progress.")).toBeInTheDocument();
@@ -823,18 +854,12 @@ describe("App shell", () => {
         "Open a row to step into the run workspace and move across the four stages."
       )
     ).toBeInTheDocument();
-    expectShellLinkTarget("Runs", "/runs");
-    expectShellLinkTarget("Documentation", "/documentation");
-    expectShellLinkTarget("Workstreams", "/workstreams");
     expectShellLinkTarget("New project", "/projects/new");
     expectShellLinkTarget("Project settings", "/settings");
     expect(
       screen.queryByText("Internal operator workspace for the Keystone Cloudflare project.")
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("Destinations")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("System by default, or pin a workspace theme.")
-    ).not.toBeInTheDocument();
+    expectVisibleThemePreferencePanel();
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeEnabled();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
     expect(

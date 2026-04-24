@@ -2306,7 +2306,7 @@ describe("Destination scaffolds", () => {
     expect(descriptionField).toHaveValue("Internal operator workspace for the Keystone Cloudflare project.");
     expectDescribedByText(
       descriptionField,
-      "Short operator-facing context shown in the sidebar and project switcher."
+      "Short operator-facing context saved with the project."
     );
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
