@@ -107,6 +107,11 @@ Alternatives considered:
 - 2026-04-24: Phase 2 targeted validation:
   - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed: `2 passed` files, `70 passed` tests.
   - `rtk git diff --check` passed.
+- 2026-04-24: Phase 2 review produced one important test-quality finding: documentation tests did not assert the retained selected-document metadata path (`viewerTitle` rendered through `DocumentFrameSummary`) after the destination-board chrome reduction. The one allowed targeted fix pass added behavior-focused route coverage that the current document panel renders distinct scaffold viewer titles before and after switching documents.
+- 2026-04-24: Phase 2 targeted fix validation:
+  - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` passed: `1 passed` file, `39 passed` tests.
+  - The first `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` attempt failed in the unrelated app-shell timing test `waits for the real project selection before loading live project settings`; the immediate rerun passed: `2 passed` files, `70 passed` tests.
+  - `rtk git diff --check` passed.
 
 ## Progress
 
@@ -116,7 +121,7 @@ Alternatives considered:
 - [x] 2026-04-24 Run baseline validation and record known failures.
 - [x] 2026-04-24 Create and register the active execution plan.
 - [x] Phase 1: Simplify the global shell/sidebar and shared chrome vocabulary. Completed 2026-04-24 after the targeted review fix pass.
-- [ ] Phase 2: Simplify top-level destination boards. Implemented 2026-04-24; ready for review.
+- [x] Phase 2: Simplify top-level destination boards. Completed 2026-04-24 after the targeted review fix pass.
 - [ ] Phase 3: Simplify run detail, planning, execution, and task panes.
 - [ ] Phase 4: Simplify project configuration tabs/forms.
 - [ ] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness.
@@ -129,6 +134,7 @@ Alternatives considered:
 - `npm run typecheck` is red before execution for unrelated and pre-existing issues including missing `@platejs/dnd` types, `exactOptionalPropertyTypes` mismatches in generated UI wrappers, assistant-ui message type mismatches, execution task record shape mismatches, and test typing errors.
 - `npm run build:ui` passes but warns that the bundled app chunk is larger than 500 kB after minification.
 - During Phase 1, the optional three-file targeted UI suite showed file-level instability unrelated to shell changes: one run failed the planning unsaved-draft beforeunload test, and the rerun failed a direct workstreams search-param hydration test. Both failing tests passed when run in isolation.
+- During the Phase 2 targeted fix pass, the first required combined app-shell plus destination-scaffold validation run hit an unrelated app-shell timing failure before the project-detail fetch was observed. The immediate rerun passed without code changes.
 
 ## Outcomes & Retrospective
 
@@ -139,6 +145,8 @@ The Phase 1 change did not alter route structure, project API behavior, project 
 The Phase 1 targeted fix pass resolved the review findings without broadening into later cleanup phases: shell coverage now asserts compact navigation and the visible theme control structure instead of exact deleted helper prose, and project overview copy no longer describes the project description as sidebar or project-switcher content.
 
 The Phase 2 implementation pass made the top-level destination boards quieter without changing their contracts. `Runs` keeps `+ New run`, the run table, live/scaffold states, and the recorded-run count; `Documentation` keeps the scaffold-backed tree, selected document viewer, compatibility state, and document-count metadata; `Workstreams` keeps filters, live task rows, pagination, and empty/error/loading states. The intentionally retained documentation frame subtitle comes from selected-document metadata (`viewerTitle`) and identifies the current document content rather than explaining page usage.
+
+The Phase 2 targeted fix pass closed the review gap by proving that selected documentation metadata still renders after the chrome cleanup. The route-level documentation switching test now verifies the default product specification viewer title and the architecture viewer title in the current document panel while continuing to avoid assertions against removed instructional prose.
 
 ## Context and Orientation
 
@@ -354,7 +362,7 @@ Phase 1 is implemented in `ui/src/shared/layout/shell-sidebar.tsx`, `ui/src/shar
 ### Phase Handoff
 
 Status:
-Implemented - ready for review.
+Completed - targeted review fix applied.
 
 Goal:
 Remove extra headers, section summaries, footer guidance, and usage prose from `Runs`, `Documentation`, and `Workstreams` while preserving their core controls and state handling.
@@ -421,9 +429,11 @@ Implemented 2026-04-24.
 - Removed the now-unused `table-row-note` and `documentation-shell-summary` style hooks.
 - Updated `app-shell` and destination scaffold tests so coverage asserts the compact board structure, retained metadata, and absence of the removed instructional copy.
 - Intentionally retained selected documentation frame subtitle text sourced from `viewerTitle` because it is document metadata that distinguishes the current document, not persistent usage guidance.
+- Targeted review fix pass completed 2026-04-24: added behavior-focused documentation route coverage proving that the current document panel renders distinct selected-document `viewerTitle` metadata for the default product spec and after switching to the architecture document.
+- Targeted fix validation passed with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` (`39 passed`), an immediate rerun of `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` (`70 passed`) after an unrelated first-run app-shell timing failure, and `rtk git diff --check`.
 
 Next Starter Context:
-Phase 2 implementation is ready for review in `ui/src/features/runs/components/runs-index-workspace.tsx`, `ui/src/features/documentation/components/documentation-workspace.tsx`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/features/workstreams/use-workstreams-view-model.ts`, `ui/src/app/styles.css`, `ui/src/test/app-shell.test.tsx`, and `ui/src/test/destination-scaffolds.test.tsx`. Required targeted validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` (`70 passed`) and `rtk git diff --check`. Review should stay within top-level destination-board chrome and not broaden into run detail, planning/execution panes, project configuration, theme, or Documentation live-backend work.
+Phase 2 is closed in `ui/src/features/runs/components/runs-index-workspace.tsx`, `ui/src/features/documentation/components/documentation-workspace.tsx`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/features/workstreams/use-workstreams-view-model.ts`, `ui/src/app/styles.css`, `ui/src/test/app-shell.test.tsx`, and `ui/src/test/destination-scaffolds.test.tsx`, with the targeted review fix in `ui/src/test/destination-scaffolds.test.tsx` and this active plan. Required fix validation passed with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx` (`39 passed`), a passing rerun of `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` (`70 passed`) after the recorded unrelated app-shell timing failure, and `rtk git diff --check`. Phase 3 can start from run detail, planning, execution, and task panes without revisiting top-level destination-board chrome, backend/API behavior, route semantics, filtering/pagination, theme, shell internals, or Documentation live-backend work.
 
 ## Phase 3 - Simplify Run Workspace And Execution Panes
 

@@ -799,6 +799,9 @@ describe("Destination scaffolds", () => {
       within(getCurrentDocumentPanel()).getByText("docs/product/current.md")
     ).toBeInTheDocument();
     expect(
+      within(getCurrentDocumentPanel()).getByText("current living product specification")
+    ).toBeInTheDocument();
+    expect(
       within(getDocumentationRegion()).getByText(
         "Operator work stays organized around Runs, Documentation, Workstreams, and project settings inside one workspace."
       )
@@ -812,6 +815,9 @@ describe("Destination scaffolds", () => {
     expect(architectureDocumentId).toBeTruthy();
     expect(
       within(getCurrentDocumentPanel()).getByText("docs/architecture/current.md")
+    ).toBeInTheDocument();
+    expect(
+      within(getCurrentDocumentPanel()).getByText("current living architecture + decisions")
     ).toBeInTheDocument();
     expect(
       within(getDocumentationRegion()).getByText(
