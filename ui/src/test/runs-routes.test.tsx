@@ -3458,6 +3458,37 @@ describe("Run routes", () => {
     expect(screen.queryByText("artifact-task-032-note")).not.toBeInTheDocument();
   });
 
+  it("omits malformed changed-file artifacts without surfacing parser internals", async () => {
+    const fixtures = cloneRunFixtures();
+    const runFixture = fixtures["run-104"];
+
+    if (!runFixture) {
+      throw new Error("Missing run-104 fixture.");
+    }
+
+    runFixture.artifactContents = {
+      ...(runFixture.artifactContents ?? {}),
+      "/v1/artifacts/artifact-task-032-review/content":
+        "diff --git a/src/example.ts b/src/example.ts\nindex 1111111..2222222 100644\n--- a/src/example.ts\n+++ b/src/example.ts\n@@ -1 +1 @@\n\\ No newline at end of file\n"
+    };
+
+    renderRunRoute(
+      "/runs/run-104/execution/tasks/task-032",
+      createRunApiFromFixtures(fixtures)
+    );
+
+    expect(await screen.findByText("run-104 / task-032")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "1 reviewable text artifact could not be parsed and is omitted from this view."
+      )
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("No changed files were parsed from the current reviewable text artifacts.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Unable to load changed files")).not.toBeInTheDocument();
+  });
+
   it("keeps successful changed files visible when one reviewable text artifact fails to load", async () => {
     const fixtures = cloneRunFixtures();
     const baseRunApi = createStaticRunManagementApi(fixtures);

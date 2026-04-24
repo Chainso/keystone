@@ -39,6 +39,11 @@ interface ReviewDiffGroupViewModel {
   label: string;
 }
 
+interface ReviewDiffArtifactLoad {
+  files: ReviewDiffFileViewModel[];
+  parseError: boolean;
+}
+
 type ReviewDiffContentState =
   | { artifactSignature: string; message: string; status: "idle" | "loading" }
   | {
@@ -147,6 +152,23 @@ function buildReviewDiffFiles(
     }));
 }
 
+function buildReviewDiffArtifactLoad(
+  artifact: TaskArtifactViewModel,
+  content: string
+): ReviewDiffArtifactLoad {
+  try {
+    return {
+      files: buildReviewDiffFiles(artifact, content),
+      parseError: false
+    };
+  } catch {
+    return {
+      files: [],
+      parseError: true
+    };
+  }
+}
+
 function buildReviewDiffGroups(files: ReviewDiffFileViewModel[]): ReviewDiffGroupViewModel[] {
   return reviewDiffGroupOrder
     .map((groupId) => {
@@ -163,6 +185,24 @@ function buildReviewDiffGroups(files: ReviewDiffFileViewModel[]): ReviewDiffGrou
       };
     })
     .filter((group): group is ReviewDiffGroupViewModel => group !== null);
+}
+
+function buildReviewDiffReadyMessage(failedLoadCount: number, parseErrorCount: number) {
+  const messages: string[] = [];
+
+  if (failedLoadCount > 0) {
+    messages.push(
+      `${failedLoadCount} reviewable text artifact${failedLoadCount === 1 ? "" : "s"} could not be loaded and ${failedLoadCount === 1 ? "is" : "are"} omitted from this view.`
+    );
+  }
+
+  if (parseErrorCount > 0) {
+    messages.push(
+      `${parseErrorCount} reviewable text artifact${parseErrorCount === 1 ? "" : "s"} could not be parsed and ${parseErrorCount === 1 ? "is" : "are"} omitted from this view.`
+    );
+  }
+
+  return messages.length > 0 ? messages.join(" ") : null;
 }
 
 function buildEmptyReviewDiffState(artifactSignature: string): ReviewDiffContentState {
@@ -221,10 +261,7 @@ function useTaskReviewDiffContent(artifacts: TaskArtifactViewModel[]) {
       reviewCandidates.map(async (artifact) => {
         const content = await api.getArtifactContent(artifact.contentUrl);
 
-        return {
-          artifactId: artifact.artifactId,
-          files: buildReviewDiffFiles(artifact, content)
-        };
+        return buildReviewDiffArtifactLoad(artifact, content);
       })
     ).then((results) => {
       if (requestIdRef.current !== requestId) {
@@ -248,13 +285,11 @@ function useTaskReviewDiffContent(artifacts: TaskArtifactViewModel[]) {
       }
 
       const loadedFiles = successfulLoads.flatMap((result) => result.files);
+      const parseErrorCount = successfulLoads.filter((result) => result.parseError).length;
       setState({
         artifactSignature: reviewCandidateSignature,
         groups: buildReviewDiffGroups(loadedFiles),
-        message:
-          failedLoads.length > 0
-            ? `${failedLoads.length} reviewable text artifact${failedLoads.length === 1 ? "" : "s"} could not be loaded and ${failedLoads.length === 1 ? "is" : "are"} omitted from this view.`
-            : null,
+        message: buildReviewDiffReadyMessage(failedLoads.length, parseErrorCount),
         status: "ready"
       });
     });
