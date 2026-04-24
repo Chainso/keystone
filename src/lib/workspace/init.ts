@@ -145,7 +145,7 @@ function createSandboxAgentBridge(
       workspaceRoot: workspaceTargetPath
     },
     readOnlyRoots: [layout.artifactsInRoot, layout.keystoneRoot],
-    writableRoots: [layout.workspaceRoot, layout.artifactsOutRoot],
+    writableRoots: [layout.workspaceRoot, layout.documentsRoot, layout.artifactsOutRoot],
     environment,
     controlFiles: {
       session: `${layout.keystoneRoot}/session.json`,
@@ -185,6 +185,7 @@ async function prepareProjectionRoots(
   await Promise.all(
     [
       bridge.layout.artifactsInRoot,
+      bridge.layout.documentsRoot,
       bridge.layout.artifactsOutRoot,
       bridge.layout.keystoneRoot
     ].map((path) => session.mkdir(path, { recursive: true }))
@@ -193,7 +194,7 @@ async function prepareProjectionRoots(
   await execOrThrow(
     session,
     [
-      `chmod -R u+w ${quoteShellArgument(bridge.layout.artifactsInRoot)} ${quoteShellArgument(bridge.layout.artifactsOutRoot)} ${quoteShellArgument(bridge.layout.keystoneRoot)} 2>/dev/null || true`,
+      `chmod -R u+w ${quoteShellArgument(bridge.layout.artifactsInRoot)} ${quoteShellArgument(bridge.layout.documentsRoot)} ${quoteShellArgument(bridge.layout.artifactsOutRoot)} ${quoteShellArgument(bridge.layout.keystoneRoot)} 2>/dev/null || true`,
       `find ${quoteShellArgument(bridge.layout.artifactsInRoot)} -mindepth 1 -delete`,
       `find ${quoteShellArgument(bridge.layout.artifactsOutRoot)} -mindepth 1 -delete`,
       `find ${quoteShellArgument(bridge.layout.keystoneRoot)} -mindepth 1 -delete`
@@ -264,6 +265,7 @@ async function lockProjectionRoots(
     session,
     [
       `chmod -R a-w ${quoteShellArgument(bridge.layout.artifactsInRoot)} ${quoteShellArgument(bridge.layout.keystoneRoot)}`,
+      `chmod -R u+rwX ${quoteShellArgument(bridge.layout.documentsRoot)}`,
       `chmod -R u+rwX ${quoteShellArgument(bridge.layout.artifactsOutRoot)}`
     ].join(" && ")
   );

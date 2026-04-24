@@ -36,6 +36,7 @@ import {
 } from "../lib/workflows/ids";
 import { loadExistingRunPlan } from "../lib/workflows/idempotency";
 import { buildRunSandboxId } from "../lib/workspace/worktree";
+import { ensureRunWorkspace } from "../lib/workspace/run-workspace";
 import {
   compileDemoFixtureRunPlan,
   compileRunPlan
@@ -490,6 +491,16 @@ export class RunWorkflow extends WorkflowEntrypoint<WorkerBindings, RunWorkflowP
           await client.close();
         }
       })) as RunContextSnapshot;
+
+      await step.do("ensure run workspace", async () => {
+        await ensureRunWorkspace(this.env, {
+          tenantId: event.payload.tenantId,
+          runId: event.payload.runId,
+          sandboxId: runContext.sandboxId,
+          components: runContext.projectExecution.components,
+          env: runContext.projectExecution.environment
+        });
+      });
 
       compileSummary = await step.do("compile plan", async () => {
         const client = createWorkerDatabaseClient(this.env);

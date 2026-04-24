@@ -17,7 +17,11 @@ export interface ResolvedSandboxPath {
 }
 
 const readOnlyRoots = new Set<keyof SandboxAgentBridge["layout"]>(["artifactsInRoot", "keystoneRoot"]);
-const writableRoots = new Set<keyof SandboxAgentBridge["layout"]>(["workspaceRoot", "artifactsOutRoot"]);
+const writableRoots = new Set<keyof SandboxAgentBridge["layout"]>([
+  "workspaceRoot",
+  "documentsRoot",
+  "artifactsOutRoot"
+]);
 
 function normalizeRequestedPath(requestedPath: string) {
   const trimmed = requestedPath.trim();
@@ -62,6 +66,7 @@ export function resolveSandboxAgentPath(
   const candidates: Array<keyof SandboxAgentBridge["layout"]> = [
     "artifactsInRoot",
     "artifactsOutRoot",
+    "documentsRoot",
     "keystoneRoot",
     "workspaceRoot"
   ];
@@ -94,6 +99,7 @@ function toVirtualPath(
 ) {
   const candidateRoots: Array<keyof SandboxAgentBridge["targets"]> = [
     "workspaceRoot",
+    "documentsRoot",
     "artifactsInRoot",
     "artifactsOutRoot",
     "keystoneRoot"

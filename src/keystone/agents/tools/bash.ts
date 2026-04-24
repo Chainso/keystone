@@ -23,6 +23,7 @@ function rewriteCommandPaths(command: string, bridge: SandboxAgentBridge) {
   const roots = [
     bridge.layout.artifactsInRoot,
     bridge.layout.artifactsOutRoot,
+    bridge.layout.documentsRoot,
     bridge.layout.keystoneRoot,
     bridge.layout.workspaceRoot
   ].sort((left, right) => right.length - left.length);

@@ -74,12 +74,14 @@ const implementerMockTurnStepSchema = z.discriminatedUnion("type", [
 const baseBridgeSchema = z.object({
   layout: z.object({
     workspaceRoot: z.string().trim().min(1),
+    documentsRoot: z.string().trim().min(1),
     artifactsInRoot: z.string().trim().min(1),
     artifactsOutRoot: z.string().trim().min(1),
     keystoneRoot: z.string().trim().min(1)
   }),
   targets: z.object({
     workspaceRoot: z.string().trim().min(1),
+    documentsRoot: z.string().trim().min(1),
     artifactsInRoot: z.string().trim().min(1),
     artifactsOutRoot: z.string().trim().min(1),
     keystoneRoot: z.string().trim().min(1)

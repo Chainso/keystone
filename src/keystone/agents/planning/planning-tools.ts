@@ -1,15 +1,20 @@
+import { createExecuteTool } from "@cloudflare/think/tools/execute";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 
+import type { WorkerBindings } from "../../../env";
+import { saveRunDocumentTextRevision } from "../../../lib/documents/revision-persistence";
 import { execSandboxAgentBash } from "../tools/bash";
-import {
-  listSandboxAgentFiles,
-  readSandboxAgentFile
-} from "../tools/filesystem";
+import { readSandboxAgentFile } from "../tools/filesystem";
+import { createSandboxWorkspaceTools } from "../tools/sandbox-workspace-tools";
+import type { PlanningDocumentAgentConfig } from "./planning-agent-config";
 import type { PlanningSandboxContext } from "./planning-context";
 
 export interface PlanningToolDependencies {
+  env: WorkerBindings;
   loadContext: () => Promise<PlanningSandboxContext | null>;
+  loader: WorkerLoader;
+  documentConfig: PlanningDocumentAgentConfig | null;
 }
 
 async function requirePlanningContext(
@@ -24,50 +29,60 @@ async function requirePlanningContext(
   return context;
 }
 
-export function createPlanningTools(input: PlanningToolDependencies): ToolSet {
-  return {
-    read_file: tool({
-      description:
-        "Read a file from the current run planning sandbox under /workspace, /artifacts/in, /artifacts/out, or /keystone.",
-      inputSchema: z.object({
-        path: z.string().trim().min(1)
-      }),
-      execute: async ({ path }) => {
-        const context = await requirePlanningContext(input.loadContext);
-        const result = await readSandboxAgentFile(context, path);
+function createDocumentSaveTools(input: PlanningToolDependencies): ToolSet {
+  const config = input.documentConfig;
 
-        return {
-          path,
-          content: result.content,
-          encoding: result.encoding,
-          size: result.size
-        };
-      }
-    }),
-    list_files: tool({
-      description: "List files from a path within the current run planning sandbox bridge roots.",
+  if (!config) {
+    return {};
+  }
+
+  return {
+    [config.saveToolName]: tool({
+      description: config.saveToolDescription,
       inputSchema: z.object({
-        path: z.string().trim().min(1),
-        recursive: z.boolean().optional()
+        title: z.string().trim().min(1).optional()
       }),
-      execute: async ({ path, recursive }) => {
+      execute: async ({ title }) => {
         const context = await requirePlanningContext(input.loadContext);
-        const result = await listSandboxAgentFiles(context, path, {
-          recursive: recursive ?? false,
-          includeHidden: true
+        const draft = await readSandboxAgentFile(context, config.draftSandboxPath);
+
+        const content = draft.content;
+
+        const result = await saveRunDocumentTextRevision({
+          env: input.env,
+          tenantId: context.identity.tenantId,
+          runId: context.identity.runId,
+          path: config.documentPath,
+          kind: config.documentKind,
+          content,
+          title: title ?? `Agent save for ${config.documentPath}`
         });
 
         return {
-          path: result.path,
-          count: result.count,
-          files: result.files.map((file) => ({
-            path: file.absolutePath,
-            type: file.type,
-            size: file.size
-          }))
+          documentId: result.document.documentId,
+          documentRevisionId: result.revision.documentRevisionId,
+          revisionNumber: result.revision.revisionNumber,
+          path: result.document.path,
+          title: result.revision.title,
+          bytesWritten: result.artifact.sizeBytes
         };
       }
+    })
+  };
+}
+
+export function createPlanningTools(input: PlanningToolDependencies): ToolSet {
+  const workspaceTools = createSandboxWorkspaceTools(() =>
+    requirePlanningContext(input.loadContext)
+  );
+
+  return {
+    ...workspaceTools,
+    execute: createExecuteTool({
+      tools: workspaceTools,
+      loader: input.loader
     }),
+    ...createDocumentSaveTools(input),
     run_bash: tool({
       description:
         "Execute an inspection-oriented bash command inside the current run planning workspace.",

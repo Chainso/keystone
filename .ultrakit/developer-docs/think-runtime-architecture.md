@@ -64,6 +64,7 @@ The current persisted conversation classes are:
 `TaskSessionDO.ensureWorkspace()` materializes task-specific worktrees inside the shared run sandbox and exposes a stable agent-facing layout:
 
 - `/workspace`
+- `/documents`
 - `/artifacts/in`
 - `/artifacts/out`
 - `/keystone`
@@ -71,10 +72,12 @@ The current persisted conversation classes are:
 Important rules:
 
 - one sandbox exists per run
+- `RunWorkflow` ensures the project workspace at run start before compile and task scheduling
 - task isolation comes from task-specific worktrees, not separate sandboxes
-- `/workspace` and `/artifacts/out` are writable
+- `/workspace`, `/documents`, and `/artifacts/out` are writable
 - `/artifacts/in` and `/keystone` are read-only inputs
 - staged files under `/artifacts/out` are not durable until `TaskWorkflow` promotes them into R2 and records `artifact_refs`
+- `/documents` is sandbox-local planning draft state and is preserved across bridge rematerialization until a save tool persists the draft as a Keystone document revision
 - task rematerialization excludes the current task's own prior artifacts from `/artifacts/in`
 
 `TaskSessionDO` is internal execution plumbing, not a product-level return to session-centric state.
@@ -89,6 +92,12 @@ Current planning-agent behavior:
 - planning chats can inspect the run-scoped project workspace under `/workspace`
 - current run artifacts and planning revisions are projected under `/artifacts/in`
 - planning bash commands inherit the same project environment variables that task execution receives
+- planning document drafts are edited in the sandbox under `/documents/<canonical-document>.md`
+- Think's native workspace tool implementations (`read`, `write`, `edit`, `list`, `find`, `grep`, `delete`) are configured with sandbox-backed operations, so they see the same agent-facing `/workspace`, `/documents`, `/artifacts/in`, `/artifacts/out`, and `/keystone` paths
+- `run_bash` remains available for shell-oriented inspection, but ordinary file inspection should prefer `read`, `list`, `find`, and `grep`
+- the `execute` tool is backed by the Worker Loader binding and receives the same sandbox-backed workspace tools for code-mode document operations
+- each canonical planning document exposes only its matching save tool: `save_specification`, `save_architecture`, or `save_execution_plan`
+- save tools read the matching sandbox draft and persist a new Keystone document revision backed by R2 and `document_revisions`
 - planning chat remains an inspection and decision-making surface; authoritative run/task state is still persisted by Keystone, not by Think history
 
 The planning-agent prompts are intentionally distinct:

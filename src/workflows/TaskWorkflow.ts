@@ -133,12 +133,14 @@ type JsonValue =
 interface SerializableAgentBridge {
   layout: {
     workspaceRoot: string;
+    documentsRoot: string;
     artifactsInRoot: string;
     artifactsOutRoot: string;
     keystoneRoot: string;
   };
   targets: {
     workspaceRoot: string;
+    documentsRoot: string;
     artifactsInRoot: string;
     artifactsOutRoot: string;
     keystoneRoot: string;

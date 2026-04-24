@@ -48,18 +48,20 @@ const mocked = vi.hoisted(() => {
         agentBridge: {
           layout: {
             workspaceRoot: "/workspace",
+            documentsRoot: "/documents",
             artifactsInRoot: "/artifacts/in",
             artifactsOutRoot: "/artifacts/out",
             keystoneRoot: "/keystone"
           },
           targets: {
             workspaceRoot: "/workspace/runs/run-123/tasks/task-live-implementation-run-task",
+            documentsRoot: "/documents",
             artifactsInRoot: "/artifacts/in",
             artifactsOutRoot: "/artifacts/out",
             keystoneRoot: "/keystone"
           },
           readOnlyRoots: ["/artifacts/in", "/keystone"],
-          writableRoots: ["/workspace", "/artifacts/out"],
+          writableRoots: ["/workspace", "/documents", "/artifacts/out"],
           environment: input.env,
           controlFiles: {
             session: "/keystone/session.json",

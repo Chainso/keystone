@@ -11,6 +11,7 @@ export type AgentTurnOutcome = (typeof agentTurnOutcomeValues)[number];
 
 export interface AgentFilesystemLayout {
   workspaceRoot: string;
+  documentsRoot: string;
   artifactsInRoot: string;
   artifactsOutRoot: string;
   keystoneRoot: string;
@@ -18,6 +19,7 @@ export interface AgentFilesystemLayout {
 
 export const DEFAULT_AGENT_FILESYSTEM_LAYOUT: AgentFilesystemLayout = {
   workspaceRoot: "/workspace",
+  documentsRoot: "/documents",
   artifactsInRoot: "/artifacts/in",
   artifactsOutRoot: "/artifacts/out",
   keystoneRoot: "/keystone"

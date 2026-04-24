@@ -1,8 +1,9 @@
-import { Think } from "@cloudflare/think";
+import { Think, type TurnConfig, type TurnContext } from "@cloudflare/think";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
 import type { WorkerBindings } from "../../../env";
+import { appendAssistantUiModelContext } from "./assistant-ui-model-context";
 import { ensureThinkRpcInitialization } from "./think-rpc";
 import {
   type AgentFilesystemLayout,
@@ -114,6 +115,16 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
         await this.recordToolEvent(event);
       }
     });
+  }
+
+  override beforeTurn(ctx: TurnContext): TurnConfig | void {
+    const system = appendAssistantUiModelContext(ctx.system, ctx.body);
+
+    if (system === ctx.system) {
+      return undefined;
+    }
+
+    return { system };
   }
 
   private currentSandboxSession!: Awaited<ReturnType<typeof ensureSandboxSession>>["session"];

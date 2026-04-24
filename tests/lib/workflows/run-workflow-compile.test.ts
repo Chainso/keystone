@@ -128,6 +128,11 @@ const mocked = vi.hoisted(() => {
       runState.runRecord = runRecord;
       return runRecord;
     }),
+    ensureRunWorkspace: vi.fn(async () => ({
+      workspace: {
+        agentBridge: {}
+      }
+    })),
     failRunAndCancelOutstandingTasks: vi.fn(async (_client, input) => {
       if (!runState.runRecord) {
         throw new Error(`Run ${input.runId} was not found.`);
@@ -438,6 +443,10 @@ vi.mock("../../../src/lib/workflows/idempotency", () => ({
   loadExistingRunPlan: mocked.loadExistingRunPlan
 }));
 
+vi.mock("../../../src/lib/workspace/run-workspace", () => ({
+  ensureRunWorkspace: mocked.ensureRunWorkspace
+}));
+
 vi.mock("../../../src/keystone/compile/plan-run", () => ({
   compileDemoFixtureRunPlan: mocked.compileDemoFixtureRunPlan,
   compileRunPlan: mocked.compileRunPlan
@@ -668,6 +677,14 @@ describe("RunWorkflow authoritative DAG scheduling", () => {
 
     const result = await workflow.run(createWorkflowEvent() as never, step as never);
 
+    expect(mocked.ensureRunWorkspace).toHaveBeenCalledWith(
+      env,
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        sandboxId: "kt-tenant-fixture-run-123-run-123"
+      })
+    );
     expect(mocked.compileRunPlan).toHaveBeenCalledTimes(1);
     expect(mocked.compileRunPlan).toHaveBeenCalledWith(
       expect.objectContaining({

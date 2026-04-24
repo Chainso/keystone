@@ -101,18 +101,20 @@ const mocked = vi.hoisted(() => {
       agentBridge: {
         layout: {
           workspaceRoot: "/workspace",
+          documentsRoot: "/documents",
           artifactsInRoot: "/artifacts/in",
           artifactsOutRoot: "/artifacts/out",
           keystoneRoot: "/keystone"
         },
         targets: {
           workspaceRoot: "/workspace/runs/run-123/tasks/task-1-run-task",
+          documentsRoot: "/documents",
           artifactsInRoot: "/artifacts/in",
           artifactsOutRoot: "/artifacts/out",
           keystoneRoot: "/keystone"
         },
         readOnlyRoots: ["/artifacts/in", "/keystone"],
-        writableRoots: ["/workspace", "/artifacts/out"],
+        writableRoots: ["/workspace", "/documents", "/artifacts/out"],
         environment: {
           KEYSTONE_FIXTURE_PROJECT: "1"
         },
@@ -127,18 +129,20 @@ const mocked = vi.hoisted(() => {
     materializeSandboxAgentBridge: vi.fn(async (_session, input) => ({
       layout: {
         workspaceRoot: "/workspace",
+        documentsRoot: "/documents",
         artifactsInRoot: "/artifacts/in",
         artifactsOutRoot: "/artifacts/out",
         keystoneRoot: "/keystone"
       },
       targets: {
         workspaceRoot: "/workspace/runs/run-123/tasks/task-1-run-task",
+        documentsRoot: "/documents",
         artifactsInRoot: "/artifacts/in",
         artifactsOutRoot: "/artifacts/out",
         keystoneRoot: "/keystone"
       },
       readOnlyRoots: ["/artifacts/in", "/keystone"],
-      writableRoots: ["/workspace", "/artifacts/out"],
+      writableRoots: ["/workspace", "/documents", "/artifacts/out"],
       environment: input.environment,
       controlFiles: {
         session: "/keystone/session.json",
@@ -274,7 +278,12 @@ describe("TaskSessionDO", () => {
       expect.any(Object),
       expect.objectContaining({
         tenantId: "tenant-fixture",
-        runId: "run-123",
+        runId: "run-123"
+      })
+    );
+    expect(mocked.listArtifactsForSandboxProjection).not.toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
         excludeRunTaskId: "run-task-123"
       })
     );
@@ -380,6 +389,43 @@ describe("TaskSessionDO", () => {
       },
       terminalEventRecorded: true
     });
+  });
+
+  it("excludes the current task artifacts only when the run task id is a UUID", async () => {
+    const state = new FakeDurableObjectState();
+    const taskSession = new TaskSessionDO(state as never, {} as never);
+    const runTaskId = "11111111-1111-4111-8111-111111111111";
+    await state.ready;
+
+    await taskSession.initialize({
+      tenantId: "tenant-fixture",
+      runId: "run-123",
+      sessionId: "task-session-123",
+      taskId: "task-1",
+      runTaskId
+    });
+
+    await taskSession.ensureWorkspace({
+      components: [
+        {
+          type: "inline",
+          componentKey: "repo",
+          repoUrl: "fixture://demo-target",
+          repoRef: "main",
+          baseRef: "main",
+          files: []
+        }
+      ]
+    });
+
+    expect(mocked.listArtifactsForSandboxProjection).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        tenantId: "tenant-fixture",
+        runId: "run-123",
+        excludeRunTaskId: runTaskId
+      })
+    );
   });
 
   it("reattaches to a deterministic sandbox process when no active snapshot is stored", async () => {

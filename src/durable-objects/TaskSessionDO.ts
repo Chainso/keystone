@@ -64,6 +64,8 @@ export type StartProcessInput = {
 
 const STATE_STORAGE_KEY = "task-session-state";
 const TASK_PROCESS_ID_PREFIX = "task-process";
+const postgresUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function hasEnvOverrides(
   value: Record<string, string | undefined> | undefined
@@ -73,6 +75,10 @@ function hasEnvOverrides(
 
 function buildTaskProcessId(sessionId: string) {
   return `${TASK_PROCESS_ID_PREFIX}:${sessionId}`;
+}
+
+function isPostgresUuid(value: string) {
+  return postgresUuidPattern.test(value);
 }
 
 function refreshProcessSnapshot(
@@ -235,7 +241,7 @@ export class TaskSessionDO extends DurableObject<WorkerBindings> {
       const artifactsForProjection = await listArtifactsForSandboxProjection(client, {
         tenantId: snapshot.tenantId,
         runId: snapshot.runId,
-        excludeRunTaskId: snapshot.runTaskId
+        excludeRunTaskId: isPostgresUuid(snapshot.runTaskId) ? snapshot.runTaskId : undefined
       });
       const projectedArtifacts = await loadProjectedArtifacts(this.env, artifactsForProjection);
       const agentBridge = await materializeSandboxAgentBridge(sandboxSession, {

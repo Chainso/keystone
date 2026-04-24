@@ -317,6 +317,23 @@ describe("sandbox agent bridge", () => {
     expect(session.files.has(bridge.projectedArtifacts[0]!.projectedPath)).toBe(true);
   });
 
+  it("preserves sandbox document drafts across bridge rematerialization", async () => {
+    const session = new FakeExecutionSession();
+    const workspace = createWorkspace();
+
+    await session.writeFile("/documents/specification.md", "# Draft\n");
+    await materializeSandboxAgentBridge(session as unknown as ExecutionSession, {
+      workspace,
+      tenantId: "tenant-a",
+      runId: "run-123",
+      sessionId: "session-123",
+      taskId: "task-1",
+      sandboxId: "sandbox-123"
+    });
+
+    expect(session.files.get("/documents/specification.md")?.content).toBe("# Draft\n");
+  });
+
   it("maps workspace writes onto the real task worktree and lists staged outputs", async () => {
     const { session, bridge } = await createMaterializedBridge();
 
