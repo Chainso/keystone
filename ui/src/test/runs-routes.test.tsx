@@ -29,6 +29,32 @@ interface CloudflareChatMock {
   stop: ReturnType<typeof vi.fn>;
 }
 
+interface CloudflareAgentMock {
+  addEventListener: ReturnType<typeof vi.fn>;
+  agent: string;
+  call: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  getHttpUrl: () => string;
+  identified: boolean;
+  name: string;
+  ready: Promise<void>;
+  reconnect: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+  setState: ReturnType<typeof vi.fn>;
+  state: unknown;
+  stub: Record<string, never>;
+}
+
+interface CloudflareAgentChatOptions {
+  agent: CloudflareAgentMock;
+  body?: unknown;
+  credentials?: RequestCredentials;
+  headers?: HeadersInit;
+  onToolCall?: unknown;
+  tools?: unknown;
+}
+
 function createCloudflareChatMock(overrides: Partial<CloudflareChatMock> = {}) {
   return {
     ...defaultCloudflareChatMock(),
@@ -158,7 +184,7 @@ function createAssistantTranscriptMessages(): UIMessage[] {
 }
 
 const cloudflareConversationMocks = vi.hoisted(() => ({
-  useAgent: vi.fn((options: { agent: string; name?: string; query?: Record<string, string> }) => ({
+  useAgent: vi.fn((options: { agent: string; name?: string; query?: Record<string, string> }): CloudflareAgentMock => ({
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     send: vi.fn(),
@@ -174,7 +200,7 @@ const cloudflareConversationMocks = vi.hoisted(() => ({
     agent: options.agent,
     name: options.name ?? "default"
   })),
-  useAgentChat: vi.fn(() => createCloudflareChatMock())
+  useAgentChat: vi.fn((_options: CloudflareAgentChatOptions) => createCloudflareChatMock())
 }));
 
 type WindowWithDevAuth = Window & {
@@ -204,7 +230,9 @@ import { renderRoute } from "./render-route";
 afterEach(() => {
   cleanup();
   cloudflareConversationMocks.useAgent.mockClear();
-  cloudflareConversationMocks.useAgentChat.mockImplementation(() => createCloudflareChatMock());
+  cloudflareConversationMocks.useAgentChat.mockImplementation((_options) =>
+    createCloudflareChatMock()
+  );
   cloudflareConversationMocks.useAgentChat.mockClear();
   (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = undefined;
   vi.unstubAllGlobals();

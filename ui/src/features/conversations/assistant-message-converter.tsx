@@ -2,6 +2,9 @@ import { createMessageConverter } from "@assistant-ui/core/react";
 import { type MessageStatus, type ThreadMessageLike } from "@assistant-ui/react";
 import { getToolName, isDataUIPart, isToolUIPart, type UIMessage } from "ai";
 
+type ThreadMessageContent = Exclude<ThreadMessageLike["content"], string>;
+type ThreadMessageContentPart = ThreadMessageContent[number];
+
 function stringifyStructuredValue(value: unknown) {
   if (typeof value === "string") {
     return value;
@@ -18,11 +21,45 @@ function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function convertToolPart(part: UIMessage["parts"][number]) {
-  if (!isToolUIPart(part)) {
+type CloudflareDynamicToolPart = UIMessage["parts"][number] & {
+  approval?: {
+    approved?: boolean;
+    id?: string;
+    reason?: string;
+  };
+  errorText?: string;
+  input?: unknown;
+  output?: unknown;
+  state?: string;
+  toolCallId: string;
+  toolName: string;
+  type: "dynamic-tool";
+};
+
+function isCloudflareDynamicToolPart(
+  part: UIMessage["parts"][number]
+): part is CloudflareDynamicToolPart {
+  return (
+    isJsonRecord(part) &&
+    part.type === "dynamic-tool" &&
+    typeof part.toolCallId === "string" &&
+    typeof part.toolName === "string"
+  );
+}
+
+function convertToolPart(part: UIMessage["parts"][number]): ThreadMessageContentPart[] {
+  const isStandardToolPart = isToolUIPart(part);
+
+  if (!isStandardToolPart && !isCloudflareDynamicToolPart(part)) {
     return [];
   }
 
+  const partRecord = part as Record<string, unknown>;
+  const toolName = isStandardToolPart
+    ? getToolName(part)
+    : typeof partRecord.toolName === "string"
+      ? partRecord.toolName
+      : "tool";
   const inputText = stringifyStructuredValue(part.input);
   const result =
     part.state === "output-available"
@@ -45,23 +82,22 @@ function convertToolPart(part: UIMessage["parts"][number]) {
               }
           : undefined;
 
-  return [
-    {
-      type: "tool-call" as const,
-      ...(isJsonRecord(part.input) ? { args: part.input } : null),
-      argsText: inputText,
-      ...(result !== undefined ? { result } : null),
-      ...(part.state === "output-error" || part.state === "output-denied"
-        ? { isError: true }
-        : null),
-      toolCallId: part.toolCallId,
-      toolName: getToolName(part)
-    }
-  ];
+  const toolPart: ThreadMessageContentPart = {
+    type: "tool-call",
+    argsText: inputText,
+    ...(result !== undefined ? { result } : {}),
+    ...(part.state === "output-error" || part.state === "output-denied"
+      ? { isError: true }
+      : {}),
+    toolCallId: part.toolCallId,
+    toolName
+  };
+
+  return [toolPart];
 }
 
-function convertMessagePart(part: UIMessage["parts"][number]): ThreadMessageLike["content"] {
-  if (isToolUIPart(part)) {
+function convertMessagePart(part: UIMessage["parts"][number]): ThreadMessageContentPart[] {
+  if (isToolUIPart(part) || isCloudflareDynamicToolPart(part)) {
     return convertToolPart(part);
   }
 
@@ -79,7 +115,7 @@ function convertMessagePart(part: UIMessage["parts"][number]): ThreadMessageLike
         {
           id: part.sourceId,
           sourceType: "url",
-          title: part.title,
+          ...(part.title ? { title: part.title } : {}),
           type: "source",
           url: part.url
         }
@@ -100,8 +136,8 @@ function convertMessagePart(part: UIMessage["parts"][number]): ThreadMessageLike
       return [
         {
           data: part.url,
-          filename: part.filename,
           mimeType: part.mediaType,
+          ...(part.filename ? { filename: part.filename } : {}),
           type: "file"
         }
       ];
@@ -114,7 +150,9 @@ function convertMessagePart(part: UIMessage["parts"][number]): ThreadMessageLike
 
 function getAssistantMessageStatus(message: UIMessage): MessageStatus | undefined {
   const hasApprovalRequest = message.parts.some(
-    (part) => isToolUIPart(part) && part.state === "approval-requested"
+    (part) =>
+      (isToolUIPart(part) || isCloudflareDynamicToolPart(part)) &&
+      part.state === "approval-requested"
   );
 
   if (!hasApprovalRequest) {
@@ -128,16 +166,16 @@ function getAssistantMessageStatus(message: UIMessage): MessageStatus | undefine
 }
 
 export const cloudflareAssistantMessageConverter = createMessageConverter<UIMessage>((message) => {
-  const content = message.parts.flatMap((part) => convertMessagePart(part));
+  const content: ThreadMessageContentPart[] = message.parts.flatMap((part) =>
+    convertMessagePart(part)
+  );
+  const status = message.role === "assistant" ? getAssistantMessageStatus(message) : undefined;
 
-  return {
-    ...(message.role === "assistant"
-      ? {
-          status: getAssistantMessageStatus(message)
-        }
-      : null),
+  const converted: ThreadMessageLike = {
     content,
     id: message.id,
     role: message.role
   };
+
+  return status ? { ...converted, status } : converted;
 });

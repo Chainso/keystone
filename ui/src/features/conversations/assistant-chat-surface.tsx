@@ -1,33 +1,35 @@
 import {
-  ActionBarPrimitive,
   AssistantRuntimeProvider,
+  Interactables,
   type AppendMessage,
-  ComposerPrimitive,
-  type DataMessagePartProps,
-  type FileMessagePartProps,
-  MessagePrimitive,
-  type ReasoningGroupProps,
-  type SourceMessagePartProps,
-  ThreadPrimitive,
-  type ToolCallMessagePartProps,
-  useExternalStoreRuntime
+  type ToolCallMessagePartComponent,
+  type ToolCallMessagePartStatus,
+  useAui,
+  useAssistantInteractable,
+  useExternalStoreRuntime,
+  useInteractableState
 } from "@assistant-ui/react";
-import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import {
   getToolApproval,
   getToolInput,
   getToolOutput,
   getToolPartState
 } from "@cloudflare/ai-chat/react";
+import type { AITool, OnToolCallCallback } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, type UIMessage } from "ai";
-import { AlertTriangleIcon, BotIcon, CheckIcon, LoaderCircleIcon, UserIcon, XIcon } from "lucide-react";
-import { createContext, useContext, useMemo } from "react";
-import remarkGfm from "remark-gfm";
+import { AlertTriangleIcon, CheckIcon, LoaderCircleIcon, XIcon } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 
+import { Thread } from "../../components/assistant-ui/thread";
+import { ToolFallback } from "../../components/assistant-ui/tool-fallback";
 import { Button } from "../../components/ui/button";
+import { cn } from "../../lib/utils";
 import type { ConversationLocator } from "../runs/run-types";
 import { cloudflareAssistantMessageConverter } from "./assistant-message-converter";
 import { useCloudflareConversation } from "./use-cloudflare-conversation";
+
+const assistantUiModelContextBodyKey = "assistantUiModelContext";
 
 interface AssistantChatSurfaceProps {
   composerPlaceholder: string;
@@ -36,9 +38,12 @@ interface AssistantChatSurfaceProps {
   locator: ConversationLocator | null;
   unavailableMessage: string;
   unavailableTitle: string;
+  contextTitle?: string;
 }
 
 type ConversationContextValue = ReturnType<typeof useCloudflareConversation>["chat"];
+type AssistantClient = ReturnType<typeof useAui>;
+type ClientToolMap = Record<string, AITool<unknown, unknown>>;
 
 const ConversationContext = createContext<ConversationContextValue | null>(null);
 
@@ -50,63 +55,6 @@ function useConversationContext() {
   }
 
   return value;
-}
-
-function formatStructuredValue(value: unknown) {
-  if (value === undefined) {
-    return null;
-  }
-
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function isJsonRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getApprovalRequestResult(value: unknown) {
-  if (!isJsonRecord(value)) {
-    return undefined;
-  }
-
-  const approvalRequest = value.approvalRequest;
-
-  if (!isJsonRecord(approvalRequest)) {
-    return undefined;
-  }
-
-  return {
-    id: typeof approvalRequest.id === "string" ? approvalRequest.id : undefined,
-    reason:
-      typeof approvalRequest.reason === "string" ? approvalRequest.reason : undefined
-  };
-}
-
-function getApprovalReason(value: unknown) {
-  if (!isJsonRecord(value) || typeof value.reason !== "string") {
-    return null;
-  }
-
-  return value.reason;
-}
-
-function findOriginalToolPart(messages: UIMessage[] | undefined, toolCallId: string) {
-  for (const message of messages ?? []) {
-    const messageParts = Array.isArray(message.parts) ? message.parts : [];
-    const part = messageParts.find(
-      (candidate) => isToolUIPart(candidate) && candidate.toolCallId === toolCallId
-    );
-
-    if (part && isToolUIPart(part)) {
-      return part;
-    }
-  }
-
-  return null;
 }
 
 function serializeConversationError(error: unknown) {
@@ -129,274 +77,501 @@ function serializeConversationError(error: unknown) {
   }
 }
 
+function formatStructuredValue(value: unknown) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCloudflareDynamicToolPart(
+  part: UIMessage["parts"][number]
+): part is UIMessage["parts"][number] & {
+  toolCallId: string;
+  toolName: string;
+  type: "dynamic-tool";
+} {
+  return (
+    isJsonRecord(part) &&
+    part.type === "dynamic-tool" &&
+    typeof part.toolCallId === "string" &&
+    typeof part.toolName === "string"
+  );
+}
+
+function getApprovalRequestResult(value: unknown) {
+  if (!isJsonRecord(value)) {
+    return undefined;
+  }
+
+  const approvalRequest = value.approvalRequest;
+
+  if (!isJsonRecord(approvalRequest)) {
+    return undefined;
+  }
+
+  return {
+    id: typeof approvalRequest.id === "string" ? approvalRequest.id : undefined,
+    reason: typeof approvalRequest.reason === "string" ? approvalRequest.reason : undefined
+  };
+}
+
+function getApprovalReason(value: unknown) {
+  if (!isJsonRecord(value) || typeof value.reason !== "string") {
+    return null;
+  }
+
+  return value.reason;
+}
+
+function findOriginalToolPart(messages: UIMessage[] | undefined, toolCallId: string) {
+  for (const message of messages ?? []) {
+    const messageParts = Array.isArray(message.parts) ? message.parts : [];
+    const part = messageParts.find(
+      (candidate) =>
+        (isToolUIPart(candidate) || isCloudflareDynamicToolPart(candidate)) &&
+        candidate.toolCallId === toolCallId
+    );
+
+    if (part && (isToolUIPart(part) || isCloudflareDynamicToolPart(part))) {
+      return part;
+    }
+  }
+
+  return null;
+}
+
 function toUserMessageParts(message: AppendMessage): UIMessage["parts"] {
-  return message.content.flatMap((part) => {
+  const parts: UIMessage["parts"] = [];
+
+  for (const part of message.content) {
     switch (part.type) {
       case "text":
-        return part.text.trim().length > 0 ? [{ text: part.text, type: "text" as const }] : [];
+        if (part.text.trim().length > 0) {
+          parts.push({ text: part.text, type: "text" });
+        }
+        break;
       case "file":
-        return [
-          {
-            filename: part.filename,
-            mediaType: part.mimeType,
-            type: "file" as const,
-            url: part.data
-          }
-        ];
+        parts.push({
+          ...(part.filename ? { filename: part.filename } : {}),
+          mediaType: part.mimeType,
+          type: "file",
+          url: part.data
+        });
+        break;
       default:
-        return [];
+        break;
     }
-  });
+  }
+
+  return parts;
 }
 
-function ConversationTextPart() {
-  return (
-    <MarkdownTextPrimitive
-      className="conversation-markdown"
-      remarkPlugins={[remarkGfm]}
-    />
-  );
+function toolStatusFromCloudflareState(
+  state: ReturnType<typeof getToolPartState> | null,
+  fallback: ToolCallMessagePartStatus | undefined,
+  result: unknown
+): ToolCallMessagePartStatus | undefined {
+  switch (state) {
+    case "loading":
+    case "streaming":
+      return { type: "running" };
+    case "waiting-approval":
+      return { reason: "interrupt", type: "requires-action" };
+    case "error":
+    case "denied":
+      return { error: result, reason: "error", type: "incomplete" };
+    case "approved":
+    case "complete":
+      return { type: "complete" };
+    default:
+      return fallback;
+  }
 }
 
-function ConversationReasoningGroup({ children }: ReasoningGroupProps) {
-  return (
-    <details className="conversation-reasoning-group">
-      <summary>Reasoning</summary>
-      <div className="conversation-reasoning-body">{children}</div>
-    </details>
-  );
-}
-
-function ConversationSourcePart({ title, url }: SourceMessagePartProps) {
-  return (
-    <a
-      className="conversation-attachment-card"
-      href={url}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <span className="conversation-attachment-label">Source</span>
-      <span className="conversation-attachment-title">{title ?? url}</span>
-    </a>
-  );
-}
-
-function ConversationFilePart({ data, filename, mimeType }: FileMessagePartProps) {
-  return (
-    <a
-      className="conversation-attachment-card"
-      href={data}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <span className="conversation-attachment-label">Attachment</span>
-      <span className="conversation-attachment-title">{filename ?? mimeType}</span>
-    </a>
-  );
-}
-
-function ConversationDataPart({ data, name }: DataMessagePartProps) {
-  const formattedValue = formatStructuredValue(data);
-
-  return (
-    <details className="conversation-data-card">
-      <summary>{name.replace(/-/g, " ")}</summary>
-      {formattedValue ? <pre>{formattedValue}</pre> : null}
-    </details>
-  );
-}
-
-function ConversationToolPart({
-  isError,
-  result,
-  toolCallId,
-  toolName
-}: ToolCallMessagePartProps) {
+const CloudflareToolFallback: ToolCallMessagePartComponent = (props) => {
   const chat = useConversationContext();
-  const originalMessages = cloudflareAssistantMessageConverter.useOriginalMessages();
+  const originalMessages = cloudflareAssistantMessageConverter.useOriginalMessages() as
+    | UIMessage[]
+    | undefined;
   const originalPart = useMemo(
-    () => findOriginalToolPart(originalMessages, toolCallId),
-    [originalMessages, toolCallId]
+    () => findOriginalToolPart(originalMessages, props.toolCallId),
+    [originalMessages, props.toolCallId]
   );
-  const fallbackApprovalRequest = getApprovalRequestResult(result);
+  const fallbackApprovalRequest = getApprovalRequestResult(props.result);
   const toolState = originalPart
-    ? getToolPartState(originalPart)
+    ? getToolPartState(originalPart as Parameters<typeof getToolPartState>[0])
     : fallbackApprovalRequest
       ? "waiting-approval"
-      : isError
+      : props.isError
         ? "error"
-        : "complete";
-  const approval = originalPart ? getToolApproval(originalPart) : fallbackApprovalRequest;
-  const input = originalPart ? getToolInput(originalPart) : undefined;
-  const output = originalPart ? getToolOutput(originalPart) ?? result : result;
-  const formattedInput = formatStructuredValue(input);
-  const formattedOutput = formatStructuredValue(output);
+        : null;
+  const approval = originalPart
+    ? getToolApproval(originalPart as Parameters<typeof getToolApproval>[0])
+    : fallbackApprovalRequest;
+  const input = originalPart
+    ? getToolInput(originalPart as Parameters<typeof getToolInput>[0])
+    : undefined;
+  const output = originalPart
+    ? getToolOutput(originalPart as Parameters<typeof getToolOutput>[0]) ?? props.result
+    : props.result;
+  const status = toolStatusFromCloudflareState(toolState, props.status, output);
   const approvalId = typeof approval?.id === "string" ? approval.id : null;
   const approvalReason = getApprovalReason(approval);
+  const argsText = props.argsText || formatStructuredValue(input);
 
   return (
-    <section className="conversation-tool-card">
-      <div className="conversation-tool-header">
-        <div>
-          <p className="conversation-tool-name">{toolName}</p>
-          <p className="conversation-tool-status">
-            {toolState === "waiting-approval"
-              ? "Waiting for decision"
-              : toolState === "approved"
-                ? "Decision submitted"
-                : toolState === "denied"
-                  ? "Denied"
-                  : toolState === "error"
-                    ? "Error"
-                    : toolState === "streaming"
-                      ? "Running"
-                      : toolState === "loading"
-                        ? "Preparing"
-                        : "Completed"}
-          </p>
-        </div>
-      </div>
-
-      {formattedInput ? (
-        <div className="conversation-tool-section">
-          <p className="conversation-tool-section-label">Input</p>
-          <pre>{formattedInput}</pre>
-        </div>
-      ) : null}
-
-      {toolState === "waiting-approval" && approvalId ? (
-        <div className="conversation-tool-section">
-          <p className="conversation-tool-section-label">Decision needed</p>
-          <p className="conversation-tool-help">
-            This tool call is waiting on a human decision before work can continue.
-          </p>
-          {approvalReason ? <p className="conversation-tool-help">{approvalReason}</p> : null}
-          <div className="conversation-tool-actions">
-            <Button
-              size="sm"
-              type="button"
-              onClick={() => {
-                chat.addToolApprovalResponse({
-                  approved: true,
-                  id: approvalId
-                });
-              }}
-            >
-              <CheckIcon />
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              type="button"
-              variant="outline"
-              onClick={() => {
-                chat.addToolApprovalResponse({
-                  approved: false,
-                  id: approvalId
-                });
-              }}
-            >
-              <XIcon />
-              Reject
-            </Button>
+    <ToolFallback.Root defaultOpen={toolState === "waiting-approval" || Boolean(props.isError)}>
+      <ToolFallback.Trigger
+        toolName={props.toolName}
+        {...(status !== undefined ? { status } : {})}
+      />
+      <ToolFallback.Content>
+        <ToolFallback.Args {...(argsText !== undefined ? { argsText } : {})} />
+        {toolState === "waiting-approval" && approvalId ? (
+          <div className="flex flex-col gap-3 border-t border-dashed px-4 pt-2">
+            <div className="flex flex-col gap-1">
+              <p className="font-semibold">Decision needed</p>
+              {approvalReason ? (
+                <p className="text-muted-foreground text-sm">{approvalReason}</p>
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  This tool call is waiting on a human decision before work can continue.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                type="button"
+                onClick={() => {
+                  chat.addToolApprovalResponse({
+                    approved: true,
+                    id: approvalId
+                  });
+                }}
+              >
+                <CheckIcon data-icon="inline-start" />
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  chat.addToolApprovalResponse({
+                    approved: false,
+                    id: approvalId
+                  });
+                }}
+              >
+                <XIcon data-icon="inline-start" />
+                Reject
+              </Button>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <ToolFallback.Result result={output} />
+        )}
+      </ToolFallback.Content>
+    </ToolFallback.Root>
+  );
+};
 
-      {toolState !== "waiting-approval" && formattedOutput ? (
-        <div className="conversation-tool-section">
-          <p className="conversation-tool-section-label">
-            {toolState === "error" || toolState === "denied" ? "Outcome" : "Output"}
+function getAssistantClientTools(aui: AssistantClient): ClientToolMap {
+  const modelTools = aui.modelContext().getModelContext().tools;
+  const clientTools: ClientToolMap = {};
+
+  for (const [name, tool] of Object.entries(modelTools ?? {})) {
+    if (!isJsonRecord(tool) || typeof tool.execute !== "function") {
+      continue;
+    }
+
+    const execute = tool.execute as (
+      input: unknown,
+      context: ReturnType<typeof createAssistantToolExecutionContext>
+    ) => unknown | Promise<unknown>;
+    const clientTool: AITool<unknown, unknown> = {
+      execute: async (input: unknown) =>
+        execute(input, createAssistantToolExecutionContext(`assistant-ui:${name}`))
+    };
+
+    if (typeof tool.description === "string") {
+      clientTool.description = tool.description;
+    }
+
+    if (isJsonRecord(tool.parameters)) {
+      clientTool.parameters = tool.parameters;
+    }
+
+    clientTools[name] = clientTool;
+  }
+
+  return clientTools;
+}
+
+function createAssistantToolExecutionContext(toolCallId: string) {
+  const abortController = new AbortController();
+
+  return {
+    abortSignal: abortController.signal,
+    human: async () => {
+      throw new Error("This assistant-ui client tool does not support human callbacks.");
+    },
+    toolCallId
+  };
+}
+
+function useAssistantClientTools(aui: AssistantClient) {
+  const [tools, setTools] = useState(() => getAssistantClientTools(aui));
+
+  useEffect(() => {
+    const modelContext = aui.modelContext();
+
+    return modelContext.subscribe?.(() => {
+      setTools(getAssistantClientTools(aui));
+    });
+  }, [aui]);
+
+  return tools;
+}
+
+function useAssistantUiRequestBody(aui: AssistantClient) {
+  return useCallback(() => {
+    const system = aui.modelContext().getModelContext().system;
+
+    if (!system) {
+      return {};
+    }
+
+    return {
+      [assistantUiModelContextBodyKey]: {
+        system
+      }
+    };
+  }, [aui]);
+}
+
+function useAssistantToolCallHandler(aui: AssistantClient): OnToolCallCallback {
+  return useCallback(
+    async ({ addToolOutput, toolCall }) => {
+      const tool = aui.modelContext().getModelContext().tools?.[toolCall.toolName];
+
+      if (!tool || typeof tool.execute !== "function") {
+        addToolOutput({
+          errorText: `No client tool is registered for ${toolCall.toolName}.`,
+          state: "output-error",
+          toolCallId: toolCall.toolCallId
+        });
+        return;
+      }
+
+      try {
+        const execute = tool.execute as (
+          input: unknown,
+          context: ReturnType<typeof createAssistantToolExecutionContext>
+        ) => unknown | Promise<unknown>;
+        const output = await execute(
+          toolCall.input,
+          createAssistantToolExecutionContext(toolCall.toolCallId)
+        );
+
+        addToolOutput({
+          output,
+          toolCallId: toolCall.toolCallId
+        });
+      } catch (error) {
+        addToolOutput({
+          errorText: serializeConversationError(error) ?? "Client tool failed.",
+          state: "output-error",
+          toolCallId: toolCall.toolCallId
+        });
+      }
+    },
+    [aui]
+  );
+}
+
+const contextPanelStateSchema = z.object({
+  focus: z.string(),
+  nextAction: z.string(),
+  openQuestions: z.array(z.string()).max(5)
+});
+
+type ContextPanelState = z.infer<typeof contextPanelStateSchema>;
+
+function sanitizeInteractableId(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 96);
+}
+
+function ConversationInteractablePersistence({ storageKey }: { storageKey: string }) {
+  const aui = useAui();
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(storageKey);
+
+      if (stored) {
+        aui.interactables().importState(JSON.parse(stored));
+      }
+
+      aui.interactables().setPersistenceAdapter({
+        save(state) {
+          window.localStorage.setItem(storageKey, JSON.stringify(state));
+        }
+      });
+    } catch {
+      aui.interactables().setPersistenceAdapter(undefined);
+    }
+
+    return () => {
+      aui.interactables().setPersistenceAdapter(undefined);
+    };
+  }, [aui, storageKey]);
+
+  return null;
+}
+
+function ConversationContextPanel({
+  contextTitle,
+  locator
+}: {
+  contextTitle: string;
+  locator: ConversationLocator;
+}) {
+  const initialState = useMemo<ContextPanelState>(
+    () => ({
+      focus: contextTitle,
+      nextAction: "",
+      openQuestions: []
+    }),
+    [contextTitle]
+  );
+  const interactableId = useAssistantInteractable("Keystone conversation context", {
+    description:
+      "Compact operator context for the visible Keystone conversation. Keep focus, nextAction, and openQuestions factual, concise, and aligned with the current run or task.",
+    id: `keystone_context_${sanitizeInteractableId(locator.agentClass)}_${sanitizeInteractableId(locator.agentName)}`,
+    initialState,
+    selected: true,
+    stateSchema: contextPanelStateSchema
+  });
+  const [state, { isPending, setState }] = useInteractableState<ContextPanelState>(
+    interactableId,
+    initialState
+  );
+  const visibleQuestions = state.openQuestions.filter((question) => question.trim().length > 0);
+  const hasVisibleContext =
+    Boolean(state.nextAction) || visibleQuestions.length > 0 || state.focus !== contextTitle || isPending;
+
+  if (!hasVisibleContext) {
+    return null;
+  }
+
+  return (
+    <section className="grid gap-3 border border-border bg-muted/30 px-4 py-3" aria-label="Conversation context">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {state.focus !== contextTitle ? (
+          <div className="grid gap-1">
+            <p className="m-0 text-muted-foreground text-xs uppercase tracking-[0.08em]">Focus</p>
+            <p className="m-0 font-medium text-sm">{state.focus}</p>
+          </div>
+        ) : null}
+        {isPending ? (
+          <p className="m-0 inline-flex items-center gap-2 text-muted-foreground text-xs">
+            <LoaderCircleIcon className="size-3 animate-spin" />
+            Syncing
           </p>
-          <pre>{formattedOutput}</pre>
-        </div>
+        ) : null}
+      </div>
+      {state.nextAction ? (
+        <p className="m-0 text-sm">
+          <span className="text-muted-foreground">Next:</span> {state.nextAction}
+        </p>
+      ) : null}
+      {visibleQuestions.length > 0 ? (
+        <ul className="m-0 grid gap-1 pl-4 text-sm">
+          {visibleQuestions.map((question) => (
+            <li key={question}>{question}</li>
+          ))}
+        </ul>
+      ) : null}
+      {state.nextAction || visibleQuestions.length > 0 || state.focus !== contextTitle ? (
+        <Button
+          className="w-fit"
+          size="sm"
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setState(initialState);
+          }}
+        >
+          Reset context
+        </Button>
       ) : null}
     </section>
   );
 }
 
-function ConversationUserMessage() {
+function ConversationUnavailable({
+  unavailableMessage,
+  unavailableTitle
+}: Pick<AssistantChatSurfaceProps, "unavailableMessage" | "unavailableTitle">) {
   return (
-    <MessagePrimitive.Root className="conversation-message conversation-message-user">
-      <p className="conversation-message-meta">
-        <UserIcon aria-hidden="true" />
-        You
-      </p>
-      <div className="conversation-bubble conversation-bubble-user">
-        <MessagePrimitive.Parts
-          components={{
-            File: ConversationFilePart,
-            Text: ConversationTextPart
-          }}
-        />
+    <div className="conversation-surface">
+      <div className="grid min-h-[25rem] grid-rows-[1fr_auto] border border-border bg-background">
+        <div className="grid place-items-center p-6 text-center">
+          <div className="grid max-w-md gap-2">
+            <p className="m-0 font-semibold text-xl">{unavailableTitle}</p>
+            <p className="m-0 text-muted-foreground text-sm leading-6">{unavailableMessage}</p>
+          </div>
+        </div>
+        <div className="border-t border-border bg-muted/30 p-3">
+          <div
+            className="rounded-[20px] border bg-background px-4 py-3 text-muted-foreground text-sm"
+            aria-hidden="true"
+          >
+            Conversation unavailable
+          </div>
+          <p className="m-0 pt-2 text-muted-foreground text-xs">
+            Conversation input becomes available after a locator is attached.
+          </p>
+        </div>
       </div>
-    </MessagePrimitive.Root>
-  );
-}
-
-function ConversationAssistantMessage() {
-  return (
-    <MessagePrimitive.Root className="conversation-message conversation-message-assistant">
-      <p className="conversation-message-meta">
-        <BotIcon aria-hidden="true" />
-        Keystone
-      </p>
-      <div className="conversation-bubble conversation-bubble-assistant">
-        <MessagePrimitive.Parts
-          components={{
-            File: ConversationFilePart,
-            Reasoning: ConversationTextPart,
-            ReasoningGroup: ConversationReasoningGroup,
-            Source: ConversationSourcePart,
-            Text: ConversationTextPart,
-            ToolGroup: ({ children }) => <div className="conversation-tool-group">{children}</div>,
-            data: {
-              Fallback: ConversationDataPart
-            },
-            tools: {
-              Override: ConversationToolPart
-            }
-          }}
-        />
-      </div>
-      <div className="conversation-message-footer">
-        <ActionBarPrimitive.Root
-          autohide="not-last"
-          autohideFloat="single-branch"
-          className="conversation-action-bar"
-        >
-          <ActionBarPrimitive.Copy className="conversation-action-button">
-            Copy
-          </ActionBarPrimitive.Copy>
-        </ActionBarPrimitive.Root>
-      </div>
-    </MessagePrimitive.Root>
-  );
-}
-
-function ConversationSystemMessage() {
-  return (
-    <MessagePrimitive.Root className="conversation-message conversation-message-system">
-      <div className="conversation-bubble conversation-bubble-system">
-        <MessagePrimitive.Parts
-          components={{
-            Text: ConversationTextPart
-          }}
-        />
-      </div>
-    </MessagePrimitive.Root>
+    </div>
   );
 }
 
 function AttachedAssistantChatSurface({
   composerPlaceholder,
+  contextTitle,
   emptyMessage,
   emptyTitle,
   locator
 }: Omit<AssistantChatSurfaceProps, "unavailableMessage" | "unavailableTitle"> & {
   locator: ConversationLocator;
 }) {
-  const conversation = useCloudflareConversation(locator);
+  const aui = useAui({ interactables: Interactables() });
+  const tools = useAssistantClientTools(aui);
+  const body = useAssistantUiRequestBody(aui);
+  const onToolCall = useAssistantToolCallHandler(aui);
+  const conversation = useCloudflareConversation(locator, {
+    body,
+    onToolCall,
+    tools
+  });
   const errorMessage = serializeConversationError(conversation.chat.error);
   const isRunning =
     conversation.chat.isStreaming ||
@@ -406,9 +581,10 @@ function AttachedAssistantChatSurface({
   const messages = cloudflareAssistantMessageConverter.useThreadMessages({
     isRunning,
     messages: conversation.chat.messages,
-    metadata: {
-      ...(conversation.chat.status === "error" && errorMessage ? { error: errorMessage } : null)
-    }
+    metadata:
+      conversation.chat.status === "error" && errorMessage
+        ? { error: errorMessage }
+        : {}
   });
   const runtime = useExternalStoreRuntime(
     useMemo(
@@ -417,7 +593,7 @@ function AttachedAssistantChatSurface({
         messages,
         onAddToolResult: async ({ isError, result, toolCallId, toolName }) => {
           conversation.chat.addToolOutput({
-            ...(isError ? { errorText: serializeConversationError(result) } : null),
+            ...(isError ? { errorText: serializeConversationError(result) ?? "Tool failed." } : null),
             output: result,
             ...(toolName ? { toolName } : null),
             ...(isError ? { state: "output-error" as const } : null),
@@ -457,59 +633,29 @@ function AttachedAssistantChatSurface({
 
   return (
     <ConversationContext.Provider value={conversation.chat}>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <div className="conversation-surface">
+      <AssistantRuntimeProvider runtime={runtime} aui={aui}>
+        <div className="conversation-surface grid gap-3">
+          <ConversationInteractablePersistence
+            storageKey={`keystone:assistant-ui:${locator.agentClass}:${locator.agentName}`}
+          />
           {conversation.chat.status === "error" && errorMessage ? (
-            <div className="conversation-banner conversation-banner-error" role="alert">
-              <AlertTriangleIcon aria-hidden="true" />
+            <div className="flex items-center gap-2 border border-destructive bg-destructive/10 px-3 py-2 text-sm" role="alert">
+              <AlertTriangleIcon className="size-4" aria-hidden="true" />
               <span>{errorMessage}</span>
             </div>
           ) : null}
-
-          <ThreadPrimitive.Root className="conversation-thread">
-            <ThreadPrimitive.Viewport
-              autoScroll
-              className="conversation-thread-viewport"
-            >
-              <ThreadPrimitive.Empty>
-                <div className="conversation-empty-state" role="status">
-                  <p className="conversation-empty-title">{emptyTitle}</p>
-                  <p className="conversation-empty-message">{emptyMessage}</p>
-                </div>
-              </ThreadPrimitive.Empty>
-
-              <ThreadPrimitive.Messages
-                components={{
-                  AssistantMessage: ConversationAssistantMessage,
-                  SystemMessage: ConversationSystemMessage,
-                  UserMessage: ConversationUserMessage
-                }}
-              />
-            </ThreadPrimitive.Viewport>
-
-            <div className="conversation-thread-footer">
-              <p className="conversation-thread-status">
-                {isRunning ? <LoaderCircleIcon aria-hidden="true" className="conversation-spinner" /> : null}
-                <span>{statusCopy}</span>
-              </p>
-
-              <ComposerPrimitive.Root className="conversation-composer">
-                <ComposerPrimitive.Input
-                  className="conversation-composer-input"
-                  aria-label="Message Keystone"
-                  placeholder={composerPlaceholder}
-                />
-                <div className="conversation-composer-actions">
-                  <ComposerPrimitive.Cancel className="conversation-secondary-button">
-                    Stop
-                  </ComposerPrimitive.Cancel>
-                  <ComposerPrimitive.Send className="conversation-primary-button">
-                    Send
-                  </ComposerPrimitive.Send>
-                </div>
-              </ComposerPrimitive.Root>
-            </div>
-          </ThreadPrimitive.Root>
+          <ConversationContextPanel contextTitle={contextTitle ?? emptyTitle} locator={locator} />
+          <Thread
+            ToolFallbackComponent={CloudflareToolFallback}
+            className="h-[clamp(25rem,calc(100vh-22rem),34rem)] min-h-0"
+            composerPlaceholder={composerPlaceholder}
+            emptyMessage={emptyMessage}
+            emptyTitle={emptyTitle}
+          />
+          <p className="m-0 inline-flex items-center gap-2 text-muted-foreground text-xs">
+            {isRunning ? <LoaderCircleIcon aria-hidden="true" className="size-3 animate-spin" /> : null}
+            <span>{statusCopy}</span>
+          </p>
         </div>
       </AssistantRuntimeProvider>
     </ConversationContext.Provider>
@@ -519,29 +665,10 @@ function AttachedAssistantChatSurface({
 export function AssistantChatSurface(props: AssistantChatSurfaceProps) {
   if (!props.locator) {
     return (
-      <div className="conversation-surface">
-        <div className="conversation-thread conversation-thread-unavailable">
-          <div className="conversation-empty-state" role="status">
-            <p className="conversation-empty-title">{props.unavailableTitle}</p>
-            <p className="conversation-empty-message">{props.unavailableMessage}</p>
-          </div>
-
-          <div className="conversation-thread-footer">
-            <p className="conversation-thread-status">Conversation unavailable</p>
-            <div className="conversation-composer conversation-composer-disabled" aria-hidden="true">
-              <div className="conversation-composer-input">Conversation input becomes available after a locator is attached.</div>
-              <div className="conversation-composer-actions">
-                <button type="button" className="conversation-secondary-button" disabled>
-                  Stop
-                </button>
-                <button type="button" className="conversation-primary-button" disabled>
-                  Send
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ConversationUnavailable
+        unavailableMessage={props.unavailableMessage}
+        unavailableTitle={props.unavailableTitle}
+      />
     );
   }
 
