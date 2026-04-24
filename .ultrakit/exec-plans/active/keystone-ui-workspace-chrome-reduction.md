@@ -146,6 +146,7 @@ Alternatives considered:
   - `rtk npm run build:ui` passed with the known non-blocking Vite large-chunk warning.
   - `rtk git diff --check` passed.
 - 2026-04-24: Evaluated `README.md`, `.ultrakit/developer-docs/README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `design/workspace-spec.md`, `design/design-guidelines.md`, and `.ultrakit/notes.md`. No durable docs/notes changes were needed because the cleanup changed presentation chrome and test waits, not architecture, contracts, route ownership, backend/API behavior, or durable local workflow guidance.
+- 2026-04-24: Phase 5 targeted fix pass normalized the remaining pre-archive status instruction to `Ready for final review`; the active index already used the canonical label.
 
 ## Progress
 
@@ -158,7 +159,7 @@ Alternatives considered:
 - [x] Phase 2: Simplify top-level destination boards. Completed 2026-04-24 after the targeted review fix pass.
 - [x] Phase 3: Simplify run detail, planning, execution, and task panes. Completed 2026-04-24 after the targeted review fix pass.
 - [x] Phase 4: Simplify project configuration tabs/forms. Completed 2026-04-24 after the targeted review fix pass.
-- [x] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness. Completed 2026-04-24.
+- [x] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness. Completed 2026-04-24; targeted status-label fix applied before final review.
 
 ## Surprises & Discoveries
 
@@ -194,6 +195,8 @@ The Phase 4 implementation pass made `New project` and `Project settings` read a
 The Phase 4 targeted fix pass closed the review gaps without broadening scope. The Components tab no longer renders the type-picker description, visible source-mode helper cards, or rule-override explanation blurbs; source-mode radios now keep mode-specific screen-reader context through `aria-describedby`; and live settings tests now exercise removing the only component into the dirty validation path plus removing an environment variable through a saved payload.
 
 Phase 5 closed the workspace chrome reduction with final validation and documentation evaluation. A narrow test-only stabilization made the planning guard tests wait for the first-revision editor before mutating draft body content; no product UI, route, API, persistence, or theme behavior changed in the closeout pass. The README, developer docs, workspace spec, design guidelines, and durable notes still describe the current architecture and UI boundaries accurately, so no durable documentation changes were needed beyond this execution plan.
+
+The targeted closeout fix normalized the pre-archive plan status language to `Ready for final review`, matching the active index and next starter context before the orchestrator's final review/archive step.
 
 ## Context and Orientation
 
@@ -667,7 +670,7 @@ Phase 4 is closed in `ui/src/features/projects/components/project-configuration-
 ### Phase Handoff
 
 Status:
-Completed - ready for final review.
+Completed - Ready for final review.
 
 Goal:
 Verify the full workspace chrome reduction, update durable notes/docs only if needed, and leave the plan ready for final review/archive.
@@ -709,7 +712,7 @@ Validation:
 
 Plan / Docs To Update:
 - Update all living plan sections for final state.
-- Update active index status to `Ready for review` or archive state as directed by the orchestrator stage.
+- Update active index status to `Ready for final review` or archive state as directed by the orchestrator stage.
 - If docs are unchanged, record the no-doc-change rationale in `Outcomes & Retrospective`.
 
 Deliverables:
@@ -735,6 +738,7 @@ Completed 2026-04-24.
 - `rtk npm run build:ui` passed with the known Vite large-chunk warning.
 - `rtk git diff --check` passed.
 - Reviewed `README.md`, `.ultrakit/developer-docs/README.md`, `.ultrakit/developer-docs/m1-architecture.md`, `design/workspace-spec.md`, `design/design-guidelines.md`, and `.ultrakit/notes.md`; no durable docs/notes edits were needed because the phase changed presentation chrome and test synchronization only, not architecture, contracts, routes, backend/API behavior, or durable workflow guidance.
+- Targeted fix pass normalized the remaining Phase Handoff pre-archive status instruction to `Ready for final review`; the active index already carried the canonical label.
 
 Next Starter Context:
-Phase 5 is complete and the active index is set to `Ready for final review`. Final validation passed after the narrow planning-editor test wait stabilization in `ui/src/test/runs-routes.test.tsx`. Leave the plan active for the orchestrator's final comprehensive review and archive step; do not archive it from the implementation pass.
+Phase 5 is complete and all pre-archive plan/index status labels are normalized to `Ready for final review`. Final validation passed after the narrow planning-editor test wait stabilization in `ui/src/test/runs-routes.test.tsx`. Leave the plan active for the orchestrator's final comprehensive review and archive step; do not archive it from the implementation pass.
