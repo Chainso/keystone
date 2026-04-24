@@ -586,7 +586,6 @@ pre {
 .message-card-body,
 .documentation-tree-group-summary,
 .documentation-tree-item-summary,
-.type-picker-option-copy,
 .environment-var-value,
 .review-file-note,
 .workspace-panel-summary {
@@ -2243,10 +2242,6 @@ pre {
   font-weight: 600;
 }
 
-.type-picker-option-copy {
-  margin: 0;
-}
-
 .component-card-meta {
   display: flex;
   flex-wrap: wrap;
@@ -2290,12 +2285,6 @@ pre {
 
 .source-mode-option-label {
   font-weight: 600;
-}
-
-.source-mode-option-copy {
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  line-height: 1.45;
 }
 
 .planning-workspace-accessory,

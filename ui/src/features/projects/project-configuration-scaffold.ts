@@ -16,7 +16,6 @@ export interface ProjectConfigurationTabDefinition {
 }
 
 export interface ProjectComponentTypeOption {
-  description?: string;
   kindId: ProjectComponentKindId;
   label: string;
 }
@@ -42,7 +41,6 @@ export const projectConfigurationTabs: ProjectConfigurationTabDefinition[] = [
 
 export const projectComponentTypeOptions: ProjectComponentTypeOption[] = [
   {
-    description: "Connect a repository by Git URL or a local workspace path.",
     kindId: "git_repository",
     label: "Git repository"
   }

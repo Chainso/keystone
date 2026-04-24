@@ -21,6 +21,8 @@ function SourceModeField({
   sourceMode: ProjectComponentSourceMode;
 }) {
   const inputName = `${componentId}-source-mode`;
+  const localPathDescriptionId = `${inputName}-local-path-description`;
+  const gitUrlDescriptionId = `${inputName}-git-url-description`;
 
   return (
     <fieldset className="source-mode-field">
@@ -38,11 +40,9 @@ function SourceModeField({
             checked={sourceMode === "localPath"}
             disabled={readOnly}
             onChange={() => onChange?.("localPath")}
+            aria-describedby={localPathDescriptionId}
           />
           <span className="source-mode-option-label">Local path</span>
-          <span className="source-mode-option-copy" aria-hidden="true">
-            Use a checked-out repository that already exists in the workspace.
-          </span>
         </label>
 
         <label
@@ -56,13 +56,18 @@ function SourceModeField({
             checked={sourceMode === "gitUrl"}
             disabled={readOnly}
             onChange={() => onChange?.("gitUrl")}
+            aria-describedby={gitUrlDescriptionId}
           />
           <span className="source-mode-option-label">Git URL</span>
-          <span className="source-mode-option-copy" aria-hidden="true">
-            Clone from a remote repository and optional default ref.
-          </span>
         </label>
       </div>
+
+      <span id={localPathDescriptionId} className="sr-only">
+        Local path uses a checked-out repository that already exists in the workspace.
+      </span>
+      <span id={gitUrlDescriptionId} className="sr-only">
+        Git URL clones from a remote repository and optional default ref.
+      </span>
     </fieldset>
   );
 }
@@ -139,9 +144,6 @@ export function EditableProjectComponentCard({
       <div className="component-card-rule-overrides">
         <div className="component-card-subsection">
           <p className="form-field-label">Optional rule override</p>
-          <p className="form-field-description">
-            Add component-specific review or test instructions only when they differ from the project defaults.
-          </p>
         </div>
 
         <div className="component-card-overrides">
@@ -218,9 +220,6 @@ export function ReadonlyProjectComponentCard({
       <div className="component-card-rule-overrides">
         <div className="component-card-subsection">
           <p className="form-field-label">Optional rule override</p>
-          <p className="form-field-description">
-            Component-specific guidance is shown here when present.
-          </p>
         </div>
 
         <div className="component-card-overrides">

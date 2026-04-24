@@ -126,6 +126,10 @@ Alternatives considered:
 - 2026-04-24: Phase 4 implementation validation:
   - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `70 passed` tests.
   - `rtk git diff --check` passed.
+- 2026-04-24: Phase 4 review produced three important findings: remaining Components-tab instructional copy, settings-side remove coverage that only asserted enabled controls, and source-mode accessibility context that had been hidden from assistive technology. The one allowed targeted fix pass removed the remaining visible blurbs, restored screen-reader-only source-mode descriptions through `aria-describedby`, and added live settings coverage for component removal validation plus environment-variable removal through save.
+- 2026-04-24: Phase 4 targeted fix validation:
+  - `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `71 passed` tests.
+  - `rtk git diff --check` passed.
 
 ## Progress
 
@@ -137,7 +141,7 @@ Alternatives considered:
 - [x] Phase 1: Simplify the global shell/sidebar and shared chrome vocabulary. Completed 2026-04-24 after the targeted review fix pass.
 - [x] Phase 2: Simplify top-level destination boards. Completed 2026-04-24 after the targeted review fix pass.
 - [x] Phase 3: Simplify run detail, planning, execution, and task panes. Completed 2026-04-24 after the targeted review fix pass.
-- [ ] Phase 4: Simplify project configuration tabs/forms. Implementation completed 2026-04-24; awaiting review.
+- [x] Phase 4: Simplify project configuration tabs/forms. Completed 2026-04-24 after the targeted review fix pass.
 - [ ] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness.
 
 ## Surprises & Discoveries
@@ -169,6 +173,8 @@ The Phase 3 implementation pass made the run workspace quieter without changing 
 The Phase 3 targeted fix pass closed the review gaps without expanding scope. Disabled `Execution` state now remains visibly discoverable in the compact top rail and is focusable for keyboard users, DAG nodes no longer carry persistent per-node footnotes, and run loading/error/not-found states no longer render the secondary `Run workspace` eyebrow.
 
 The Phase 4 implementation pass made `New project` and `Project settings` read as direct tabbed configuration surfaces. The shell now renders just the screen title and tabs, tab links render only category labels, section headers no longer carry category summaries, and obvious form helper descriptions were removed. The intentionally retained copy is constraint or state copy: `Git repository` remains explicit as the only supported component type, environment values remain labeled as non-secret configuration, and validation, loading, error, empty, create, save, discard, and remove states remain visible.
+
+The Phase 4 targeted fix pass closed the review gaps without broadening scope. The Components tab no longer renders the type-picker description, visible source-mode helper cards, or rule-override explanation blurbs; source-mode radios now keep mode-specific screen-reader context through `aria-describedby`; and live settings tests now exercise removing the only component into the dirty validation path plus removing an environment variable through a saved payload.
 
 ## Context and Orientation
 
@@ -556,7 +562,7 @@ Phase 3 is closed in `ui/src/features/runs/components/run-detail-scaffold.tsx`, 
 ### Phase Handoff
 
 Status:
-Implemented - awaiting review.
+Completed - targeted review fix applied.
 
 Goal:
 Make `New project` and `Project settings` feel like direct tabbed configuration surfaces rather than instructional setup pages.
@@ -626,12 +632,16 @@ Implemented 2026-04-24.
 - Removed project configuration tab summary data from the tab definitions, view model, and rendered tab links so the tabs now expose only `Overview`, `Components`, `Rules`, and `Environment`.
 - Removed section-level summaries from the Overview, Components, Rules, and Environment tabs while preserving the form fields, add-component/add-env actions, empty states, and validation errors.
 - Trimmed helper descriptions that restated visible labels, including overview name/description, project rule lists, component name, source-mode chooser, component rule-list descriptions, and environment variable name.
-- Intentionally retained constraint/state copy: `Git repository is the only supported component type.`, the Git-repository picker option, stable project/component key helper text, default-ref helper text, component override guidance, and non-secret environment value warnings.
+- Intentionally retained constraint/state copy: `Git repository is the only supported component type.`, the Git-repository picker option, stable project/component key helper text, default-ref helper text, and non-secret environment value warnings.
 - Updated destination scaffold tests to assert the simplified configuration chrome, retained create/settings behavior, and retained component-type constraint copy.
 - Validation passed with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` (`70 passed`) and `rtk git diff --check`.
+- Targeted review fix pass completed 2026-04-24: removed the remaining visible Components-tab instructional blurbs from the type picker, source-mode radios, and component rule-override section while preserving Git-repository-only, stable key/default-ref, non-secret environment, and state/validation copy.
+- Restored source-mode accessibility context with screen-reader-only local-path and Git-URL descriptions linked from each radio by `aria-describedby`.
+- Expanded destination scaffold tests so live project settings remove the only component into the empty/dirty validation path, remove an environment variable before save, and assert the retained source-mode accessible descriptions without visible helper-copy classes.
+- Targeted fix validation passed with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` (`71 passed`) and `rtk git diff --check`.
 
 Next Starter Context:
-Phase 4 implementation is complete in `ui/src/features/projects/components/project-configuration-shell.tsx`, `ui/src/features/projects/components/project-configuration-tabs.tsx`, `ui/src/features/projects/components/project-configuration-section.tsx`, `ui/src/features/projects/components/project-component-card.tsx`, `ui/src/features/projects/components/project-component-type-picker.tsx`, `ui/src/features/projects/project-configuration-scaffold.ts`, `ui/src/features/projects/use-project-configuration-view-model.ts`, `ui/src/routes/projects/project-configuration-layout.tsx`, `ui/src/app/styles.css`, `ui/src/test/destination-scaffolds.test.tsx`, and this active plan, with the orchestrator's active-index status edits preserved and advanced to Phase 4 review. Required implementation validation passed with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` (`70 passed`) and `rtk git diff --check`. Review should focus on project configuration chrome and retained constraint/state copy without revisiting run workspace, top-level destination boards, shell internals, backend/API behavior, route semantics, theme cleanup, component schema/API payloads, supported component types, or secret handling.
+Phase 4 is closed in `ui/src/features/projects/components/project-configuration-shell.tsx`, `ui/src/features/projects/components/project-configuration-tabs.tsx`, `ui/src/features/projects/components/project-configuration-section.tsx`, `ui/src/features/projects/components/project-component-card.tsx`, `ui/src/features/projects/components/project-component-type-picker.tsx`, `ui/src/features/projects/project-configuration-scaffold.ts`, `ui/src/features/projects/use-project-configuration-view-model.ts`, `ui/src/routes/projects/project-configuration-layout.tsx`, `ui/src/app/styles.css`, `ui/src/test/destination-scaffolds.test.tsx`, and this active plan, with the targeted review fix in `project-component-card.tsx`, `project-component-type-picker.tsx`, `project-configuration-scaffold.ts`, `styles.css`, `destination-scaffolds.test.tsx`, and this active plan. Required fix validation passed with `rtk npm run test -- ui/src/test/destination-scaffolds.test.tsx ui/src/test/app-shell.test.tsx` (`71 passed`) and `rtk git diff --check`. Phase 5 can start with closeout validation and docs evaluation without revisiting project configuration schema/API payloads, supported component types, secret handling, route URLs, backend/API behavior, theme cleanup, run workspace, top-level destination boards, or shell internals.
 
 ## Phase 5 - Closeout Validation And Docs Evaluation
 

@@ -31,11 +31,6 @@ export function ProjectComponentTypePicker({
               onClick={() => onSelect(option.kindId)}
             >
               <span className="type-picker-option-title">{option.label}</span>
-              {option.description ? (
-                <span className="type-picker-option-copy" aria-hidden="true">
-                  {option.description}
-                </span>
-              ) : null}
             </button>
           </li>
         ))}

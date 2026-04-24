@@ -2395,6 +2395,9 @@ describe("Destination scaffolds", () => {
     fireEvent.click(addComponentButton);
     expect(addComponentButton).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("heading", { name: "Add component menu" })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Connect a repository by Git URL or a local workspace path.")
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Git repository" }));
 
@@ -2408,7 +2411,18 @@ describe("Destination scaffolds", () => {
     expect(newComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue(
       "repository-1"
     );
-    expect(newComponentCard.queries.getByRole("radio", { name: "Git URL" })).toBeChecked();
+    const gitUrlMode = newComponentCard.queries.getByRole("radio", { name: "Git URL" });
+    expect(gitUrlMode).toBeChecked();
+    expectDescribedByText(
+      gitUrlMode,
+      "Git URL clones from a remote repository and optional default ref."
+    );
+    expect(newComponentCard.card.querySelectorAll(".source-mode-option-copy")).toHaveLength(0);
+    expect(
+      newComponentCard.queries.queryByText(
+        "Add component-specific review or test instructions only when they differ from the project defaults."
+      )
+    ).not.toBeInTheDocument();
     expect(newComponentCard.queries.getByRole("textbox", { name: "Local path" })).toBeDisabled();
     expect(newComponentCard.queries.getByRole("textbox", { name: "Git URL" })).toHaveValue(
       "https://github.com/keystone/repository-1.git"
@@ -2866,7 +2880,16 @@ describe("Destination scaffolds", () => {
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue("API");
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue("api");
     expect(sourceModeField).toBeChecked();
-    expect(sourceModeField).not.toHaveAttribute("aria-describedby");
+    expectDescribedByText(
+      sourceModeField,
+      "Local path uses a checked-out repository that already exists in the workspace."
+    );
+    expect(currentComponentCard.card.querySelectorAll(".source-mode-option-copy")).toHaveLength(0);
+    expect(
+      currentComponentCard.queries.queryByText(
+        "Add component-specific review or test instructions only when they differ from the project defaults."
+      )
+    ).not.toBeInTheDocument();
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue(
       "./services/api"
     );
@@ -2896,6 +2919,75 @@ describe("Destination scaffolds", () => {
     );
     expect(screen.getByRole("button", { name: "Discard changes" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  });
+
+  it("validates live project settings after removing the only component", async () => {
+    const initialProjectDetail: ProjectDetailFixture = {
+      projectId: scaffoldProject.projectId,
+      projectKey: scaffoldProject.projectKey,
+      displayName: scaffoldProject.displayName,
+      description: "Internal operator workspace for runs, documentation, and workstreams.",
+      ruleSet: {
+        reviewInstructions: ["Keep route ownership explicit."],
+        testInstructions: ["Run the focused shell tests."]
+      },
+      components: [
+        {
+          componentKey: "api",
+          displayName: "API",
+          kind: "git_repository",
+          config: {
+            localPath: "./services/api",
+            ref: "main"
+          },
+          ruleOverride: {
+            reviewInstructions: ["Focus on API changes"],
+            testInstructions: ["Run targeted API tests"]
+          }
+        }
+      ],
+      envVars: [
+        {
+          name: "KEYSTONE_AGENT_RUNTIME",
+          value: "scripted"
+        }
+      ]
+    };
+
+    const { postedBodies } = stubProjectSettingsFlowFetch({
+      project: initialProjectDetail,
+      detailResponses: [() => createJsonResponse(buildProjectDetailResponse(initialProjectDetail))]
+    });
+
+    const { router } = renderRoute("/settings/components", { useBrowserProjectApi: true });
+
+    expect(await screen.findByRole("heading", { name: "Project settings" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/settings/components");
+    });
+
+    expect(await screen.findByRole("heading", { name: "Component 1" })).toBeInTheDocument();
+    const currentComponentCard = getComponentCard("Component 1");
+    const componentActions = currentComponentCard.card.querySelector(".project-form-actions");
+
+    expect(componentActions).not.toBeNull();
+
+    fireEvent.click(
+      within(componentActions as HTMLElement).getByRole("button", { name: "Remove" })
+    );
+
+    expect(screen.queryByRole("heading", { name: "Component 1" })).not.toBeInTheDocument();
+    expect(screen.getByText("No project components configured yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard changes" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(
+      await screen.findByText("Fix the validation errors before saving project settings.")
+    ).toBeInTheDocument();
+    expect(postedBodies).toEqual([]);
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
   });
 
   it("discards project settings edits from the shared footer and restores the loaded draft", async () => {
@@ -2977,7 +3069,7 @@ describe("Destination scaffolds", () => {
     expect(postedBodies).toEqual([]);
   });
 
-  it("saves live project settings, shows save progress, and refreshes the shell summary", async () => {
+  it("saves live project settings, shows save progress, and refreshes project selection", async () => {
     const initialProjectDetail: ProjectDetailFixture = {
       projectId: scaffoldProject.projectId,
       projectKey: scaffoldProject.projectKey,
@@ -3029,7 +3121,6 @@ describe("Destination scaffolds", () => {
         }
       ],
       envVars: [
-        ...initialProjectDetail.envVars,
         {
           name: "EDGE_MODE",
           value: "enabled"
@@ -3101,16 +3192,18 @@ describe("Destination scaffolds", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "Environment" }));
     expect(await screen.findByRole("heading", { name: "Environment" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getByText("No environment variables yet")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "+ Add environment variable" }));
     const environmentNameFields = screen.getAllByRole("textbox", { name: "Name" });
     const environmentValueFields = screen.getAllByRole("textbox", { name: "Value" });
 
-    fireEvent.change(environmentNameFields[1]!, {
+    fireEvent.change(environmentNameFields[0]!, {
       target: {
         value: "EDGE_MODE"
       }
     });
-    fireEvent.change(environmentValueFields[1]!, {
+    fireEvent.change(environmentValueFields[0]!, {
       target: {
         value: "enabled"
       }
@@ -3131,7 +3224,7 @@ describe("Destination scaffolds", () => {
       screen
         .getAllByRole("textbox", { name: "Name" })
         .map((input) => (input as HTMLInputElement).value)
-    ).toEqual(["KEYSTONE_AGENT_RUNTIME", "EDGE_MODE"]);
+    ).toEqual(["EDGE_MODE"]);
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Discard changes" })).toBeDisabled();
     expect(postedBodies).toEqual([
@@ -3162,10 +3255,6 @@ describe("Destination scaffolds", () => {
           }
         ],
         envVars: [
-          {
-            name: "KEYSTONE_AGENT_RUNTIME",
-            value: "scripted"
-          },
           {
             name: "EDGE_MODE",
             value: "enabled"
