@@ -331,42 +331,18 @@ pre {
   opacity: 1;
 }
 
-.project-switcher-summary,
-.project-switcher-option-meta,
-.shell-panel-copy,
-.shell-panel-summary,
-.shell-nav-link-summary,
-.shell-stage-summary {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
-}
-
-.project-switcher-summary {
-  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-}
-
-.shell-panel-title {
-  margin: 0.3rem 0 0;
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.shell-panel-copy,
-.shell-panel-summary {
-  max-width: none;
-}
-
-.shell-panel-summary {
-  text-align: left;
-}
-
 .shell-action-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.shell-project-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
 }
 
 .shell-action-link,
@@ -385,17 +361,7 @@ pre {
 }
 
 .shell-action-link {
-  width: 100%;
-  justify-content: flex-start;
-  gap: 0.55rem;
-  white-space: normal;
-  line-height: 1.2;
-}
-
-.shell-action-link-symbol {
-  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
-  font-size: 0.95rem;
-  line-height: 1;
+  color: var(--text-secondary);
 }
 
 .shell-nav {
@@ -447,19 +413,9 @@ pre {
   font-weight: 600;
 }
 
-.shell-sidebar-footer,
-.shell-sidebar-footer-copy,
 .shell-theme-panel {
   display: grid;
   gap: 0.45rem;
-}
-
-.shell-sidebar-footer {
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border-muted);
-}
-
-.shell-theme-panel {
   align-self: end;
 }
 
@@ -2552,12 +2508,6 @@ pre {
   .project-tab-strip {
     flex-direction: column;
     align-items: stretch;
-  }
-}
-
-@media (max-width: 560px) {
-  .shell-action-row {
-    grid-template-columns: 1fr;
   }
 }
 

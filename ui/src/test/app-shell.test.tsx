@@ -828,6 +828,13 @@ describe("App shell", () => {
     expectShellLinkTarget("Workstreams", "/workstreams");
     expectShellLinkTarget("New project", "/projects/new");
     expectShellLinkTarget("Project settings", "/settings");
+    expect(
+      screen.queryByText("Internal operator workspace for the Keystone Cloudflare project.")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Destinations")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("System by default, or pin a workspace theme.")
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\+ New run/i })).toBeEnabled();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
     expect(
@@ -838,15 +845,15 @@ describe("App shell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("falls back to the project key in the sidebar when the current project description is blank", async () => {
-    const projectWithBlankDescription: CurrentProject = {
+  it("keeps project actions accessible without rendering sidebar summary copy", async () => {
+    const projectWithDescription: CurrentProject = {
       projectId: "project-fallback",
       projectKey: "fallback-project-key",
       displayName: "Fallback Project",
-      description: ""
+      description: "Detailed sidebar summary that should not render in the compact shell."
     };
 
-    stubProjectListFetch([projectWithBlankDescription]);
+    stubProjectListFetch([projectWithDescription]);
 
     renderRoute("/runs", { useBrowserProjectApi: true });
 
@@ -855,11 +862,15 @@ describe("App shell", () => {
     const projectPanel = getProjectSelector().closest("section");
 
     expect(projectPanel).not.toBeNull();
+    expect(getProjectSelector()).toHaveDisplayValue(projectWithDescription.displayName);
     expect(
-      within(projectPanel as HTMLElement).getAllByText(projectWithBlankDescription.projectKey, {
-        selector: "p"
-      })
-    ).toHaveLength(2);
+      within(projectPanel as HTMLElement).getByRole("link", { name: "New project" })
+    ).toHaveAttribute("href", "/projects/new");
+    expect(
+      within(projectPanel as HTMLElement).getByRole("link", { name: "Project settings" })
+    ).toHaveAttribute("href", "/settings");
+    expect(screen.queryByText(projectWithDescription.projectKey)).not.toBeInTheDocument();
+    expect(screen.queryByText(projectWithDescription.description)).not.toBeInTheDocument();
   });
 
   it("renders a coherent no-project shell state when the API returns no projects", async () => {

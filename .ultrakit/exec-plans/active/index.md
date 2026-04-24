@@ -8,6 +8,4 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
-Add active plans in priority order using this format:
-| Plan | Status | Owner | Started |
-|------|--------|-------|---------|
+| [Keystone UI Workspace Chrome Reduction](./keystone-ui-workspace-chrome-reduction.md) | In progress - Phase 1 | Codex | 2026-04-24 |

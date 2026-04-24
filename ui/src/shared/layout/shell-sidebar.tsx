@@ -1,4 +1,5 @@
 import { startTransition } from "react";
+import { PlusIcon, SettingsIcon } from "lucide-react";
 import { Link, NavLink, type NavLinkRenderProps } from "react-router-dom";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -16,7 +17,7 @@ function getSidebarLinkClassName({ isActive }: NavLinkRenderProps) {
 function getActionLinkClassName({ isActive }: NavLinkRenderProps) {
   return cn(
     buttonVariants({
-      size: "sm",
+      size: "icon-sm",
       variant: isActive ? "secondary" : "outline"
     }),
     "shell-action-link",
@@ -24,10 +25,14 @@ function getActionLinkClassName({ isActive }: NavLinkRenderProps) {
   );
 }
 
+const projectActionIcons = {
+  plus: PlusIcon,
+  settings: SettingsIcon
+} as const;
+
 export function ShellSidebar() {
   const { actions, meta, state } = useProjectManagement();
   const { actions: themeActions, state: themeState } = useTheme();
-  const currentProjectDescription = state.currentProject?.description?.trim();
   const currentProjectLabel =
     state.currentProject?.displayName ??
     (meta.status === "loading"
@@ -35,14 +40,6 @@ export function ShellSidebar() {
       : meta.status === "empty"
         ? "No projects yet"
         : "Unable to load projects");
-  const projectSummary =
-    currentProjectDescription ||
-    state.currentProject?.projectKey ||
-    (meta.status === "loading"
-      ? "Keystone is loading the available project list."
-      : meta.status === "empty"
-        ? "Create a project to begin working in the shared shell."
-        : "Project context is unavailable right now.");
   const canSelectProject = meta.status === "ready" && state.projects.length > 0;
 
   return (
@@ -56,11 +53,28 @@ export function ShellSidebar() {
         </div>
 
         <section className="shell-sidebar-section" aria-labelledby="project-context-label">
-          <div className="shell-sidebar-section-header">
+          <div className="shell-sidebar-section-header shell-project-header">
             <p id="project-context-label" className="page-eyebrow">
               Project
             </p>
-            <p className="shell-panel-title shell-project-title">{currentProjectLabel}</p>
+            <div className="shell-action-row">
+              {projectActions.map((action) => {
+                const ActionIcon = projectActionIcons[action.icon];
+
+                return (
+                  <NavLink
+                    key={action.path}
+                    to={action.path}
+                    className={getActionLinkClassName}
+                    aria-label={action.label}
+                    title={action.label}
+                  >
+                    <ActionIcon aria-hidden="true" />
+                    <span className="sr-only">{action.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
           </div>
 
           <div className="project-switcher-field">
@@ -92,33 +106,13 @@ export function ShellSidebar() {
                 <option value="">{currentProjectLabel}</option>
               )}
             </select>
-            {state.currentProject ? (
-              <p className="project-switcher-summary">{state.currentProject.projectKey}</p>
-            ) : null}
-            <p className="shell-panel-copy">{projectSummary}</p>
-          </div>
-
-          <div className="shell-action-row">
-            {projectActions.map((action) => (
-              <NavLink
-                key={action.path}
-                to={action.path}
-                className={getActionLinkClassName}
-              >
-                <span className="shell-action-link-symbol" aria-hidden="true">
-                  {action.glyph}
-                </span>
-                <span>{action.label}</span>
-              </NavLink>
-            ))}
           </div>
         </section>
 
-        <section className="shell-sidebar-section">
-          <div className="shell-sidebar-section-header">
-            <p className="page-eyebrow">Navigation</p>
-            <p className="shell-panel-title">Destinations</p>
-          </div>
+        <section className="shell-sidebar-section" aria-labelledby="global-navigation-label">
+          <p id="global-navigation-label" className="page-eyebrow">
+            Navigation
+          </p>
 
           <nav className="shell-nav" aria-label="Global navigation">
             {primaryDestinations.map((destination) => (
@@ -137,12 +131,6 @@ export function ShellSidebar() {
             ))}
           </nav>
         </section>
-        <div className="shell-sidebar-footer">
-          <div className="shell-sidebar-footer-copy">
-            <p className="page-eyebrow">Theme</p>
-            <p className="shell-panel-summary">System by default, or pin a workspace theme.</p>
-          </div>
-        </div>
       </div>
 
       <div className="shell-theme-panel" aria-label="Theme controls">

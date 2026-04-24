@@ -1,43 +1,37 @@
 export interface ShellLinkDefinition {
   label: string;
   path: string;
-  summary: string;
 }
 
 export interface ShellActionDefinition extends ShellLinkDefinition {
-  glyph: string;
+  icon: "plus" | "settings";
 }
 
 export const primaryDestinations: ShellLinkDefinition[] = [
   {
     label: "Runs",
-    path: "/runs",
-    summary: "Create runs and step into the current run workspace."
+    path: "/runs"
   },
   {
     label: "Documentation",
-    path: "/documentation",
-    summary: "Current project knowledge and notes for the selected project."
+    path: "/documentation"
   },
   {
     label: "Workstreams",
-    path: "/workstreams",
-    summary: "Live task activity across the selected project."
+    path: "/workstreams"
   }
 ];
 
 export const projectActions: ShellActionDefinition[] = [
   {
-    glyph: "+",
+    icon: "plus",
     label: "New project",
-    path: "/projects/new",
-    summary: "Create a project and define the material Keystone will work from."
+    path: "/projects/new"
   },
   {
-    glyph: "=",
+    icon: "settings",
     label: "Project settings",
-    path: "/settings",
-    summary: "Update the selected project's configuration, rules, and environment."
+    path: "/settings"
   }
 ];
 
