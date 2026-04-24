@@ -1,13 +1,9 @@
 import {
   AssistantRuntimeProvider,
-  Interactables,
   type AppendMessage,
   type ToolCallMessagePartComponent,
   type ToolCallMessagePartStatus,
-  useAui,
-  useAssistantInteractable,
-  useExternalStoreRuntime,
-  useInteractableState
+  useExternalStoreRuntime
 } from "@assistant-ui/react";
 import {
   getToolApproval,
@@ -15,21 +11,16 @@ import {
   getToolOutput,
   getToolPartState
 } from "@cloudflare/ai-chat/react";
-import type { AITool, OnToolCallCallback } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, type UIMessage } from "ai";
 import { AlertTriangleIcon, CheckIcon, LoaderCircleIcon, XIcon } from "lucide-react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { z } from "zod";
+import { createContext, useContext, useMemo } from "react";
 
 import { Thread } from "../../components/assistant-ui/thread";
 import { ToolFallback } from "../../components/assistant-ui/tool-fallback";
 import { Button } from "../../components/ui/button";
-import { cn } from "../../lib/utils";
 import type { ConversationLocator } from "../runs/run-types";
 import { cloudflareAssistantMessageConverter } from "./assistant-message-converter";
 import { useCloudflareConversation } from "./use-cloudflare-conversation";
-
-const assistantUiModelContextBodyKey = "assistantUiModelContext";
 
 interface AssistantChatSurfaceProps {
   composerPlaceholder: string;
@@ -38,12 +29,9 @@ interface AssistantChatSurfaceProps {
   locator: ConversationLocator | null;
   unavailableMessage: string;
   unavailableTitle: string;
-  contextTitle?: string;
 }
 
 type ConversationContextValue = ReturnType<typeof useCloudflareConversation>["chat"];
-type AssistantClient = ReturnType<typeof useAui>;
-type ClientToolMap = Record<string, AITool<unknown, unknown>>;
 
 const ConversationContext = createContext<ConversationContextValue | null>(null);
 
@@ -291,240 +279,6 @@ const CloudflareToolFallback: ToolCallMessagePartComponent = (props) => {
   );
 };
 
-function getAssistantClientTools(aui: AssistantClient): ClientToolMap {
-  const modelTools = aui.modelContext().getModelContext().tools;
-  const clientTools: ClientToolMap = {};
-
-  for (const [name, tool] of Object.entries(modelTools ?? {})) {
-    if (!isJsonRecord(tool) || typeof tool.execute !== "function") {
-      continue;
-    }
-
-    const execute = tool.execute as (
-      input: unknown,
-      context: ReturnType<typeof createAssistantToolExecutionContext>
-    ) => unknown | Promise<unknown>;
-    const clientTool: AITool<unknown, unknown> = {
-      execute: async (input: unknown) =>
-        execute(input, createAssistantToolExecutionContext(`assistant-ui:${name}`))
-    };
-
-    if (typeof tool.description === "string") {
-      clientTool.description = tool.description;
-    }
-
-    if (isJsonRecord(tool.parameters)) {
-      clientTool.parameters = tool.parameters;
-    }
-
-    clientTools[name] = clientTool;
-  }
-
-  return clientTools;
-}
-
-function createAssistantToolExecutionContext(toolCallId: string) {
-  const abortController = new AbortController();
-
-  return {
-    abortSignal: abortController.signal,
-    human: async () => {
-      throw new Error("This assistant-ui client tool does not support human callbacks.");
-    },
-    toolCallId
-  };
-}
-
-function useAssistantClientTools(aui: AssistantClient) {
-  const [tools, setTools] = useState(() => getAssistantClientTools(aui));
-
-  useEffect(() => {
-    const modelContext = aui.modelContext();
-
-    return modelContext.subscribe?.(() => {
-      setTools(getAssistantClientTools(aui));
-    });
-  }, [aui]);
-
-  return tools;
-}
-
-function useAssistantUiRequestBody(aui: AssistantClient) {
-  return useCallback(() => {
-    const system = aui.modelContext().getModelContext().system;
-
-    if (!system) {
-      return {};
-    }
-
-    return {
-      [assistantUiModelContextBodyKey]: {
-        system
-      }
-    };
-  }, [aui]);
-}
-
-function useAssistantToolCallHandler(aui: AssistantClient): OnToolCallCallback {
-  return useCallback(
-    async ({ addToolOutput, toolCall }) => {
-      const tool = aui.modelContext().getModelContext().tools?.[toolCall.toolName];
-
-      if (!tool || typeof tool.execute !== "function") {
-        addToolOutput({
-          errorText: `No client tool is registered for ${toolCall.toolName}.`,
-          state: "output-error",
-          toolCallId: toolCall.toolCallId
-        });
-        return;
-      }
-
-      try {
-        const execute = tool.execute as (
-          input: unknown,
-          context: ReturnType<typeof createAssistantToolExecutionContext>
-        ) => unknown | Promise<unknown>;
-        const output = await execute(
-          toolCall.input,
-          createAssistantToolExecutionContext(toolCall.toolCallId)
-        );
-
-        addToolOutput({
-          output,
-          toolCallId: toolCall.toolCallId
-        });
-      } catch (error) {
-        addToolOutput({
-          errorText: serializeConversationError(error) ?? "Client tool failed.",
-          state: "output-error",
-          toolCallId: toolCall.toolCallId
-        });
-      }
-    },
-    [aui]
-  );
-}
-
-const contextPanelStateSchema = z.object({
-  focus: z.string(),
-  nextAction: z.string(),
-  openQuestions: z.array(z.string()).max(5)
-});
-
-type ContextPanelState = z.infer<typeof contextPanelStateSchema>;
-
-function sanitizeInteractableId(value: string) {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 96);
-}
-
-function ConversationInteractablePersistence({ storageKey }: { storageKey: string }) {
-  const aui = useAui();
-
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(storageKey);
-
-      if (stored) {
-        aui.interactables().importState(JSON.parse(stored));
-      }
-
-      aui.interactables().setPersistenceAdapter({
-        save(state) {
-          window.localStorage.setItem(storageKey, JSON.stringify(state));
-        }
-      });
-    } catch {
-      aui.interactables().setPersistenceAdapter(undefined);
-    }
-
-    return () => {
-      aui.interactables().setPersistenceAdapter(undefined);
-    };
-  }, [aui, storageKey]);
-
-  return null;
-}
-
-function ConversationContextPanel({
-  contextTitle,
-  locator
-}: {
-  contextTitle: string;
-  locator: ConversationLocator;
-}) {
-  const initialState = useMemo<ContextPanelState>(
-    () => ({
-      focus: contextTitle,
-      nextAction: "",
-      openQuestions: []
-    }),
-    [contextTitle]
-  );
-  const interactableId = useAssistantInteractable("Keystone conversation context", {
-    description:
-      "Compact operator context for the visible Keystone conversation. Keep focus, nextAction, and openQuestions factual, concise, and aligned with the current run or task.",
-    id: `keystone_context_${sanitizeInteractableId(locator.agentClass)}_${sanitizeInteractableId(locator.agentName)}`,
-    initialState,
-    selected: true,
-    stateSchema: contextPanelStateSchema
-  });
-  const [state, { isPending, setState }] = useInteractableState<ContextPanelState>(
-    interactableId,
-    initialState
-  );
-  const visibleQuestions = state.openQuestions.filter((question) => question.trim().length > 0);
-  const hasVisibleContext =
-    Boolean(state.nextAction) || visibleQuestions.length > 0 || state.focus !== contextTitle || isPending;
-
-  if (!hasVisibleContext) {
-    return null;
-  }
-
-  return (
-    <section className="grid gap-3 border border-border bg-muted/30 px-4 py-3" aria-label="Conversation context">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        {state.focus !== contextTitle ? (
-          <div className="grid gap-1">
-            <p className="m-0 text-muted-foreground text-xs uppercase tracking-[0.08em]">Focus</p>
-            <p className="m-0 font-medium text-sm">{state.focus}</p>
-          </div>
-        ) : null}
-        {isPending ? (
-          <p className="m-0 inline-flex items-center gap-2 text-muted-foreground text-xs">
-            <LoaderCircleIcon className="size-3 animate-spin" />
-            Syncing
-          </p>
-        ) : null}
-      </div>
-      {state.nextAction ? (
-        <p className="m-0 text-sm">
-          <span className="text-muted-foreground">Next:</span> {state.nextAction}
-        </p>
-      ) : null}
-      {visibleQuestions.length > 0 ? (
-        <ul className="m-0 grid gap-1 pl-4 text-sm">
-          {visibleQuestions.map((question) => (
-            <li key={question}>{question}</li>
-          ))}
-        </ul>
-      ) : null}
-      {state.nextAction || visibleQuestions.length > 0 || state.focus !== contextTitle ? (
-        <Button
-          className="w-fit"
-          size="sm"
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            setState(initialState);
-          }}
-        >
-          Reset context
-        </Button>
-      ) : null}
-    </section>
-  );
-}
-
 function ConversationUnavailable({
   unavailableMessage,
   unavailableTitle
@@ -556,22 +310,13 @@ function ConversationUnavailable({
 
 function AttachedAssistantChatSurface({
   composerPlaceholder,
-  contextTitle,
   emptyMessage,
   emptyTitle,
   locator
 }: Omit<AssistantChatSurfaceProps, "unavailableMessage" | "unavailableTitle"> & {
   locator: ConversationLocator;
 }) {
-  const aui = useAui({ interactables: Interactables() });
-  const tools = useAssistantClientTools(aui);
-  const body = useAssistantUiRequestBody(aui);
-  const onToolCall = useAssistantToolCallHandler(aui);
-  const conversation = useCloudflareConversation(locator, {
-    body,
-    onToolCall,
-    tools
-  });
+  const conversation = useCloudflareConversation(locator);
   const errorMessage = serializeConversationError(conversation.chat.error);
   const isRunning =
     conversation.chat.isStreaming ||
@@ -633,18 +378,14 @@ function AttachedAssistantChatSurface({
 
   return (
     <ConversationContext.Provider value={conversation.chat}>
-      <AssistantRuntimeProvider runtime={runtime} aui={aui}>
+      <AssistantRuntimeProvider runtime={runtime}>
         <div className="conversation-surface grid gap-3">
-          <ConversationInteractablePersistence
-            storageKey={`keystone:assistant-ui:${locator.agentClass}:${locator.agentName}`}
-          />
           {conversation.chat.status === "error" && errorMessage ? (
             <div className="flex items-center gap-2 border border-destructive bg-destructive/10 px-3 py-2 text-sm" role="alert">
               <AlertTriangleIcon className="size-4" aria-hidden="true" />
               <span>{errorMessage}</span>
             </div>
           ) : null}
-          <ConversationContextPanel contextTitle={contextTitle ?? emptyTitle} locator={locator} />
           <Thread
             ToolFallbackComponent={CloudflareToolFallback}
             className="h-[clamp(25rem,calc(100vh-22rem),34rem)] min-h-0"

@@ -45,7 +45,6 @@ function PlanningConversationPanel({
 
       <AssistantChatSurface
         composerPlaceholder="Continue the planning conversation with Keystone."
-        contextTitle={phaseTitle}
         emptyMessage="This document already has an attached planning conversation. Send the next planning turn here."
         emptyTitle="Planning conversation ready"
         locator={conversationLocator}

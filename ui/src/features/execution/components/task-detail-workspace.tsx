@@ -56,7 +56,6 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
               {model.state === "ready" ? (
                 <AssistantChatSurface
                   composerPlaceholder="Continue this task conversation with Keystone."
-                  contextTitle={model.title}
                   emptyMessage="This task already has an attached conversation. Send the next implementation turn here."
                   emptyTitle="Task conversation ready"
                   locator={model.conversationLocator}
