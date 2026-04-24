@@ -29,32 +29,26 @@ const filterSearchParamKey = "filter";
 const workstreamsTitle = "Workstreams";
 
 const filterDefinitions: Array<{
-  description: string;
   filterId: WorkstreamFilterId;
   label: string;
 }> = [
   {
-    description: "Include completed and terminal work alongside active execution tasks across every run.",
     filterId: "all",
     label: "All"
   },
   {
-    description: "Focus on running, queued, and blocked work that still needs operator attention.",
     filterId: "active",
     label: "Active"
   },
   {
-    description: "Show only work that is currently executing inside the run workflow.",
     filterId: "running",
     label: "Running"
   },
   {
-    description: "Show work that is ready or pending while it waits to enter execution.",
     filterId: "queued",
     label: "Queued"
   },
   {
-    description: "Show only work that is waiting on unresolved blockers or prerequisites.",
     filterId: "blocked",
     label: "Blocked"
   }
@@ -102,7 +96,6 @@ export interface WorkstreamsPaginationViewModel {
 }
 
 export interface WorkstreamsViewModel {
-  activeFilterDescription: string;
   currentProjectLabel: string;
   contentState?: WorkstreamsContentState;
   filters: WorkstreamFilterViewModel[];
@@ -112,10 +105,8 @@ export interface WorkstreamsViewModel {
   pageSizeLabel: string;
   recordSummaryLabel: string;
   retry: () => void;
-  routeGuidance: string;
   rows: WorkstreamRowViewModel[];
   setActiveFilter: (filterId: WorkstreamFilterId) => void;
-  summary: string;
   title: string;
 }
 
@@ -191,29 +182,6 @@ function buildRangeLabel(page: ProjectTaskCollectionRecord | null) {
 
 function isOutOfRangePage(page: ProjectTaskCollectionRecord) {
   return page.total > 0 && page.items.length === 0 && page.page > page.pageCount;
-}
-
-function buildWorkstreamsSummary(
-  filterId: WorkstreamFilterId,
-  hasCurrentProject: boolean
-) {
-  if (!hasCurrentProject) {
-    return "Choose a project to inspect task execution across runs.";
-  }
-
-  switch (filterId) {
-    case "all":
-      return "Review every recorded task across every run.";
-    case "running":
-      return "Monitor work that is currently executing across every run.";
-    case "queued":
-      return "Inspect ready and pending work that is waiting to enter execution.";
-    case "blocked":
-      return "Surface blocked work that needs intervention across every run.";
-    case "active":
-    default:
-      return "Track running, queued, and blocked work across every run.";
-  }
 }
 
 function buildRecordSummaryLabel(
@@ -463,13 +431,10 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
                 message: "Create a project to start tracking workstreams."
               } satisfies WorkstreamsContentState)
           : undefined;
-  const activeFilterDefinition =
-    filterDefinitions.find((filter) => filter.filterId === activeFilterId) ?? filterDefinitions[1]!;
   const currentProjectName = currentProject?.displayName ?? null;
   const resolvedPageSize = visiblePage?.pageSize ?? pageSize;
 
   return {
-    activeFilterDescription: activeFilterDefinition.description,
     currentProjectLabel: currentProject?.displayName ?? "No project selected",
     ...(contentState ? { contentState } : {}),
     filters: filterDefinitions.map((filter) => ({
@@ -520,15 +485,12 @@ export function useWorkstreamsViewModel(): WorkstreamsViewModel {
 
       void projectManagement.actions.reloadProjects();
     },
-    routeGuidance:
-      "Rows open the matching task under Runs > Execution.",
     rows,
     setActiveFilter(filterId) {
       startTransition(() => {
         setWorkstreamsSearchState(filterId, 1);
       });
     },
-    summary: buildWorkstreamsSummary(activeFilterId, Boolean(currentProjectName)),
     title: workstreamsTitle
   };
 }

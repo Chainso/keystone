@@ -587,7 +587,6 @@ pre {
 .documentation-tree-group-summary,
 .documentation-tree-item-summary,
 .type-picker-option-copy,
-.table-row-note,
 .environment-var-value,
 .review-file-note,
 .workspace-panel-summary {
@@ -1841,11 +1840,6 @@ pre {
   grid-template-columns: minmax(18rem, 0.9fr) minmax(0, 1.2fr);
 }
 
-.documentation-shell-summary {
-  max-width: 58rem;
-  margin: 0;
-}
-
 .documentation-header-meta,
 .documentation-tree-group-header,
 .documentation-tree-item-copy {
@@ -1992,10 +1986,6 @@ pre {
 .entity-table-footer {
   display: grid;
   gap: 0.75rem;
-}
-
-.table-row-note {
-  font-size: 0.86rem;
 }
 
 .project-config-shell-header,

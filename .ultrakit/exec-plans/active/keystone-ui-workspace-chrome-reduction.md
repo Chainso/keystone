@@ -102,6 +102,11 @@ Alternatives considered:
 - 2026-04-24: Phase 1 targeted fix validation:
   - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed: `2 passed` files, `70 passed` tests.
   - `rtk git diff --check` passed.
+- 2026-04-24: Closed Phase 1 after the single review/fix cycle and moved the active execution focus to Phase 2.
+- 2026-04-24: Phase 2 implementation pass removed top-level destination-board instructional copy from `Runs`, `Documentation`, and `Workstreams` while preserving run/workstream tables, filters, pagination labels, documentation metadata, alerts, and empty/error states.
+- 2026-04-24: Phase 2 targeted validation:
+  - `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` passed: `2 passed` files, `70 passed` tests.
+  - `rtk git diff --check` passed.
 
 ## Progress
 
@@ -111,7 +116,7 @@ Alternatives considered:
 - [x] 2026-04-24 Run baseline validation and record known failures.
 - [x] 2026-04-24 Create and register the active execution plan.
 - [x] Phase 1: Simplify the global shell/sidebar and shared chrome vocabulary. Completed 2026-04-24 after the targeted review fix pass.
-- [ ] Phase 2: Simplify top-level destination boards.
+- [ ] Phase 2: Simplify top-level destination boards. Implemented 2026-04-24; ready for review.
 - [ ] Phase 3: Simplify run detail, planning, execution, and task panes.
 - [ ] Phase 4: Simplify project configuration tabs/forms.
 - [ ] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness.
@@ -133,6 +138,8 @@ The Phase 1 change did not alter route structure, project API behavior, project 
 
 The Phase 1 targeted fix pass resolved the review findings without broadening into later cleanup phases: shell coverage now asserts compact navigation and the visible theme control structure instead of exact deleted helper prose, and project overview copy no longer describes the project description as sidebar or project-switcher content.
 
+The Phase 2 implementation pass made the top-level destination boards quieter without changing their contracts. `Runs` keeps `+ New run`, the run table, live/scaffold states, and the recorded-run count; `Documentation` keeps the scaffold-backed tree, selected document viewer, compatibility state, and document-count metadata; `Workstreams` keeps filters, live task rows, pagination, and empty/error/loading states. The intentionally retained documentation frame subtitle comes from selected-document metadata (`viewerTitle`) and identifies the current document content rather than explaining page usage.
+
 ## Context and Orientation
 
 Authoritative design inputs:
@@ -145,9 +152,9 @@ Important implementation files:
 
 - `ui/src/shared/layout/app-shell.tsx` renders the outer shell and project loading/empty/error states.
 - `ui/src/shared/layout/shell-sidebar.tsx` renders the global sidebar, project switcher, project actions, nav, and current theme panel.
-- `ui/src/shared/navigation/destinations.ts` defines sidebar destinations and project action labels/glyphs.
+- `ui/src/shared/navigation/destinations.ts` defines sidebar destinations and project action labels/icons.
 - `ui/src/routes/router.tsx` defines the current route tree and should stay thin.
-- `ui/src/features/runs/components/runs-index-workspace.tsx` renders the `Runs` index header, create-run action, run table, and footer guidance.
+- `ui/src/features/runs/components/runs-index-workspace.tsx` renders the `Runs` index header, create-run action, run table, and recorded-run metadata.
 - `ui/src/features/runs/components/run-detail-scaffold.tsx` renders the run detail header/top rail container.
 - `ui/src/features/runs/components/run-phase-stepper.tsx` renders run-stage links and currently includes per-stage summary copy.
 - `ui/src/features/runs/components/planning-workspace.tsx` renders the shared planning split: assistant chat left and living document right.
@@ -155,7 +162,7 @@ Important implementation files:
 - `ui/src/features/execution/components/execution-workspace.tsx` renders the DAG board and currently includes persistent instructional notes.
 - `ui/src/features/execution/components/task-detail-workspace.tsx` renders task context, task conversation, and code review panes.
 - `ui/src/features/documentation/components/documentation-workspace.tsx` renders the documentation header, category tree, and document viewer.
-- `ui/src/features/workstreams/components/workstreams-board.tsx` renders workstream filters, table, metadata chips, pagination, and route guidance.
+- `ui/src/features/workstreams/components/workstreams-board.tsx` renders workstream filters, table, metadata chips, and pagination.
 - `ui/src/features/projects/components/project-configuration-shell.tsx` renders project configuration page header and tab strip with tab summaries.
 - `ui/src/features/projects/components/project-configuration-tabs.tsx` renders the project configuration tab bodies and their section helper copy.
 - `ui/src/features/projects/components/project-configuration-section.tsx` is the shared section shell used by project configuration tabs.
@@ -346,6 +353,9 @@ Phase 1 is implemented in `ui/src/shared/layout/shell-sidebar.tsx`, `ui/src/shar
 
 ### Phase Handoff
 
+Status:
+Implemented - ready for review.
+
 Goal:
 Remove extra headers, section summaries, footer guidance, and usage prose from `Runs`, `Documentation`, and `Workstreams` while preserving their core controls and state handling.
 
@@ -401,6 +411,19 @@ Commit Expectation:
 Known Constraints / Baseline Failures:
 - `Documentation` remains scaffold-backed by design; do not turn this phase into a live-data project.
 - `rtk npm run lint` and `rtk npm run typecheck` are known red baselines.
+
+Completion Notes:
+Implemented 2026-04-24.
+
+- Removed the `Runs` index page summary and table footer route instruction while retaining the `+ New run` action, live/scaffold run tables, state alerts, empty/error handling, and recorded-run count chip.
+- Removed the `Documentation` page summary plus tree/viewer section helper sentences while retaining the scaffold-backed compatibility state, document-count metadata, category navigation, selected-document path/title, and Markdown viewer.
+- Removed the `Workstreams` summary paragraph and row route-guidance footer copy while retaining the live/scaffold task rows, server-backed filter/pagination semantics, metadata chips, loading/empty/error states, and row/link navigation.
+- Removed the now-unused `table-row-note` and `documentation-shell-summary` style hooks.
+- Updated `app-shell` and destination scaffold tests so coverage asserts the compact board structure, retained metadata, and absence of the removed instructional copy.
+- Intentionally retained selected documentation frame subtitle text sourced from `viewerTitle` because it is document metadata that distinguishes the current document, not persistent usage guidance.
+
+Next Starter Context:
+Phase 2 implementation is ready for review in `ui/src/features/runs/components/runs-index-workspace.tsx`, `ui/src/features/documentation/components/documentation-workspace.tsx`, `ui/src/features/workstreams/components/workstreams-board.tsx`, `ui/src/features/workstreams/use-workstreams-view-model.ts`, `ui/src/app/styles.css`, `ui/src/test/app-shell.test.tsx`, and `ui/src/test/destination-scaffolds.test.tsx`. Required targeted validation passed with `rtk npm run test -- ui/src/test/app-shell.test.tsx ui/src/test/destination-scaffolds.test.tsx` (`70 passed`) and `rtk git diff --check`. Review should stay within top-level destination-board chrome and not broaden into run detail, planning/execution panes, project configuration, theme, or Documentation live-backend work.
 
 ## Phase 3 - Simplify Run Workspace And Execution Panes
 

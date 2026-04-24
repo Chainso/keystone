@@ -8,4 +8,4 @@ Update this file when a new plan is opened, a plan's status changes materially, 
 
 | Plan | Status | Owner | Started |
 |------|--------|-------|---------|
-| [Keystone UI Workspace Chrome Reduction](./keystone-ui-workspace-chrome-reduction.md) | In progress - Phase 1 | Codex | 2026-04-24 |
+| [Keystone UI Workspace Chrome Reduction](./keystone-ui-workspace-chrome-reduction.md) | In progress - Phase 2 | Codex | 2026-04-24 |

@@ -53,9 +53,6 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
           <p className="document-card-summary" aria-label="Workstreams pagination">
             {model.pagination.rangeLabel} · Page {model.pagination.currentPage} of {model.pagination.pageCount}
           </p>
-          {model.rows.length > 0 ? (
-            <p className="page-section-copy">{model.routeGuidance}</p>
-          ) : null}
         </div>
 
         <div className="workstreams-pagination-actions" aria-label="Workstreams pagination actions">
@@ -89,11 +86,10 @@ export function WorkstreamsBoard({ model, onRowActivate }: WorkstreamsBoardProps
         <div className="workspace-surface-header">
           <div className="workspace-surface-heading">
             <h1 className="page-title runs-page-title">{model.title}</h1>
-            <p className="workspace-surface-note">{model.summary}</p>
           </div>
           <div
             className="workspace-surface-actions workstreams-header-meta"
-            aria-label="Workstreams summary"
+            aria-label="Workstreams controls"
             role="group"
           >
             <span className="meta-chip">{model.recordSummaryLabel}</span>

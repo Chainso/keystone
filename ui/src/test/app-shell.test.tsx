@@ -849,11 +849,17 @@ describe("App shell", () => {
     expectWorkspaceLocation("Keystone Cloudflare", "Runs");
     expect(screen.getByText("Planning is in progress.")).toBeInTheDocument();
     expect(screen.getByText("Specification")).toBeInTheDocument();
+    expect(screen.getByText("1 recorded run")).toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.queryByText(
+        "Open a run to move through specification, architecture, execution plan, and execution in one workspace."
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
         "Open a row to step into the run workspace and move across the four stages."
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expectShellLinkTarget("New project", "/projects/new");
     expectShellLinkTarget("Project settings", "/settings");
     expect(

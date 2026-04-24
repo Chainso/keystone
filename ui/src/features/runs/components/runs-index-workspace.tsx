@@ -15,18 +15,11 @@ export function RunsIndexWorkspace() {
   const model = useRunsIndexViewModel();
   const navigate = useNavigate();
   const totalRuns = model.scaffoldRuns.length + model.liveRuns.length;
-  const runsSummary =
-    "Open a run to move through specification, architecture, execution plan, and execution in one workspace.";
   const tableFooter = (
-    <div className="entity-table-footer">
-      <p className="table-row-note">
-        Open a row to step into the run workspace and move across the four stages.
-      </p>
-      <div className="filter-chip-row">
-        <span className="meta-chip">
-          {`${totalRuns} recorded ${totalRuns === 1 ? "run" : "runs"}`}
-        </span>
-      </div>
+    <div className="filter-chip-row">
+      <span className="meta-chip">
+        {`${totalRuns} recorded ${totalRuns === 1 ? "run" : "runs"}`}
+      </span>
     </div>
   );
   const createRunAttemptRef = useRef<Promise<void> | null>(null);
@@ -129,7 +122,6 @@ export function RunsIndexWorkspace() {
         <div className="workspace-surface-header">
           <div className="workspace-surface-heading">
             <h1 className="page-title runs-page-title">{model.title}</h1>
-            <p className="workspace-surface-note">{runsSummary}</p>
           </div>
           <div className="workspace-surface-actions" aria-label="Runs actions" role="group">
             <button

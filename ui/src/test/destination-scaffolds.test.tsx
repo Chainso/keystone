@@ -271,11 +271,11 @@ function expectActiveWorkstreamFilter(label: string) {
   expect(screen.getByRole("radio", { name: label })).toHaveAttribute("data-state", "on");
 }
 
-function expectWorkstreamsSummary(labels: string[]) {
-  const summary = screen.getByRole("group", { name: "Workstreams summary" });
+function expectWorkstreamsControls(labels: string[]) {
+  const controls = screen.getByRole("group", { name: "Workstreams controls" });
 
   labels.forEach((label) => {
-    expect(within(summary).getByText(label)).toBeInTheDocument();
+    expect(within(controls).getByText(label)).toBeInTheDocument();
   });
 }
 
@@ -726,6 +726,17 @@ describe("Destination scaffolds", () => {
     expect(screen.getByRole("heading", { name: "Current product specification" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Documentation categories" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current document" })).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Project-level knowledge stays organized as Product Specifications, Technical Architecture, and Miscellaneous Notes."
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Browse the current project documents by category.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Read the current project document selected from the category list.")
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Placeholder honesty")).not.toBeInTheDocument();
     expect(screen.queryByText("Deferred work")).not.toBeInTheDocument();
 
@@ -1147,15 +1158,13 @@ describe("Destination scaffolds", () => {
     await screen.findByRole("link", { name: "TASK-032" });
     expect(screen.getByRole("link", { name: "TASK-032" })).toBeInTheDocument();
     expect(
-      screen.getByText("Track running, queued, and blocked work across every run.")
-    ).toBeInTheDocument();
-    expectWorkstreamsSummary(["5 matching tasks", "25 per page"]);
+      screen.queryByText("Track running, queued, and blocked work across every run.")
+    ).not.toBeInTheDocument();
+    expectWorkstreamsControls(["5 matching tasks", "25 per page"]);
     expectActiveWorkstreamFilter("Active");
     expect(
-      screen.getByText(
-        "Rows open the matching task under Runs > Execution."
-      )
-    ).toBeInTheDocument();
+      screen.queryByText("Rows open the matching task under Runs > Execution.")
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Still intentionally stubbed")).not.toBeInTheDocument();
     expectWorkstreamRows([
       ["TASK-032", "Run shell navigation", "run-104", "Running", "2m ago"],
@@ -1271,7 +1280,7 @@ describe("Destination scaffolds", () => {
     ).toBeInTheDocument();
     await screen.findByRole("link", { name: "TASK-LIVE-001" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-001" })).toBeInTheDocument();
-    expectWorkstreamsSummary(["3 matching tasks", "25 per page"]);
+    expectWorkstreamsControls(["3 matching tasks", "25 per page"]);
     expectActiveWorkstreamFilter("Active");
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -1286,7 +1295,7 @@ describe("Destination scaffolds", () => {
     fireEvent.click(screen.getByRole("radio", { name: "All" }));
     await screen.findByRole("link", { name: "TASK-LIVE-003" });
     expect(screen.getByRole("link", { name: "TASK-LIVE-003" })).toBeInTheDocument();
-    expectWorkstreamsSummary(["4 matching tasks", "25 per page"]);
+    expectWorkstreamsControls(["4 matching tasks", "25 per page"]);
 
     expectWorkstreamRows([
       ["TASK-LIVE-001", "Compile execution context", "run-live-201", "Running", "2026-04-20 12:00 UTC"],
@@ -1460,11 +1469,8 @@ describe("Destination scaffolds", () => {
     render(
       <WorkstreamsBoard
         model={{
-          activeFilterDescription:
-            "Show work that is ready or pending while it waits to enter execution.",
           currentProjectLabel: "Keystone Cloudflare",
           title: "Workstreams",
-          summary: "Inspect ready and pending work that is waiting to enter execution.",
           filters: [
             {
               filterId: "all",
@@ -1511,13 +1517,12 @@ describe("Destination scaffolds", () => {
           pageSizeLabel: "25 per page",
           recordSummaryLabel: "0 matching tasks",
           retry() {},
-          routeGuidance: "Rows open the matching task under Runs > Execution.",
           setActiveFilter
         }}
       />
     );
 
-    expectWorkstreamsSummary(["0 matching tasks", "25 per page"]);
+    expectWorkstreamsControls(["0 matching tasks", "25 per page"]);
     expect(screen.getByRole("radio", { name: "Queued" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No workstreams match this filter" })).toBeInTheDocument();
     expect(screen.getByText("No workstreams match the queued filter right now.")).toBeInTheDocument();
@@ -1535,11 +1540,8 @@ describe("Destination scaffolds", () => {
       <MemoryRouter>
         <WorkstreamsBoard
           model={{
-            activeFilterDescription:
-              "Show blocked work that is waiting on unresolved blockers or prerequisites.",
             currentProjectLabel: "Keystone Cloudflare",
             title: "Workstreams",
-            summary: "Surface blocked work that needs intervention across every run.",
             filters: [
               {
                 filterId: "all",
@@ -1602,14 +1604,13 @@ describe("Destination scaffolds", () => {
             pageSizeLabel: "25 per page",
             recordSummaryLabel: "2 matching tasks",
             retry() {},
-            routeGuidance: "Rows open the matching task under Runs > Execution.",
             setActiveFilter() {}
           }}
         />
       </MemoryRouter>
     );
 
-    expectWorkstreamsSummary(["2 matching tasks", "25 per page"]);
+    expectWorkstreamsControls(["2 matching tasks", "25 per page"]);
     expect(screen.getByText("Failed")).toHaveClass("status-pill-blocked");
     expect(screen.getByText("Cancelled")).toHaveClass("status-pill-blocked");
   });

@@ -42,9 +42,6 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
       <div className="workspace-surface-header">
         <div className="workspace-surface-heading">
           <h1 className="page-title runs-page-title">{model.title}</h1>
-          <p className="workspace-surface-note documentation-shell-summary">
-            Project-level knowledge stays organized as Product Specifications, Technical Architecture, and Miscellaneous Notes.
-          </p>
         </div>
         <div
           className="workspace-surface-actions documentation-header-meta"
@@ -72,9 +69,6 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
             <section className="workspace-surface documentation-tree-panel">
               <div className="workspace-surface-section-heading">
                 <h2 className="page-section-title">Documentation categories</h2>
-                <p className="page-section-copy">
-                  Browse the current project documents by category.
-                </p>
               </div>
 
               <nav className="documentation-tree" aria-label="Documentation categories">
@@ -118,9 +112,6 @@ export function DocumentationWorkspace({ model }: DocumentationWorkspaceProps) {
             <section className="workspace-surface workspace-panel-document">
               <div className="workspace-surface-section-heading">
                 <h2 className="page-section-title">Current document</h2>
-                <p className="page-section-copy">
-                  Read the current project document selected from the category list.
-                </p>
               </div>
 
               <DocumentFrame>
