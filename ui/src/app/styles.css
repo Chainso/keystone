@@ -1982,18 +1982,6 @@ pre {
   align-items: start;
 }
 
-.project-config-shell-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.project-config-shell-summary {
-  max-width: 52rem;
-}
-
 .run-stepper,
 .project-tab-strip {
   display: flex;
@@ -2036,20 +2024,11 @@ pre {
   white-space: nowrap;
 }
 
-.project-tab-link-step {
-  display: none;
-}
-
 .run-step-link.is-disabled {
   cursor: not-allowed;
   background: color-mix(in srgb, var(--surface-subtle) 72%, transparent);
   border-color: transparent;
   color: var(--text-muted);
-}
-
-.project-tab-link-summary,
-.project-tab-link-copy {
-  display: none;
 }
 
 .run-step-link:hover,
@@ -2070,10 +2049,6 @@ pre {
   gap: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border-muted);
-}
-
-.project-config-section-summary {
-  max-width: 46rem;
 }
 
 .project-config-body > .project-config-section:first-child {
@@ -2459,10 +2434,6 @@ pre {
 
   .filter-chip-row {
     justify-content: flex-start;
-  }
-
-  .project-config-shell-meta {
-    justify-items: start;
   }
 
   .documentation-header-meta {

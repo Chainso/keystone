@@ -56,17 +56,13 @@ function ProjectConfigurationOverviewTab() {
   const model = useProjectConfigurationOverviewViewModel();
 
   return (
-    <ProjectConfigurationSection
-      title={model.heading}
-      summary="Capture the project's public name, stable key, and operator-facing context."
-    >
+    <ProjectConfigurationSection title={model.heading}>
       <ProjectConfigurationFormFrame disabled={model.isSubmitting}>
         <ProjectConfigurationError message={model.submitError} />
 
         <div className="project-form-grid">
           <FormTextField
             label={model.nameField.label}
-            description="Shown in the sidebar, project switcher, and workspace headers."
             value={model.nameField.value}
             onChange={(event) => model.nameField.onChange?.(event.currentTarget.value)}
             errorMessage={model.nameField.errorMessage}
@@ -81,7 +77,6 @@ function ProjectConfigurationOverviewTab() {
           />
           <FormTextAreaField
             label={model.descriptionField.label}
-            description="Short operator-facing context saved with the project."
             value={model.descriptionField.value}
             onChange={(event) => model.descriptionField.onChange?.(event.currentTarget.value)}
             errorMessage={model.descriptionField.errorMessage}
@@ -100,7 +95,6 @@ function ProjectConfigurationComponentsTab() {
   return (
     <ProjectConfigurationSection
       title={model.heading}
-      summary="Add at least one repository-backed component and keep the type selection explicit."
       actions={
         <Button
           type="button"
@@ -148,17 +142,13 @@ function ProjectConfigurationRulesTab() {
   const model = useProjectConfigurationRulesViewModel();
 
   return (
-    <ProjectConfigurationSection
-      title={model.heading}
-      summary="Keep shared review and test guidance as concise instructions rather than large freeform documents."
-    >
+    <ProjectConfigurationSection title={model.heading}>
       <ProjectConfigurationFormFrame disabled={model.isSubmitting}>
         <ProjectConfigurationError message={model.submitError} />
 
         <div className="project-rule-grid">
           <TextListField
             label={model.reviewInstructions.label}
-            description="Instructions Keystone should apply when reviewing changes across the whole project."
             items={model.reviewInstructions.items}
             addLabel={model.reviewInstructions.addLabel}
             onAdd={model.reviewInstructions.onAdd}
@@ -169,7 +159,6 @@ function ProjectConfigurationRulesTab() {
           />
           <TextListField
             label={model.testInstructions.label}
-            description="Validation steps Keystone should prefer when it tests project-wide changes."
             items={model.testInstructions.items}
             addLabel={model.testInstructions.addLabel}
             onAdd={model.testInstructions.onAdd}
@@ -192,7 +181,6 @@ function ProjectConfigurationEnvironmentTab() {
   return (
     <ProjectConfigurationSection
       title={model.heading}
-      summary="Edit non-secret environment variables that should travel with this project configuration."
       actions={
         <Button
           type="button"
@@ -220,7 +208,7 @@ function ProjectConfigurationEnvironmentTab() {
                   <div className="environment-var-copy">
                     <h3 className="page-section-title">Environment variable {index + 1}</h3>
                     <p className="workspace-panel-summary">
-                      These values are non-secret configuration and will be saved with the project.
+                      Non-secret configuration saved with the project.
                     </p>
                   </div>
                   <Button type="button" variant="outline" size="sm" onClick={envVar.onRemove}>
@@ -231,7 +219,6 @@ function ProjectConfigurationEnvironmentTab() {
                 <div className="project-form-grid">
                   <FormTextField
                     label={envVar.nameField.label}
-                    description="Environment variable name."
                     mono
                     value={envVar.nameField.value}
                     onChange={(event) => envVar.nameField.onChange?.(event.currentTarget.value)}
@@ -239,7 +226,7 @@ function ProjectConfigurationEnvironmentTab() {
                   />
                   <FormTextField
                     label={envVar.valueField.label}
-                    description="Current non-secret value."
+                    description="Non-secret value."
                     mono
                     value={envVar.valueField.value}
                     onChange={(event) => envVar.valueField.onChange?.(event.currentTarget.value)}

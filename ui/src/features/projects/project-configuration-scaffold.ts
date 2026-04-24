@@ -13,7 +13,6 @@ export type ProjectComponentScaffold = ResourceProjectConfigurationComponent;
 export interface ProjectConfigurationTabDefinition {
   tabId: ProjectConfigurationTabId;
   label: string;
-  summary: string;
 }
 
 export interface ProjectComponentTypeOption {
@@ -25,22 +24,18 @@ export interface ProjectComponentTypeOption {
 export const projectConfigurationTabs: ProjectConfigurationTabDefinition[] = [
   {
     label: "Overview",
-    summary: "Project identity and operator-facing context.",
     tabId: "overview"
   },
   {
     label: "Components",
-    summary: "Repository-backed components and source selection.",
     tabId: "components"
   },
   {
     label: "Rules",
-    summary: "Review and test guidance as checklist items.",
     tabId: "rules"
   },
   {
     label: "Environment",
-    summary: "Non-secret project environment variables.",
     tabId: "environment"
   }
 ];

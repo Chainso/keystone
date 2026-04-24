@@ -17,15 +17,11 @@ interface ProjectConfigurationLayoutProps {
   mode: ProjectConfigurationMode;
 }
 
-function ProjectConfigurationRouteShell({
-  mode
-}: {
-  mode: ProjectConfigurationMode;
-}) {
+function ProjectConfigurationRouteShell() {
   const model = useProjectConfigurationShellViewModel();
 
   return (
-    <ProjectConfigurationShell mode={mode} title={model.title} tabs={model.tabs}>
+    <ProjectConfigurationShell title={model.title} tabs={model.tabs}>
       {model.shellState ? (
         <WorkspaceEmptyState className="project-config-shell-state">
           <WorkspaceEmptyStateTitle as="h2">
@@ -61,7 +57,7 @@ export function ProjectConfigurationLayout({ mode }: ProjectConfigurationLayoutP
 
   return (
     <Provider>
-      <ProjectConfigurationRouteShell mode={mode} />
+      <ProjectConfigurationRouteShell />
     </Provider>
   );
 }

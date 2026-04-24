@@ -5,7 +5,6 @@ import { Button } from "../../../components/ui/button";
 interface ProjectConfigurationSectionProps {
   actions?: ReactNode;
   children: ReactNode;
-  summary?: string;
   title: string;
 }
 
@@ -20,7 +19,6 @@ interface ProjectConfigurationActionsProps {
 export function ProjectConfigurationSection({
   actions,
   children,
-  summary,
   title
 }: ProjectConfigurationSectionProps) {
   return (
@@ -28,9 +26,6 @@ export function ProjectConfigurationSection({
       <div className="project-config-section-header">
         <div className="project-config-section-copy">
           <h2 className="page-section-title">{title}</h2>
-          {summary ? (
-            <p className="page-section-copy project-config-section-summary">{summary}</p>
-          ) : null}
         </div>
         {actions ? <div className="project-config-section-actions">{actions}</div> : null}
       </div>

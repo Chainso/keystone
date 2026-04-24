@@ -170,6 +170,9 @@ function expectProjectConfigurationChromeRemoved(container: HTMLElement) {
   expect(pageStage).not.toBeNull();
   expect(pageStage?.querySelectorAll(".project-config-panel")).toHaveLength(1);
   expect(pageStage?.querySelectorAll(".project-config-sidebar")).toHaveLength(0);
+  expect(pageStage?.querySelectorAll(".project-config-shell-summary")).toHaveLength(0);
+  expect(pageStage?.querySelectorAll(".project-tab-link-copy")).toHaveLength(0);
+  expect(pageStage?.querySelectorAll(".project-config-section-summary")).toHaveLength(0);
   expect(pageStage?.querySelectorAll(".page-hero")).toHaveLength(0);
   expect(pageStage?.querySelectorAll("aside")).toHaveLength(0);
 }
@@ -2303,18 +2306,12 @@ describe("Destination scaffolds", () => {
     const projectNameField = await screen.findByRole("textbox", { name: "Project name" });
 
     expect(projectNameField).toHaveValue("Keystone Cloudflare");
-    expectDescribedByText(
-      projectNameField,
-      "Shown in the sidebar, project switcher, and workspace headers."
-    );
+    expect(projectNameField).not.toHaveAttribute("aria-describedby");
     expect(screen.getByRole("textbox", { name: "Project key" })).toHaveValue("keystone-cloudflare");
     const descriptionField = screen.getByRole("textbox", { name: "Description" });
 
     expect(descriptionField).toHaveValue("Internal operator workspace for the Keystone Cloudflare project.");
-    expectDescribedByText(
-      descriptionField,
-      "Short operator-facing context saved with the project."
-    );
+    expect(descriptionField).not.toHaveAttribute("aria-describedby");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
 
@@ -2335,10 +2332,7 @@ describe("Destination scaffolds", () => {
     });
 
     expect(reviewInstructionField).toHaveValue("Keep route ownership explicit.");
-    expectDescribedByText(
-      reviewInstructionField,
-      "Instructions Keystone should apply when reviewing changes across the whole project."
-    );
+    expect(reviewInstructionField).not.toHaveAttribute("aria-describedby");
 
     fireEvent.click(getLinkByHref(projectTabs, "/projects/new/overview"));
     expect(await screen.findByRole("textbox", { name: "Project name" })).toHaveValue(
@@ -2867,15 +2861,12 @@ describe("Destination scaffolds", () => {
     expect(typeField).toHaveValue("Git repository");
     expectDescribedByText(
       typeField,
-      "Backend support is currently limited to Git repository components."
+      "Git repository is the only supported component type."
     );
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Name" })).toHaveValue("API");
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Key" })).toHaveValue("api");
     expect(sourceModeField).toBeChecked();
-    expectDescribedByText(
-      sourceModeField,
-      "Choose whether Keystone should use a local repository path or a Git remote for this component."
-    );
+    expect(sourceModeField).not.toHaveAttribute("aria-describedby");
     expect(currentComponentCard.queries.getByRole("textbox", { name: "Local path" })).toHaveValue(
       "./services/api"
     );

@@ -1,5 +1,4 @@
 import type { ProjectComponentTypeOption } from "../project-configuration-scaffold";
-import { Badge } from "../../../components/ui/badge";
 
 interface ProjectComponentTypePickerProps {
   onSelect: (kindId: ProjectComponentTypeOption["kindId"]) => void;
@@ -18,10 +17,9 @@ export function ProjectComponentTypePicker({
         <div className="type-picker-copy">
           <h3 className="page-section-title">{title}</h3>
           <p className="workspace-panel-summary">
-            Type selection stays explicit even though backend support is currently limited to Git repositories.
+            Git repository is the only supported component type.
           </p>
         </div>
-        <Badge variant="outline">Explicit selection</Badge>
       </div>
 
       <ul className="type-picker-options" aria-label="Component type options">

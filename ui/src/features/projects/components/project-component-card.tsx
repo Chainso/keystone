@@ -1,5 +1,3 @@
-import { useId } from "react";
-
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import {
@@ -23,14 +21,10 @@ function SourceModeField({
   sourceMode: ProjectComponentSourceMode;
 }) {
   const inputName = `${componentId}-source-mode`;
-  const descriptionId = useId();
 
   return (
-    <fieldset className="source-mode-field" aria-describedby={descriptionId}>
+    <fieldset className="source-mode-field">
       <legend className="form-field-label">Source mode</legend>
-      <p id={descriptionId} className="form-field-description">
-        Choose whether Keystone should use a local repository path or a Git remote for this component.
-      </p>
 
       <div className="source-mode-row">
         <label
@@ -43,7 +37,6 @@ function SourceModeField({
             name={inputName}
             checked={sourceMode === "localPath"}
             disabled={readOnly}
-            aria-describedby={descriptionId}
             onChange={() => onChange?.("localPath")}
           />
           <span className="source-mode-option-label">Local path</span>
@@ -62,7 +55,6 @@ function SourceModeField({
             name={inputName}
             checked={sourceMode === "gitUrl"}
             disabled={readOnly}
-            aria-describedby={descriptionId}
             onChange={() => onChange?.("gitUrl")}
           />
           <span className="source-mode-option-label">Git URL</span>
@@ -85,9 +77,6 @@ export function EditableProjectComponentCard({
       <div className="component-card-header">
         <div className="component-card-copy">
           <h3 className="page-section-title">{component.heading}</h3>
-          <p className="workspace-panel-summary">
-            Configure the repository source, default ref, and any component-specific review overrides.
-          </p>
         </div>
         <div className="component-card-meta">
           <Badge variant="outline">{getProjectComponentKindLabel(component.kind)}</Badge>
@@ -99,12 +88,11 @@ export function EditableProjectComponentCard({
           label="Type"
           options={[getProjectComponentKindLabel(component.kind)]}
           value={getProjectComponentKindLabel(component.kind)}
-          description="Backend support is currently limited to Git repository components."
+          description="Git repository is the only supported component type."
           disabled
         />
         <FormTextField
           label={component.displayNameField.label}
-          description="Operator-facing name used in the project workspace."
           value={component.displayNameField.value}
           onChange={(event) => component.displayNameField.onChange?.(event.currentTarget.value)}
           errorMessage={component.displayNameField.errorMessage}
@@ -159,7 +147,6 @@ export function EditableProjectComponentCard({
         <div className="component-card-overrides">
           <TextListField
             label={component.reviewInstructions.label}
-            description="Focused review guidance for this component."
             items={component.reviewInstructions.items}
             onAdd={component.reviewInstructions.onAdd}
             onChange={component.reviewInstructions.onChange}
@@ -170,7 +157,6 @@ export function EditableProjectComponentCard({
           />
           <TextListField
             label={component.testInstructions.label}
-            description="Targeted validation steps for this component."
             items={component.testInstructions.items}
             onAdd={component.testInstructions.onAdd}
             onChange={component.testInstructions.onChange}
@@ -240,13 +226,11 @@ export function ReadonlyProjectComponentCard({
         <div className="component-card-overrides">
           <TextListField
             label="Review"
-            description="Focused review guidance for this component."
             items={component.reviewInstructions}
             readOnly
           />
           <TextListField
             label="Test"
-            description="Targeted validation steps for this component."
             items={component.testInstructions}
             readOnly
           />
