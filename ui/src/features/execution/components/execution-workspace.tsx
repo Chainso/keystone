@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { cn } from "../../../lib/utils";
 import {
@@ -84,13 +84,9 @@ function buildExecutionEdgePath(edge: ExecutionEdgeViewModel) {
 }
 
 function ExecutionGraphBoard({
-  model,
-  onSelectTask,
-  selectedTaskId
+  model
 }: {
   model: Extract<RunExecutionViewModel, { state: "ready" }>;
-  onSelectTask: (taskId: string) => void;
-  selectedTaskId: string | null;
 }) {
   const canvasMetrics = getExecutionCanvasMetrics(model);
   const canvasStyle: CSSProperties = {
@@ -100,10 +96,6 @@ function ExecutionGraphBoard({
 
   return (
     <div className="execution-graph-stage" aria-label="Execution workflow graph">
-      <p className="document-card-summary" aria-label="Execution summary">
-        {model.summary}
-      </p>
-
       <div className="execution-graph-scroll">
         <div className="execution-graph-canvas" style={canvasStyle}>
           {model.columns.map((column) => {
@@ -146,24 +138,19 @@ function ExecutionGraphBoard({
             };
 
             return (
-              <button
+              <Link
                 key={node.taskId}
-                type="button"
                 className={cn(
                   "execution-graph-node",
-                  `is-${node.statusTone}`,
-                  selectedTaskId === node.taskId && "is-selected"
+                  `is-${node.statusTone}`
                 )}
                 style={nodeStyle}
-                aria-pressed={selectedTaskId === node.taskId}
-                onClick={() => {
-                  onSelectTask(node.taskId);
-                }}
+                to={node.detailPath}
               >
                 <span className="execution-graph-node-label">{node.taskId}</span>
                 <span className="execution-graph-node-title">{node.title}</span>
                 <span className="execution-graph-node-status">{node.statusLabel}</span>
-              </button>
+              </Link>
             );
           })}
         </div>
@@ -173,8 +160,6 @@ function ExecutionGraphBoard({
 }
 
 export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) {
-  const navigate = useNavigate();
-
   if (model.state === "empty" || model.state === "pending") {
     return (
       <WorkspacePanel className="execution-panel">
@@ -205,39 +190,18 @@ export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) 
     );
   }
 
-  const nodesById = new Map(model.nodes.map((node) => [node.taskId, node]));
-  const highlightedTaskId = model.defaultSelectedTaskId ?? model.nodes[0]?.taskId ?? null;
-  const executionSummary = model.summaryGroups
-    .filter((group) => group.count > 0)
-    .map((group) => `${group.count} ${group.label.toLowerCase()}`)
-    .join(" · ");
-  const handleActivateTask = (_taskId: string, detailPath: string) => {
-    navigate(detailPath);
-  };
-
   return (
     <WorkspacePanel className="execution-panel">
       <WorkspacePanelHeader>
         <WorkspacePanelHeading>
           <WorkspacePanelTitle>Task workflow DAG</WorkspacePanelTitle>
         </WorkspacePanelHeading>
-        {executionSummary ? (
-          <WorkspacePanelActions className="execution-summary-inline" aria-label="Execution status">
-            <p className="document-name">{executionSummary}</p>
-          </WorkspacePanelActions>
-        ) : null}
+        <WorkspacePanelActions className="execution-summary-inline" aria-label="Execution summary">
+          <p className="document-name">{model.summary}</p>
+        </WorkspacePanelActions>
       </WorkspacePanelHeader>
 
-      <ExecutionGraphBoard
-        model={model}
-        onSelectTask={(taskId) => {
-          const nextTask = nodesById.get(taskId);
-          if (nextTask) {
-            handleActivateTask(taskId, nextTask.detailPath);
-          }
-        }}
-        selectedTaskId={highlightedTaskId}
-      />
+      <ExecutionGraphBoard model={model} />
     </WorkspacePanel>
   );
 }

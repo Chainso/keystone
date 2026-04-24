@@ -45,7 +45,6 @@ type ReviewDiffContentState =
       artifactSignature: string;
       groups: ReviewDiffGroupViewModel[];
       message: string | null;
-      parsedArtifactIds: string[];
       status: "ready";
     }
   | { artifactSignature: string; message: string; status: "error" };
@@ -171,7 +170,6 @@ function buildEmptyReviewDiffState(artifactSignature: string): ReviewDiffContent
     artifactSignature,
     groups: [],
     message: null,
-    parsedArtifactIds: [],
     status: "ready"
   };
 }
@@ -243,17 +241,13 @@ function useTaskReviewDiffContent(artifacts: TaskArtifactViewModel[]) {
       if (successfulLoads.length === 0 && failedLoads.length > 0) {
         setState({
           artifactSignature: reviewCandidateSignature,
-          message: getReviewContentErrorMessage(failedLoads[0].reason),
+          message: getReviewContentErrorMessage(failedLoads[0]?.reason),
           status: "error"
         });
         return;
       }
 
       const loadedFiles = successfulLoads.flatMap((result) => result.files);
-      const parsedArtifactIds = successfulLoads
-        .filter((result) => result.files.length > 0)
-        .map((result) => result.artifactId);
-
       setState({
         artifactSignature: reviewCandidateSignature,
         groups: buildReviewDiffGroups(loadedFiles),
@@ -261,7 +255,6 @@ function useTaskReviewDiffContent(artifacts: TaskArtifactViewModel[]) {
           failedLoads.length > 0
             ? `${failedLoads.length} reviewable text artifact${failedLoads.length === 1 ? "" : "s"} could not be loaded and ${failedLoads.length === 1 ? "is" : "are"} omitted from this view.`
             : null,
-        parsedArtifactIds,
         status: "ready"
       });
     });
@@ -320,61 +313,28 @@ function ReviewDiffGroup({ group }: { group: ReviewDiffGroupViewModel }) {
   );
 }
 
-function SupportingArtifactsSection({ artifacts }: { artifacts: TaskArtifactViewModel[] }) {
-  if (artifacts.length === 0) {
-    return null;
-  }
-
-  return (
-    <ReviewSection className="task-review-group">
-      <div className="task-review-group-header">
-        <div className="task-review-group-heading">
-          <ReviewSectionLabel>Supporting artifacts</ReviewSectionLabel>
-        </div>
-        <p className="document-name">
-          {artifacts.length} artifact{artifacts.length === 1 ? "" : "s"}
-        </p>
-      </div>
-
-      <div className="task-supporting-artifact-list">
-        {artifacts.map((artifact) => (
-          <section key={artifact.artifactId} className="task-supporting-artifact">
-            <p className="task-supporting-artifact-title">{artifact.artifactId}</p>
-            <p className="review-file-note">
-              {artifact.kind} · {artifact.contentType} · {artifact.sizeLabel}
-            </p>
-          </section>
-        ))}
-      </div>
-    </ReviewSection>
-  );
-}
-
 function TaskReviewSidebarReady({ artifacts }: { artifacts: TaskArtifactViewModel[] }) {
   const { retry, reviewCandidates, state } = useTaskReviewDiffContent(artifacts);
-  const { supportingArtifacts: metadataOnlyArtifacts } = useMemo(
-    () => partitionTaskReviewArtifacts(artifacts),
-    [artifacts]
+
+  const header = (
+    <ReviewSection>
+      <ReviewSectionLabel>Changed files</ReviewSectionLabel>
+    </ReviewSection>
   );
-  const supportingArtifacts = useMemo(() => {
-    if (state.status !== "ready") {
-      return metadataOnlyArtifacts;
-    }
 
-    const parsedArtifactIds = new Set(state.parsedArtifactIds);
-
-    return artifacts.filter((artifact) => !parsedArtifactIds.has(artifact.artifactId));
-  }, [artifacts, metadataOnlyArtifacts, state]);
-
-  return (
-    <div className="task-review-sidebar">
-      <ReviewSection>
-        <ReviewSectionLabel>Changed files</ReviewSectionLabel>
-      </ReviewSection>
-
-      {state.status === "loading" || state.status === "idle" ? (
+  if (state.status === "loading" || state.status === "idle") {
+    return (
+      <div className="task-review-sidebar">
+        {header}
         <DocumentFrameSummary>{state.message}</DocumentFrameSummary>
-      ) : state.status === "error" ? (
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div className="task-review-sidebar">
+        {header}
         <WorkspaceEmptyState>
           <WorkspaceEmptyStateTitle as="h3">Unable to load changed files</WorkspaceEmptyStateTitle>
           <WorkspaceEmptyStateDescription>{state.message}</WorkspaceEmptyStateDescription>
@@ -390,22 +350,25 @@ function TaskReviewSidebarReady({ artifacts }: { artifacts: TaskArtifactViewMode
             </button>
           </WorkspaceEmptyStateActions>
         </WorkspaceEmptyState>
-      ) : (
-        <>
-          {state.message ? <DocumentFrameSummary>{state.message}</DocumentFrameSummary> : null}
-          {state.groups.length === 0 ? (
-            <DocumentFrameSummary>
-              {reviewCandidates.length === 0
-                ? "No changed files are recorded for this task yet."
-                : "No changed files were parsed from the current reviewable text artifacts."}
-            </DocumentFrameSummary>
-          ) : (
-            state.groups.map((group) => <ReviewDiffGroup key={group.id} group={group} />)
-          )}
-        </>
-      )}
+      </div>
+    );
+  }
 
-      <SupportingArtifactsSection artifacts={supportingArtifacts} />
+  const readyState = state as Extract<ReviewDiffContentState, { status: "ready" }>;
+
+  return (
+    <div className="task-review-sidebar">
+      {header}
+      {readyState.message ? <DocumentFrameSummary>{readyState.message}</DocumentFrameSummary> : null}
+      {readyState.groups.length === 0 ? (
+        <DocumentFrameSummary>
+          {reviewCandidates.length === 0
+            ? "No changed files are recorded for this task yet."
+            : "No changed files were parsed from the current reviewable text artifacts."}
+        </DocumentFrameSummary>
+      ) : (
+        readyState.groups.map((group) => <ReviewDiffGroup key={group.id} group={group} />)
+      )}
     </div>
   );
 }

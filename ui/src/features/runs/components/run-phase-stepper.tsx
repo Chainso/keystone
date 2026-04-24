@@ -33,8 +33,6 @@ export function RunPhaseStepper({ steps }: RunPhaseStepperProps) {
             }
             className="run-step-link is-disabled"
             aria-disabled="true"
-            role="link"
-            tabIndex={0}
           >
             <span className="run-step-link-label">{phase.label}</span>
             {phase.disabledReason ? (

@@ -1057,7 +1057,7 @@ pre {
 }
 
 .conversation-bubble-user {
-  background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-subtle));
+  background: color-mix(in srgb, var(--accent-fill) 34%, var(--surface-subtle));
   border-color: color-mix(in srgb, var(--accent-line) 42%, var(--border-muted));
 }
 
@@ -1499,13 +1499,14 @@ pre {
   gap: 0.45rem;
   padding: 0.95rem 1rem;
   border: 1px solid var(--border-strong);
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 72%, transparent), transparent 70%),
     var(--surface-panel);
   color: var(--text-primary);
   overflow: hidden;
   text-align: left;
+  text-decoration: none;
   transition:
     border-color 140ms ease,
     box-shadow 140ms ease,
@@ -1709,10 +1710,15 @@ pre {
 }
 
 .task-detail-header-actions {
-  align-items: flex-end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
 }
 
 .task-detail-pane-body,
+.task-detail-context,
 .task-conversation-stack,
 .task-review-sidebar,
 .task-review-group-heading,
@@ -2288,14 +2294,13 @@ pre {
 }
 
 .planning-workspace-accessory,
-.planning-document-followup,
-.planning-document-followup-copy,
+.planning-document-action-group,
+.planning-document-action-copy,
 .task-detail-workspace,
 .task-context-bar,
 .task-context-actions,
 .task-context-copy,
 .task-context-meta,
-.task-dependency-strip,
 .execution-summary-inline {
   display: grid;
   gap: 0.65rem;
@@ -2305,9 +2310,18 @@ pre {
   margin-top: 0.75rem;
 }
 
-.planning-document-followup {
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border-muted);
+.planning-document-action-group {
+  justify-items: end;
+  text-align: right;
+}
+
+.planning-document-action-summary {
+  max-width: 22rem;
+}
+
+.planning-document-action-group .shell-state-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .task-context-bar {

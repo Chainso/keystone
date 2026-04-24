@@ -4,8 +4,7 @@ import {
   DocumentFrame,
   DocumentFrameBody,
   DocumentFramePath,
-  DocumentFrameRule,
-  DocumentFrameSummary
+  DocumentFrameRule
 } from "../../../components/workspace/document-frame";
 import {
   MarkdownDocumentEditor,
@@ -19,6 +18,7 @@ import {
 } from "../../../components/workspace/workspace-empty-state";
 import {
   WorkspacePanel,
+  WorkspacePanelActions,
   WorkspacePanelHeader,
   WorkspacePanelHeading,
   WorkspacePanelTitle
@@ -57,7 +57,7 @@ function PlanningConversationPanel({
 
 function PlanningDocumentPanel(
   props: RunPlanningPhaseViewModel & {
-    documentFollowup?: ReactNode;
+    documentHeaderActions?: ReactNode;
   }
 ) {
   return (
@@ -66,6 +66,9 @@ function PlanningDocumentPanel(
         <WorkspacePanelHeading>
           <WorkspacePanelTitle>{props.panelTitle}</WorkspacePanelTitle>
         </WorkspacePanelHeading>
+        {props.documentHeaderActions ? (
+          <WorkspacePanelActions>{props.documentHeaderActions}</WorkspacePanelActions>
+        ) : null}
       </WorkspacePanelHeader>
 
       <DocumentFrame>
@@ -181,9 +184,6 @@ function PlanningDocumentPanel(
           </WorkspaceEmptyState>
         )}
 
-        {props.documentFollowup ? (
-          props.documentFollowup
-        ) : null}
       </DocumentFrame>
     </WorkspacePanel>
   );
@@ -191,10 +191,10 @@ function PlanningDocumentPanel(
 
 export function PlanningWorkspaceFrame(
   props: RunPlanningPhaseViewModel & {
-    documentFollowup?: ReactNode;
+    documentHeaderActions?: ReactNode;
   }
 ) {
-  const { documentFollowup, ...planningProps } = props;
+  const { documentHeaderActions, ...planningProps } = props;
 
   return (
     <WorkspaceSplit className="planning-workspace-split">
@@ -206,7 +206,7 @@ export function PlanningWorkspaceFrame(
       </WorkspaceSplitPane>
 
       <WorkspaceSplitPane>
-        <PlanningDocumentPanel {...planningProps} documentFollowup={documentFollowup} />
+        <PlanningDocumentPanel {...planningProps} documentHeaderActions={documentHeaderActions} />
       </WorkspaceSplitPane>
     </WorkspaceSplit>
   );

@@ -4,7 +4,6 @@ import {
 } from "../../shared/navigation/run-phases";
 import { useRunDetail } from "./run-detail-context";
 import { hasCompileProvenance } from "./run-execution-state";
-import { buildRunActivityLabel, getRunStatusPresentation } from "./run-status";
 import { useReadyRunDetail } from "./use-ready-run-detail";
 import type {
   RunDetailLayoutViewModel,
@@ -15,17 +14,8 @@ import type {
 type ReadyRun = NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["run"]>;
 
 function buildHeaderViewModel(run: ReadyRun): RunHeaderViewModel {
-  const status = getRunStatusPresentation(run.status);
-
   return {
-    displayId: run.runId,
-    statusLabel: status.statusLabel,
-    statusTone: status.statusTone,
-    updatedLabel: buildRunActivityLabel({
-      compiledAt: run.compiledFrom?.compiledAt ?? null,
-      endedAt: run.endedAt,
-      startedAt: run.startedAt
-    })
+    displayId: run.runId
   };
 }
 

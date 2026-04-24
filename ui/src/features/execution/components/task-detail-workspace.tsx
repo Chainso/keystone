@@ -18,39 +18,8 @@ import {
 } from "../../../components/workspace/workspace-split";
 import { StatusPill } from "../../../shared/layout/status-pill";
 import { AssistantChatSurface } from "../../conversations/assistant-chat-surface";
-import type {
-  TaskDependencyViewModel,
-  TaskDetailViewModel
-} from "../use-execution-view-model";
+import type { TaskDetailViewModel } from "../use-execution-view-model";
 import { TaskReviewSidebar } from "./task-review-sidebar";
-
-function TaskDependencyStrip({
-  label,
-  tasks
-}: {
-  label: string;
-  tasks: TaskDependencyViewModel[];
-}) {
-  return (
-    <section className="task-dependency-strip" aria-label={label}>
-      <p className="review-sidebar-label">{label}</p>
-      {tasks.length === 0 ? (
-        <DocumentFrameSummary>None.</DocumentFrameSummary>
-      ) : (
-        <ul className="task-dependency-list" aria-label={label}>
-          {tasks.map((task) => (
-            <li key={task.taskId}>
-              <Link to={task.detailPath} className="task-context-link">
-                <span className="task-dependency-title">{task.title}</span>
-                <span className="document-name">{`${task.taskId} · ${task.statusLabel}`}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
 
 export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
   return (
@@ -58,58 +27,41 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
       <WorkspaceSplit className="task-detail-split">
         <WorkspaceSplitPane>
           <WorkspacePanel>
+            <WorkspacePanelHeader>
+              <WorkspacePanelHeading>
+                <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
+              </WorkspacePanelHeading>
+              <div className="task-detail-header-actions">
+                {model.state === "ready" ? (
+                  <StatusPill label={model.statusLabel} tone={model.statusTone} />
+                ) : null}
+                <Link to={model.backPath} className="back-link">
+                  Back to DAG
+                </Link>
+              </div>
+            </WorkspacePanelHeader>
+
             <div className="task-detail-pane-body">
-              <section className="task-context-bar" aria-label="Task context">
-                <div className="task-context-copy">
-                  <p className="review-sidebar-label">Task workspace</p>
-                  <h2 className="run-detail-title">
+              {model.state === "ready" ? (
+                <div className="task-detail-context" aria-label="Task context">
+                  <p className="task-detail-title">
                     {model.runDisplayId} / {model.taskDisplayId}
-                  </h2>
-                  {model.state === "ready" ? (
-                    <p className="task-detail-title">{model.title}</p>
-                  ) : null}
-                  {model.state === "ready" ? (
-                    <DocumentFrameSummary>{model.description}</DocumentFrameSummary>
-                  ) : null}
+                  </p>
+                  <p className="document-name">
+                    {model.title} · {model.activityLabel}
+                  </p>
                 </div>
-                <div className="task-context-meta">
-                  {model.state === "ready" ? (
-                    <div className="task-context-actions">
-                      <StatusPill label={model.statusLabel} tone={model.statusTone} />
-                    </div>
-                  ) : null}
-                  <Link to={model.backPath} className="back-link">
-                    Back to DAG
-                  </Link>
-                  {model.state === "ready" ? (
-                    <p className="document-name">{model.activityLabel}</p>
-                  ) : null}
-                  {model.state === "ready" ? (
-                    <div className="task-context-grid">
-                      <TaskDependencyStrip label="Depends on" tasks={model.dependsOn} />
-                      <TaskDependencyStrip label="Downstream tasks" tasks={model.downstreamTasks} />
-                    </div>
-                  ) : null}
-                </div>
-              </section>
+              ) : null}
 
               {model.state === "ready" ? (
-                <>
-                  <WorkspacePanelHeader>
-                    <WorkspacePanelHeading>
-                      <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
-                    </WorkspacePanelHeading>
-                  </WorkspacePanelHeader>
-
-                  <AssistantChatSurface
-                    composerPlaceholder="Continue this task conversation with Keystone."
-                    emptyMessage="This task already has an attached conversation. Send the next implementation turn here."
-                    emptyTitle="Task conversation ready"
-                    locator={model.conversationLocator}
-                    unavailableMessage="Task conversation becomes available after the run task record is ready."
-                    unavailableTitle="No task conversation attached"
-                  />
-                </>
+                <AssistantChatSurface
+                  composerPlaceholder="Continue this task conversation with Keystone."
+                  emptyMessage="This task already has an attached conversation. Send the next implementation turn here."
+                  emptyTitle="Task conversation ready"
+                  locator={model.conversationLocator}
+                  unavailableMessage="Task conversation becomes available after the run task record is ready."
+                  unavailableTitle="No task conversation attached"
+                />
               ) : (
                 <WorkspaceEmptyState>
                   <WorkspaceEmptyStateTitle as="h3">

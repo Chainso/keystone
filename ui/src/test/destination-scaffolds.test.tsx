@@ -2251,7 +2251,7 @@ describe("Destination scaffolds", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-101/execution/tasks/task-019");
     });
-    expect(await screen.findByRole("heading", { name: "run-101 / task-019" })).toBeInTheDocument();
+    expect(await screen.findByText("run-101 / task-019")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Task conversation" })).toBeInTheDocument();
     expect(screen.getByText("Task conversation ready")).toBeInTheDocument();
     expect(

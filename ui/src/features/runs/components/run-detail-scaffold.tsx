@@ -1,27 +1,20 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import {
   WorkspacePage
 } from "../../../components/workspace/workspace-page";
-import { StatusPill } from "../../../shared/layout/status-pill";
 import { RunPhaseStepper } from "./run-phase-stepper";
 import type { RunPhaseStepViewModel } from "../use-run-view-model";
 
 interface RunDetailScaffoldProps {
   displayId: string;
-  statusLabel: string;
-  statusTone: ComponentProps<typeof StatusPill>["tone"];
-  updatedLabel: string;
   phaseSteps: RunPhaseStepViewModel[];
   children: ReactNode;
 }
 
 export function RunDetailScaffold({
   displayId,
-  statusLabel,
-  statusTone,
-  updatedLabel,
   phaseSteps,
   children
 }: RunDetailScaffoldProps) {
@@ -36,8 +29,6 @@ export function RunDetailScaffold({
           </div>
           <div className="run-detail-headline">
             <h1 className="run-detail-title">{displayId}</h1>
-            <StatusPill label={statusLabel} tone={statusTone} />
-            <p className="document-name">{updatedLabel}</p>
           </div>
         </div>
         <RunPhaseStepper steps={phaseSteps} />

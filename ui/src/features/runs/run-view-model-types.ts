@@ -1,12 +1,8 @@
-import type { StatusTone } from "../../shared/layout/status-pill";
 import type { RunPhaseId } from "../../shared/navigation/run-phases";
 import type { ConversationLocator } from "./run-types";
 
 export interface RunHeaderViewModel {
   displayId: string;
-  statusLabel: string;
-  statusTone: StatusTone;
-  updatedLabel: string;
 }
 
 export interface RunPhaseStepViewModel {

@@ -306,6 +306,7 @@ function expectPlanningChatSurface() {
   expect(
     screen.getByPlaceholderText("Continue the planning conversation with Keystone.")
   ).toBeInTheDocument();
+  expect(screen.getByLabelText("Message Keystone")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
 }
 
@@ -319,6 +320,7 @@ function expectTaskChatSurface() {
   expect(
     screen.getByPlaceholderText("Continue this task conversation with Keystone.")
   ).toBeInTheDocument();
+  expect(screen.getByLabelText("Message Keystone")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
 }
 
@@ -1843,12 +1845,12 @@ describe("Run routes", () => {
     expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
   });
 
-  it("renders the run workspace frame with compact meta copy and stage tabs", async () => {
+  it("renders the run workspace frame with title and stage tabs", async () => {
     renderRunRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
-    expect(screen.getByText("Started 2026-04-20 12:30 UTC")).toBeInTheDocument();
+    expect(screen.queryByText("Started 2026-04-20 12:30 UTC")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflow wf-run-104")).not.toBeInTheDocument();
     expect(screen.queryByText("Engine Think Live")).not.toBeInTheDocument();
     expect(document.querySelector(".run-detail-summary")).toBeNull();
@@ -2989,7 +2991,7 @@ describe("Run routes", () => {
     ).toBe(1);
   });
 
-  it("routes into execution and waits there while a delayed compile materializes the workflow", async () => {
+  it("routes into execution and auto-refreshes while a delayed compile materializes the workflow", async () => {
     const emptyWorkflow: NonNullable<StaticRunDetailRecord["workflow"]> = {
       edges: [],
       nodes: [],
@@ -3056,11 +3058,9 @@ describe("Run routes", () => {
     });
     expect(await screen.findByText("Execution is materializing")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh execution" }));
-
     await waitFor(() => {
       expect(workflowRequestCount).toBeGreaterThanOrEqual(3);
-    });
+    }, { timeout: 1800 });
     expect(await screen.findByLabelText("Execution summary")).toHaveTextContent(
       "3 tasks across 3 dependency steps"
     );
@@ -3171,12 +3171,10 @@ describe("Run routes", () => {
       "3 tasks across 3 dependency steps"
     );
     expect(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Live run provider cutover/i
       })
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 in progress");
-    expect(screen.getByLabelText("Execution status")).toHaveTextContent("2 completed");
+    ).toHaveAttribute("href", "/runs/run-104/execution/tasks/task-032");
     expect(within(graphRegion).queryByText(/unlocks/i)).not.toBeInTheDocument();
     expect(document.querySelector(".execution-board-note")).toBeNull();
     expect(document.querySelector(".execution-graph-node-footnote")).toBeNull();
@@ -3187,7 +3185,7 @@ describe("Run routes", () => {
 
     const graphRegion = await screen.findByLabelText("Execution workflow graph");
     fireEvent.click(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Architecture decisions/i
       })
     );
@@ -3195,8 +3193,8 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-104/execution/tasks/task-031");
     });
-    expect(await screen.findByRole("heading", { name: "run-104 / task-031" })).toBeInTheDocument();
-    expect(screen.getByText("Translate the specification into architecture decisions.")).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-031")).toBeInTheDocument();
+    expect(screen.getByText(/Architecture decisions/)).toBeInTheDocument();
   });
 
   it("keeps the task-detail handoff honest while workflow nodes are ahead of task rows", async () => {
@@ -3205,12 +3203,12 @@ describe("Run routes", () => {
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
     const graphRegion = screen.getByLabelText("Execution workflow graph");
     expect(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Lagging UI task row/i
       })
     ).toBeInTheDocument();
     fireEvent.click(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Foundation bootstrap/i
       })
     );
@@ -3218,11 +3216,11 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-111/execution/tasks/task-111-foundation");
     });
-    expect(await screen.findByRole("heading", { name: "run-111 / task-111-foundation" })).toBeInTheDocument();
-    expect(screen.getByText("Materialize the first task row from the compiled workflow.")).toBeInTheDocument();
+    expect(await screen.findByText("run-111 / task-111-foundation")).toBeInTheDocument();
+    expect(screen.getByText(/Foundation bootstrap/)).toBeInTheDocument();
   });
 
-  it("renders branching DAG steps and supports right-rail task selection across the branch", async () => {
+  it("renders branching DAG steps and opens tasks across the branch", async () => {
     const { router } = renderRunRoute("/runs/run-110/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
@@ -3232,12 +3230,12 @@ describe("Run routes", () => {
     );
     expect(screen.getByText("2 parallel tasks in this step")).toBeInTheDocument();
     expect(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Workflow-first UI cutover/i
       })
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toHaveAttribute("href", "/runs/run-110/execution/tasks/task-110-ui");
     fireEvent.click(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Validation sweep/i
       })
     );
@@ -3245,32 +3243,38 @@ describe("Run routes", () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-110/execution/tasks/task-110-verify");
     });
-    expect(await screen.findByRole("heading", { name: "run-110 / task-110-verify" })).toBeInTheDocument();
-    expect(screen.getByText("Validate the merged execution changes before release.")).toBeInTheDocument();
+    expect(await screen.findByText("run-110 / task-110-verify")).toBeInTheDocument();
+    expect(screen.getByText(/Validation sweep/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("link", { name: /API route wiring/i }));
+    fireEvent.click(screen.getByRole("link", { name: "Back to DAG" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/runs/run-110/execution");
+    });
+    const refreshedGraphRegion = await screen.findByLabelText("Execution workflow graph");
+
+    fireEvent.click(within(refreshedGraphRegion).getByRole("link", { name: /API route wiring/i }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-110/execution/tasks/task-110-api");
     });
-    expect(await screen.findByRole("heading", { name: "run-110 / task-110-api" })).toBeInTheDocument();
-    expect(screen.getByText("Wire the run routes and data seams for the branching DAG state.")).toBeInTheDocument();
+    expect(await screen.findByText("run-110 / task-110-api")).toBeInTheDocument();
+    expect(screen.getByText(/API route wiring/)).toBeInTheDocument();
   });
 
-  it("defaults the execution inspector to the ready task when no work is active", async () => {
+  it("opens the ready task from the DAG when no work is active", async () => {
     const { router } = renderRunRoute("/runs/run-109/execution");
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
     const graphRegion = screen.getByLabelText("Execution workflow graph");
-    expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 ready next");
     expect(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Inspect current execution graph/i
       })
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toHaveAttribute("href", "/runs/run-109/execution/tasks/task-090");
 
     fireEvent.click(
-      within(graphRegion).getByRole("button", {
+      within(graphRegion).getByRole("link", {
         name: /Inspect current execution graph/i
       })
     );
@@ -3288,25 +3292,25 @@ describe("Run routes", () => {
       screen.getByText("Execution becomes available after this run has been compiled.")
     ).toBeInTheDocument();
     const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
-    const executionStep = within(phaseNavigation).getByRole("link", {
-      name: "Execution. Compile the run to open execution."
-    });
+    const executionStep = within(phaseNavigation).getByLabelText(
+      "Execution. Compile the run to open execution."
+    );
 
     expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
     expect(executionStep).toHaveAttribute("aria-disabled", "true");
-    expect(executionStep).toHaveAttribute("tabindex", "0");
+    expect(executionStep).not.toHaveAttribute("tabindex");
     expect(executionStep).toHaveTextContent("Compile the run to open execution.");
   });
 
   it("renders task conversation and code review without approval framing", async () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
-    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-032")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Task conversation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Code review" })).toBeInTheDocument();
     expectTaskChatSurface();
-    expect(screen.getByText("Task workspace")).toBeInTheDocument();
-    const taskPanel = screen.getByText("Task workspace").closest(".workspace-panel");
+    expect(screen.getByText(/Live run provider cutover/)).toBeInTheDocument();
+    const taskPanel = screen.getByRole("heading", { name: "Task conversation" }).closest(".workspace-panel");
     const reviewPanel = screen.getByRole("heading", { name: "Code review" }).closest(".workspace-panel");
 
     expect(taskPanel).not.toBeNull();
@@ -3318,11 +3322,9 @@ describe("Run routes", () => {
     expect(screen.getByText("Added files")).toBeInTheDocument();
     expect(screen.getByText("ui/src/features/execution/components/task-detail-workspace.tsx")).toBeInTheDocument();
     expect(screen.getByText("ui/src/features/execution/components/task-review-sidebar.tsx")).toBeInTheDocument();
-    expect(screen.getByText("Supporting artifacts")).toBeInTheDocument();
-    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
-    expect(screen.getByText("run_note · text/markdown; charset=utf-8 · 1.0 KB")).toBeInTheDocument();
-    expect(screen.getByText("artifact-task-032-preview")).toBeInTheDocument();
-    expect(screen.getByText("staged_output · image/png · 8.0 KB")).toBeInTheDocument();
+    expect(screen.queryByText("Supporting artifacts")).not.toBeInTheDocument();
+    expect(screen.queryByText("artifact-task-032-note")).not.toBeInTheDocument();
+    expect(screen.queryByText("artifact-task-032-preview")).not.toBeInTheDocument();
     expect(
       await screen.findByText((content) =>
         content.includes("keep artifact access inside the authenticated run API seam")
@@ -3333,8 +3335,8 @@ describe("Run routes", () => {
         content.includes("render unified diffs from task artifact content")
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("Depends on")).toBeInTheDocument();
-    expect(screen.getByText("Downstream tasks")).toBeInTheDocument();
+    expect(screen.queryByText("Depends on")).not.toBeInTheDocument();
+    expect(screen.queryByText("Downstream tasks")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load text preview" })).not.toBeInTheDocument();
     expect(screen.queryByText("Artifacts and review")).not.toBeInTheDocument();
   });
@@ -3348,7 +3350,7 @@ describe("Run routes", () => {
 
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
-    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-032")).toBeInTheDocument();
     expectTaskChatSurface();
     expect(
       screen.queryByText(/Live task conversation remains out of scope in this phase/i)
@@ -3397,12 +3399,12 @@ describe("Run routes", () => {
 
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
-    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-032")).toBeInTheDocument();
     expect(screen.getByText("Streaming live")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
   });
 
-  it("keeps non-diff review candidates as supporting metadata when no unified diff can be parsed", async () => {
+  it("keeps non-diff review candidates out of the code review sidebar", async () => {
     const fixtures = cloneRunFixtures();
     const runFixture = fixtures["run-104"];
 
@@ -3421,13 +3423,12 @@ describe("Run routes", () => {
       createRunApiFromFixtures(fixtures)
     );
 
-    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-032")).toBeInTheDocument();
     expect(
       await screen.findByText("No changed files were parsed from the current reviewable text artifacts.")
     ).toBeInTheDocument();
-    expect(screen.getByText("artifact-task-032-review")).toBeInTheDocument();
-    expect(screen.getByText("staged_output · text/plain; charset=utf-8 · 4.0 KB")).toBeInTheDocument();
-    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+    expect(screen.queryByText("artifact-task-032-review")).not.toBeInTheDocument();
+    expect(screen.queryByText("artifact-task-032-note")).not.toBeInTheDocument();
   });
 
   it("keeps successful changed files visible when one reviewable text artifact fails to load", async () => {
@@ -3450,7 +3451,7 @@ describe("Run routes", () => {
     expect(
       screen.getByText("1 reviewable text artifact could not be loaded and is omitted from this view.")
     ).toBeInTheDocument();
-    expect(screen.getByText("artifact-task-032-note")).toBeInTheDocument();
+    expect(screen.queryByText("artifact-task-032-note")).not.toBeInTheDocument();
   });
 
   it("retries changed-file loading after review content fetch fails", async () => {
@@ -3501,21 +3502,17 @@ describe("Run routes", () => {
 
     const { router } = renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
 
-    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-032")).toBeInTheDocument();
     expect(
       await screen.findByText("Loading changed files from the current task artifacts.")
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      within(screen.getByRole("list", { name: "Depends on" })).getByRole("link", {
-        name: /task-031/i
-      })
-    );
+    await router.navigate("/runs/run-104/execution/tasks/task-031");
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/runs/run-104/execution/tasks/task-031");
     });
-    expect(await screen.findByRole("heading", { name: "run-104 / task-031" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-031")).toBeInTheDocument();
     expect(await screen.findByText("No artifacts are recorded for this task yet.")).toBeInTheDocument();
     expect(screen.queryByText("Modified files")).not.toBeInTheDocument();
 
@@ -3545,7 +3542,7 @@ describe("Run routes", () => {
 
     renderRunRoute("/runs/run-104/execution/tasks/task-032", runApi);
 
-    expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(await screen.findByText("run-104 / task-032")).toBeInTheDocument();
     expect(await screen.findByText("Unable to load task review")).toBeInTheDocument();
     expect(screen.getByText("Artifact load failed.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
@@ -3554,8 +3551,7 @@ describe("Run routes", () => {
   it("keeps a lagging workflow task route in a truthful materializing state", async () => {
     renderRunRoute("/runs/run-111/execution/tasks/task-111-ui");
 
-    expect(await screen.findByRole("heading", { name: "run-111 / task-111-ui" })).toBeInTheDocument();
-    expect(screen.getByText("Execution unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("Execution unavailable")).toBeInTheDocument();
     expect(
       screen.getByText(
         "Task task-111-ui is still materializing for run run-111. Return to the DAG and wait for the live task record."
@@ -3567,8 +3563,7 @@ describe("Run routes", () => {
   it("surfaces an invalid task route as a truthful not-found state", async () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-999");
 
-    expect(await screen.findByRole("heading", { name: "run-104 / task-999" })).toBeInTheDocument();
-    expect(screen.getByText("Task not found")).toBeInTheDocument();
+    expect(await screen.findByText("Task not found")).toBeInTheDocument();
     expect(screen.getByText("Task task-999 was not found for run run-104.")).toBeInTheDocument();
     expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   });

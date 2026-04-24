@@ -12,11 +12,13 @@ function ExecutionPlanCompileSection({
   model: ExecutionPlanWorkspaceViewModel["compile"];
 }) {
   return (
-    <section className="planning-document-followup">
-      <div className="planning-document-followup-copy">
+    <div className="planning-document-action-group">
+      <div className="planning-document-action-copy">
         <p className="document-name">{model.title}</p>
         {model.helperMessage ? (
-          <DocumentFrameSummary>{model.helperMessage}</DocumentFrameSummary>
+          <DocumentFrameSummary className="planning-document-action-summary">
+            {model.helperMessage}
+          </DocumentFrameSummary>
         ) : null}
       </div>
 
@@ -64,7 +66,7 @@ function ExecutionPlanCompileSection({
           </button>
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }
 
@@ -72,7 +74,7 @@ export function ExecutionPlanWorkspace({ model }: { model: ExecutionPlanWorkspac
   return (
     <PlanningWorkspaceFrame
       {...model.planning}
-      documentFollowup={<ExecutionPlanCompileSection model={model.compile} />}
+      documentHeaderActions={<ExecutionPlanCompileSection model={model.compile} />}
     />
   );
 }

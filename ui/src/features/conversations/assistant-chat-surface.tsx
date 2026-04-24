@@ -496,6 +496,7 @@ function AttachedAssistantChatSurface({
               <ComposerPrimitive.Root className="conversation-composer">
                 <ComposerPrimitive.Input
                   className="conversation-composer-input"
+                  aria-label="Message Keystone"
                   placeholder={composerPlaceholder}
                 />
                 <div className="conversation-composer-actions">
