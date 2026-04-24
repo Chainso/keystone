@@ -30,7 +30,6 @@ function buildPhaseBaseViewModel(
       planningState.status === "ready"
         ? planningState.revision.title
         : `${phase.label} document`,
-    phaseSummary: phase.summary,
     phaseTitle: `${phase.label} conversation`
   };
 }
@@ -98,7 +97,6 @@ function buildPlanningEmptyViewModel(
       emptyTitle: `No ${label} document yet`,
       isCreating: input.isCreating,
       panelTitle: base.panelTitle,
-      phaseSummary: base.phaseSummary,
       phaseTitle: base.phaseTitle,
       startEditing: input.startEditing,
       state: "empty"
@@ -114,7 +112,6 @@ function buildPlanningEmptyViewModel(
     emptyTitle: `No current ${label} revision`,
     isCreating: input.isCreating,
     panelTitle: base.panelTitle,
-    phaseSummary: base.phaseSummary,
     phaseTitle: base.phaseTitle,
     startEditing: input.startEditing,
     state: "empty"
@@ -264,13 +261,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
       },
       documentPath: base.documentPath,
       hasUnsavedChanges,
-      helperMessage:
-        planningState.status === "ready"
-          ? "Edit the current document directly in Plate while markdown remains the saved source. Save creates a new current revision from that markdown."
-          : "Write the first current document directly in Plate while markdown remains the saved source. Save creates the first current revision from that markdown.",
       isSubmitting,
       panelTitle: title.trim() || base.panelTitle,
-      phaseSummary: base.phaseSummary,
       phaseTitle: base.phaseTitle,
       saveChanges,
       saveLabel: isSubmitting ? "Saving changes..." : "Save changes",
@@ -291,7 +283,6 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
       documentPath: base.documentPath,
       editDocument: startEditing,
       panelTitle: planningState.revision.title,
-      phaseSummary: base.phaseSummary,
       phaseTitle: base.phaseTitle,
       state: "ready"
     };
@@ -304,7 +295,6 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
       errorMessage: planningState.errorMessage,
       errorTitle: `Unable to load ${phase.label.toLowerCase()}`,
       panelTitle: base.panelTitle,
-      phaseSummary: base.phaseSummary,
       phaseTitle: base.phaseTitle,
       retry: () => {
         void actions.reload();

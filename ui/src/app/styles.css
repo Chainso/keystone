@@ -805,13 +805,6 @@ pre {
   flex-wrap: wrap;
 }
 
-.run-detail-summary {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
 .run-detail-headline,
 .run-detail-meta-row {
   display: flex;
@@ -1294,12 +1287,6 @@ pre {
   }
 }
 
-.planning-document-preview-summary {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.55;
-}
-
 .document-card-summary,
 .task-detail-summary {
   margin: 0;
@@ -1307,7 +1294,6 @@ pre {
 
 .document-name,
 .document-line,
-.execution-board-note,
 .task-detail-title,
 .review-sidebar-label,
 .document-viewer-title,
@@ -2062,7 +2048,6 @@ pre {
   color: var(--text-muted);
 }
 
-.run-step-link-summary,
 .project-tab-link-summary,
 .project-tab-link-copy {
   display: none;

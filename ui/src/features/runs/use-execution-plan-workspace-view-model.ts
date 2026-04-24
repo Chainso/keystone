@@ -169,7 +169,6 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
     compile = {
       actionHref: executionPath,
       actionLabel: "Open execution",
-      helperMessage: "Execution is enabled for this run. Open the DAG to inspect live task state.",
       state: "compiled",
       title: "Execution ready"
     };
@@ -215,8 +214,8 @@ export function useExecutionPlanWorkspaceViewModel(): ExecutionPlanWorkspaceView
         void compileRun();
       },
       helperMessage: planningChangedSinceCompile
-        ? "Current planning revisions are newer than the execution graph. Recompile to refresh Execution with the latest live documents."
-        : "Compile persists the execution graph from the current specification, architecture, and execution plan.",
+        ? "Current planning revisions are newer than the execution graph."
+        : undefined,
       isSubmitting: isCompiling,
       secondaryActionHref: executionAvailable ? executionPath : undefined,
       secondaryActionLabel: executionAvailable ? "Open current execution" : undefined,

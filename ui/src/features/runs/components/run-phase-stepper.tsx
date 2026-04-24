@@ -24,17 +24,18 @@ export function RunPhaseStepper({ steps }: RunPhaseStepperProps) {
             className={getStepLinkClassName}
           >
             <span className="run-step-link-label">{phase.label}</span>
-            <span className="run-step-link-summary">{phase.summary}</span>
           </NavLink>
         ) : (
           <span
             key={phase.phaseId}
-            aria-label={phase.label}
+            aria-label={
+              phase.disabledReason ? `${phase.label}: ${phase.disabledReason}` : phase.label
+            }
             className="run-step-link is-disabled"
             aria-disabled="true"
+            title={phase.disabledReason}
           >
             <span className="run-step-link-label">{phase.label}</span>
-            <span className="run-step-link-summary">{phase.summary}</span>
           </span>
         )
       )}

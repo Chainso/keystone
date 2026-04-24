@@ -21,8 +21,6 @@ function buildHeaderViewModel(run: ReadyRun): RunHeaderViewModel {
     displayId: run.runId,
     statusLabel: status.statusLabel,
     statusTone: status.statusTone,
-    summary:
-      "Move between specification, architecture, execution plan, and execution from this run workspace.",
     updatedLabel: buildRunActivityLabel({
       compiledAt: run.compiledFrom?.compiledAt ?? null,
       endedAt: run.endedAt,
@@ -34,16 +32,22 @@ function buildHeaderViewModel(run: ReadyRun): RunHeaderViewModel {
 function buildPhaseStepperViewModel(
   run: ReadyRun
 ): RunPhaseStepViewModel[] {
-  return runPhaseDefinitions.map((phase) => ({
-    href: buildRunPhasePath(run.runId, phase.id),
-    isAvailable: phase.id === "execution" ? hasCompileProvenance(run) : true,
-    label: phase.label,
-    phaseId: phase.id,
-    summary:
-      phase.id === "execution" && !hasCompileProvenance(run)
-        ? "Compile the run to open execution."
-        : phase.summary
-  }));
+  const executionAvailable = hasCompileProvenance(run);
+
+  return runPhaseDefinitions.map((phase) => {
+    const isAvailable = phase.id === "execution" ? executionAvailable : true;
+
+    return {
+      disabledReason:
+        phase.id === "execution" && !isAvailable
+          ? "Compile the run to open execution."
+          : undefined,
+      href: buildRunPhasePath(run.runId, phase.id),
+      isAvailable,
+      label: phase.label,
+      phaseId: phase.id
+    };
+  });
 }
 
 export function useRunDetailLayoutViewModel(): RunDetailLayoutViewModel {

@@ -10,7 +10,6 @@ import {
   WorkspacePanel,
   WorkspacePanelHeader,
   WorkspacePanelHeading,
-  WorkspacePanelSummary,
   WorkspacePanelTitle
 } from "../../../components/workspace/workspace-panel";
 import {
@@ -96,23 +95,20 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
 
               {model.state === "ready" ? (
                 <>
-                <WorkspacePanelHeader>
-                  <WorkspacePanelHeading>
-                    <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
-                  </WorkspacePanelHeading>
-                  <WorkspacePanelSummary>
-                    Continue the task conversation here while changed files, diffs, and review notes stay in the sidebar.
-                  </WorkspacePanelSummary>
-                </WorkspacePanelHeader>
+                  <WorkspacePanelHeader>
+                    <WorkspacePanelHeading>
+                      <WorkspacePanelTitle>Task conversation</WorkspacePanelTitle>
+                    </WorkspacePanelHeading>
+                  </WorkspacePanelHeader>
 
-                <AssistantChatSurface
-                  composerPlaceholder="Continue this task conversation with Keystone."
-                  emptyMessage="This task already has an attached conversation. Send the next implementation turn here."
-                  emptyTitle="Task conversation ready"
-                  locator={model.conversationLocator}
-                  unavailableMessage="Task conversation becomes available after the run task record is ready."
-                  unavailableTitle="No task conversation attached"
-                />
+                  <AssistantChatSurface
+                    composerPlaceholder="Continue this task conversation with Keystone."
+                    emptyMessage="This task already has an attached conversation. Send the next implementation turn here."
+                    emptyTitle="Task conversation ready"
+                    locator={model.conversationLocator}
+                    unavailableMessage="Task conversation becomes available after the run task record is ready."
+                    unavailableTitle="No task conversation attached"
+                  />
                 </>
               ) : (
                 <WorkspaceEmptyState>
@@ -132,13 +128,6 @@ export function TaskDetailWorkspace({ model }: { model: TaskDetailViewModel }) {
               <WorkspacePanelHeading>
                 <WorkspacePanelTitle>Code review</WorkspacePanelTitle>
               </WorkspacePanelHeading>
-              {model.state === "ready" ? (
-                <WorkspacePanelSummary>{model.reviewSummary}</WorkspacePanelSummary>
-              ) : (
-                <WorkspacePanelSummary>
-                  Review artifacts appear here once the live task record is ready.
-                </WorkspacePanelSummary>
-              )}
             </WorkspacePanelHeader>
 
             {model.state === "ready" ? (

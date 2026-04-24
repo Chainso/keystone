@@ -37,7 +37,6 @@ interface ReviewDiffGroupViewModel {
   files: ReviewDiffFileViewModel[];
   id: ReviewDiffGroupId;
   label: string;
-  summary: string;
 }
 
 type ReviewDiffContentState =
@@ -56,33 +55,27 @@ const reviewDiffGroupDefinitions: Record<
   {
     fileLabel: string;
     groupLabel: string;
-    groupSummary: string;
   }
 > = {
   add: {
     fileLabel: "Added",
-    groupLabel: "Added files",
-    groupSummary: "New files introduced by this task."
+    groupLabel: "Added files"
   },
   copy: {
     fileLabel: "Copied",
-    groupLabel: "Copied files",
-    groupSummary: "Copied files captured in the current review handoff."
+    groupLabel: "Copied files"
   },
   delete: {
     fileLabel: "Deleted",
-    groupLabel: "Deleted files",
-    groupSummary: "Files removed by this task."
+    groupLabel: "Deleted files"
   },
   modify: {
     fileLabel: "Modified",
-    groupLabel: "Modified files",
-    groupSummary: "Files updated by this task."
+    groupLabel: "Modified files"
   },
   rename: {
     fileLabel: "Renamed",
-    groupLabel: "Renamed files",
-    groupSummary: "Files moved or renamed in this task."
+    groupLabel: "Renamed files"
   }
 };
 
@@ -167,8 +160,7 @@ function buildReviewDiffGroups(files: ReviewDiffFileViewModel[]): ReviewDiffGrou
       return {
         files: groupFiles,
         id: groupId,
-        label: reviewDiffGroupDefinitions[groupId].groupLabel,
-        summary: reviewDiffGroupDefinitions[groupId].groupSummary
+        label: reviewDiffGroupDefinitions[groupId].groupLabel
       };
     })
     .filter((group): group is ReviewDiffGroupViewModel => group !== null);
@@ -296,7 +288,6 @@ function ReviewDiffGroup({ group }: { group: ReviewDiffGroupViewModel }) {
       <div className="task-review-group-header">
         <div className="task-review-group-heading">
           <ReviewSectionLabel>{group.label}</ReviewSectionLabel>
-          <DocumentFrameSummary>{group.summary}</DocumentFrameSummary>
         </div>
         <p className="document-name">
           {group.files.length} file{group.files.length === 1 ? "" : "s"}
@@ -339,9 +330,6 @@ function SupportingArtifactsSection({ artifacts }: { artifacts: TaskArtifactView
       <div className="task-review-group-header">
         <div className="task-review-group-heading">
           <ReviewSectionLabel>Supporting artifacts</ReviewSectionLabel>
-          <DocumentFrameSummary>
-            Other task outputs stay available here even when they are not changed-file diffs.
-          </DocumentFrameSummary>
         </div>
         <p className="document-name">
           {artifacts.length} artifact{artifacts.length === 1 ? "" : "s"}
@@ -382,9 +370,6 @@ function TaskReviewSidebarReady({ artifacts }: { artifacts: TaskArtifactViewMode
     <div className="task-review-sidebar">
       <ReviewSection>
         <ReviewSectionLabel>Changed files</ReviewSectionLabel>
-        <DocumentFrameSummary>
-          Changed files are collected from the current task outputs whenever they include unified diffs.
-        </DocumentFrameSummary>
       </ReviewSection>
 
       {state.status === "loading" || state.status === "idle" ? (

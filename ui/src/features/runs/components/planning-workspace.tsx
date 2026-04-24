@@ -21,7 +21,6 @@ import {
   WorkspacePanel,
   WorkspacePanelHeader,
   WorkspacePanelHeading,
-  WorkspacePanelSummary,
   WorkspacePanelTitle
 } from "../../../components/workspace/workspace-panel";
 import {
@@ -33,17 +32,15 @@ import { AssistantChatSurface } from "../../conversations/assistant-chat-surface
 import type { RunPlanningPhaseViewModel } from "../use-run-view-model";
 
 function PlanningConversationPanel({
-  phaseSummary,
   phaseTitle,
   conversationLocator
-}: Pick<RunPlanningPhaseViewModel, "phaseSummary" | "phaseTitle" | "conversationLocator">) {
+}: Pick<RunPlanningPhaseViewModel, "phaseTitle" | "conversationLocator">) {
   return (
     <WorkspacePanel>
       <WorkspacePanelHeader>
         <WorkspacePanelHeading>
           <WorkspacePanelTitle>{phaseTitle}</WorkspacePanelTitle>
         </WorkspacePanelHeading>
-        <WorkspacePanelSummary>{phaseSummary}</WorkspacePanelSummary>
       </WorkspacePanelHeader>
 
       <AssistantChatSurface
@@ -97,16 +94,12 @@ function PlanningDocumentPanel(
           </>
         ) : props.state === "editing" ? (
           <>
-            <DocumentFrameSummary>{props.helperMessage}</DocumentFrameSummary>
             {props.submitErrorMessage ? (
               <p className="form-field-error">{props.submitErrorMessage}</p>
             ) : null}
             <div className="planning-document-editor">
               <div className="planning-document-editor-header">
                 <p className="document-name">Document editor</p>
-                <p className="planning-document-preview-summary">
-                  Write the current document directly in Plate while markdown remains the saved source.
-                </p>
               </div>
               <div className="planning-document-editor-fields">
                 <FormTextField
@@ -208,7 +201,6 @@ export function PlanningWorkspaceFrame(
       <WorkspaceSplitPane>
         <PlanningConversationPanel
           phaseTitle={planningProps.phaseTitle}
-          phaseSummary={planningProps.phaseSummary}
           conversationLocator={planningProps.conversationLocator}
         />
       </WorkspaceSplitPane>

@@ -15,7 +15,9 @@ function ExecutionPlanCompileSection({
     <section className="planning-document-followup">
       <div className="planning-document-followup-copy">
         <p className="document-name">{model.title}</p>
-        <DocumentFrameSummary>{model.helperMessage}</DocumentFrameSummary>
+        {model.helperMessage ? (
+          <DocumentFrameSummary>{model.helperMessage}</DocumentFrameSummary>
+        ) : null}
       </div>
 
       {model.state === "ready" ? (

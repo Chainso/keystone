@@ -1827,23 +1827,35 @@ describe("Run routes", () => {
     expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
   });
 
-  it("renders the run workspace frame with back-link, concise meta copy, and stage summaries", async () => {
+  it("renders the run workspace frame with compact meta copy and stage tabs", async () => {
     renderRunRoute("/runs/run-104/specification");
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
-    expect(
-      screen.getByText(
-        "Move between specification, architecture, execution plan, and execution from this run workspace."
-      )
-    ).toBeInTheDocument();
     expect(screen.getByText("Started 2026-04-20 12:30 UTC")).toBeInTheDocument();
     expect(screen.queryByText("Workflow wf-run-104")).not.toBeInTheDocument();
     expect(screen.queryByText("Engine Think Live")).not.toBeInTheDocument();
+    expect(document.querySelector(".run-detail-summary")).toBeNull();
+
     const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
 
-    expect(within(phaseNavigation).getByText("Agent chat plus the living product spec.")).toBeInTheDocument();
-    expect(within(phaseNavigation).getByText("Workflow DAG first, then task detail.")).toBeInTheDocument();
+    expect(within(phaseNavigation).getByRole("link", { name: "Specification" })).toHaveAttribute(
+      "href",
+      "/runs/run-104/specification"
+    );
+    expect(within(phaseNavigation).getByRole("link", { name: "Architecture" })).toHaveAttribute(
+      "href",
+      "/runs/run-104/architecture"
+    );
+    expect(within(phaseNavigation).getByRole("link", { name: "Execution Plan" })).toHaveAttribute(
+      "href",
+      "/runs/run-104/execution-plan"
+    );
+    expect(within(phaseNavigation).getByRole("link", { name: "Execution" })).toHaveAttribute(
+      "href",
+      "/runs/run-104/execution"
+    );
+    expect(phaseNavigation.querySelectorAll(".run-step-link-summary")).toHaveLength(0);
   });
 
   it("renders the loading state before the live run provider resolves", async () => {
@@ -2690,11 +2702,6 @@ describe("Run routes", () => {
 
     expect(await screen.findByRole("heading", { name: "run-108" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Compile run" })).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Compile persists the execution graph from the current specification, architecture, and execution plan."
-      )
-    ).toBeInTheDocument();
 
     cleanup();
 
@@ -2730,9 +2737,7 @@ describe("Run routes", () => {
       "/runs/run-109/execution"
     );
     expect(
-      screen.getByText(
-        "Current planning revisions are newer than the execution graph. Recompile to refresh Execution with the latest live documents."
-      )
+      screen.getByText("Current planning revisions are newer than the execution graph.")
     ).toBeInTheDocument();
 
     cleanup();
@@ -2827,11 +2832,6 @@ describe("Run routes", () => {
       "href",
       "/runs/run-107/execution"
     );
-    expect(
-      screen.getByText(
-        "Execution is enabled for this run. Open the DAG to inspect live task state."
-      )
-    ).toBeInTheDocument();
   });
 
   it("replaces stale ready detail with the shared error state when a refresh retry fails", async () => {
@@ -3160,11 +3160,7 @@ describe("Run routes", () => {
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 in progress");
     expect(screen.getByLabelText("Execution status")).toHaveTextContent("2 completed");
-    expect(
-      screen.getByText(
-        "Open a task node to move straight into its task conversation and review workspace."
-      )
-    ).toBeInTheDocument();
+    expect(document.querySelector(".execution-board-note")).toBeNull();
   });
 
   it("opens task detail directly when the operator clicks a ready DAG node", async () => {
@@ -3285,14 +3281,17 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-104/execution/tasks/task-032");
 
     expect(await screen.findByRole("heading", { name: "run-104 / task-032" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Task conversation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Code review" })).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Continue the task conversation here while changed files, diffs, and review notes stay in the sidebar."
-      )
-    ).toBeInTheDocument();
     expectTaskChatSurface();
     expect(screen.getByText("Task workspace")).toBeInTheDocument();
+    const taskPanel = screen.getByText("Task workspace").closest(".workspace-panel");
+    const reviewPanel = screen.getByRole("heading", { name: "Code review" }).closest(".workspace-panel");
+
+    expect(taskPanel).not.toBeNull();
+    expect(reviewPanel).not.toBeNull();
+    expect(taskPanel?.querySelector(".workspace-panel-summary")).toBeNull();
+    expect(reviewPanel?.querySelector(".workspace-panel-summary")).toBeNull();
     expect(screen.queryByText(/approvals/i)).not.toBeInTheDocument();
     expect(await screen.findByText("Modified files")).toBeInTheDocument();
     expect(screen.getByText("Added files")).toBeInTheDocument();

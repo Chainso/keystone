@@ -7,7 +7,6 @@ import type { StatusTone } from "../../shared/layout/status-pill";
 import { getTaskStatusPresentation } from "../runs/run-status";
 import type { ConversationLocator } from "../runs/run-types";
 import { useReadyRunDetail } from "../runs/use-ready-run-detail";
-import { partitionTaskReviewArtifacts } from "./task-review-artifacts";
 
 type ReadyRunTasks = ReturnType<typeof useReadyRunDetail>["state"]["tasks"];
 type WorkflowNodes = NonNullable<ReturnType<typeof useReadyRunDetail>["state"]["workflow"]>["nodes"];
@@ -198,7 +197,6 @@ export interface TaskDetailReadyViewModel {
   dependsOn: TaskDependencyViewModel[];
   description: string;
   downstreamTasks: TaskDependencyViewModel[];
-  reviewSummary: string;
   runDisplayId: string;
   state: "ready";
   statusLabel: string;
@@ -428,41 +426,6 @@ function buildExecutionHandoffSummary(task: ExecutionTaskRecord, unresolvedDepen
 
 function buildExecutionSummary(totalTasks: number, columnCount: number) {
   return `${totalTasks} task${totalTasks === 1 ? "" : "s"} across ${columnCount} dependency step${columnCount === 1 ? "" : "s"}`;
-}
-
-function buildTaskReviewSummary(taskArtifacts: TaskArtifactsViewModel) {
-  if (taskArtifacts.state === "loading") {
-    return "Changed files and supporting artifacts are loading from the current task outputs.";
-  }
-
-  if (taskArtifacts.state === "error") {
-    return "Task review could not load its current artifacts.";
-  }
-
-  if (taskArtifacts.state === "empty") {
-    return "No review artifacts are recorded for this task yet.";
-  }
-
-  const { reviewCandidates, supportingArtifacts } = partitionTaskReviewArtifacts(taskArtifacts.items);
-  const summaryParts: string[] = [];
-
-  if (reviewCandidates.length > 0) {
-    summaryParts.push(
-      `${reviewCandidates.length} text artifact${reviewCandidates.length === 1 ? "" : "s"}`
-    );
-  }
-
-  if (supportingArtifacts.length > 0) {
-    summaryParts.push(
-      `${supportingArtifacts.length} supporting artifact${supportingArtifacts.length === 1 ? "" : "s"}`
-    );
-  }
-
-  if (summaryParts.length === 0) {
-    return "Changed files and supporting artifacts are loading from the current task outputs.";
-  }
-
-  return `${summaryParts.join(" and ")} from the current task outputs.`;
 }
 
 function buildExecutionSummaryGroups(tasks: ExecutionTaskRecord[], runId: string): ExecutionSummaryGroupViewModel[] {
@@ -858,7 +821,6 @@ export function useTaskDetailViewModel(taskId: string): TaskDetailViewModel {
     dependsOn,
     description: task.description,
     downstreamTasks,
-    reviewSummary: buildTaskReviewSummary(artifactsViewModel),
     runDisplayId: run.runId,
     state: "ready",
     ...getTaskStatusPresentation(task.status),

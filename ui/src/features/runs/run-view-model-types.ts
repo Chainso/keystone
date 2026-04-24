@@ -6,16 +6,15 @@ export interface RunHeaderViewModel {
   displayId: string;
   statusLabel: string;
   statusTone: StatusTone;
-  summary: string;
   updatedLabel: string;
 }
 
 export interface RunPhaseStepViewModel {
+  disabledReason?: string | undefined;
   href: string;
   isAvailable: boolean;
   label: string;
   phaseId: RunPhaseId;
-  summary: string;
 }
 
 export interface RunDetailStateViewModel {
@@ -39,7 +38,6 @@ interface RunPlanningPhaseBaseViewModel {
   conversationLocator: ConversationLocator | null;
   documentPath: string;
   panelTitle: string;
-  phaseSummary: string;
   phaseTitle: string;
 }
 
@@ -78,7 +76,6 @@ export interface RunPlanningPhaseEditingViewModel extends RunPlanningPhaseBaseVi
     placeholder: string;
   };
   hasUnsavedChanges: boolean;
-  helperMessage: string;
   isSubmitting: boolean;
   saveChanges: () => void;
   saveLabel: string;
@@ -100,7 +97,7 @@ export type RunPlanningPhaseViewModel =
 export interface ExecutionPlanCompileReadyViewModel {
   actionLabel: string;
   compileRun: () => void;
-  helperMessage: string;
+  helperMessage?: string | undefined;
   isSubmitting: boolean;
   secondaryActionHref?: string | undefined;
   secondaryActionLabel?: string | undefined;
@@ -122,7 +119,7 @@ export interface ExecutionPlanCompileBlockedViewModel {
 export interface ExecutionPlanCompileCompletedViewModel {
   actionHref: string;
   actionLabel: string;
-  helperMessage: string;
+  helperMessage?: string | undefined;
   state: "compiled";
   title: string;
 }

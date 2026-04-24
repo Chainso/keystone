@@ -13,7 +13,6 @@ import {
   WorkspacePanelActions,
   WorkspacePanelHeader,
   WorkspacePanelHeading,
-  WorkspacePanelSummary,
   WorkspacePanelTitle
 } from "../../../components/workspace/workspace-panel";
 import type {
@@ -170,13 +169,6 @@ function ExecutionGraphBoard({
           })}
         </div>
       </div>
-
-      <p className="execution-board-note">
-        Open a task node to move straight into its task conversation and review workspace.
-      </p>
-      <p className="execution-board-note">
-        Columns track dependency steps, and parallel tasks remain grouped in the same step.
-      </p>
     </div>
   );
 }
@@ -229,9 +221,6 @@ export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) 
       <WorkspacePanelHeader>
         <WorkspacePanelHeading>
           <WorkspacePanelTitle>Task workflow DAG</WorkspacePanelTitle>
-          <WorkspacePanelSummary>
-            The graph stays as the run-level overview. Opening a node switches into task detail for that task.
-          </WorkspacePanelSummary>
         </WorkspacePanelHeading>
         {executionSummary ? (
           <WorkspacePanelActions className="execution-summary-inline" aria-label="Execution status">

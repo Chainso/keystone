@@ -10,7 +10,6 @@ import type { RunPhaseStepViewModel } from "../use-run-view-model";
 
 interface RunDetailScaffoldProps {
   displayId: string;
-  summary: string;
   statusLabel: string;
   statusTone: ComponentProps<typeof StatusPill>["tone"];
   updatedLabel: string;
@@ -20,7 +19,6 @@ interface RunDetailScaffoldProps {
 
 export function RunDetailScaffold({
   displayId,
-  summary,
   statusLabel,
   statusTone,
   updatedLabel,
@@ -35,14 +33,12 @@ export function RunDetailScaffold({
             <Link to="/runs" className="back-link">
               Back to runs
             </Link>
-            <span className="document-name">Run workspace</span>
           </div>
           <div className="run-detail-headline">
             <h1 className="run-detail-title">{displayId}</h1>
             <StatusPill label={statusLabel} tone={statusTone} />
             <p className="document-name">{updatedLabel}</p>
           </div>
-          <p className="run-detail-summary">{summary}</p>
         </div>
         <RunPhaseStepper steps={phaseSteps} />
       </header>
