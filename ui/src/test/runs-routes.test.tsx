@@ -325,10 +325,10 @@ function expectPlanningDocumentToContain(documentLabel: string, expectedText: st
 }
 
 function expectPlanningChatSurface() {
-  expect(screen.getByText("Planning conversation ready")).toBeInTheDocument();
+  expect(screen.getByText("Agent chat ready")).toBeInTheDocument();
   expect(
     screen.getByText(
-      "This document already has an attached planning conversation. Send the next planning turn here."
+      "This living document already has an attached agent chat. Send the next planning turn here."
     )
   ).toBeInTheDocument();
   expect(
@@ -1829,7 +1829,7 @@ describe("Run routes", () => {
         name: "Execution"
       })
     ).toHaveAttribute("href", "/runs/run-104/execution");
-    expect(await screen.findByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Specification agent chat" })).toBeInTheDocument();
   });
 
   it.each(["run-101", "run-102", "run-103", "run-107"])(
@@ -1841,7 +1841,7 @@ describe("Run routes", () => {
       await waitFor(() => {
         expect(router.state.location.pathname).toBe(`/runs/${runId}/specification`);
       });
-      expect(await screen.findByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Specification agent chat" })).toBeInTheDocument();
     }
   );
 
@@ -1956,7 +1956,7 @@ describe("Run routes", () => {
       documentPath: "architecture",
       expectedLine: "- Keep route files thin.",
       path: "/runs/run-104/architecture",
-      phaseHeading: "Architecture conversation",
+      phaseHeading: "Architecture agent chat",
       revisionTitle: "Run Architecture"
     },
     {
@@ -1964,7 +1964,7 @@ describe("Run routes", () => {
       documentPath: "execution-plan",
       expectedLine: "- Cut over the live provider seam.",
       path: "/runs/run-104/execution-plan",
-      phaseHeading: "Execution Plan conversation",
+      phaseHeading: "Execution Plan agent chat",
       revisionTitle: "Execution Plan"
     }
   ])(
@@ -2099,10 +2099,10 @@ describe("Run routes", () => {
     renderRunRoute("/runs/run-105/architecture", createStaticRunManagementApi(cloneRunFixtures()));
 
     expect(await screen.findByRole("heading", { name: "run-105" })).toBeInTheDocument();
-    expect(screen.getByText("No planning conversation attached")).toBeInTheDocument();
+    expect(screen.getByText("No agent chat attached")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Create or attach a planning conversation before sending messages from this document."
+        "Create or attach an agent chat before sending messages from this document."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Conversation unavailable")).toBeInTheDocument();
@@ -2208,7 +2208,7 @@ describe("Run routes", () => {
       '# Specification\n- Replace scaffold run detail with live data.\n- Save current revisions without route churn.\n\n```ts\nconst stage = "execution";\n```\n';
 
     expect(await screen.findByRole("heading", { name: "run-104" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Specification conversation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Specification agent chat" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Run Specification document" })).toBeInTheDocument();
     expect(screen.getByText("specification")).toBeInTheDocument();
     expectPlanningChatSurface();
@@ -3317,17 +3317,16 @@ describe("Run routes", () => {
 
     expect(await screen.findByRole("heading", { name: "Task workflow DAG" })).toBeInTheDocument();
     expect(
-      screen.getByText("Execution becomes available after this run has been compiled.")
+      screen.getByText("Build the execution graph from the Execution Plan before opening task work.")
     ).toBeInTheDocument();
     const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
-    const executionStep = within(phaseNavigation).getByLabelText(
-      "Execution. Compile the run to open execution."
-    );
+    const executionStep = within(phaseNavigation).getByRole("link", { name: "Execution" });
 
-    expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
-    expect(executionStep).toHaveAttribute("aria-disabled", "true");
-    expect(executionStep).not.toHaveAttribute("tabindex");
-    expect(executionStep).toHaveTextContent("Compile the run to open execution.");
+    expect(executionStep).toHaveAttribute("href", "/runs/run-102/execution");
+    expect(screen.getByRole("link", { name: "Open Execution Plan" })).toHaveAttribute(
+      "href",
+      "/runs/run-102/execution-plan"
+    );
   });
 
   it("renders task conversation and code review without approval framing", async () => {

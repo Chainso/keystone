@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { PlusIcon } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { EntityTable, type EntityTableColumn } from "../../../components/workspace/entity-table";
@@ -106,9 +107,7 @@ export function RunsIndexWorkspace() {
       } catch {
         // The view model owns the visible error state for create-run failures.
       } finally {
-        if (createRunAttemptRef.current === createAttempt) {
-          createRunAttemptRef.current = null;
-        }
+        createRunAttemptRef.current = null;
       }
     })();
 
@@ -133,7 +132,8 @@ export function RunsIndexWorkspace() {
                 void handleCreateRun();
               }}
             >
-              {model.isCreatingRun ? "Creating run..." : "+ New run"}
+              {model.isCreatingRun ? null : <PlusIcon className="button-icon" aria-hidden="true" />}
+              {model.isCreatingRun ? "Creating run..." : "New run"}
             </button>
           </div>
         </div>

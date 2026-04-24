@@ -24,7 +24,7 @@ import type {
 const executionGraphLayout = {
   columnGap: 56,
   headerHeight: 72,
-  nodeHeight: 132,
+  nodeHeight: 158,
   nodeWidth: 252,
   paddingX: 20,
   paddingY: 20,
@@ -150,6 +150,8 @@ function ExecutionGraphBoard({
                 <span className="execution-graph-node-label">{node.taskId}</span>
                 <span className="execution-graph-node-title">{node.title}</span>
                 <span className="execution-graph-node-status">{node.statusLabel}</span>
+                <span className="execution-graph-node-meta">{node.blockerLabel}</span>
+                <span className="execution-graph-node-meta">{node.ownerLabel}</span>
               </Link>
             );
           })}
@@ -171,11 +173,11 @@ export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) 
 
         <WorkspaceEmptyState>
           <WorkspaceEmptyStateTitle as="h3">
-            {model.state === "pending" ? "Execution is materializing" : "Execution is read-only"}
+            {model.state === "pending" ? "Execution is materializing" : "Execution graph not ready"}
           </WorkspaceEmptyStateTitle>
           <WorkspaceEmptyStateDescription>{model.message}</WorkspaceEmptyStateDescription>
-          {model.state === "pending" ? (
-            <WorkspaceEmptyStateActions>
+          <WorkspaceEmptyStateActions>
+            {model.state === "pending" ? (
               <button
                 type="button"
                 className="ghost-button"
@@ -183,8 +185,12 @@ export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) 
               >
                 {model.refreshLabel}
               </button>
-            </WorkspaceEmptyStateActions>
-          ) : null}
+            ) : (
+              <Link to={model.actionHref} className="ghost-button">
+                {model.actionLabel}
+              </Link>
+            )}
+          </WorkspaceEmptyStateActions>
         </WorkspaceEmptyState>
       </WorkspacePanel>
     );
@@ -197,6 +203,13 @@ export function ExecutionWorkspace({ model }: { model: RunExecutionViewModel }) 
           <WorkspacePanelTitle>Task workflow DAG</WorkspacePanelTitle>
         </WorkspacePanelHeading>
         <WorkspacePanelActions className="execution-summary-inline" aria-label="Execution summary">
+          <div className="execution-status-strip" aria-label="Execution status counts">
+            {model.statusMetrics.map((metric) => (
+              <span key={metric.label} className={`status-pill status-pill-${metric.tone}`}>
+                {metric.label}: {metric.value}
+              </span>
+            ))}
+          </div>
           <p className="document-name">{model.summary}</p>
         </WorkspacePanelActions>
       </WorkspacePanelHeader>

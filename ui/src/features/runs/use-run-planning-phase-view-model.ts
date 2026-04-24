@@ -30,7 +30,7 @@ function buildPhaseBaseViewModel(
       planningState.status === "ready"
         ? planningState.revision.title
         : `${phase.label} document`,
-    phaseTitle: `${phase.label} conversation`
+    phaseTitle: `${phase.label} agent chat`
   };
 }
 

@@ -45,11 +45,11 @@ function PlanningConversationPanel({
 
       <AssistantChatSurface
         composerPlaceholder="Continue the planning conversation with Keystone."
-        emptyMessage="This document already has an attached planning conversation. Send the next planning turn here."
-        emptyTitle="Planning conversation ready"
+        emptyMessage="This living document already has an attached agent chat. Send the next planning turn here."
+        emptyTitle="Agent chat ready"
         locator={conversationLocator}
-        unavailableMessage="Create or attach a planning conversation before sending messages from this document."
-        unavailableTitle="No planning conversation attached"
+        unavailableMessage="Create or attach an agent chat before sending messages from this document."
+        unavailableTitle="No agent chat attached"
       />
     </WorkspacePanel>
   );

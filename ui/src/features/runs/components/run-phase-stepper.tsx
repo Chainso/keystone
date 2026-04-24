@@ -14,33 +14,17 @@ interface RunPhaseStepperProps {
 export function RunPhaseStepper({ steps }: RunPhaseStepperProps) {
   return (
     <nav className="run-stepper" aria-label="Run phases">
-      {steps.map((phase) =>
-        phase.isAvailable ? (
-          <NavLink
-            key={phase.phaseId}
-            to={phase.href}
-            end={phase.phaseId !== "execution"}
-            aria-label={phase.label}
-            className={getStepLinkClassName}
-          >
-            <span className="run-step-link-label">{phase.label}</span>
-          </NavLink>
-        ) : (
-          <span
-            key={phase.phaseId}
-            aria-label={
-              phase.disabledReason ? `${phase.label}. ${phase.disabledReason}` : phase.label
-            }
-            className="run-step-link is-disabled"
-            aria-disabled="true"
-          >
-            <span className="run-step-link-label">{phase.label}</span>
-            {phase.disabledReason ? (
-              <span className="run-step-link-state">{phase.disabledReason}</span>
-            ) : null}
-          </span>
-        )
-      )}
+      {steps.map((phase) => (
+        <NavLink
+          key={phase.phaseId}
+          to={phase.href}
+          end={phase.phaseId !== "execution"}
+          aria-label={phase.label}
+          className={getStepLinkClassName}
+        >
+          <span className="run-step-link-label">{phase.label}</span>
+        </NavLink>
+      ))}
     </nav>
   );
 }

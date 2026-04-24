@@ -866,7 +866,7 @@ describe("App shell", () => {
       screen.queryByText("Internal operator workspace for the Keystone Cloudflare project.")
     ).not.toBeInTheDocument();
     expectVisibleThemePreferencePanel();
-    expect(screen.getByRole("button", { name: /\+ New run/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /New run/i })).toBeEnabled();
     expect(screen.queryByText("UI structure scaffold placeholder")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/destination content is intentionally scaffold-only/i)
@@ -1036,7 +1036,7 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
 
     expect(screen.getByRole("button", { name: "Creating run..." })).toBeDisabled();
 
@@ -1080,7 +1080,7 @@ describe("App shell", () => {
     });
     const { router } = renderRoute("/runs", { useBrowserProjectApi: true });
 
-    const createButton = await screen.findByRole("button", { name: "+ New run" });
+    const createButton = await screen.findByRole("button", { name: "New run" });
 
     fireEvent.click(createButton);
     fireEvent.click(createButton);
@@ -1223,7 +1223,7 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
     expect(await screen.findByRole("button", { name: "Creating run..." })).toBeDisabled();
 
     fireEvent.change(getProjectSelector(), {
@@ -1270,10 +1270,10 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("heading", { name: "No runs yet" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "+ New run" }));
+    fireEvent.click(screen.getByRole("button", { name: "New run" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Run creation failed.");
-    expect(screen.getByRole("button", { name: "+ New run" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "New run" })).toBeEnabled();
     expect(router.state.location.pathname).toBe("/runs");
   });
 

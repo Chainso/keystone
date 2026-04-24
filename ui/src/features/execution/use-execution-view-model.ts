@@ -19,9 +19,11 @@ interface ExecutionTaskRecord {
 }
 
 export interface ExecutionNodeViewModel {
+  blockerLabel: string;
   detailPath: string;
   graphColumn: number;
   graphRow: number;
+  ownerLabel: string;
   statusLabel: string;
   statusTone: StatusTone;
   taskId: string;
@@ -48,10 +50,19 @@ export interface RunExecutionReadyViewModel {
   edges: ExecutionEdgeViewModel[];
   nodes: ExecutionNodeViewModel[];
   state: "ready";
+  statusMetrics: ExecutionStatusMetricViewModel[];
   summary: string;
 }
 
+export interface ExecutionStatusMetricViewModel {
+  label: string;
+  tone: StatusTone;
+  value: number;
+}
+
 export interface RunExecutionEmptyViewModel {
+  actionHref: string;
+  actionLabel: string;
   message: string;
   state: "empty";
 }
@@ -207,6 +218,55 @@ function buildExecutionSummary(totalTasks: number, columnCount: number) {
   return `${totalTasks} task${totalTasks === 1 ? "" : "s"} across ${columnCount} dependency step${columnCount === 1 ? "" : "s"}`;
 }
 
+function buildExecutionStatusMetrics(tasks: ExecutionTaskRecord[]): ExecutionStatusMetricViewModel[] {
+  const counts = tasks.reduce<Record<StatusTone, number>>(
+    (totals, task) => {
+      const { statusTone } = getTaskStatusPresentation(task.status);
+
+      totals[statusTone] += 1;
+      return totals;
+    },
+    {
+      active: 0,
+      blocked: 0,
+      complete: 0,
+      neutral: 0,
+      queued: 0
+    }
+  );
+
+  return [
+    { label: "Completed", tone: "complete", value: counts.complete },
+    { label: "Running", tone: "active", value: counts.active },
+    { label: "Queued", tone: "queued", value: counts.queued },
+    { label: "Blocked", tone: "blocked", value: counts.blocked }
+  ];
+}
+
+function isCompletedTaskStatus(status: string) {
+  const normalized = status.trim().toLowerCase();
+
+  return normalized.includes("complete") || normalized.includes("done") || normalized.includes("passed");
+}
+
+function buildExecutionNodeBlockerLabel(task: ExecutionTaskRecord, tasksById: Map<string, ExecutionTaskRecord>) {
+  if (task.dependsOn.length === 0) {
+    return "No blockers";
+  }
+
+  const openDependencies = task.dependsOn.filter((dependencyId) => {
+    const dependency = tasksById.get(dependencyId);
+
+    return !dependency || !isCompletedTaskStatus(dependency.status);
+  });
+
+  if (openDependencies.length === 0) {
+    return "Dependencies complete";
+  }
+
+  return `Waiting on ${openDependencies.join(", ")}`;
+}
+
 function buildExecutionTaskRecords(tasks: ReadyRunTasks, workflowNodes: WorkflowNodes): ExecutionTaskRecord[] {
   const tasksById = new Map(tasks.map((task) => [task.taskId, task]));
   const records = workflowNodes.map((workflowNode) => {
@@ -297,6 +357,8 @@ function buildExecutionGraph(tasks: ExecutionTaskRecord[], runId: string) {
           detailPath: buildRunTaskPath(runId, task.taskId),
           graphColumn: column.depth,
           graphRow: rowIndex,
+          blockerLabel: buildExecutionNodeBlockerLabel(task, tasksById),
+          ownerLabel: "Owner not recorded",
           ...getTaskStatusPresentation(task.status),
           taskId: task.taskId,
           title: task.name
@@ -375,7 +437,9 @@ export function useRunExecutionViewModel(): RunExecutionViewModel {
 
   if (!run.compiledFrom) {
     return {
-      message: "Execution becomes available after this run has been compiled.",
+      actionHref: buildRunPhasePath(run.runId, "execution-plan"),
+      actionLabel: "Open Execution Plan",
+      message: "Build the execution graph from the Execution Plan before opening task work.",
       state: "empty"
     };
   }
@@ -397,6 +461,7 @@ export function useRunExecutionViewModel(): RunExecutionViewModel {
     edges: graph.edges,
     nodes: graph.nodes,
     state: "ready",
+    statusMetrics: buildExecutionStatusMetrics(executionTasks),
     summary: buildExecutionSummary(state.workflow!.summary.totalTasks, graph.columns.length)
   };
 }

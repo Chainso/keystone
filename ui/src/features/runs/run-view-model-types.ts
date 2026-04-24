@@ -6,9 +6,7 @@ export interface RunHeaderViewModel {
 }
 
 export interface RunPhaseStepViewModel {
-  disabledReason?: string | undefined;
   href: string;
-  isAvailable: boolean;
   label: string;
   phaseId: RunPhaseId;
 }

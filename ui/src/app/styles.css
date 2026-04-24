@@ -690,6 +690,12 @@ pre {
   background: var(--accent-fill);
 }
 
+.button-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
 .runs-index-grid,
 .execution-grid,
 .project-config-grid {
@@ -1430,9 +1436,21 @@ pre {
 .execution-summary-task-list,
 .execution-task-reference-list,
 .execution-selection-card,
-.execution-selection-heading {
+.execution-selection-heading,
+.execution-summary-inline {
   display: grid;
   gap: 0.85rem;
+}
+
+.execution-summary-inline {
+  justify-items: end;
+}
+
+.execution-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
 }
 
 .execution-graph-scroll {
@@ -1577,6 +1595,15 @@ pre {
   font-size: 0.84rem;
   font-weight: 600;
   line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.execution-graph-node-meta {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

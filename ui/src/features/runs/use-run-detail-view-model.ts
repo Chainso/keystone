@@ -3,7 +3,6 @@ import {
   runPhaseDefinitions
 } from "../../shared/navigation/run-phases";
 import { useRunDetail } from "./run-detail-context";
-import { hasCompileProvenance } from "./run-execution-state";
 import { useReadyRunDetail } from "./use-ready-run-detail";
 import type {
   RunDetailLayoutViewModel,
@@ -22,22 +21,11 @@ function buildHeaderViewModel(run: ReadyRun): RunHeaderViewModel {
 function buildPhaseStepperViewModel(
   run: ReadyRun
 ): RunPhaseStepViewModel[] {
-  const executionAvailable = hasCompileProvenance(run);
-
-  return runPhaseDefinitions.map((phase) => {
-    const isAvailable = phase.id === "execution" ? executionAvailable : true;
-
-    return {
-      disabledReason:
-        phase.id === "execution" && !isAvailable
-          ? "Compile the run to open execution."
-          : undefined,
-      href: buildRunPhasePath(run.runId, phase.id),
-      isAvailable,
-      label: phase.label,
-      phaseId: phase.id
-    };
-  });
+  return runPhaseDefinitions.map((phase) => ({
+    href: buildRunPhasePath(run.runId, phase.id),
+    label: phase.label,
+    phaseId: phase.id
+  }));
 }
 
 export function useRunDetailLayoutViewModel(): RunDetailLayoutViewModel {
