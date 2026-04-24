@@ -42,7 +42,7 @@ Compatibility that **is** required:
 3. **Date:** 2026-04-18  
    **Decision:** Use `design/workspace-spec.md` as the primary product-structure source of truth and `design/design-guidelines.md` as the visual and interaction constraint layer.  
    **Rationale:** Discovery confirmed that `workspace-spec.md` now supersedes the earlier generalized shell model. Planning and implementation should follow the current source-of-truth split instead of designing from the older board language alone.  
-   **Alternatives considered:** Continue treating the target images as the primary structure spec; use only the guidelines without the workspace spec.
+   **Alternatives considered:** Use image mockups as the primary structure spec; use only the guidelines without the workspace spec.
 
 4. **Date:** 2026-04-18  
    **Decision:** Organize the frontend under a dedicated `ui/` subtree with `app`, `routes`, `features`, and `shared` layers instead of mixing UI files into the current backend-focused `src/` tree.  
@@ -158,7 +158,7 @@ Compatibility that **is** required:
 
 ## Progress
 
-- [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, target references, current API surface, and Cloudflare-first frontend architecture options.
+- [x] 2026-04-18 Discovery completed across the workspace spec, design guidelines, current API surface, and Cloudflare-first frontend architecture options.
 - [x] 2026-04-18 Baseline validation recorded: `npm run lint`, `npm run typecheck`, and `npm run test` pass in the sandbox; `npm run build` fails in the sandbox because Wrangler and Docker need host-writable home directories, then passes outside the sandbox.
 - [x] 2026-04-18 Active execution plan created and registered.
 - [x] 2026-04-18 User approval recorded for the structure-first UI scaffold plan and execution started.
@@ -245,7 +245,7 @@ The current repository state relevant to this plan is:
 - `package.json` currently contains backend/runtime dependencies only; there are no React, Vite, routing, or frontend test dependencies yet.
 - `design/workspace-spec.md` is the canonical UI structure spec for destinations, run flow, project configuration tabs, and the ASCII board layouts.
 - `design/design-guidelines.md` defines the visual and interaction constraints that should remain stable.
-- `design/README.md` explains the intended relationship between `workspace-spec.md`, `design-guidelines.md`, and the target-reference images.
+- `design/README.md` explains the intended relationship between `workspace-spec.md` and `design-guidelines.md`.
 - `README.md` documents the current backend surface and the `v1` API routes that the eventual UI will consume.
 - `src/http/api/v1/*` already exposes the structural backend seams for runs, tasks, workflow graph, artifacts, approvals, and several stubbed resources.
 

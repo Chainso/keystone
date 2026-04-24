@@ -110,7 +110,7 @@ Compatibility that **is** required:
 - **Date:** 2026-04-20  
   **Phase:** Planning  
   **Decision:** Read the full design markdown set under `design/`, not only `workspace-spec.md` and `design-guidelines.md`.  
-  **Rationale:** The user explicitly asked for the broader design context, and `design/README.md` plus `design/external-reference/README.md` clarify what is target truth versus inspiration.
+  **Rationale:** The user explicitly asked for the broader design context, and the design markdown files clarify the current product structure and visual rules.
 
 - **Date:** 2026-04-20  
   **Phase:** Planning  
@@ -203,7 +203,6 @@ Compatibility that **is** required:
   - `design/workspace-spec.md`
   - `design/design-guidelines.md`
   - `design/README.md`
-  - `design/external-reference/README.md`
 - [x] 2026-04-20 Broad baseline recorded before execution:
   - `rtk npm run test` passes with `35 passed | 2 skipped` files and `203 passed | 18 skipped` tests.
   - `rtk npm run lint` fails on pre-existing repo issues outside this planned UI slice.
@@ -435,7 +434,6 @@ This plan is safe to execute incrementally if each phase keeps its seam additive
   - `design/workspace-spec.md`
   - `design/design-guidelines.md`
   - `design/README.md`
-  - `design/external-reference/README.md`
 
 - Current live run index seam:
   - `ui/src/features/runs/use-runs-index-view-model.ts`

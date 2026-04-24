@@ -24,11 +24,11 @@ Decision:
 Use `design/workspace-spec.md` and `design/design-guidelines.md` as the authority for shipped UI wording and destination framing when they disagree with current implementation copy.
 
 Rationale:
-The repo notes already state that these documents are more authoritative than the target images for this redesign, and the user explicitly asked to bring the UI back in line with them.
+The repo notes already state that these documents are the authoritative design inputs for this redesign, and the user explicitly asked to bring the UI back in line with them.
 
 Alternatives considered:
 - Leave the current UI wording alone and rely on future visual polish to close the gap.
-- Use the target reference images as the primary arbiter.
+- Use image mockups as the primary arbiter.
 
 ### 2026-04-22 - Optimize for the target model within the current API boundaries
 

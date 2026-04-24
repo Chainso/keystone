@@ -205,16 +205,3 @@ Every new mockup should keep these stable unless there is a deliberate design ch
 - same card radius and border treatment
 
 Do not let one screen become a dashboard, another a chat app, and another a document reader. They should all feel like different states of the same product.
-
-## Reference Set Usage
-
-Use the target images in `target-reference/` as follows:
-
-- `keystone-target-board.png`
-  Overall shell and cross-phase consistency.
-- `keystone-live-task-chat.png`
-  Task-scoped chat layout, message rhythm, and artifact inspector balance.
-- `keystone-workflow-dag.png`
-  DAG presentation, node emphasis, and the handoff from graph to task chat.
-
-Use the committed external reference screens under `external-reference/screen-*` for source inspiration and flow coverage, but not as the visual source of truth.

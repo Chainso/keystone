@@ -17,7 +17,7 @@ These notes help future agents work effectively without rediscovering project-sp
 - When a task requires driving an interactive CLI or TUI, manage it through `tmux` rather than attaching directly in the Codex shell.
 - UI theming should be centralized through Tailwind/shadcn theme tokens; feature components should not each invent or own their own theming rules.
 - Prefer Keystone-owned higher-level UI components built on top of shadcn primitives for recurring product patterns instead of wiring raw shadcn pieces ad hoc in feature code.
-- For this UI redesign, the user's explicit guidance plus `design/workspace-spec.md` and `design/design-guidelines.md` are more authoritative than the target images; treat those images as loose inspiration only.
+- For this UI redesign, the user's explicit guidance plus `design/workspace-spec.md` and `design/design-guidelines.md` are the authoritative design inputs.
 - After any context compaction before resuming ultrakit execution, reload both orchestrator skills (`ultrakit:orchestrator:orchestrate` and `ultrakit:orchestrator:execute`) and re-read the entire active plan before proceeding.
 - Local Wrangler startup on this host still has to run outside the Codex sandbox boundary, but it no longer needs a host `CLOUDFLARE_API_TOKEN` just for Think model access because the Worker no longer binds Cloudflare `AI` for local validation.
 - `npm run build` still needs a host shell on this machine: on 2026-04-21 final validation, `vite build` completed, then Wrangler hit `EROFS` writing `~/.config/.wrangler/logs/...` and reported that the Docker CLI could not be launched. Use a host shell when you need the full build proof.

@@ -311,7 +311,6 @@ This plan is accepted only when all of the following are true:
   - `design/workspace-spec.md`
   - `design/design-guidelines.md`
   - `design/README.md`
-  - `design/external-reference/README.md`
 - Current implementation seams:
   - `ui/src/features/workstreams/*`
   - `ui/src/features/execution/*`
