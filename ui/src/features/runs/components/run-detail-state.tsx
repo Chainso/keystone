@@ -19,7 +19,6 @@ export function RunDetailState({ model }: { model: RunDetailStateViewModel }) {
         <Link to="/runs" className="back-link">
           Back to runs
         </Link>
-        <p className="page-eyebrow">Run workspace</p>
 
         <WorkspaceEmptyState>
           <WorkspaceEmptyStateTitle>{model.heading}</WorkspaceEmptyStateTitle>

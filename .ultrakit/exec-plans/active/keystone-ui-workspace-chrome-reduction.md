@@ -117,6 +117,10 @@ Alternatives considered:
 - 2026-04-24: Phase 3 implementation validation:
   - `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `87 passed` tests.
   - `rtk git diff --check` passed.
+- 2026-04-24: Phase 3 review produced three important findings: the disabled `Execution` prerequisite was hidden in non-focusable attributes, DAG task cards still rendered per-node footnotes, and loading/error run-detail states still showed the secondary `Run workspace` eyebrow despite the Phase 3 note saying it had been removed. The one allowed targeted fix pass restored visible/focusable disabled-step state text, removed DAG node footnotes at the view-model/rendering layer, and removed the loading/error eyebrow.
+- 2026-04-24: Phase 3 targeted fix validation:
+  - `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` passed: `2 passed` files, `87 passed` tests.
+  - `rtk git diff --check` passed.
 
 ## Progress
 
@@ -127,7 +131,7 @@ Alternatives considered:
 - [x] 2026-04-24 Create and register the active execution plan.
 - [x] Phase 1: Simplify the global shell/sidebar and shared chrome vocabulary. Completed 2026-04-24 after the targeted review fix pass.
 - [x] Phase 2: Simplify top-level destination boards. Completed 2026-04-24 after the targeted review fix pass.
-- [ ] Phase 3: Simplify run detail, planning, execution, and task panes. Implementation pass completed 2026-04-24; ready for review.
+- [x] Phase 3: Simplify run detail, planning, execution, and task panes. Completed 2026-04-24 after the targeted review fix pass.
 - [ ] Phase 4: Simplify project configuration tabs/forms.
 - [ ] Phase 5: Closeout validation, docs/notes evaluation, and archive readiness.
 
@@ -155,6 +159,8 @@ The Phase 2 implementation pass made the top-level destination boards quieter wi
 The Phase 2 targeted fix pass closed the review gap by proving that selected documentation metadata still renders after the chrome cleanup. The route-level documentation switching test now verifies the default product specification viewer title and the architecture viewer title in the current document panel while continuing to avoid assertions against removed instructional prose.
 
 The Phase 3 implementation pass made the run workspace quieter without changing route or run/task contracts. Run detail now shows only compact run identity, status, updated time, back navigation, and four stage tabs; planning stages rely on the chat/document split and pane titles; `Execution Plan` keeps compile state messages only where they explain blocked or stale state; `Execution` keeps DAG task counts, status chips, node navigation, and column metadata without instructional notes; task detail keeps task metadata, dependencies, status, chat, changed-file diffs, supporting artifacts, and state/error copy without panel-summary prose.
+
+The Phase 3 targeted fix pass closed the review gaps without expanding scope. Disabled `Execution` state now remains visibly discoverable in the compact top rail and is focusable for keyboard users, DAG nodes no longer carry persistent per-node footnotes, and run loading/error/not-found states no longer render the secondary `Run workspace` eyebrow.
 
 ## Context and Orientation
 
@@ -448,7 +454,7 @@ Phase 2 is closed in `ui/src/features/runs/components/runs-index-workspace.tsx`,
 ### Phase Handoff
 
 Status:
-Implemented - ready for review.
+Completed - targeted review fix applied.
 
 Goal:
 Reduce run detail, run stepper, planning panes, execution DAG, and task detail to the workspace-spec layout without persistent instructional summaries.
@@ -531,9 +537,11 @@ Implemented 2026-04-24.
 - Removed task conversation/review panel summaries and redundant task review sidebar blurbs while preserving task description metadata, dependencies, status, task chat, changed-file diffs, supporting artifact metadata, loading/error/empty messages, and retry controls.
 - Updated run route tests to assert compact stage-tab structure, retained compile/DAG/task behavior, and absence of removed structural summary hooks.
 - Validation passed with `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` (`87 passed`) and `rtk git diff --check`.
+- Targeted review fix pass completed 2026-04-24: the disabled `Execution` step now renders the compile prerequisite as compact visible text and a focusable disabled link; execution DAG nodes no longer render or receive per-node footnotes; run loading/error/not-found states no longer render the secondary `Run workspace` eyebrow.
+- Targeted fix validation passed with `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` (`87 passed`) and `rtk git diff --check`.
 
 Next Starter Context:
-Phase 3 implementation is in `ui/src/features/runs/components/run-detail-scaffold.tsx`, `ui/src/features/runs/components/run-phase-stepper.tsx`, `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/runs/components/execution-plan-workspace.tsx`, `ui/src/features/runs/use-run-detail-view-model.ts`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `ui/src/features/runs/use-execution-plan-workspace-view-model.ts`, `ui/src/features/runs/run-view-model-types.ts`, `ui/src/features/execution/components/execution-workspace.tsx`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `ui/src/features/execution/components/task-review-sidebar.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/app/styles.css`, and `ui/src/test/runs-routes.test.tsx`. Required implementation validation passed with `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` (`87 passed`) and `rtk git diff --check`. Review should focus on whether the retained copy is state-bearing: planning and task chat unavailable/empty messages, planning document empty/error messages, compile blocked/stale/materializing messages, execution empty/pending messages, DAG/task count metadata, task descriptions/dependencies/status, changed-file loading/error/empty messages, and artifact retry copy. Do not revisit top-level destination board, shell, project configuration, backend/API, route semantics, filtering/pagination, DAG data contracts, assistant conversation behavior, compile API behavior, or theme cleanup during the Phase 3 review.
+Phase 3 is closed in `ui/src/features/runs/components/run-detail-scaffold.tsx`, `ui/src/features/runs/components/run-phase-stepper.tsx`, `ui/src/features/runs/components/planning-workspace.tsx`, `ui/src/features/runs/components/execution-plan-workspace.tsx`, `ui/src/features/runs/use-run-detail-view-model.ts`, `ui/src/features/runs/use-run-planning-phase-view-model.ts`, `ui/src/features/runs/use-execution-plan-workspace-view-model.ts`, `ui/src/features/runs/run-view-model-types.ts`, `ui/src/features/execution/components/execution-workspace.tsx`, `ui/src/features/execution/components/task-detail-workspace.tsx`, `ui/src/features/execution/components/task-review-sidebar.tsx`, `ui/src/features/execution/use-execution-view-model.ts`, `ui/src/app/styles.css`, and `ui/src/test/runs-routes.test.tsx`, with the targeted review fix in `run-phase-stepper.tsx`, `run-detail-state.tsx`, `execution-workspace.tsx`, `use-execution-view-model.ts`, `styles.css`, `runs-routes.test.tsx`, and this active plan. Required fix validation passed with `rtk npm run test -- ui/src/test/runs-routes.test.tsx ui/src/test/app-shell.test.tsx` (`87 passed`) and `rtk git diff --check`. Phase 4 can start from project configuration tabs/forms without revisiting run workspace chrome, top-level destination boards, shell, backend/API behavior, route semantics, filtering/pagination, DAG data contracts, assistant conversation behavior, compile API behavior, or theme cleanup.
 
 ## Phase 4 - Simplify Project Configuration Tabs And Forms
 

@@ -119,7 +119,6 @@ export interface ExecutionNodeViewModel {
   description: string;
   detailPath: string;
   downstreamTasks: TaskDependencyViewModel[];
-  footnote: string;
   graphColumn: number;
   graphRow: number;
   handoffSummary: string;
@@ -387,27 +386,6 @@ function buildExecutionColumnSummary(depth: number, taskCount: number) {
   return taskCount === 1 ? "1 task in this step" : `${taskCount} parallel tasks in this step`;
 }
 
-function buildExecutionNodeFootnote(task: ExecutionTaskRecord, input: {
-  downstreamCount: number;
-  unresolvedDependencyCount: number;
-}) {
-  if (input.unresolvedDependencyCount > 0) {
-    return `Waiting on ${input.unresolvedDependencyCount} prerequisite${input.unresolvedDependencyCount === 1 ? "" : "s"}`;
-  }
-
-  if (task.dependsOn.length === 0) {
-    return input.downstreamCount > 0
-      ? `Starts the workflow and unlocks ${input.downstreamCount} downstream task${input.downstreamCount === 1 ? "" : "s"}`
-      : "Starts the workflow";
-  }
-
-  if (input.downstreamCount > 0) {
-    return `${task.dependsOn.length} cleared prerequisite${task.dependsOn.length === 1 ? "" : "s"} · unlocks ${input.downstreamCount} downstream task${input.downstreamCount === 1 ? "" : "s"}`;
-  }
-
-  return `${task.dependsOn.length} cleared prerequisite${task.dependsOn.length === 1 ? "" : "s"}`;
-}
-
 function buildExecutionHandoffSummary(task: ExecutionTaskRecord, unresolvedDependencyCount: number) {
   if (!task.taskRecordReady) {
     return "Task detail is still waiting on the live task record for this workflow node.";
@@ -601,10 +579,6 @@ function buildExecutionGraph(tasks: ExecutionTaskRecord[], runId: string) {
           description: task.description,
           detailPath: buildRunTaskPath(runId, task.taskId),
           downstreamTasks,
-          footnote: buildExecutionNodeFootnote(task, {
-            downstreamCount: downstreamTasks.length,
-            unresolvedDependencyCount
-          }),
           graphColumn: column.depth,
           graphRow: rowIndex,
           handoffSummary: buildExecutionHandoffSummary(task, unresolvedDependencyCount),

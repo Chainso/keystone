@@ -29,13 +29,17 @@ export function RunPhaseStepper({ steps }: RunPhaseStepperProps) {
           <span
             key={phase.phaseId}
             aria-label={
-              phase.disabledReason ? `${phase.label}: ${phase.disabledReason}` : phase.label
+              phase.disabledReason ? `${phase.label}. ${phase.disabledReason}` : phase.label
             }
             className="run-step-link is-disabled"
             aria-disabled="true"
-            title={phase.disabledReason}
+            role="link"
+            tabIndex={0}
           >
             <span className="run-step-link-label">{phase.label}</span>
+            {phase.disabledReason ? (
+              <span className="run-step-link-state">{phase.disabledReason}</span>
+            ) : null}
           </span>
         )
       )}

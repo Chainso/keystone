@@ -1125,7 +1125,7 @@ function renderRunRoute(initialEntry: string, runApi: RunManagementApi = staticR
 
 function expectRunDetailStateChrome() {
   expect(screen.getByRole("link", { name: "Back to runs" })).toHaveAttribute("href", "/runs");
-  expect(screen.getByText("Run workspace")).toBeInTheDocument();
+  expect(screen.queryByText("Run workspace")).not.toBeInTheDocument();
 }
 
 function createRunApi(overrides: Partial<RunManagementApi> = {}): RunManagementApi {
@@ -3160,7 +3160,9 @@ describe("Run routes", () => {
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Execution status")).toHaveTextContent("1 in progress");
     expect(screen.getByLabelText("Execution status")).toHaveTextContent("2 completed");
+    expect(within(graphRegion).queryByText(/unlocks/i)).not.toBeInTheDocument();
     expect(document.querySelector(".execution-board-note")).toBeNull();
+    expect(document.querySelector(".execution-graph-node-footnote")).toBeNull();
   });
 
   it("opens task detail directly when the operator clicks a ready DAG node", async () => {
@@ -3269,12 +3271,14 @@ describe("Run routes", () => {
       screen.getByText("Execution becomes available after this run has been compiled.")
     ).toBeInTheDocument();
     const phaseNavigation = screen.getByRole("navigation", { name: "Run phases" });
-    const executionStep = within(phaseNavigation)
-      .getByText("Execution")
-      .closest('[aria-disabled="true"]');
+    const executionStep = within(phaseNavigation).getByRole("link", {
+      name: "Execution. Compile the run to open execution."
+    });
 
     expect(within(phaseNavigation).queryByRole("link", { name: "Execution" })).not.toBeInTheDocument();
     expect(executionStep).toHaveAttribute("aria-disabled", "true");
+    expect(executionStep).toHaveAttribute("tabindex", "0");
+    expect(executionStep).toHaveTextContent("Compile the run to open execution.");
   });
 
   it("renders task conversation and code review without approval framing", async () => {

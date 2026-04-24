@@ -163,7 +163,6 @@ function ExecutionGraphBoard({
                 <span className="execution-graph-node-label">{node.taskId}</span>
                 <span className="execution-graph-node-title">{node.title}</span>
                 <span className="execution-graph-node-status">{node.statusLabel}</span>
-                <span className="document-name execution-graph-node-footnote">{node.footnote}</span>
               </button>
             );
           })}

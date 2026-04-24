@@ -1582,14 +1582,6 @@ pre {
   white-space: nowrap;
 }
 
-.execution-graph-node-footnote {
-  display: -webkit-box;
-  margin-top: auto;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 .execution-summary-group {
   gap: 0.85rem;
 }
@@ -2018,6 +2010,7 @@ pre {
 .run-step-link,
 .project-tab-link {
   display: inline-flex;
+  align-items: center;
   justify-content: flex-start;
   width: auto;
   min-width: max-content;
@@ -2034,6 +2027,12 @@ pre {
 .run-step-link-label,
 .project-tab-link-label {
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.run-step-link-state {
+  color: var(--text-muted);
+  font-size: 0.76rem;
   white-space: nowrap;
 }
 
