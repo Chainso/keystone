@@ -386,13 +386,14 @@ function AttachedAssistantChatSurface({
               <span>{errorMessage}</span>
             </div>
           ) : null}
-          <Thread
-            ToolFallbackComponent={CloudflareToolFallback}
-            className="h-[clamp(25rem,calc(100vh-22rem),34rem)] min-h-0"
-            composerPlaceholder={composerPlaceholder}
-            emptyMessage={emptyMessage}
-            emptyTitle={emptyTitle}
-          />
+          <div className="h-[clamp(25rem,calc(100vh-22rem),34rem)] min-h-0">
+            <Thread
+              ToolFallbackComponent={CloudflareToolFallback}
+              composerPlaceholder={composerPlaceholder}
+              emptyMessage={emptyMessage}
+              emptyTitle={emptyTitle}
+            />
+          </div>
           <p className="m-0 inline-flex items-center gap-2 text-muted-foreground text-xs">
             {isRunning ? <LoaderCircleIcon aria-hidden="true" className="size-3 animate-spin" /> : null}
             <span>{statusCopy}</span>

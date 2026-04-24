@@ -68,10 +68,10 @@ export const Thread: FC<ThreadProps> = ({
   return (
     <TooltipProvider delayDuration={0}>
       <ThreadPrimitive.Root
-        className={cn("aui-root aui-thread-root @container flex h-full min-h-[25rem] min-w-0 flex-col overflow-hidden bg-background", className)}
+        className={cn("aui-root aui-thread-root @container flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background", className)}
         style={{
           ["--thread-max-width" as string]: "44rem",
-          ["--composer-radius" as string]: "20px",
+          ["--composer-radius" as string]: "24px",
           ["--composer-padding" as string]: "10px"
         }}
       >
@@ -150,11 +150,11 @@ const ThreadWelcome: FC<{ emptyTitle: string; emptyMessage: string }> = ({
   return (
     <div className="aui-thread-welcome-root my-auto flex grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
-        <div className="aui-thread-welcome-message flex size-full min-h-56 flex-col justify-center px-4">
+        <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-2xl duration-200">
             {emptyTitle}
           </h1>
-          <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-base delay-75 duration-200">
+          <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-xl delay-75 duration-200">
             {emptyMessage}
           </p>
         </div>
