@@ -69,3 +69,13 @@ New entries should follow this format:
 7. **Proposed Fix:** Restored `.ultrakit/developer-docs/keystone-target-model-handoff.md` and kept the current contributor-facing indexes pointed at it.
 8. **Target Window:** `next docs cleanup cycle`
 9. **Status:** `closed (2026-04-21)`
+
+1. **ID:** `TD-2026-04-24-006`
+2. **Date Added:** `2026-04-24`
+3. **Area:** `UI chrome cleanup follow-up`
+4. **Description:** The workspace chrome cleanup removed user-facing instructional copy, but final review found a few low-risk leftover internal surfaces: class-based negative assertions for removed chrome, unused shared workspace summary/note helpers, and dead view-model fields in execution/workstreams data returned to no current component.
+5. **Impact:** No current user-facing behavior is blocked, but future UI refactors may carry stale fields or brittle tests longer than necessary.
+6. **Owner:** `keystone-ui-workspace-chrome-reduction`
+7. **Proposed Fix:** In the next UI maintenance pass, remove unused workspace summary/note exports and stale execution/workstreams view-model fields, then replace class-based "chrome removed" assertions with behavior-oriented coverage where practical.
+8. **Target Window:** `next UI maintenance cycle`
+9. **Status:** `open`
