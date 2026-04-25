@@ -11,6 +11,7 @@ const uiDevProxyTarget =
   process.env.KEYSTONE_DEV_PROXY_TARGET ??
   process.env.KEYSTONE_BASE_URL ??
   "http://127.0.0.1:8787";
+const uiDevHost = process.env.KEYSTONE_UI_DEV_HOST ?? "0.0.0.0";
 
 export default defineConfig({
   root: uiRoot,
@@ -21,7 +22,7 @@ export default defineConfig({
     }
   },
   server: {
-    host: "127.0.0.1",
+    host: uiDevHost,
     proxy: {
       "/agents": {
         changeOrigin: true,

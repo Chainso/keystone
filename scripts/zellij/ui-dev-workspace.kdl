@@ -1,7 +1,7 @@
 layout {
   pane split_direction="vertical" {
     pane command="bash" {
-      args "-lc" "npx localflare"
+      args "-lc" "npm run dev -- --ip \"${KEYSTONE_DEV_IP:-0.0.0.0}\" --show-interactive-dev-session=false"
     }
     pane command="bash" {
       args "-lc" "npm run dev:ui"

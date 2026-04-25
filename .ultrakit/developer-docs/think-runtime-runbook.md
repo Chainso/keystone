@@ -37,7 +37,7 @@ Run from repo root:
 docker compose up -d postgres
 export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgres://postgres:postgres@127.0.0.1:5432/keystone"
 npm run db:migrate
-npm run dev -- --ip 127.0.0.1 --show-interactive-dev-session=false
+npm run dev -- --ip 0.0.0.0 --show-interactive-dev-session=false
 ```
 
 On this host, run the Wrangler commands from a normal host shell rather than inside the Codex sandbox. Sandboxed startup still fails before serving traffic with `uv_interface_addresses returned Unknown system error 1`.
