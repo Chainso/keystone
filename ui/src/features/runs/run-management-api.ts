@@ -584,7 +584,10 @@ export function createStaticRunManagementApi(
       }
 
       const createdDocument: DocumentResource = {
-        conversation: payload.conversation ?? null,
+        conversation: payload.conversation ?? {
+          agentClass: "PlanningDocumentAgent",
+          agentName: `tenant:tenant-dev-local:run:${runId}:document:${payload.path}`
+        },
         currentRevisionId: null,
         documentId: `${runId}-${payload.path.replace(/\//g, "-")}`,
         kind: payload.kind,

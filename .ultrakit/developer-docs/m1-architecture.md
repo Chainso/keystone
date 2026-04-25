@@ -24,7 +24,7 @@ The current UI is no longer scaffold-only for project management:
 - the `Runs` index follows the selected project through `GET /v1/projects/:projectId/runs`
 - `Workstreams` now follows the selected project through `GET /v1/projects/:projectId/tasks`, including server-backed filter and pagination state
 - browser-backed `Workstreams` fetch readiness is keyed off `useProjectManagement().state.currentProject`; `useCurrentProject()` remains a scaffold-compatibility fallback and is not sufficient as a live readiness signal
-- `+ New run` now creates real run records through `POST /v1/projects/:projectId/runs` and routes directly into the new run's live `Specification` page without seeding planning documents
+- `+ New run` now creates real run records through `POST /v1/projects/:projectId/runs` and routes directly into the new run's live `Specification` page; the first opened planning page automatically creates its missing run-scoped planning document so the attached agent conversation is immediately available
 - live run detail under `/runs/:runId/**` now reads real run, planning-document, workflow, task, and task-artifact data through feature-owned UI providers
 - `Specification`, `Architecture`, and `Execution Plan` can create missing run-scoped documents and save new current revisions in place through `POST /v1/runs/:runId/documents` and `POST /v1/runs/:runId/documents/:documentId/revisions`
 - run-scoped planning documents now get deterministic conversation locators on create when the request omits them, and `GET /v1/runs/:runId/documents` plus `GET /v1/runs/:runId/documents/:documentId` lazily backfill missing locators instead of returning locator-less planning resources

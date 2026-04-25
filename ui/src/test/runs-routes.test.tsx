@@ -46,15 +46,6 @@ interface CloudflareAgentMock {
   stub: Record<string, never>;
 }
 
-interface CloudflareAgentChatOptions {
-  agent: CloudflareAgentMock;
-  body?: unknown;
-  credentials?: RequestCredentials;
-  headers?: HeadersInit;
-  onToolCall?: unknown;
-  tools?: unknown;
-}
-
 function createCloudflareChatMock(overrides: Partial<CloudflareChatMock> = {}) {
   return {
     ...defaultCloudflareChatMock(),
@@ -200,7 +191,7 @@ const cloudflareConversationMocks = vi.hoisted(() => ({
     agent: options.agent,
     name: options.name ?? "default"
   })),
-  useAgentChat: vi.fn((_options: CloudflareAgentChatOptions) => createCloudflareChatMock())
+  useAgentChat: vi.fn(() => createCloudflareChatMock())
 }));
 
 type WindowWithDevAuth = Window & {
@@ -230,9 +221,7 @@ import { renderRoute } from "./render-route";
 afterEach(() => {
   cleanup();
   cloudflareConversationMocks.useAgent.mockClear();
-  cloudflareConversationMocks.useAgentChat.mockImplementation((_options) =>
-    createCloudflareChatMock()
-  );
+  cloudflareConversationMocks.useAgentChat.mockImplementation(() => createCloudflareChatMock());
   cloudflareConversationMocks.useAgentChat.mockClear();
   (window as WindowWithDevAuth).__KESTONE_UI_DEV_AUTH__ = undefined;
   vi.unstubAllGlobals();
@@ -1560,7 +1549,10 @@ function createBrowserRunFetch(
 
         const documentId = `${runId}-${input.path.replace(/\//g, "-")}`;
         const createdDocument = {
-          conversation: input.conversation ?? null,
+          conversation: input.conversation ?? {
+            agentClass: "PlanningDocumentAgent",
+            agentName: `tenant:tenant-dev-local:run:${runId}:document:${input.path}`
+          },
           currentRevisionId: null,
           documentId,
           kind: input.kind,
@@ -1862,7 +1854,7 @@ describe("Run routes", () => {
     ).toHaveAttribute("href", "/runs/run-107/execution");
   });
 
-  it("keeps a brand-new run with no planning documents on specification", async () => {
+  it("keeps a brand-new run on specification and creates the planning document", async () => {
     const { router } = renderRunRoute("/runs/run-106");
 
     expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
@@ -1870,7 +1862,8 @@ describe("Run routes", () => {
       expect(router.state.location.pathname).toBe("/runs/run-106/specification");
     });
 
-    expect(await screen.findByText("No specification document yet")).toBeInTheDocument();
+    expect(await screen.findByText("No current specification revision")).toBeInTheDocument();
+    expectPlanningChatSurface();
   });
 
   it("renders the run workspace frame with title and stage tabs", async () => {
@@ -2376,18 +2369,15 @@ describe("Run routes", () => {
     expect(createRunDocumentRevision).toHaveBeenCalledTimes(2);
   });
 
-  it("deduplicates rapid create and save activations for a planning document", async () => {
+  it("deduplicates automatic create and rapid save activations for a planning document", async () => {
     const { fetchMock } = createBrowserRunFetch();
 
     renderRoute("/runs/run-106/specification");
 
     expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
 
-    const createButton = screen.getByRole("button", {
-      name: "Create specification document"
-    });
-    fireEvent.click(createButton);
-    fireEvent.click(createButton);
+    expect(await screen.findByText("No current specification revision")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
 
     expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
       "Run Specification"
@@ -2427,21 +2417,21 @@ describe("Run routes", () => {
     {
       defaultTitle: "Run Specification",
       documentId: "run-106-specification",
-      emptyTitle: "No specification document yet",
+      emptyTitle: "No current specification revision",
       expectedLine: "- Define the live planning specification.",
       path: "/runs/run-106/specification"
     },
     {
       defaultTitle: "Run Architecture",
       documentId: "run-106-architecture",
-      emptyTitle: "No architecture document yet",
+      emptyTitle: "No current architecture revision",
       expectedLine: "- Keep the shared planning layout stable.",
       path: "/runs/run-106/architecture"
     },
     {
       defaultTitle: "Execution Plan",
       documentId: "run-106-execution-plan",
-      emptyTitle: "No execution plan document yet",
+      emptyTitle: "No current execution plan revision",
       expectedLine: "- Save the current execution plan without leaving the route.",
       path: "/runs/run-106/execution-plan"
     }
@@ -2464,9 +2454,9 @@ describe("Run routes", () => {
             : "execution_plan";
 
       expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
-      expect(screen.getByText(emptyTitle)).toBeInTheDocument();
+      expect(await screen.findByText(emptyTitle)).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Create`, "i") }));
+      fireEvent.click(screen.getByRole("button", { name: "Write first revision" }));
 
       expect(await screen.findByRole("textbox", { name: "Document title" })).toHaveValue(
         defaultTitle
@@ -2554,9 +2544,6 @@ describe("Run routes", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "run-106" })).toBeInTheDocument();
-    expect(screen.getByText("No architecture document yet")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Create architecture document" }));
 
     expect(await screen.findByRole("heading", { name: "Run Architecture" })).toBeInTheDocument();
     await waitFor(() => {

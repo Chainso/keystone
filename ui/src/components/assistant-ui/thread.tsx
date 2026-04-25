@@ -274,7 +274,7 @@ const AssistantMessage: FC<ThreadMessageProps> = ({ ToolFallbackComponent }) => 
     >
       <div
         data-slot="aui_assistant-message-content"
-        className="break-words px-2 text-foreground leading-relaxed"
+        className="wrap-break-word px-2 text-foreground leading-relaxed"
       >
         <MessagePrimitive.Parts
           components={{
@@ -358,8 +358,8 @@ const UserMessage: FC = () => {
       className="fade-in slide-in-from-bottom-1 grid animate-in auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2"
       data-role="user"
     >
-      <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-        <div className="aui-user-message-content peer rounded-2xl bg-muted px-4 py-2.5 text-foreground empty:hidden">
+        <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
+        <div className="aui-user-message-content wrap-break-word peer rounded-2xl bg-muted px-4 py-2.5 text-foreground empty:hidden">
           <MessagePrimitive.Parts
             components={{
               File: MessageFilePart,
@@ -385,7 +385,6 @@ const SystemMessage: FC = () => {
     <MessagePrimitive.Root
       data-slot="aui_system-message-root"
       data-role="system"
-      className="mx-auto max-w-[85%] rounded-lg border bg-muted/40 px-4 py-3 text-muted-foreground text-sm"
     >
       <MessagePrimitive.Parts
         components={{
@@ -470,41 +469,27 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
 
 function MessageSourcePart({ title, url }: SourceMessagePartProps) {
   return (
-    <a
-      href={url}
-      rel="noreferrer"
-      target="_blank"
-      className="mt-2 flex items-start gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-primary"
-    >
-      <ExternalLinkIcon className="mt-0.5 size-4 shrink-0" />
-      <span className="break-words">{title ?? url}</span>
+    <a href={url} rel="noreferrer" target="_blank">
+      <ExternalLinkIcon aria-hidden="true" />
+      <span>{title ?? url}</span>
     </a>
   );
 }
 
 function MessageFilePart({ data, filename, mimeType }: FileMessagePartProps) {
   return (
-    <a
-      href={data}
-      rel="noreferrer"
-      target="_blank"
-      className="mt-2 flex items-start gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-primary"
-    >
-      <FileTextIcon className="mt-0.5 size-4 shrink-0" />
-      <span className="break-words">{filename ?? mimeType}</span>
+    <a href={data} rel="noreferrer" target="_blank">
+      <FileTextIcon aria-hidden="true" />
+      <span>{filename ?? mimeType}</span>
     </a>
   );
 }
 
 function MessageDataPart({ data, name }: DataMessagePartProps) {
   return (
-    <details className="mt-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-      <summary className="cursor-pointer font-medium text-muted-foreground">
-        {name.replace(/-/g, " ")}
-      </summary>
-      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-md bg-background/60 p-2 text-xs">
-        {formatStructuredValue(data)}
-      </pre>
+    <details>
+      <summary>{name.replace(/-/g, " ")}</summary>
+      <pre>{formatStructuredValue(data)}</pre>
     </details>
   );
 }

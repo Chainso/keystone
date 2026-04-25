@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getRunPhaseDefinition } from "../../shared/navigation/run-phases";
 import { useUnsavedChangesGuard } from "../../shared/navigation/use-unsaved-changes-guard";
@@ -125,6 +125,8 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
   const base = buildPhaseBaseViewModel(phaseId, planningState);
   const sourceDraft = buildPlanningDraftSource(phaseId, planningState);
   const sourceKey = getPlanningDocumentSourceKey(planningState);
+  const shouldAutoCreateDocument =
+    planningState.status === "empty" && planningState.reason === "missing_document";
   const [title, setTitle] = useState(sourceDraft.title);
   const [body, setBody] = useState(sourceDraft.body);
   const [isEditing, setIsEditing] = useState(false);
@@ -154,36 +156,55 @@ export function useRunPlanningPhaseViewModel(phaseId: RunPlanningPhaseId): RunPl
     setTitle(sourceDraft.title);
   }, [sourceDraft.body, sourceDraft.title, sourceKey]);
 
-  async function startEditing() {
+  const createMissingPlanningDocument = useCallback(async (input: { enterEditor: boolean }) => {
+    if (createInFlightRef.current) {
+      return;
+    }
+
+    createInFlightRef.current = true;
+    setIsCreating(true);
     setSubmitErrorMessage(null);
 
-    if (planningState.status === "empty" && planningState.reason === "missing_document") {
-      if (createInFlightRef.current) {
-        return;
-      }
+    try {
+      const document = await actions.createPlanningDocument(phaseId);
 
-      createInFlightRef.current = true;
-      setIsCreating(true);
-
-      try {
-        const document = await actions.createPlanningDocument(phaseId);
-
+      if (input.enterEditor) {
         pendingEditorSourceKeyRef.current = buildPlanningDocumentSourceKey({
           documentId: document.documentId,
           reason: "missing_revision",
           revisionId: null,
           status: "empty"
         });
-      } catch (error) {
-        setIsCreating(false);
-        setSubmitErrorMessage(
-          error instanceof Error && error.message
-            ? error.message
-            : `Unable to create ${phase.label.toLowerCase()} document.`
-        );
-      } finally {
-        createInFlightRef.current = false;
       }
+    } catch (error) {
+      setIsCreating(false);
+      setSubmitErrorMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : `Unable to create ${phase.label.toLowerCase()} document.`
+      );
+    } finally {
+      createInFlightRef.current = false;
+    }
+  }, [actions, phase.label, phaseId]);
+
+  useEffect(() => {
+    if (!shouldAutoCreateDocument) {
+      return;
+    }
+
+    void createMissingPlanningDocument({
+      enterEditor: false
+    });
+  }, [createMissingPlanningDocument, shouldAutoCreateDocument, sourceKey]);
+
+  async function startEditing() {
+    setSubmitErrorMessage(null);
+
+    if (planningState.status === "empty" && planningState.reason === "missing_document") {
+      await createMissingPlanningDocument({
+        enterEditor: true
+      });
 
       return;
     }
