@@ -422,7 +422,7 @@ const env = {
     connectionString: "postgres://test"
   } as Hyperdrive,
   KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4",
+  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5",
   KEYSTONE_DEV_TENANT_ID: "tenant-local",
   KEYSTONE_DEV_TOKEN: "secret-dev-token",
   RUN_WORKFLOW: {

@@ -4,14 +4,14 @@ import { resolveChatCompletionsModel } from "../../src/lib/llm/model-config";
 
 const baseEnv = {
   KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4"
+  KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5"
 };
 
 describe("chat completions model config", () => {
   it("uses the global model when no role override is configured", () => {
-    expect(resolveChatCompletionsModel(baseEnv, { role: "planning" })).toBe("gpt-5.4");
-    expect(resolveChatCompletionsModel(baseEnv, { role: "implementer" })).toBe("gpt-5.4");
-    expect(resolveChatCompletionsModel(baseEnv, { role: "compile" })).toBe("gpt-5.4");
+    expect(resolveChatCompletionsModel(baseEnv, { role: "planning" })).toBe("gpt-5.5");
+    expect(resolveChatCompletionsModel(baseEnv, { role: "implementer" })).toBe("gpt-5.5");
+    expect(resolveChatCompletionsModel(baseEnv, { role: "compile" })).toBe("gpt-5.5");
   });
 
   it("lets all planning document agents share a planning model override", () => {

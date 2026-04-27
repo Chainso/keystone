@@ -185,7 +185,7 @@ describe("chat completions client", () => {
     const result = await createChatCompletion({
       env: {
         KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4"
+        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5"
       },
       messages: [
         {
@@ -208,7 +208,7 @@ describe("chat completions client", () => {
 
     expect(JSON.parse(String(calls[0]?.[1].body))).toEqual(
       expect.objectContaining({
-        model: "gpt-5.4"
+        model: "gpt-5.5"
       })
     );
   });
@@ -236,7 +236,7 @@ describe("chat completions client", () => {
     await createChatCompletion({
       env: {
         KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4",
+        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5",
         KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL: "gpt-5.4-mini"
       },
       messages: [

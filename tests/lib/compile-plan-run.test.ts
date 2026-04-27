@@ -254,7 +254,7 @@ const mocked = vi.hoisted(() => {
     }),
     createChatCompletion: vi.fn(async () => ({
       id: "chatcmpl-live",
-      model: "gpt-5.4",
+      model: "gpt-5.5",
       content: JSON.stringify(liveParsedPlan),
       rawText: JSON.stringify(liveParsedPlan),
       finishReason: "stop",
@@ -298,7 +298,7 @@ function createCompileInput() {
     env: {
       ARTIFACTS_BUCKET: {} as R2Bucket,
       KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-      KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4"
+      KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5"
     } as never,
     client: {} as never,
     tenantId: "tenant-fixture",

@@ -325,7 +325,7 @@ const { PlanningDocumentAgent } = await import(
 function createEnv() {
   return {
     KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-    KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4",
+    KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5",
     LOADER: {
       get: vi.fn(),
       load: vi.fn()
@@ -557,7 +557,7 @@ describe("PlanningDocumentAgent", () => {
     expect(mocked.state.loadRunDocumentCurrentText).toHaveBeenCalledWith({
       env: expect.objectContaining({
         KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4"
+        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5"
       }),
       tenantId: "tenant-fixture",
       runId: "run-123",
@@ -589,7 +589,7 @@ describe("PlanningDocumentAgent", () => {
     expect(mocked.state.saveRunDocumentTextRevision).toHaveBeenCalledWith({
       env: expect.objectContaining({
         KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4"
+        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5"
       }),
       tenantId: "tenant-fixture",
       runId: "run-123",

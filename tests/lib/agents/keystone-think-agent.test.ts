@@ -171,7 +171,7 @@ function createBridge() {
 function createEnv() {
   return {
     KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
-    KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4"
+    KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.5"
   };
 }
 
