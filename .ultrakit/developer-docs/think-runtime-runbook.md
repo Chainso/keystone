@@ -29,7 +29,7 @@ Compile is document-first in all three flows. Project components matter at execu
 - `.dev.vars` populated from `.dev.vars.example`
 - the local chat-completions backend reachable at `http://localhost:10531`
 
-By default local Wrangler keeps `KEYSTONE_CHAT_COMPLETIONS_MODEL=gpt-5.5` as the global fallback and also sets `KEYSTONE_PLANNING_CHAT_COMPLETIONS_MODEL=gpt-5.5` so the specification, architecture, and execution-plan chat agents use `gpt-5.5`. Override `KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL`, `KEYSTONE_IMPLEMENTER_CHAT_COMPLETIONS_MODEL`, or one of the document-specific planning model vars when you need a different model split.
+By default local Wrangler keeps `KEYSTONE_CHAT_COMPLETIONS_MODEL=gpt-5.5` as the global fallback and also sets `KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL=gpt-5.5` plus `KEYSTONE_PLANNING_CHAT_COMPLETIONS_MODEL=gpt-5.5` so compile and the specification, architecture, and execution-plan chat agents use `gpt-5.5`. Override `KEYSTONE_IMPLEMENTER_CHAT_COMPLETIONS_MODEL` or one of the document-specific planning model vars when you need a different model split.
 
 ## Boot Local Dependencies
 

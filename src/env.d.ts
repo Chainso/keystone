@@ -16,7 +16,6 @@ export interface WorkerBindings extends Env {
   PlanningDocumentAgent: DurableObjectNamespace<
     import("./keystone/agents/planning/PlanningDocumentAgent").PlanningDocumentAgent
   >;
-  KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL?: string;
   KEYSTONE_IMPLEMENTER_CHAT_COMPLETIONS_MODEL?: string;
   KEYSTONE_SPECIFICATION_CHAT_COMPLETIONS_MODEL?: string;
   KEYSTONE_ARCHITECTURE_CHAT_COMPLETIONS_MODEL?: string;
