@@ -35,7 +35,7 @@ npm run dev:zellij
 npm run dev -- --ip 0.0.0.0 --show-interactive-dev-session=false
 ```
 
-`npm run dev` no longer needs a host `CLOUDFLARE_API_TOKEN` just to satisfy the Think runtime. The Think-backed model path now uses `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` and `KEYSTONE_CHAT_COMPLETIONS_MODEL` directly.
+`npm run dev` no longer needs a host `CLOUDFLARE_API_TOKEN` just to satisfy the Think runtime. The Think-backed model path now uses `KEYSTONE_CHAT_COMPLETIONS_BASE_URL` and `KEYSTONE_CHAT_COMPLETIONS_MODEL` as the global fallback. Role-specific overrides are available through `KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL`, `KEYSTONE_IMPLEMENTER_CHAT_COMPLETIONS_MODEL`, and `KEYSTONE_PLANNING_CHAT_COMPLETIONS_MODEL`; individual planning documents can override the shared planning model with `KEYSTONE_SPECIFICATION_CHAT_COMPLETIONS_MODEL`, `KEYSTONE_ARCHITECTURE_CHAT_COMPLETIONS_MODEL`, or `KEYSTONE_EXECUTION_PLAN_CHAT_COMPLETIONS_MODEL`.
 
 `npm run dev` now runs `npm run build:ui` first so Wrangler can serve the current frontend assets from the same Worker deployable. Use `npm run dev:ui` in a second terminal when you want watch-mode rebuilds for the workspace shell while Wrangler is already running.
 

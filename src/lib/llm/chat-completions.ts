@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import type { WorkerBindings } from "../../env";
 import { assertOutboundUrlAllowed } from "../security/outbound";
+import { type ChatCompletionsModelEnv, resolveChatCompletionsModel } from "./model-config";
 
 export const chatMessageRoleValues = ["system", "user", "assistant"] as const;
 
@@ -72,9 +72,10 @@ export interface ChatCompletionResult {
 }
 
 export interface CreateChatCompletionInput {
-  env: Pick<WorkerBindings, "KEYSTONE_CHAT_COMPLETIONS_BASE_URL" | "KEYSTONE_CHAT_COMPLETIONS_MODEL">;
+  env: ChatCompletionsModelEnv;
   messages: ChatCompletionMessage[];
   temperature?: number | undefined;
+  modelId?: string | undefined;
 }
 
 export function buildChatCompletionsApiBaseUrl(baseUrl: string) {
@@ -245,7 +246,10 @@ export async function createChatCompletion(
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: input.env.KEYSTONE_CHAT_COMPLETIONS_MODEL,
+      model: resolveChatCompletionsModel(input.env, {
+        role: "compile",
+        explicitModelId: input.modelId
+      }),
       messages: input.messages.map((message) => chatCompletionMessageSchema.parse(message)),
       temperature: input.temperature ?? 0,
       stream: true

@@ -1,8 +1,7 @@
-import type { WorkerBindings } from "../../env";
 import { evaluateOutboundHttpPolicy } from "./policy";
 
 export function assertOutboundUrlAllowed(
-  env: Pick<WorkerBindings, "KEYSTONE_CHAT_COMPLETIONS_BASE_URL">,
+  env: { KEYSTONE_CHAT_COMPLETIONS_BASE_URL: string },
   requestedUrl: string,
   purpose: string
 ) {

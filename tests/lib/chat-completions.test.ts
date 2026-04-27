@@ -204,6 +204,56 @@ describe("chat completions client", () => {
         method: "POST"
       })
     );
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+
+    expect(JSON.parse(String(calls[0]?.[1].body))).toEqual(
+      expect.objectContaining({
+        model: "gpt-5.4"
+      })
+    );
+  });
+
+  it("sends the compile-specific model when configured", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: "chatcmpl-json",
+          model: "gpt-5.4-mini",
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: '{"ok":true}'
+              },
+              finish_reason: "stop"
+            }
+          ]
+        })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createChatCompletion({
+      env: {
+        KEYSTONE_CHAT_COMPLETIONS_BASE_URL: "http://localhost:10531",
+        KEYSTONE_CHAT_COMPLETIONS_MODEL: "gpt-5.4",
+        KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL: "gpt-5.4-mini"
+      },
+      messages: [
+        {
+          role: "user",
+          content: "Reply with JSON."
+        }
+      ]
+    });
+
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+
+    expect(JSON.parse(String(calls[0]?.[1].body))).toEqual(
+      expect.objectContaining({
+        model: "gpt-5.4-mini"
+      })
+    );
   });
 
   it("extracts structured JSON from assistant content", () => {

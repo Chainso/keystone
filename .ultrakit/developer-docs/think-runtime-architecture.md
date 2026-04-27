@@ -43,6 +43,8 @@ When project-backed run creation omits `executionEngine`, the API/runtime defaul
 
 `think_live` is the live-model Think-backed path against the configured local OpenAI-compatible chat-completions backend. It executes compiled handoffs against the full materialized project workspace, including multi-component projects.
 
+Model selection resolves through role-aware environment variables. `KEYSTONE_CHAT_COMPLETIONS_MODEL` is the global fallback. Compile can use `KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL`, implementer turns can use `KEYSTONE_IMPLEMENTER_CHAT_COMPLETIONS_MODEL`, and planning conversations can use `KEYSTONE_PLANNING_CHAT_COMPLETIONS_MODEL`. The three planning document agents can also be pinned individually with `KEYSTONE_SPECIFICATION_CHAT_COMPLETIONS_MODEL`, `KEYSTONE_ARCHITECTURE_CHAT_COMPLETIONS_MODEL`, and `KEYSTONE_EXECUTION_PLAN_CHAT_COMPLETIONS_MODEL`; those specific values win over the shared planning override.
+
 ## Scheduler Contract
 
 `RunWorkflow` remains authoritative for DAG progression after compile.

@@ -3,6 +3,7 @@ import { Think, type TurnConfig, type TurnContext } from "@cloudflare/think";
 
 import type { WorkerBindings } from "../../../env";
 import { buildChatCompletionsApiBaseUrl } from "../../../lib/llm/chat-completions";
+import { type ChatCompletionsModelEnv, resolveChatCompletionsModel } from "../../../lib/llm/model-config";
 import { assertOutboundUrlAllowed } from "../../../lib/security/outbound";
 import { loadRunDocumentCurrentText } from "../../../lib/documents/revision-persistence";
 import {
@@ -19,7 +20,7 @@ import { ensurePlanningSandboxContext, parsePlanningConversationName } from "./p
 import { createPlanningTools } from "./planning-tools";
 
 function createLocalChatCompletionsModel(
-  env: Pick<WorkerBindings, "KEYSTONE_CHAT_COMPLETIONS_BASE_URL" | "KEYSTONE_CHAT_COMPLETIONS_MODEL">,
+  env: ChatCompletionsModelEnv,
   modelId: string
 ) {
   assertOutboundUrlAllowed(env, env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL, "planning chat completions");
@@ -64,7 +65,13 @@ export class PlanningDocumentAgent extends Think<WorkerBindings> {
   override maxSteps = 8;
 
   getModel() {
-    return createLocalChatCompletionsModel(this.env, this.env.KEYSTONE_CHAT_COMPLETIONS_MODEL);
+    return createLocalChatCompletionsModel(
+      this.env,
+      resolveChatCompletionsModel(this.env, {
+        role: "planning",
+        planningDocumentPath: getPlanningDocumentAgentConfig(this.name)?.documentPath
+      })
+    );
   }
 
   override getSystemPrompt() {

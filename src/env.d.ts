@@ -16,6 +16,11 @@ export interface WorkerBindings extends Env {
   PlanningDocumentAgent: DurableObjectNamespace<
     import("./keystone/agents/planning/PlanningDocumentAgent").PlanningDocumentAgent
   >;
+  KEYSTONE_COMPILE_CHAT_COMPLETIONS_MODEL?: string;
+  KEYSTONE_IMPLEMENTER_CHAT_COMPLETIONS_MODEL?: string;
+  KEYSTONE_SPECIFICATION_CHAT_COMPLETIONS_MODEL?: string;
+  KEYSTONE_ARCHITECTURE_CHAT_COMPLETIONS_MODEL?: string;
+  KEYSTONE_EXECUTION_PLAN_CHAT_COMPLETIONS_MODEL?: string;
   TASK_SESSION: DurableObjectNamespace<import("./durable-objects/TaskSessionDO").TaskSessionDO>;
   RUN_WORKFLOW: Workflow<import("./workflows/RunWorkflow").RunWorkflowParams>;
   TASK_WORKFLOW: Workflow<import("./workflows/TaskWorkflow").TaskWorkflowParams>;

@@ -15,6 +15,7 @@ import {
 } from "../../../maestro/agent-runtime";
 import { ensureSandboxSession } from "../../../lib/sandbox/client";
 import { buildChatCompletionsApiBaseUrl } from "../../../lib/llm/chat-completions";
+import { type ChatCompletionsModelEnv, resolveChatCompletionsModel } from "../../../lib/llm/model-config";
 import { assertOutboundUrlAllowed } from "../../../lib/security/outbound";
 import {
   buildImplementerSystemPrompt,
@@ -59,7 +60,7 @@ function logAgentEvent(
 }
 
 function createLocalChatCompletionsModel(
-  env: Pick<WorkerBindings, "KEYSTONE_CHAT_COMPLETIONS_BASE_URL" | "KEYSTONE_CHAT_COMPLETIONS_MODEL">,
+  env: ChatCompletionsModelEnv,
   modelId: string
 ) {
   assertOutboundUrlAllowed(env, env.KEYSTONE_CHAT_COMPLETIONS_BASE_URL, "think chat completions");
@@ -88,7 +89,10 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
 
     return createLocalChatCompletionsModel(
       this.env,
-      this.activeTurn?.metadata.modelId ?? this.env.KEYSTONE_CHAT_COMPLETIONS_MODEL
+      resolveChatCompletionsModel(this.env, {
+        role: "implementer",
+        explicitModelId: this.activeTurn?.metadata.modelId
+      })
     );
   }
 
@@ -179,6 +183,10 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
 
   async executeTurn(input: AgentTurnContext, signal?: AbortSignal): Promise<AgentTurnResult> {
     const metadata = parseImplementerTurnMetadata(input);
+    const modelId = resolveChatCompletionsModel(this.env, {
+      role: "implementer",
+      explicitModelId: metadata.modelId
+    });
 
     try {
       const { session } = await ensureSandboxSession({
@@ -268,7 +276,7 @@ export class KeystoneThinkAgent<Config = Record<string, unknown>>
         events: this.activeTurn.events,
         summary,
         metadata: {
-          modelId: metadata.mockModelPlan ? "mock-implementer" : metadata.modelId ?? null,
+          modelId: metadata.mockModelPlan ? "mock-implementer" : modelId,
           stagedArtifactCount: stagedArtifacts.length
         }
       };
